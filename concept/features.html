@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Feature list for FireOps Mobile v1.7 Workflow Edition">
+  <title>FireOps Mobile — Feature List</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1014;
+      --surface: #171b21;
+      --surface-alt: #20262e;
+      --border: #303843;
+      --text: #f5f7fa;
+      --muted: #aab3bf;
+      --red: #d63a30;
+      --green: #55d187;
+      --amber: #f0b44c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header, main, footer { width: min(1120px, calc(100% - 32px)); margin-inline: auto; }
+    header { padding: 64px 0 32px; }
+    .eyebrow { margin: 0 0 8px; color: var(--red); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 4.5rem); line-height: 1.05; letter-spacing: -.04em; }
+    .intro { max-width: 720px; margin: 18px 0 0; color: var(--muted); font-size: 1.08rem; }
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .tag { padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: .83rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; padding: 16px 0 48px; }
+    section { padding: 22px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+    h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 1.12rem; }
+    .number { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--red) 20%, transparent); color: #ff766d; font-size: .74rem; font-weight: 900; }
+    ul { margin: 0; padding-left: 20px; }
+    li { margin: 7px 0; color: var(--muted); }
+    li::marker { color: var(--red); }
+    .scope { margin-bottom: 48px; border-left: 4px solid var(--amber); }
+    .scope h2 { color: var(--amber); }
+    footer { padding: 0 0 40px; color: var(--muted); font-size: .8rem; text-align: center; }
+    @media (max-width: 520px) {
+      header { padding-top: 40px; }
+      section { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">FireOps Mobile v1.7</p>
+    <h1>App feature list</h1>
+    <p class="intro">Workflow Edition for wildfire contractors, employees, fleet teams, and company administrators.</p>
+    <div class="summary" aria-label="Supported platforms and experiences">
+      <span class="tag">iPhone</span>
+      <span class="tag">Android</span>
+      <span class="tag">Web / Mac simulator</span>
+      <span class="tag">Contractor experience</span>
+      <span class="tag">Employee experience</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section>
+        <h2><span class="number">01</span> Operational dashboard</h2>
+        <ul>
+          <li>Live command-center view of incidents, personnel, resources, and alerts</li>
+          <li>Metric drilldowns for assignments and items needing attention</li>
+          <li>Required-action queue and recent operational activity</li>
+          <li>NIFC daily situation report, preparedness level, resource summary, and geographic-area fire activity</li>
+          <li>Quick actions for availability, gear checkout, evaluations, payroll, receipts, and invoices</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">02</span> Incident map and field operations</h2>
+        <ul>
+          <li>Interactive incident map with configurable map layers</li>
+          <li>Official wildfire incident and National Weather Service alert connections with fallback demo data</li>
+          <li>Incident acreage, containment, personnel, and source details</li>
+          <li>Assigned resources, personnel, readiness, crew size, and open-issue views</li>
+          <li>Issue reporting from incident workspace with fleet-record links</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">03</span> Fleet and maintenance</h2>
+        <ul>
+          <li>Searchable vehicle and apparatus records</li>
+          <li>Mileage, engine-hour, assignment, readiness, and open-issue tracking</li>
+          <li>Digital equipment binder with photos and PDF attachments</li>
+          <li>Post-assignment inspections with checklist results, notes, photos, and electronic signatures</li>
+          <li>Automatic issue creation for inspection defects and critical out-of-service failures</li>
+          <li>Standalone issue reports with priority, description, and reporter details</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">04</span> Crew communications</h2>
+        <ul>
+          <li>Company, incident, unit, and maintenance chat threads</li>
+          <li>New-thread creation with thread type and starting members</li>
+          <li>Urgent-message labeling and acknowledgement status</li>
+          <li>Communication and marketplace notification preferences</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">05</span> Qualifications and incident cards</h2>
+        <ul>
+          <li>Qualification Vault for credentials, certificates, task books, licenses, and annual records</li>
+          <li>Photo, image-library, and PDF evidence uploads</li>
+          <li>Incident experience records with supporting documents</li>
+          <li>RT-130 refresher and Work Capacity Test currency tracking</li>
+          <li>IQS-style consolidated master record and PDF packet preparation</li>
+          <li>Incident Qualification Card builder with live preview, trainee positions, branding, verification, and export</li>
+          <li>Credential expiration and renewal visibility</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">06</span> Workforce and marketplace</h2>
+        <ul>
+          <li>Portable worker profiles with resume, experience, qualifications, availability, and travel preferences</li>
+          <li>Privacy controls for opt-in profile visibility and sensitive records</li>
+          <li>Qualified-worker search and candidate contact workflows</li>
+          <li>Wildland job board, job posting, interest tracking, and applicant inbox</li>
+          <li>Equipment, rental, parts, and service listings with photos, price, location, and status</li>
+          <li>Marketplace search, seller messaging, listing editing, and sold/active controls</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">07</span> Inventory accountability</h2>
+        <ul>
+          <li>Available-gear counts with administrator editing</li>
+          <li>Gear checkout by item, quantity, and employee assignment</li>
+          <li>Currently checked-out inventory view</li>
+          <li>Gear check-in and employee accountability tracking</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">08</span> Invoices and finance</h2>
+        <ul>
+          <li>Invoice overview with outstanding, paid, draft, sent, and ready statuses</li>
+          <li>Branded invoice builder with billing details, net terms, and line items</li>
+          <li>PDF generation and invoice-overview storage</li>
+          <li>AI-assisted invoice import from PDF or camera with editable field review</li>
+          <li>Current-fiscal-year QuickBooks sync and export-ready actions</li>
+          <li>Private payroll-form capture, AI total detection, submission, and administrator review queue</li>
+          <li>Receipt photography and categorized receipt capture</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">09</span> Company roster and training</h2>
+        <ul>
+          <li>Company roster with real-time available/unavailable status</li>
+          <li>Employee call, text, credential view, share, and PDF export actions</li>
+          <li>Training course catalog, registration, capacity, and registrant tracking</li>
+          <li>Administrator course publishing</li>
+          <li>Official wildland-learning schedule link and registration notifications</li>
+          <li>Employee evaluation capture from camera or photo library</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">10</span> Documents and company setup</h2>
+        <ul>
+          <li>Company document library with role-aware upload access</li>
+          <li>PDF, image, and Word document publishing, viewing, downloading, and sharing</li>
+          <li>Company logo, representative signature, phone, and representative-name branding</li>
+          <li>Contractor and employee account experiences in one app</li>
+          <li>Feature controls for Marketplace, Training Center, and customizable hub layout</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">11</span> Users, permissions, and integrations</h2>
+        <ul>
+          <li>User invitations, role templates, and individual permission overrides</li>
+          <li>Access controls for operations, fleet, payroll, receipts, reports, integrations, and administration</li>
+          <li>Master-admin full-access model</li>
+          <li>QuickBooks Online, Motive Fleet, and cloud-sync connection screens</li>
+          <li>Server-side credential and audit-trail security model for production integrations</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="number">12</span> Personalization and assistant</h2>
+        <ul>
+          <li>Customizable FireOps Hub with long-press and drag tile ordering</li>
+          <li>Saved on-device hub layout</li>
+          <li>Floating FireOps Assistant available throughout app</li>
+          <li>Permission-aware guidance to app workflows</li>
+          <li>SMS invitation composer for onboarding crew members</li>
+          <li>Compact high-resolution brand header and mobile-safe navigation spacing</li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="scope">
+      <h2>Prototype scope</h2>
+      <ul>
+        <li>Current build uses local and demonstration data.</li>
+        <li>Real push delivery, cloud accounts, OCR/AI services, PDF file output, messaging, printing, QuickBooks synchronization, and role enforcement require production backend and native-service configuration.</li>
+        <li>Qualification records and cards are contractor-issued FireOps records, not official agency IQS/IQCS records or Red Cards.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>FireOps Mobile v1.7 — Workflow Edition</footer>
+</body>
+</html>

@@ -1,0 +1,42 @@
+Accounts. profiles.
+hosting platform - cost?
+register.
+Organizations - 
+
+command center
+incidents - NIFC/WFIGS - APi - Map // scrape
+assigning engines - 
+. added to fleet (manually create engine number vin)
+Motive API / VIN connection? / - camera
+. not everyone will have motive...
+
+Start with just Clint business.
+
+...
+Fleet - reporting issues
+photo uploads for storage
+ai invoice upload
+
+- 50 users
+-
+
+
+all dashboard stuff. 
+operations all
+motive locations
+crew chat - within org
+fleet
+
+more - workforce and marketplace / - skip these
+Admin of company can set all counts of things
+
+Cost of hosting db.
+
+Everything tied to a company.
+user access - normal users just see upload, command center, dont need to see service 
+
+
+
+
+
+

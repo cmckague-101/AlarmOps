@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "FireOps",
+    "slug": "fireops",
+    "version": "1.7.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#13171C"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.firecollc.fireops",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FireOps uses the camera to capture payroll forms, invoices, receipts, and equipment documentation.",
+        "NSPhotoLibraryUsageDescription": "FireOps uses your photo library to attach payroll forms, invoices, receipts, and equipment documentation."
+      }
+    },
+    "android": {
+      "package": "com.firecollc.fireops",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#13171C"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FireOps to attach photos to company records.",
+          "cameraPermission": "Allow FireOps to photograph payroll forms, invoices, receipts, and equipment records."
+        }
+      ]
+    ]
+  }
+}
