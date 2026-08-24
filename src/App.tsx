@@ -158,7 +158,7 @@ export default function App() {
         {page === 'overview' && <Overview vehicles={vehicles} issues={issues} crew={crew} activities={activities} isOwner={canManageFleet} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'issues' && <IssuesPage issues={issues} vehicles={vehicles} onNew={() => setIssueFormOpen(true)} onSelect={setSelectedIssue}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
-        {page === 'company' && <Company onInvite={canManageFleet ? () => setInviteOpen(true) : undefined}/>}
+        {page === 'company' && <Company/>}
       </main>
       <MobileNav page={page} setPage={setPage}/>
     </div>
@@ -239,7 +239,7 @@ function Overview({vehicles,issues,crew,activities,isOwner,onSelectVehicle,onSel
     </section>}
   </div>
 }
-function Company({onInvite}:{onInvite?:()=>void}) {return <div className="page"><div className="page-heading"><div><span className="eyebrow">Account</span><h1>Company</h1><p>Business details for your FireOps account.</p></div>{onInvite&&<button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button>}</div><section className="company-card"><div className="company-logo">NR</div><div><h2>North Ridge Wildfire</h2><p>Wildland fire contractor</p></div><dl><div><dt>Owner</dt><dd>Ryan Mitchell</dd></div><div><dt>Company ID</dt><dd>NRW-2048</dd></div><div><dt>Account plan</dt><dd>Phase 1 testing</dd></div></dl></section>{onInvite&&<button className="fab" onClick={onInvite}><UserPlus/><span>Invite user</span></button>}</div>}
+function Company() {return <div className="page"><div className="page-heading"><div><span className="eyebrow">Account</span><h1>Company</h1><p>Business details for your FireOps account.</p></div></div><section className="company-card"><div className="company-logo">NR</div><div><h2>North Ridge Wildfire</h2><p>Wildland fire contractor</p></div><dl><div><dt>Owner</dt><dd>Ryan Mitchell</dd></div><div><dt>Company ID</dt><dd>NRW-2048</dd></div><div><dt>Account plan</dt><dd>Phase 1 testing</dd></div></dl></section></div>}
 
 function CrewPage({crew,vehicles,onInvite,onSelect}:{crew:CrewMember[];vehicles:Vehicle[];onInvite:()=>void;onSelect:(member:CrewMember)=>void}) {
   return <div className="page crew-page"><div className="page-heading"><div><span className="eyebrow">Company users</span><h1>Crew</h1><p>Contact details, vehicle assignments, and credentials.</p></div><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button></div>
