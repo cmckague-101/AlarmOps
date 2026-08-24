@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { ShieldCheck } from 'lucide-react';
 import App, { type CompanyInfo, type FireOpsUser, type FleetSnapshot, type VehicleFile } from './App';
 import { supabase, supabaseConfigured } from './supabase';
-import './admin.css';
+import './auth.css';
 
 type Membership = { company_id: string; role: 'owner' | 'member' };
 type Profile = { full_name: string };

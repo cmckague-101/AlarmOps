@@ -131,10 +131,9 @@
         <a href="#database">2. Database</a>
         <a href="#vercel">3. Vercel</a>
         <a href="#auth">4. Authentication</a>
-        <a href="#function">5. Edge Function</a>
-        <a href="#admin">6. First company</a>
-        <a href="#crew">7. Crew access</a>
-        <a href="#verify">8. Pilot checks</a>
+        <a href="#company">5. First company</a>
+        <a href="#crew">6. Crew access</a>
+        <a href="#verify">7. Pilot checks</a>
       </nav>
       <p class="side-note">Keep this file internal. It contains commands and setup procedure, but no secrets.</p>
     </aside>
@@ -152,7 +151,7 @@
       </header>
 
       <section id="supabase">
-        <div class="section-head"><span class="step">1</span><div><h2>Create Supabase project</h2><p>Project hosts authentication, Postgres data, file storage, and admin function.</p></div></div>
+        <div class="section-head"><span class="step">1</span><div><h2>Create Supabase project</h2><p>Project hosts authentication, Postgres data, and file storage.</p></div></div>
         <div class="task">
           <h3>Create project</h3>
           <ol>
@@ -183,6 +182,7 @@ npx supabase db push</code></pre>
             <li><code>202508240001_system_admin_companies.sql</code></li>
             <li><code>202508240002_fleet_state.sql</code></li>
             <li><code>202508240003_owner_vehicle_changes.sql</code></li>
+            <li><code>202508240004_remove_system_admin.sql</code></li>
           </ul>
         </div>
         <div class="callout"><strong>Owner rule enforced in Postgres.</strong>Members can view fleet and report issues. Database rejects member attempts to add vehicles, edit vehicle fields, change status, or change assignment. Hiding controls in UI is not security by itself.</div>
@@ -223,7 +223,7 @@ VITE_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY</code></pre>
           <h3>Set URLs in Supabase</h3>
           <p>Open Authentication, then URL Configuration.</p>
           <div class="table-wrap"><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
-            <tr><td>Site URL</td><td><code>https://YOUR_APP.vercel.app</code></td></tr>
+            <tr><td>Site URL</td><td><code>https://YOUR_APP.vercel.app/accept-invite</code></td></tr>
             <tr><td>Redirect URL</td><td><code>https://YOUR_APP.vercel.app/accept-invite</code></td></tr>
             <tr><td>Local redirect</td><td><code>http://localhost:5173/accept-invite</code></td></tr>
           </tbody></table></div>
@@ -242,51 +242,44 @@ VITE_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY</code></pre>
         </div>
       </section>
 
-      <section id="function">
-        <div class="section-head"><span class="step">5</span><div><h2>Deploy admin Edge Function</h2><p>Function creates companies and sends owner invitations without exposing privileged key.</p></div></div>
+      <section id="company">
+        <div class="section-head"><span class="step">5</span><div><h2>Create pilot company</h2><p>Operator provisions owner and company through Supabase Dashboard.</p></div></div>
         <div class="task">
-          <h3>Set production secrets</h3>
-          <pre><code>npx supabase secrets set \
-  SITE_URL=https://YOUR_APP.vercel.app \
-  ADMIN_ALLOWED_ORIGINS=https://YOUR_APP.vercel.app</code></pre>
-          <p>For temporary Vercel preview testing, use comma-separated origins. Remove previews after testing.</p>
-          <pre><code>npx supabase secrets set \
-  ADMIN_ALLOWED_ORIGINS=https://YOUR_APP.vercel.app,https://YOUR_PREVIEW.vercel.app</code></pre>
-        </div>
-        <div class="task">
-          <h3>Deploy function</h3>
-          <pre><code>npx supabase functions deploy system-admin-companies</code></pre>
-          <p>Supabase provides <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>, and <code>SUPABASE_SERVICE_ROLE_KEY</code> to function runtime. Do not set or copy those into Vercel.</p>
-        </div>
-      </section>
-
-      <section id="admin">
-        <div class="section-head"><span class="step">6</span><div><h2>Create administrator and pilot company</h2><p>System administrator creates company owner. Company owner manages fleet.</p></div></div>
-        <div class="task">
-          <h3>Create system administrator</h3>
+          <h3>Invite company owner</h3>
           <ol>
             <li>In Supabase, open Authentication, then Users.</li>
-            <li>Create your administrator user and confirm email.</li>
-            <li>Copy user UUID.</li>
-            <li>Open SQL Editor and run:</li>
+            <li>Choose Add user, then Send invitation.</li>
+            <li>Use owner's real email. URL Configuration sends invitation to <code>/accept-invite</code>.</li>
+            <li>Copy owner Auth user UUID.</li>
+            <li>Confirm matching UUID exists in <code>public.profiles</code>.</li>
           </ol>
-          <pre><code>insert into public.system_admins (user_id)
-values ('YOUR_ADMIN_AUTH_USER_UUID');</code></pre>
         </div>
         <div class="task">
-          <h3>Create pilot company</h3>
-          <ol>
-            <li>Open <code>https://YOUR_APP.vercel.app/system-admin</code>.</li>
-            <li>Sign in as system administrator.</li>
-            <li>Create company with unique company code and real owner email.</li>
-            <li>Ask owner to open invitation and complete <code>/accept-invite</code>.</li>
-            <li>Owner signs in at production root URL.</li>
-          </ol>
+          <h3>Create company and owner membership</h3>
+          <p>Open SQL Editor. Replace every uppercase placeholder, then run transaction.</p>
+          <pre><code>begin;
+
+with new_company as (
+  insert into public.companies (name, company_code, industry, owner_user_id)
+  values ('COMPANY NAME', 'COMPANY-CODE', 'INDUSTRY', 'OWNER_AUTH_USER_UUID')
+  returning id
+)
+insert into public.company_members (company_id, user_id, role)
+select id, 'OWNER_AUTH_USER_UUID', 'owner'
+from new_company;
+
+commit;</code></pre>
+          <p>Company code must be unique and contain 3 to 32 uppercase letters, numbers, or hyphens. Full procedure and verification query are in <code>SUPABASE_SETUP.md</code>.</p>
+        </div>
+        <div class="task">
+          <h3>Remove legacy function</h3>
+          <p>If project previously deployed system admin function, delete it once.</p>
+          <pre><code>npx supabase functions delete system-admin-companies --project-ref YOUR_PROJECT_REF</code></pre>
         </div>
       </section>
 
       <section id="crew">
-        <div class="section-head"><span class="step">7</span><div><h2>Add controlled crew access</h2><p>Use manual membership setup until product invitation flow writes authenticated memberships.</p></div></div>
+        <div class="section-head"><span class="step">6</span><div><h2>Add controlled crew access</h2><p>Use manual membership setup until product invitation flow writes authenticated memberships.</p></div></div>
         <div class="callout warning"><strong>Current pilot limitation.</strong>Crew entries created inside fleet screen are operational records only. They do not create Supabase Auth users or company memberships. Do not tell crew that in-app Send invitation control provisions login access yet.</div>
         <div class="task">
           <h3>Create crew test account</h3>
@@ -312,10 +305,10 @@ where company_id = 'PILOT_COMPANY_UUID'
       </section>
 
       <section id="verify">
-        <div class="section-head"><span class="step">8</span><div><h2>Verify before pilot</h2><p>Run each check with owner and member accounts in separate private browser windows.</p></div></div>
+        <div class="section-head"><span class="step">7</span><div><h2>Verify before pilot</h2><p>Run each check with owner and member accounts in separate private browser windows.</p></div></div>
         <ul class="checklist">
           <li>Production URL loads without console configuration errors.</li>
-          <li>System administrator can open <code>/system-admin</code> and list companies.</li>
+          <li>Company, owner profile, and owner membership match in Supabase.</li>
           <li>Owner invitation opens <code>/accept-invite</code> and password setup completes.</li>
           <li>Owner can add vehicle, edit details, change status, assign crew, and upload image or PDF.</li>
           <li>Reload preserves vehicle, issue, crew, and activity data.</li>
@@ -329,7 +322,7 @@ where company_id = 'PILOT_COMPANY_UUID'
           <h3>Operational checks</h3>
           <ul>
             <li>Enable Supabase database backups appropriate for pilot data.</li>
-            <li>Review Supabase Auth, Edge Function, and Postgres logs after first test.</li>
+            <li>Review Supabase Auth and Postgres logs after first test.</li>
             <li>Keep Vercel production branch restricted to <code>main</code>.</li>
             <li>Do not use shared owner credentials. Each person gets individual account.</li>
           </ul>
@@ -338,7 +331,7 @@ where company_id = 'PILOT_COMPANY_UUID'
 
       <footer>
         <strong>FireOps deployment runbook</strong><br>
-        Source of truth: repository migrations, <code>vercel.json</code>, and <code>supabase/functions/system-admin-companies</code>.
+        Source of truth: <code>SUPABASE_SETUP.md</code>, repository migrations, and <code>vercel.json</code>.
       </footer>
     </main>
   </div>
