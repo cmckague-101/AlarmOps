@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>FireOps deployment runbook</title>
+  <style>
+    :root {
+      --canvas: #f6f7f4;
+      --paper: #ffffff;
+      --ink: #19201d;
+      --muted: #5f6963;
+      --line: #d9ded9;
+      --command: #26342c;
+      --command-line: #405047;
+      --ember: #c94321;
+      --ember-deep: #a93417;
+      --green: #26765a;
+      --green-soft: #e5f2ec;
+      --ochre: #7b5014;
+      --ochre-soft: #f8edda;
+      --code: #171c19;
+      --code-text: #e8eee9;
+      --focus: #315f48;
+      --shadow: 0 18px 44px rgba(25,32,29,.10);
+      font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--canvas);
+      line-height: 1.55;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; min-width: 320px; }
+    ::selection { background: #f2c5b8; color: var(--ink); }
+    a { color: var(--ember-deep); text-underline-offset: 3px; }
+    a:focus-visible, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .shell { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 100vh; }
+    aside { position: sticky; top: 0; height: 100vh; padding: 30px 24px; color: #f7faf7; background: var(--command); border-right: 1px solid var(--command-line); }
+    .brand { display: flex; gap: 12px; align-items: center; margin-bottom: 38px; }
+    .mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; background: var(--ember); font-weight: 900; }
+    .brand strong { display: block; font-size: 18px; letter-spacing: -.02em; }
+    .brand small { color: #b8c4bd; }
+    nav { display: grid; gap: 4px; }
+    nav a { padding: 10px 12px; color: #dce5df; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; }
+    nav a:hover { background: rgba(255,255,255,.07); color: white; }
+    .side-note { position: absolute; right: 24px; bottom: 28px; left: 24px; padding-top: 18px; border-top: 1px solid var(--command-line); color: #b8c4bd; font-size: 12px; }
+    main { width: min(100%, 1040px); padding: 64px 54px 100px; }
+    header { max-width: 780px; margin-bottom: 48px; }
+    h1, h2, h3 { font-family: Manrope, ui-sans-serif, system-ui, sans-serif; line-height: 1.15; letter-spacing: -.035em; text-wrap: balance; }
+    h1 { max-width: 720px; margin: 0 0 18px; font-size: clamp(2.3rem, 5vw, 4.7rem); }
+    h2 { margin: 0; font-size: clamp(1.55rem, 3vw, 2.15rem); }
+    h3 { margin: 0 0 10px; font-size: 1.05rem; letter-spacing: -.015em; }
+    header p { max-width: 67ch; margin: 0; color: var(--muted); font-size: 1.08rem; }
+    .status { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 7px 11px; color: #174f3c; background: var(--green-soft); border-radius: 999px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .status::before { width: 8px; height: 8px; content: ""; border-radius: 50%; background: var(--green); }
+    .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 32px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--line); }
+    .fact { padding: 16px; background: var(--paper); }
+    .fact b { display: block; margin-bottom: 3px; font-size: 13px; }
+    .fact span { color: var(--muted); font-size: 12px; }
+    section { margin-top: 58px; scroll-margin-top: 24px; }
+    .section-head { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--line); }
+    .step { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; color: white; background: var(--ember); border-radius: 9px; font-weight: 900; }
+    .section-head p { margin: 6px 0 0; color: var(--muted); }
+    .task { padding: 22px 0; border-bottom: 1px solid var(--line); }
+    .task:last-child { border-bottom: 0; }
+    .task p, .task ul, .task ol { max-width: 74ch; }
+    .task p { margin: 8px 0; }
+    ul, ol { padding-left: 21px; }
+    li { margin: 7px 0; }
+    code { padding: .12em .35em; color: var(--ink); background: #e8ebe7; border-radius: 5px; font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { position: relative; margin: 14px 0; padding: 18px 20px; overflow: auto; color: var(--code-text); background: var(--code); border: 1px solid #303a34; border-radius: 10px; font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
+    pre code { padding: 0; color: inherit; background: transparent; }
+    .callout { margin: 18px 0; padding: 17px 18px; border: 1px solid #c9d9d0; border-radius: 12px; background: var(--green-soft); }
+    .callout.warning { border-color: #e5cda6; background: var(--ochre-soft); }
+    .callout strong { display: block; margin-bottom: 4px; }
+    .checklist { display: grid; gap: 9px; padding: 0; list-style: none; }
+    .checklist li { position: relative; margin: 0; padding: 13px 15px 13px 43px; background: var(--paper); border: 1px solid var(--line); border-radius: 9px; }
+    .checklist li::before { position: absolute; top: 13px; left: 14px; display: grid; place-items: center; width: 20px; height: 20px; content: "✓"; color: white; background: var(--green); border-radius: 5px; font-size: 12px; font-weight: 900; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--paper); font-size: 14px; }
+    th, td { padding: 13px 15px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    tr:last-child td { border-bottom: 0; }
+    th { color: var(--muted); background: #eef0ed; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    footer { margin-top: 70px; padding-top: 22px; color: var(--muted); border-top: 1px solid var(--line); font-size: 13px; }
+    @media (prefers-color-scheme: dark) {
+      :root { --canvas: #17191d; --paper: #23262c; --ink: #f1f3f1; --muted: #b4bac3; --line: #3b4047; --green-soft: #19372d; --ochre-soft: #3b2f1e; --code: #101210; --code-text: #ecf2ed; --shadow: none; }
+      code { color: var(--ink); background: #34383e; }
+      .status { color: #b9ebd8; }
+      .callout { border-color: #35604f; }
+      .callout.warning { border-color: #755b31; }
+      th { background: #2d3137; }
+      a { color: #f19a82; }
+    }
+    @media (max-width: 820px) {
+      .shell { display: block; }
+      aside { position: static; height: auto; padding: 18px 20px; }
+      .brand { margin: 0; }
+      aside nav, .side-note { display: none; }
+      main { padding: 42px 22px 78px; }
+      .facts { grid-template-columns: 1fr; }
+      section { margin-top: 48px; }
+      .section-head { gap: 12px; }
+    }
+    @media print {
+      :root { --canvas: white; --paper: white; --ink: black; --muted: #444; --line: #bbb; }
+      .shell { display: block; }
+      aside { display: none; }
+      main { width: 100%; padding: 0; }
+      header { break-after: page; }
+      section { break-before: page; margin-top: 0; }
+      .task, pre, .callout, .table-wrap { break-inside: avoid; }
+      pre { color: black; background: #f4f4f4; border-color: #bbb; white-space: pre-wrap; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+  THESIS: One linear runbook takes FireOps from local repository to one controlled pilot. It refuses scattered setup notes.
+  OWN-WORLD: Field Command Ledger palette, dark command rail, paper work surface, ember step markers, compact operational rows.
+  STORY: Operator creates infrastructure, connects services, provisions company, verifies access, then opens pilot.
+  FIRST VIEWPORT: Sticky command rail beside large runbook title, readiness state, and three deployment facts.
+  FORM: Existing FireOps documentation extension. No concept seed required for this precisely specified utility artifact.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+  -->
+  <div class="shell">
+    <aside>
+      <div class="brand"><span class="mark">F</span><span><strong>FireOps</strong><small>Deployment runbook</small></span></div>
+      <nav aria-label="Runbook sections">
+        <a href="#supabase">1. Supabase project</a>
+        <a href="#database">2. Database</a>
+        <a href="#vercel">3. Vercel</a>
+        <a href="#auth">4. Authentication</a>
+        <a href="#function">5. Edge Function</a>
+        <a href="#admin">6. First company</a>
+        <a href="#crew">7. Crew access</a>
+        <a href="#verify">8. Pilot checks</a>
+      </nav>
+      <p class="side-note">Keep this file internal. It contains commands and setup procedure, but no secrets.</p>
+    </aside>
+
+    <main>
+      <header>
+        <span class="status">Repository ready</span>
+        <h1>Deploy FireOps to Vercel and Supabase</h1>
+        <p>Production setup for controlled testing with one real company. Follow sections in order. Replace every uppercase placeholder before running commands.</p>
+        <div class="facts">
+          <div class="fact"><b>Frontend</b><span>Vercel, Vite build</span></div>
+          <div class="fact"><b>Data and auth</b><span>Supabase with RLS</span></div>
+          <div class="fact"><b>Initial pilot</b><span>One company, owner-managed fleet</span></div>
+        </div>
+      </header>
+
+      <section id="supabase">
+        <div class="section-head"><span class="step">1</span><div><h2>Create Supabase project</h2><p>Project hosts authentication, Postgres data, file storage, and admin function.</p></div></div>
+        <div class="task">
+          <h3>Create project</h3>
+          <ol>
+            <li>Open <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Supabase Dashboard</a> and create project.</li>
+            <li>Choose region near pilot company.</li>
+            <li>Generate strong database password and store it in password manager.</li>
+            <li>Wait until project reports healthy.</li>
+          </ol>
+        </div>
+        <div class="task">
+          <h3>Record browser-safe API values</h3>
+          <p>Open Project Settings, then API. Record project URL and publishable key. Older projects may label publishable key as <code>anon</code>.</p>
+          <pre><code>VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY</code></pre>
+          <div class="callout warning"><strong>Never expose service-role key.</strong>Do not place service-role key in Vercel. Never use it in any variable beginning with <code>VITE_</code>. Vite sends those values to every browser.</div>
+        </div>
+      </section>
+
+      <section id="database">
+        <div class="section-head"><span class="step">2</span><div><h2>Apply database migrations</h2><p>Migrations create company isolation, fleet storage, file policies, and owner-only vehicle controls.</p></div></div>
+        <div class="task">
+          <h3>Run from repository root</h3>
+          <pre><code>npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push</code></pre>
+          <p>Approve listed migrations. Confirm command includes:</p>
+          <ul>
+            <li><code>202508240001_system_admin_companies.sql</code></li>
+            <li><code>202508240002_fleet_state.sql</code></li>
+            <li><code>202508240003_owner_vehicle_changes.sql</code></li>
+          </ul>
+        </div>
+        <div class="callout"><strong>Owner rule enforced in Postgres.</strong>Members can view fleet and report issues. Database rejects member attempts to add vehicles, edit vehicle fields, change status, or change assignment. Hiding controls in UI is not security by itself.</div>
+      </section>
+
+      <section id="vercel">
+        <div class="section-head"><span class="step">3</span><div><h2>Deploy frontend on Vercel</h2><p>Connect GitHub once. Every push to main then creates production deployment.</p></div></div>
+        <div class="task">
+          <h3>Import repository</h3>
+          <ol>
+            <li>Open <a href="https://vercel.com/new" target="_blank" rel="noreferrer">Vercel New Project</a>.</li>
+            <li>Connect GitHub account and import <code>tinykings/fireco</code>.</li>
+            <li>Keep root directory at repository root.</li>
+            <li>Confirm framework preset is <strong>Vite</strong>.</li>
+          </ol>
+        </div>
+        <div class="task">
+          <h3>Confirm build settings</h3>
+          <div class="table-wrap"><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
+            <tr><td>Install command</td><td><code>npm install</code></td></tr>
+            <tr><td>Build command</td><td><code>npm run build</code></td></tr>
+            <tr><td>Output directory</td><td><code>dist</code></td></tr>
+            <tr><td>Node.js</td><td>22.x</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="task">
+          <h3>Add environment variables</h3>
+          <p>In Vercel project settings, open Environment Variables. Add both values for Production and Preview.</p>
+          <pre><code>VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY</code></pre>
+          <p>Deploy. Record assigned production URL, such as <code>https://fireco.vercel.app</code>. If variables change later, redeploy because Vite embeds them during build.</p>
+        </div>
+      </section>
+
+      <section id="auth">
+        <div class="section-head"><span class="step">4</span><div><h2>Configure authentication</h2><p>Invitation links must return to deployed account setup route.</p></div></div>
+        <div class="task">
+          <h3>Set URLs in Supabase</h3>
+          <p>Open Authentication, then URL Configuration.</p>
+          <div class="table-wrap"><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
+            <tr><td>Site URL</td><td><code>https://YOUR_APP.vercel.app</code></td></tr>
+            <tr><td>Redirect URL</td><td><code>https://YOUR_APP.vercel.app/accept-invite</code></td></tr>
+            <tr><td>Local redirect</td><td><code>http://localhost:5173/accept-invite</code></td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="task">
+          <h3>Lock registration</h3>
+          <ul>
+            <li>Disable open user registration. Pilot accounts should come from controlled invitations.</li>
+            <li>Require email confirmation.</li>
+            <li>Keep minimum password length at 10 or higher.</li>
+          </ul>
+        </div>
+        <div class="task">
+          <h3>Configure SMTP before external invitations</h3>
+          <p>Open Authentication email provider settings and add company SMTP provider. Supabase default mail service has low limits and is not suitable for real-company onboarding. Send one test invitation before pilot launch.</p>
+        </div>
+      </section>
+
+      <section id="function">
+        <div class="section-head"><span class="step">5</span><div><h2>Deploy admin Edge Function</h2><p>Function creates companies and sends owner invitations without exposing privileged key.</p></div></div>
+        <div class="task">
+          <h3>Set production secrets</h3>
+          <pre><code>npx supabase secrets set \
+  SITE_URL=https://YOUR_APP.vercel.app \
+  ADMIN_ALLOWED_ORIGINS=https://YOUR_APP.vercel.app</code></pre>
+          <p>For temporary Vercel preview testing, use comma-separated origins. Remove previews after testing.</p>
+          <pre><code>npx supabase secrets set \
+  ADMIN_ALLOWED_ORIGINS=https://YOUR_APP.vercel.app,https://YOUR_PREVIEW.vercel.app</code></pre>
+        </div>
+        <div class="task">
+          <h3>Deploy function</h3>
+          <pre><code>npx supabase functions deploy system-admin-companies</code></pre>
+          <p>Supabase provides <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>, and <code>SUPABASE_SERVICE_ROLE_KEY</code> to function runtime. Do not set or copy those into Vercel.</p>
+        </div>
+      </section>
+
+      <section id="admin">
+        <div class="section-head"><span class="step">6</span><div><h2>Create administrator and pilot company</h2><p>System administrator creates company owner. Company owner manages fleet.</p></div></div>
+        <div class="task">
+          <h3>Create system administrator</h3>
+          <ol>
+            <li>In Supabase, open Authentication, then Users.</li>
+            <li>Create your administrator user and confirm email.</li>
+            <li>Copy user UUID.</li>
+            <li>Open SQL Editor and run:</li>
+          </ol>
+          <pre><code>insert into public.system_admins (user_id)
+values ('YOUR_ADMIN_AUTH_USER_UUID');</code></pre>
+        </div>
+        <div class="task">
+          <h3>Create pilot company</h3>
+          <ol>
+            <li>Open <code>https://YOUR_APP.vercel.app/system-admin</code>.</li>
+            <li>Sign in as system administrator.</li>
+            <li>Create company with unique company code and real owner email.</li>
+            <li>Ask owner to open invitation and complete <code>/accept-invite</code>.</li>
+            <li>Owner signs in at production root URL.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="crew">
+        <div class="section-head"><span class="step">7</span><div><h2>Add controlled crew access</h2><p>Use manual membership setup until product invitation flow writes authenticated memberships.</p></div></div>
+        <div class="callout warning"><strong>Current pilot limitation.</strong>Crew entries created inside fleet screen are operational records only. They do not create Supabase Auth users or company memberships. Do not tell crew that in-app Send invitation control provisions login access yet.</div>
+        <div class="task">
+          <h3>Create crew test account</h3>
+          <ol>
+            <li>In Supabase Authentication, create user with unique pilot password and confirmed email.</li>
+            <li>Share password through password manager, never email or text message.</li>
+            <li>Copy auth user UUID.</li>
+            <li>Find pilot company UUID in Table Editor or SQL Editor.</li>
+            <li>Add membership with SQL below.</li>
+          </ol>
+          <pre><code>insert into public.company_members (company_id, user_id, role)
+values ('PILOT_COMPANY_UUID', 'CREW_AUTH_USER_UUID', 'member')
+on conflict (company_id, user_id) do update set role = 'member';</code></pre>
+          <p>Crew member can sign in, view vehicle details, report issues, and add issue updates. Only owner sees vehicle creation and editing controls. Manual passwords are for controlled pilot testing only. Build crew invitation and password-reset flows before wider release.</p>
+        </div>
+        <div class="task">
+          <h3>Remove crew access</h3>
+          <pre><code>delete from public.company_members
+where company_id = 'PILOT_COMPANY_UUID'
+  and user_id = 'CREW_AUTH_USER_UUID';</code></pre>
+          <p>Delete or disable Auth user too when access should end across all companies.</p>
+        </div>
+      </section>
+
+      <section id="verify">
+        <div class="section-head"><span class="step">8</span><div><h2>Verify before pilot</h2><p>Run each check with owner and member accounts in separate private browser windows.</p></div></div>
+        <ul class="checklist">
+          <li>Production URL loads without console configuration errors.</li>
+          <li>System administrator can open <code>/system-admin</code> and list companies.</li>
+          <li>Owner invitation opens <code>/accept-invite</code> and password setup completes.</li>
+          <li>Owner can add vehicle, edit details, change status, assign crew, and upload image or PDF.</li>
+          <li>Reload preserves vehicle, issue, crew, and activity data.</li>
+          <li>Member can view vehicle but sees no Add vehicle, Edit vehicle details, status, or assignment controls.</li>
+          <li>Member can open issue and add issue update.</li>
+          <li>Direct member attempt to change <code>fleet_state.data.vehicles</code> fails with "Only company owners may change vehicle details".</li>
+          <li>Second company cannot read first company fleet or files.</li>
+          <li>Sign out works on desktop and mobile browser.</li>
+        </ul>
+        <div class="task">
+          <h3>Operational checks</h3>
+          <ul>
+            <li>Enable Supabase database backups appropriate for pilot data.</li>
+            <li>Review Supabase Auth, Edge Function, and Postgres logs after first test.</li>
+            <li>Keep Vercel production branch restricted to <code>main</code>.</li>
+            <li>Do not use shared owner credentials. Each person gets individual account.</li>
+          </ul>
+        </div>
+      </section>
+
+      <footer>
+        <strong>FireOps deployment runbook</strong><br>
+        Source of truth: repository migrations, <code>vercel.json</code>, and <code>supabase/functions/system-admin-companies</code>.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

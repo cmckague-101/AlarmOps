@@ -16,11 +16,19 @@ async function refreshFileUrl(file?:VehicleFile){
   return error?{...file,dataUrl:''}:{...file,dataUrl:data.signedUrl};
 }
 
+const vehicleFileKeys=['photo','contract','viprChecklist','registration','insurance','dotInspection'] as const;
+
 async function hydrateFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
-  const keys=['photo','contract','viprChecklist','registration','insurance','dotInspection'] as const;
-  await Promise.all(next.vehicles.flatMap(vehicle=>keys.map(async key=>{vehicle[key]=await refreshFileUrl(vehicle[key])})));
+  await Promise.all(next.vehicles.flatMap(vehicle=>vehicleFileKeys.map(async key=>{vehicle[key]=await refreshFileUrl(vehicle[key])})));
   await Promise.all(next.crew.map(async member=>{member.credential=await refreshFileUrl(member.credential)}));
+  return next;
+}
+
+function stripSignedFileUrls(snapshot:FleetSnapshot){
+  const next=structuredClone(snapshot);
+  next.vehicles.forEach(vehicle=>vehicleFileKeys.forEach(key=>{if(vehicle[key]?.path)vehicle[key]!.dataUrl=''}));
+  next.crew.forEach(member=>{if(member.credential?.path)member.credential.dataUrl=''});
   return next;
 }
 
@@ -101,7 +109,8 @@ function AuthenticatedFleet({session}:{session:Session}){
 
   const save=useCallback(async(data:FleetSnapshot)=>{
     if(!supabase||!companyId)throw new Error('Company is unavailable');
-    const {error:saveError}=await supabase.from('fleet_state').upsert({company_id:companyId,data,updated_by:session.user.id},{onConflict:'company_id'});
+    const persistedData=stripSignedFileUrls(data);
+    const {error:saveError}=await supabase.from('fleet_state').upsert({company_id:companyId,data:persistedData,updated_by:session.user.id},{onConflict:'company_id'});
     if(saveError)throw saveError;
   },[companyId,session.user.id]);
 
