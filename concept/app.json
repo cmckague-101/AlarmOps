@@ -37,7 +37,8 @@
           "photosPermission": "Allow FireOps to attach photos to company records.",
           "cameraPermission": "Allow FireOps to photograph payroll forms, invoices, receipts, and equipment records."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
