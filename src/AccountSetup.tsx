@@ -31,7 +31,7 @@ export default function AccountSetup() {
   if(!supabaseConfigured)return <SetupMessage text="Account setup is not configured."/>;
   if(loading)return <SetupMessage text="Verifying invitation..."/>;
   if(!session)return <SetupMessage text={error||'Invitation is invalid or expired. Ask system administrator for a new invitation.'}/>;
-  return <div className="admin-auth"><form onSubmit={submit}><span className="admin-shield"><ShieldCheck/></span><h1>Set up your account</h1><p>{session.user.email}</p><label>Full name<input required value={fullName} onChange={event=>setFullName(event.target.value)}/></label><label>Password<input type="password" autoComplete="new-password" required minLength={10} value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error">{error}</div>}<button disabled={busy}>{busy?'Saving...':'Complete setup'}</button></form></div>;
+  return <div className="admin-auth"><form onSubmit={submit}><span className="admin-shield"><ShieldCheck/></span><h1>Set up your account</h1><p>{session.user.email}</p><label>Full name<input required maxLength={120} value={fullName} onChange={event=>setFullName(event.target.value)}/></label><label>Password<input type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Saving...':'Complete setup'}</button></form></div>;
 }
 
-function SetupMessage({text}:{text:string}){return <div className="admin-auth"><div className="admin-message"><ShieldCheck/><h1>Account setup</h1><p>{text}</p></div></div>}
+function SetupMessage({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="status"><ShieldCheck/><h1>Account setup</h1><p>{text}</p></div></div>}
