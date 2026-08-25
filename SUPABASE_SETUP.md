@@ -34,10 +34,28 @@ Add these Redirect URLs:
 
 ```text
 https://YOUR_APP.vercel.app/accept-invite
+https://YOUR_APP.vercel.app/reset-password
 http://localhost:5173/accept-invite
+http://localhost:5173/reset-password
 ```
 
 Configure SMTP before inviting external users. Disable open registration unless the product needs it.
+
+## Configure self-service password reset email
+
+1. Open Authentication > Email Templates > Reset password in Supabase Dashboard.
+2. Keep `{{ .ConfirmationURL }}` as reset link. Example:
+
+```html
+<h2>Reset your FireOps password</h2>
+<p>Use the link below to choose a new password. If you did not request this, you can ignore this email.</p>
+<p><a href="{{ .ConfirmationURL }}">Reset password</a></p>
+```
+
+3. Open Project Settings > Authentication > SMTP Settings and configure production SMTP sender. Supabase's default sender is rate-limited and intended for testing.
+4. Confirm `/reset-password` URLs above are present in Authentication URL Configuration.
+
+Login page sends reset requests through Supabase Auth. UI always shows the same response whether an account exists, preventing account enumeration. Supabase only sends reset email for an existing Auth account. Reset links return to `/reset-password`, where user chooses a new password.
 
 ## Create a company
 

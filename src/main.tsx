@@ -4,8 +4,10 @@ import './styles.css';
 
 const FleetApp = lazy(() => import('./FleetApp'));
 const AccountSetup = lazy(() => import('./AccountSetup'));
+const PasswordReset = lazy(() => import('./PasswordReset'));
 
-const Root = window.location.pathname.startsWith('/accept-invite') ? AccountSetup : FleetApp;
+const path=window.location.pathname;
+const Root = path.startsWith('/accept-invite') ? AccountSetup : path.startsWith('/reset-password') ? PasswordReset : FleetApp;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <StrictMode>
