@@ -232,10 +232,12 @@ export default function App({user=demoUser,company=demoCompany,initialData,onDat
       <Topbar user={currentUser} saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> Check your connection or remove large uploads.</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
+        <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={issues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={issues} crew={crew} activities={activities} isOwner={canManageFleet} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'company' && <Company company={company} owner={currentUser.name}/>}
+        </div>
       </main>
       <MobileNav page={page} setPage={setPage} user={currentUser}/>
     </div>
