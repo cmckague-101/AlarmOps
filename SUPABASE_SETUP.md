@@ -7,6 +7,8 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
+Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Deploy database migrations before deploying frontend that reads normalized tables. Keep legacy `fleet_state` table during rollout as migration backup.
+
 For projects that previously deployed the removed admin function, delete it once:
 
 ```sh
