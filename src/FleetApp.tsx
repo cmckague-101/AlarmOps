@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Building2, LogOut, ShieldCheck } from 'lucide-react';
-import App, { type CompanyInfo, type FireOpsUser, type FleetSnapshot, type UserRole, type VehicleFile } from './App';
+import App, { type CompanyInfo, type CrewMember, type FireOpsUser, type FleetSnapshot, type UserRole, type VehicleFile } from './App';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 
@@ -183,10 +183,16 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     if(saveError)throw saveError;
   },[companyId,session.user.id]);
 
+  const deleteCrew=useCallback(async(member:CrewMember)=>{
+    if(!supabase)throw new Error('Company is unavailable');
+    const {error:deleteError}=await supabase.rpc('remove_company_member',{target_company_id:companyId,target_user_id:member.id});
+    if(deleteError)throw deleteError;
+  },[companyId]);
+
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} onDataChange={save} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} onDataChange={save} onDeleteCrew={deleteCrew} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetError({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}

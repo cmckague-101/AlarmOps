@@ -176,3 +176,7 @@ on conflict (company_id, user_id) do update set role = 'member';
 ```
 
 In-app crew invitations remain operational records only. They do not provision Auth users or memberships.
+
+## Remove a crew member
+
+Apply migration `202508250001_owner_remove_crew.sql` before using crew removal. Company owners can then remove non-owner crew from crew details. Removal deletes target company membership, so company RLS policies reject their next app request, and clears their crew record and vehicle assignments from fleet state. Their Supabase Auth account remains available for legitimate access to another company; it no longer grants access to removed company.
