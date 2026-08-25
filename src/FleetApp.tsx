@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ShieldCheck } from 'lucide-react';
-import App, { type CompanyInfo, type FireOpsUser, type FleetSnapshot, type VehicleFile } from './App';
+import { Building2, LogOut, ShieldCheck } from 'lucide-react';
+import App, { type CompanyInfo, type FireOpsUser, type FleetSnapshot, type UserRole, type VehicleFile } from './App';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 
-type Membership = { company_id: string; role: 'owner' | 'member' };
+type Membership = { company_id: string; role: UserRole };
 type Profile = { full_name: string };
 type FleetStateRow = { data: FleetSnapshot };
-type CompanyRow = { name: string; company_code: string; industry: string };
+type CompanyRow = { id: string; name: string; company_code: string; industry: string };
+type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 
 async function refreshFileUrl(file?:VehicleFile){
   if(!supabase||!file?.path)return file;
@@ -55,12 +56,83 @@ function FleetLogin(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(signInError)setError(signInError.message);setBusy(false)};
-  return <div className="admin-auth"><form onSubmit={submit}><span className="admin-shield"><ShieldCheck/></span><h1>Sign in to FireOps</h1><p>Use your company account to access fleet operations.</p><label>Email<input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
+  return <div className="admin-auth"><form onSubmit={submit}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Sign in to FireOps</h1><p>Use your company or administrator account.</p><label>Email<input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
 }
 
 function AuthenticatedFleet({session}:{session:Session}){
-  const [user,setUser]=useState<FireOpsUser|null>(null);
-  const [companyId,setCompanyId]=useState('');
+  const [access,setAccess]=useState<Access|null>(null);
+  const [loaded,setLoaded]=useState(false);
+  const [error,setError]=useState('');
+
+  useEffect(()=>{
+    const client=supabase;
+    if(!client)return;
+    let active=true;
+    const load=async()=>{
+      const [adminResult,profileResult]=await Promise.all([
+        client.rpc('is_system_admin'),
+        client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>()
+      ]);
+      if(!active)return;
+      if(adminResult.error){setError('Account access could not be verified. Apply latest database migrations.');setLoaded(true);return}
+      const userName=profileResult.data?.full_name||session.user.email||'FireOps user';
+      if(adminResult.data===true){setAccess({kind:'admin',userName});setLoaded(true);return}
+      const membershipResult=await client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>();
+      if(!active)return;
+      if(membershipResult.error||!membershipResult.data){setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);return}
+      setAccess({kind:'member',userName,companyId:membershipResult.data.company_id,role:membershipResult.data.role});
+      setLoaded(true);
+    };
+    void load();
+    return()=>{active=false};
+  },[session.user.id,session.user.email]);
+
+  if(!loaded)return <FleetMessage text="Checking account access..."/>;
+  if(error||!access)return <FleetError text={error}/>;
+  if(access.kind==='admin')return <AdminCompanyAccess session={session} userName={access.userName}/>;
+  return <CompanyWorkspace session={session} userName={access.userName} companyId={access.companyId} role={access.role}/>;
+}
+
+function AdminCompanyAccess({session,userName}:{session:Session;userName:string}){
+  const [companies,setCompanies]=useState<CompanyRow[]>([]);
+  const [selectedId,setSelectedId]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+
+  useEffect(()=>{
+    let active=true;
+    const load=async()=>{
+      if(!supabase)return;
+      const {data,error:companyError}=await supabase.from('companies').select('id,name,company_code,industry').order('name');
+      if(!active)return;
+      if(companyError)setError('Companies could not be loaded. Check database migration and connection.');
+      else setCompanies((data??[]) as CompanyRow[]);
+      setLoading(false);
+    };
+    void load();
+    return()=>{active=false};
+  },[]);
+
+  const openCompany=async(event:React.FormEvent)=>{
+    event.preventDefault();
+    if(!supabase||!selectedId)return;
+    setBusy(true);setError('');
+    const {error:accessError}=await supabase.rpc('admin_access_company',{target_company_id:selectedId});
+    if(accessError)setError(accessError.message);
+    else setSelectedId(current=>`open:${current}`);
+    setBusy(false);
+  };
+
+  if(selectedId.startsWith('open:')){
+    const companyId=selectedId.slice(5);
+    return <CompanyWorkspace session={session} userName={userName} companyId={companyId} role="owner" isAdmin onSwitchCompany={()=>setSelectedId('')}/>;
+  }
+  if(loading)return <FleetMessage text="Loading companies..."/>;
+  return <div className="admin-auth admin-company-access"><form onSubmit={openCompany}><span className="admin-access-icon"><ShieldCheck/></span><h1>Administrator access</h1><p>Choose company to troubleshoot with company owner permissions. Access is recorded.</p><label>Company<select required value={selectedId} onChange={event=>setSelectedId(event.target.value)}><option value="">Select company</option>{companies.map(company=><option key={company.id} value={company.id}>{company.name} · {company.company_code}</option>)}</select></label>{!companies.length&&!error&&<div className="admin-empty">No companies found.</div>}{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy||!selectedId}><Building2/>{busy?'Opening...':'Access company'}</button><button type="button" className="admin-secondary" onClick={()=>supabase?.auth.signOut()}><LogOut/>Sign out</button></form></div>;
+}
+
+function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitchCompany}:{session:Session;userName:string;companyId:string;role:UserRole;isAdmin?:boolean;onSwitchCompany?:()=>void}){
   const [initialData,setInitialData]=useState<FleetSnapshot|undefined>();
   const [company,setCompany]=useState<CompanyInfo|null>(null);
   const [loaded,setLoaded]=useState(false);
@@ -71,33 +143,26 @@ function AuthenticatedFleet({session}:{session:Session}){
     if(!client)return;
     let active=true;
     const load=async()=>{
-      const [membershipResult,profileResult]=await Promise.all([
-        client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>(),
-        client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>()
-      ]);
-      if(!active)return;
-      if(membershipResult.error||!membershipResult.data){setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);return}
-      const membership=membershipResult.data;
       const [stateResult,companyResult]=await Promise.all([
-        client.from('fleet_state').select('data').eq('company_id',membership.company_id).maybeSingle<FleetStateRow>(),
-        client.from('companies').select('name,company_code,industry').eq('id',membership.company_id).single<CompanyRow>()
+        client.from('fleet_state').select('data').eq('company_id',companyId).maybeSingle<FleetStateRow>(),
+        client.from('companies').select('id,name,company_code,industry').eq('id',companyId).single<CompanyRow>()
       ]);
       if(!active)return;
       if(stateResult.error||companyResult.error){setError('Fleet data could not be loaded. Check your connection and try again.');setLoaded(true);return}
-      const userName=profileResult.data?.full_name||session.user.email||'FireOps user';
-      setCompanyId(membership.company_id);
-      setUser({id:session.user.id,name:userName,role:membership.role});
-      const snapshot=stateResult.data?.data??{vehicles:[],issues:[],crew:[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role:membership.role,status:'Active' as const}],activities:[]};
-      setInitialData(await hydrateFileUrls(snapshot));
+      const fallbackCrew=isAdmin?[]:[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active' as const}];
+      const snapshot=stateResult.data?.data??{vehicles:[],issues:[],crew:fallbackCrew,activities:[]};
+      const hydratedSnapshot=await hydrateFileUrls(snapshot);
+      if(!active)return;
+      setInitialData(hydratedSnapshot);
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry});
       setLoaded(true);
     };
     void load();
     return()=>{active=false};
-  },[session.user.id,session.user.email]);
+  },[companyId,isAdmin,role,session.user.email,session.user.id,userName]);
 
   const upload=useCallback(async(file:File)=>{
-    if(!supabase||!companyId)throw new Error('Company is unavailable');
+    if(!supabase)throw new Error('Company is unavailable');
     const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'-');
     const path=`${companyId}/${session.user.id}/${crypto.randomUUID()}-${safeName}`;
     const {error:uploadError}=await supabase.storage.from('fleet-files').upload(path,file,{contentType:file.type,upsert:false});
@@ -108,15 +173,17 @@ function AuthenticatedFleet({session}:{session:Session}){
   },[companyId,session.user.id]);
 
   const save=useCallback(async(data:FleetSnapshot)=>{
-    if(!supabase||!companyId)throw new Error('Company is unavailable');
+    if(!supabase)throw new Error('Company is unavailable');
     const persistedData=stripSignedFileUrls(data);
     const {error:saveError}=await supabase.from('fleet_state').upsert({company_id:companyId,data:persistedData,updated_by:session.user.id},{onConflict:'company_id'});
     if(saveError)throw saveError;
   },[companyId,session.user.id]);
 
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
-  if(error||!user||!company)return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{error}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>;
-  return <App user={user} company={company} initialData={initialData} onDataChange={save} uploadFile={upload} onSignOut={()=>supabase?.auth.signOut()}/>;
+  if(error||!company)return <FleetError text={error}/>;
+  const user:FireOpsUser={id:session.user.id,name:userName,role};
+  return <App user={user} company={company} initialData={initialData} onDataChange={save} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
+function FleetError({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}
 function FleetMessage({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="status"><ShieldCheck/><h1>FireOps</h1><p>{text}</p></div></div>}

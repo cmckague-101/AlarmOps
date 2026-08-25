@@ -116,6 +116,37 @@ where c.company_code = 'COMPANY-CODE';
 
 Ask owner to complete invitation, set password, and sign in at application root. First fleet change creates the company's `fleet_state` row.
 
+## Enable administrator troubleshooting
+
+Apply latest migrations first. Keep administrator as normal Supabase Auth user, then grant system access in SQL Editor:
+
+```sql
+insert into public.system_admins (user_id)
+select user_id
+from public.profiles
+where lower(email) = lower('ADMIN_EMAIL')
+on conflict (user_id) do nothing;
+```
+
+Administrator signs in through normal application login, chooses company, then enters workspace with owner permissions. Company access is recorded in `public.system_admin_audit_log`.
+
+Review access history:
+
+```sql
+select a.created_at, p.email as admin_email, c.name as company
+from public.system_admin_audit_log a
+join public.profiles p on p.user_id = a.actor_user_id
+left join public.companies c on c.id = a.company_id
+order by a.created_at desc;
+```
+
+Revoke access immediately when no longer needed:
+
+```sql
+delete from public.system_admins
+where user_id = (select user_id from public.profiles where lower(email) = lower('ADMIN_EMAIL'));
+```
+
 ## Add a member manually
 
 Create Auth user first, copy UUID, then run:

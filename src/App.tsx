@@ -107,7 +107,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,onDataChange,onSignOut,uploadFile}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onSignOut?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>}) {
+export default function App({user=demoUser,company=demoCompany,initialData,onDataChange,onSignOut,onSwitchCompany,uploadFile}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>}) {
   const currentUser = user;
   const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? normalizeVehicles(initialData.vehicles) : loadVehicles());
   const [issues, setIssues] = useState<FleetIssue[]>(()=>initialData?.issues??loadIssues());
@@ -229,7 +229,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,onDat
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser}/>
     <div className="app-main">
-      <Topbar user={currentUser} saveState={saveState} onSignOut={onSignOut}/>
+      <Topbar user={currentUser} saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> Check your connection or remove large uploads.</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={issues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
@@ -262,9 +262,9 @@ function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:Fire
 function NavItem({icon,label,active,onClick}:{icon:React.ReactNode;label:string;active:boolean;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span></button>
 }
-function Topbar({user,saveState,onSignOut}:{user:FireOpsUser;saveState:SaveState;onSignOut?:()=>void}) {
+function Topbar({user,saveState,onSignOut,onSwitchCompany}:{user:FireOpsUser;saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:<Check/>}<span>{saveLabel}</span></div>}<div className="top-user-name">{user.name}</div>{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:<Check/>}<span>{saveLabel}</span></div>}<div className="top-user-name">{user.name}</div>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
