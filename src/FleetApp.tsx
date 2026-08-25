@@ -56,7 +56,7 @@ function FleetLogin(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(signInError)setError(signInError.message);setBusy(false)};
-  return <div className="admin-auth"><form onSubmit={submit}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Sign in to FireOps</h1><p>Use your company or administrator account.</p><label>Email<input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
+  return <div className="admin-auth"><form onSubmit={submit}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Sign in to FireOps</h1><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><input type="password" autoComplete="current-password" aria-label="Password" placeholder="Password" required value={password} onChange={event=>setPassword(event.target.value)}/>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
 }
 
 function AuthenticatedFleet({session}:{session:Session}){
