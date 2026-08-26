@@ -56,10 +56,22 @@ function FleetLogin(){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [resetMode,setResetMode]=useState(false);
-  const [resetSent,setResetSent]=useState(false);
+  const [sentMethod,setSentMethod]=useState<'reset'|'magic'|null>(null);
   const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(signInError)setError(signInError.message);setBusy(false)};
-  const requestReset=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:new URL('/reset-password',window.location.origin).toString()});setResetSent(true);setBusy(false)};
-  if(resetMode)return <div className="admin-auth"><form onSubmit={requestReset}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Reset your password</h1>{resetSent?<div className="admin-success" role="status">If an account exists for {email.trim()}, a password reset link is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. We’ll send a secure password reset link.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button disabled={busy}>{busy?'Sending...':'Send reset link'}</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setResetSent(false)}}>Back to sign in</button></form></div>;
+  const requestEmail=async(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!supabase)return;
+    const submitter=(event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement|null;
+    const method=submitter?.value==='magic'?'magic':'reset';
+    setBusy(true);setError('');
+    if(method==='magic'){
+      await supabase.auth.signInWithOtp({email:email.trim(),options:{shouldCreateUser:false,emailRedirectTo:new URL('/',window.location.origin).toString()}});
+    }else{
+      await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:new URL('/reset-password',window.location.origin).toString()});
+    }
+    setSentMethod(method);setBusy(false);
+  };
+  if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
   return <div className="admin-auth"><form onSubmit={submit}><img className="admin-login-logo" src="/fireops-logo.webp" width="320" height="258" alt="FireOps"/><h1>Sign in to FireOps</h1><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><input type="password" autoComplete="current-password" aria-label="Password" placeholder="Password" required value={password} onChange={event=>setPassword(event.target.value)}/><button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
 }
 
