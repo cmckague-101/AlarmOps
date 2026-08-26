@@ -85,19 +85,18 @@ function AuthenticatedFleet({session}:{session:Session}){
     if(!client)return;
     let active=true;
     const load=async()=>{
-      const [adminResult,profileResult]=await Promise.all([
+      const [adminResult,profileResult,membershipResult]=await Promise.all([
         client.rpc('is_system_admin'),
-        client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>()
+        client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>(),
+        client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>()
       ]);
       if(!active)return;
-      if(adminResult.error){setError('Account access could not be verified. Apply latest database migrations.');setLoaded(true);return}
       const userName=profileResult.data?.full_name||session.user.email||'FireOps user';
       if(adminResult.data===true){setAccess({kind:'admin',userName});setLoaded(true);return}
-      const membershipResult=await client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>();
-      if(!active)return;
-      if(membershipResult.error||!membershipResult.data){setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);return}
-      setAccess({kind:'member',userName,companyId:membershipResult.data.company_id,role:membershipResult.data.role});
-      setLoaded(true);
+      if(membershipResult.data){setAccess({kind:'member',userName,companyId:membershipResult.data.company_id,role:membershipResult.data.role});setLoaded(true);return}
+      if(adminResult.error){console.error('System admin access check failed:',adminResult.error);setError('Account access could not be verified. Apply latest database migrations.');setLoaded(true);return}
+      if(membershipResult.error){console.error('Company membership check failed:',membershipResult.error);setError('Account access could not be verified. Try signing in again.');setLoaded(true);return}
+      setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);
     };
     void load();
     return()=>{active=false};
