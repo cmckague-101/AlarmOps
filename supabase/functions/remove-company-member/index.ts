@@ -54,11 +54,11 @@ Deno.serve(async (request) => {
 
   const [ownershipResult, actorAdminResult, targetResult, targetAdminResult, membershipCountResult, crewResult] = await Promise.all([
     admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
-    admin.from('system_admins').select('user_id').eq('user_id', actor.id).maybeSingle(),
+    admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).gt('expires_at', new Date().toISOString()).maybeSingle(),
     admin.from('company_members').select('role').eq('company_id', companyId).eq('user_id', userId).maybeSingle(),
     admin.from('system_admins').select('user_id').eq('user_id', userId).maybeSingle(),
     admin.from('company_members').select('company_id', {count: 'exact', head: true}).eq('user_id', userId),
-    admin.from('fleet_crew').select('record_id').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
+    admin.from('fleet_crew').select('record_id,data').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
   ]);
   const lookupError = ownershipResult.error ?? actorAdminResult.error ?? targetResult.error ?? targetAdminResult.error ?? membershipCountResult.error ?? crewResult.error;
   if (lookupError) {
@@ -69,19 +69,24 @@ Deno.serve(async (request) => {
   if (!targetResult.data && !crewResult.data) return response(404, {error: 'Crew member was not found.'});
   if (targetResult.data?.role === 'owner') return response(403, {error: 'Company owner cannot be removed.'});
 
-  const {error: crewError} = await admin.from('fleet_crew').delete()
-    .eq('company_id', companyId).eq('record_id', userId);
-  if (crewError) console.error('Crew record cleanup failed:', crewError);
+  const credentialPath = (crewResult.data?.data as {credential?: {path?: string}} | undefined)?.credential?.path;
 
   // Auth/profile may already have been removed manually. Cleaning stale company
   // crew data remains safe because caller owns this company.
   if (!targetResult.data) {
+    if (credentialPath?.startsWith(`${companyId}/`)) {
+      const {error: fileError} = await admin.storage.from('fleet-files').remove([credentialPath]);
+      if (fileError) return response(500, {error: 'Crew credential could not be removed.'});
+    }
+    const {error: crewError} = await admin.from('fleet_crew').delete()
+      .eq('company_id', companyId).eq('record_id', userId);
+    if (crewError) return response(500, {error: 'Crew record could not be removed.'});
     return response(200, {
       removed: true,
       accountDeleted: false,
       accountRetained: false,
       accountCleanupFailed: false,
-      crewDeleted: !crewError,
+      crewDeleted: true,
       attributionChanges: [],
     });
   }
@@ -101,8 +106,8 @@ Deno.serve(async (request) => {
       {table: 'fleet_activities', collection: 'activities' as const},
     ];
     const [legacyResult, ...normalizedResults] = await Promise.all([
-      admin.from('fleet_state').update({updated_by: actor.id}).eq('updated_by', userId),
-      ...normalizedTables.map(({table}) => admin.from(table).update({updated_by: actor.id}).eq('updated_by', userId).select('data,version')),
+      admin.from('fleet_state').update({updated_by: actor.id}).eq('company_id', companyId).eq('updated_by', userId),
+      ...normalizedTables.map(({table}) => admin.from(table).update({updated_by: actor.id}).eq('company_id', companyId).eq('updated_by', userId).select('data,version')),
     ]);
     const attributionError = legacyResult.error ?? normalizedResults.find((result) => result.error)?.error;
     normalizedResults.forEach((result, index) => {
@@ -136,12 +141,28 @@ Deno.serve(async (request) => {
     }
   }
 
+  // Revoke access before deleting company records. Failure leaves a retryable
+  // crew record instead of a user with hidden but active company access.
+  if (credentialPath?.startsWith(`${companyId}/`)) {
+    const {error: fileError} = await admin.storage.from('fleet-files').remove([credentialPath]);
+    if (fileError) {
+      console.error('Crew credential cleanup failed:', fileError);
+      return response(500, {error: 'Company access was revoked, but crew credential cleanup must be retried.'});
+    }
+  }
+  const {error: crewError} = await admin.from('fleet_crew').delete()
+    .eq('company_id', companyId).eq('record_id', userId);
+  if (crewError) {
+    console.error('Crew record cleanup failed:', crewError);
+    return response(500, {error: 'Company access was revoked, but crew record cleanup must be retried.'});
+  }
+
   return response(200, {
     removed: true,
     accountDeleted,
     accountRetained: !accountDeleted,
     accountCleanupFailed,
-    crewDeleted: !crewError,
+    crewDeleted: true,
     attributionChanges,
   });
 });

@@ -57,7 +57,7 @@ Deno.serve(async (request) => {
 
   const [{data: ownership}, {data: systemAdmin}, {data: company, error: companyError}] = await Promise.all([
     admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
-    admin.from('system_admins').select('user_id').eq('user_id', actor.id).maybeSingle(),
+    admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).gt('expires_at', new Date().toISOString()).maybeSingle(),
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
   ]);
   if (companyError || !company) return response(404, {error: 'Company not found.'});

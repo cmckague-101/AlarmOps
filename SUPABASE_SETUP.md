@@ -7,7 +7,7 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Migration `202508250006_company_crew_invite_limits.sql` adds and enforces company crew invite limits. Existing companies default to `0`; set each limit before enabling more invitations:
+Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Migration `202508250006_company_crew_invite_limits.sql` adds and enforces company crew invite limits. Migration `202508260002_p1_hardening.sql` adds atomic fleet writes, scoped administrator sessions, and server-side issue/activity integrity rules. Existing companies default to `0`; set each limit before enabling more invitations:
 
 ```sql
 update public.companies
@@ -32,7 +32,7 @@ VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_ANON_KEY
 ```
 
-Never place the Supabase service-role key in Vercel or any variable prefixed with `VITE_`.
+Never place the Supabase service-role key in Vercel or any variable prefixed with `VITE_`. Do not set `VITE_DEMO_MODE=true` in Vercel; deployed builds fail closed when Supabase settings are missing.
 
 In Supabase Authentication URL Configuration, set Site URL to:
 
@@ -59,6 +59,7 @@ Owner invitations use Edge Function `invite-company-member`. Function validates 
 supabase secrets set APP_URL=https://YOUR_APP.vercel.app
 supabase functions deploy invite-company-member
 supabase functions deploy remove-company-member
+supabase functions deploy delete-fleet-files
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available to hosted Edge Functions automatically. Never expose service-role key in browser environment.

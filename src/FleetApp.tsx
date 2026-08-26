@@ -10,6 +10,8 @@ type Profile = { full_name: string };
 type FleetRecordRow = { record_id: string; data: unknown; version: number; updated_by: string; updated_at: string };
 type CompanyRow = { id: string; name: string; company_code: string; industry: string; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
+type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
+type FleetChangeResult = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;version:number};
 
 async function refreshFileUrl(file?:VehicleFile){
   if(!supabase||!file?.path)return file;
@@ -26,11 +28,18 @@ async function hydrateFileUrls(snapshot:FleetSnapshot){
   return next;
 }
 
-function stripSignedFileUrls(snapshot:FleetSnapshot){
+export function stripSignedFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
   next.vehicles.forEach(vehicle=>vehicleFileKeys.forEach(key=>{if(vehicle[key]?.path)vehicle[key]!.dataUrl=''}));
   next.crew.forEach(member=>{if(member.credential?.path)member.credential.dataUrl=''});
   return next;
+}
+
+export function snapshotFilePaths(snapshot:FleetSnapshot){
+  const paths=new Set<string>();
+  snapshot.vehicles.forEach(vehicle=>vehicleFileKeys.forEach(key=>{const path=vehicle[key]?.path;if(path)paths.add(path)}));
+  snapshot.crew.forEach(member=>{if(member.credential?.path)paths.add(member.credential.path)});
+  return paths;
 }
 
 export default function FleetApp() {
@@ -44,7 +53,9 @@ export default function FleetApp() {
     return()=>listener.subscription.unsubscribe();
   },[]);
 
-  if(!supabaseConfigured)return <App/>;
+  if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'
+    ? <App/>
+    : <FleetConfigurationError/>;
   if(checking)return <FleetMessage text="Checking your session..."/>;
   if(!session)return <FleetLogin/>;
   return <AuthenticatedFleet session={session}/>;
@@ -158,6 +169,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
+  const pendingUploads=useRef(new Set<string>());
+  const committedUploads=useRef(new Set<string>());
+  const cleanupQueue=useRef(new Set<string>());
   const remoteSequence=useRef(0);
   const versions=useRef<Record<FleetCollection,Map<string,number>>>({vehicles:new Map(),issues:new Map(),crew:new Map(),activities:new Map()});
 
@@ -214,10 +228,10 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
         (snapshot[collection] as unknown[]).push(...rows.map(row=>row.data));
         versions.current[collection]=new Map(rows.map(row=>[row.record_id,row.version]));
       });
+      if(!snapshot.crew.length&&!isAdmin)snapshot.crew=[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active'}];
       persisted.current=snapshot;
       const hydrated=await hydrateFileUrls(snapshot);
       if(!active)return;
-      if(!hydrated.crew.length&&!isAdmin)hydrated.crew=[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active'}];
       setInitialData(hydrated);
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
       setLoaded(true);
@@ -233,50 +247,73 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const {error:uploadError}=await supabase.storage.from('fleet-files').upload(path,file,{contentType:file.type,upsert:false});
     if(uploadError)throw uploadError;
     const {data,error:urlError}=await supabase.storage.from('fleet-files').createSignedUrl(path,86400);
-    if(urlError)throw urlError;
+    if(urlError){await supabase.storage.from('fleet-files').remove([path]);throw urlError}
+    pendingUploads.current.add(path);
     return {name:file.name,type:file.type,dataUrl:data.signedUrl,path};
   },[companyId,session.user.id]);
+
+  const deleteFiles=useCallback(async(paths:string[])=>{
+    if(!supabase||!paths.length)return;
+    const {error:deleteError}=await supabase.functions.invoke('delete-fleet-files',{body:{companyId,paths}});
+    if(deleteError)throw deleteError;
+    paths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path);cleanupQueue.current.delete(path)});
+  },[companyId]);
+
+  const commitFiles=useCallback((files:VehicleFile[])=>{
+    files.forEach(file=>{if(file.path&&pendingUploads.current.delete(file.path))committedUploads.current.add(file.path)});
+  },[]);
+
+  const discardFiles=useCallback(async()=>{
+    const paths=[...pendingUploads.current];
+    paths.forEach(path=>cleanupQueue.current.add(path));
+    try{await deleteFiles(paths)}catch{/* Retry queued cleanup on next save. */}
+  },[deleteFiles]);
 
   const save=useCallback(async(data:FleetSnapshot)=>{
     const client=supabase;
     if(!client)throw new Error('Company is unavailable');
+    const beforeSnapshot=persisted.current;
+    const beforePaths=snapshotFilePaths(beforeSnapshot);
     const next=stripSignedFileUrls(data);
-    const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
-    const operations:Promise<void>[]=[];
-    collections.forEach(([collection,table])=>{
-      const before=new Map((persisted.current[collection] as {id:string}[]).map(record=>[record.id,record]));
+    const nextPaths=snapshotFilePaths(next);
+    const collections=(Object.keys(fleetTables) as FleetCollection[]);
+    const changes:FleetChange[]=[];
+    const records=new Map<string,{collection:FleetCollection;record:{id:string}}>();
+
+    collections.forEach(collection=>{
+      const before=new Map((beforeSnapshot[collection] as {id:string}[]).map(record=>[record.id,record]));
       const after=new Map((next[collection] as {id:string}[]).map(record=>[record.id,record]));
       after.forEach((record,id)=>{
         const previous=before.get(id);
         if(previous&&JSON.stringify(previous)===JSON.stringify(record))return;
         const expectedVersion=versions.current[collection].get(id);
-        operations.push((async()=>{
-          if(expectedVersion===undefined){
-            const {data:created,error:createError}=await client.from(table).insert({company_id:companyId,record_id:id,data:record,version:1,updated_by:session.user.id}).select('version').single<{version:number}>();
-            if(createError)throw createError;
-            patchPersisted(collection,'upsert',id,record,created.version);
-          }else{
-            const {data:updated,error:updateError}=await client.from(table).update({data:record,version:expectedVersion+1,updated_by:session.user.id}).eq('company_id',companyId).eq('record_id',id).eq('version',expectedVersion).select('version').maybeSingle<{version:number}>();
-            if(updateError)throw updateError;
-            if(!updated)throw new Error('Record changed by another user. Latest version has been loaded.');
-            patchPersisted(collection,'upsert',id,record,updated.version);
-          }
-        })());
+        changes.push({collection,event:expectedVersion===undefined?'insert':'update',recordId:id,data:record,...(expectedVersion===undefined?{}:{expectedVersion})});
+        records.set(`${collection}:${id}`,{collection,record});
       });
       before.forEach((_record,id)=>{
         if(after.has(id))return;
         const expectedVersion=versions.current[collection].get(id);
-        if(expectedVersion===undefined)return;
-        operations.push((async()=>{
-          const {data:deleted,error:deleteError}=await client.from(table).delete().eq('company_id',companyId).eq('record_id',id).eq('version',expectedVersion).select('record_id').maybeSingle<{record_id:string}>();
-          if(deleteError)throw deleteError;
-          if(!deleted)throw new Error('Record changed by another user. Latest version has been loaded.');
-          patchPersisted(collection,'delete',id,undefined,expectedVersion);
-        })());
+        if(expectedVersion!==undefined)changes.push({collection,event:'delete',recordId:id,expectedVersion});
       });
     });
-    await Promise.all(operations);
-  },[companyId,patchPersisted,session.user.id]);
+
+    let results:FleetChangeResult[]=[];
+    if(changes.length){
+      const {data:changed,error:changeError}=await client.rpc('apply_fleet_changes',{target_company_id:companyId,changes});
+      if(changeError)throw new Error(changeError.code==='40001'?'Record changed by another user. Refresh before retrying.':changeError.message);
+      results=(changed??[]) as FleetChangeResult[];
+      results.forEach(result=>{
+        const saved=records.get(`${result.collection}:${result.recordId}`);
+        patchPersisted(result.collection,result.event==='delete'?'delete':'upsert',result.recordId,saved?.record,result.version);
+      });
+    }
+
+    beforePaths.forEach(path=>{if(!nextPaths.has(path))cleanupQueue.current.add(path)});
+    pendingUploads.current.forEach(path=>{if(!nextPaths.has(path))cleanupQueue.current.add(path)});
+    nextPaths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path)});
+    const cleanup=[...cleanupQueue.current];
+    if(cleanup.length)await deleteFiles(cleanup);
+  },[companyId,deleteFiles,patchPersisted]);
 
   const inviteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
@@ -310,8 +347,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
+function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}
 function FleetError({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}
 function FleetMessage({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="status"><ShieldCheck/><h1>FireOps</h1><p>{text}</p></div></div>}
