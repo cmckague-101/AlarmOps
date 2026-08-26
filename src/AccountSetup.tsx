@@ -27,7 +27,7 @@ export default function AccountSetup() {
     return()=>listener.subscription.unsubscribe();
   },[]);
 
-  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:updateError}=await supabase.auth.updateUser({password,data:{full_name:fullName.trim()}});if(updateError){setError(updateError.message);setBusy(false);return}window.location.assign('/')};
+  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:updateError}=await supabase.auth.updateUser({password,data:{full_name:fullName.trim()}});if(updateError){setError(updateError.message);setBusy(false);return}const {error:completeError}=await supabase.rpc('complete_company_invite');if(completeError){setError('Account was secured, but company access could not be activated. Try completing setup again.');setBusy(false);return}window.location.assign('/')};
   if(!supabaseConfigured)return <SetupMessage text="Account setup is not configured."/>;
   if(loading)return <SetupMessage text="Verifying invitation..."/>;
   if(!session)return <SetupMessage text={error||'Invitation is invalid or expired. Ask the FireOps operator for a new invitation.'}/>;

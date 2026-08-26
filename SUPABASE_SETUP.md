@@ -51,6 +51,28 @@ http://localhost:5173/reset-password
 
 Configure SMTP before inviting external users. Disable open registration unless the product needs it.
 
+## Deploy company invitations
+
+Owner invitations use Edge Function `invite-company-member`. Function validates owner access, creates Supabase Auth user, sends invite email, adds company membership, and creates pending crew record.
+
+```sh
+supabase secrets set APP_URL=https://YOUR_APP.vercel.app
+supabase functions deploy invite-company-member
+supabase functions deploy remove-company-member
+```
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available to hosted Edge Functions automatically. Never expose service-role key in browser environment.
+
+In Authentication > Email Templates > Invite user, keep `{{ .ConfirmationURL }}` as setup link. Example:
+
+```html
+<h2>Join your crew on FireOps</h2>
+<p>You have been invited to manage fleet operations with your company.</p>
+<p><a href="{{ .ConfirmationURL }}">Set up your FireOps account</a></p>
+```
+
+Invite redirects must include `/accept-invite` URLs listed above. New member chooses full name and password there. `complete_company_invite()` then marks crew record active.
+
 ## Configure self-service password reset email
 
 1. Open Authentication > Email Templates > Reset password in Supabase Dashboard.
@@ -187,8 +209,8 @@ values ('COMPANY_UUID', 'MEMBER_AUTH_USER_UUID', 'member')
 on conflict (company_id, user_id) do update set role = 'member';
 ```
 
-In-app crew invitations remain operational records only. They do not provision Auth users or memberships. Manual membership additions and in-app invitations both respect company crew invite limit.
+In-app crew invitations provision Auth users, send setup emails, create memberships, and create pending crew records. Manual membership additions and in-app invitations both respect company crew invite limit.
 
 ## Remove a crew member
 
-Apply migration `202508250001_owner_remove_crew.sql` before using crew removal. Company owners can then remove non-owner crew from crew details. Removal deletes target company membership, so company RLS policies reject their next app request, and clears their crew record and vehicle assignments from fleet state. Their Supabase Auth account remains available for legitimate access to another company; it no longer grants access to removed company.
+Apply migration `202508250001_owner_remove_crew.sql` and deploy Edge Function `remove-company-member` before using crew removal. Company owners can remove non-owner crew from crew details. Removal immediately deletes target membership, so company RLS policies reject their next request, then clears crew record and vehicle assignments. If target has no other company memberships and is not system admin, function also deletes Supabase Auth account and profile. Accounts with other company access remain intact.

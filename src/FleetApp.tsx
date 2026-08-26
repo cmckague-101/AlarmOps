@@ -278,16 +278,35 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     await Promise.all(operations);
   },[companyId,patchPersisted,session.user.id]);
 
+  const inviteCrew=useCallback(async(member:CrewMember)=>{
+    if(!supabase)throw new Error('Company is unavailable.');
+    const {data,error:inviteError}=await supabase.functions.invoke<{member:CrewMember;version:number}>('invite-company-member',{body:{companyId,email:member.email,name:member.name,phone:member.phone}});
+    if(inviteError){
+      const context=(inviteError as {context?:Response}).context;
+      const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
+      throw new Error(body?.error||'Invitation could not be sent. Check your connection and try again.');
+    }
+    if(!data?.member||!data.version)throw new Error('Invitation service returned an invalid response.');
+    patchPersisted('crew','upsert',data.member.id,data.member,data.version);
+    return data.member;
+  },[companyId,patchPersisted]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
-    if(!supabase)throw new Error('Company is unavailable');
-    const {error:deleteError}=await supabase.rpc('remove_company_member',{target_company_id:companyId,target_user_id:member.id});
-    if(deleteError)throw deleteError;
-  },[companyId]);
+    if(!supabase)throw new Error('Company is unavailable.');
+    const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;crewDeleted:boolean}>('remove-company-member',{body:{companyId,userId:member.id}});
+    if(deleteError){
+      const context=(deleteError as {context?:Response}).context;
+      const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
+      throw new Error(body?.error||'Crew member could not be removed. Check your connection and try again.');
+    }
+    if(!data?.removed)throw new Error('Crew removal service returned an invalid response.');
+    if(data.crewDeleted)patchPersisted('crew','delete',member.id);
+  },[companyId,patchPersisted]);
 
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} onDataChange={save} onDeleteCrew={deleteCrew} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} uploadFile={upload} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetError({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}
