@@ -52,25 +52,39 @@ Deno.serve(async (request) => {
   }
   if (userId === actor.id) return response(403, {error: 'Company owners cannot remove themselves.'});
 
-  const [ownershipResult, actorAdminResult, targetResult, targetAdminResult, membershipCountResult] = await Promise.all([
+  const [ownershipResult, actorAdminResult, targetResult, targetAdminResult, membershipCountResult, crewResult] = await Promise.all([
     admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
     admin.from('system_admins').select('user_id').eq('user_id', actor.id).maybeSingle(),
     admin.from('company_members').select('role').eq('company_id', companyId).eq('user_id', userId).maybeSingle(),
     admin.from('system_admins').select('user_id').eq('user_id', userId).maybeSingle(),
     admin.from('company_members').select('company_id', {count: 'exact', head: true}).eq('user_id', userId),
+    admin.from('fleet_crew').select('record_id').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
   ]);
-  const lookupError = ownershipResult.error ?? actorAdminResult.error ?? targetResult.error ?? targetAdminResult.error ?? membershipCountResult.error;
+  const lookupError = ownershipResult.error ?? actorAdminResult.error ?? targetResult.error ?? targetAdminResult.error ?? membershipCountResult.error ?? crewResult.error;
   if (lookupError) {
     console.error('Crew removal authorization lookup failed:', lookupError);
     return response(500, {error: 'Crew member could not be verified.'});
   }
   if (!ownershipResult.data && !actorAdminResult.data) return response(403, {error: 'Company owner access required.'});
-  if (!targetResult.data) return response(404, {error: 'Crew membership was not found.'});
-  if (targetResult.data.role !== 'member') return response(403, {error: 'Company owner cannot be removed.'});
+  if (!targetResult.data && !crewResult.data) return response(404, {error: 'Crew member was not found.'});
+  if (targetResult.data?.role === 'owner') return response(403, {error: 'Company owner cannot be removed.'});
 
   const {error: crewError} = await admin.from('fleet_crew').delete()
     .eq('company_id', companyId).eq('record_id', userId);
   if (crewError) console.error('Crew record cleanup failed:', crewError);
+
+  // Auth/profile may already have been removed manually. Cleaning stale company
+  // crew data remains safe because caller owns this company.
+  if (!targetResult.data) {
+    return response(200, {
+      removed: true,
+      accountDeleted: false,
+      accountRetained: false,
+      accountCleanupFailed: false,
+      crewDeleted: !crewError,
+      attributionChanges: [],
+    });
+  }
 
   const accountEligible = (membershipCountResult.count ?? 0) === 1 && !targetAdminResult.data;
   const attributionChanges: AttributionChange[] = [];
