@@ -8,7 +8,7 @@ import './auth.css';
 type Membership = { company_id: string; role: UserRole };
 type Profile = { full_name: string };
 type FleetRecordRow = { record_id: string; data: unknown; version: number; updated_by: string; updated_at: string };
-type CompanyRow = { id: string; name: string; company_code: string; industry: string };
+type CompanyRow = { id: string; name: string; company_code: string; industry: string; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 
 async function refreshFileUrl(file?:VehicleFile){
@@ -190,12 +190,13 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     channel.subscribe();
     const load=async()=>{
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
-      const [companyResult,...recordResults]=await Promise.all([
-        client.from('companies').select('id,name,company_code,industry').eq('id',companyId).single<CompanyRow>(),
+      const [companyResult,inviteUsageResult,...recordResults]=await Promise.all([
+        client.from('companies').select('id,name,company_code,industry,crew_invite_limit').eq('id',companyId).single<CompanyRow>(),
+        client.rpc('company_crew_seats_used',{target_company_id:companyId}),
         ...collections.map(([,table])=>client.from(table).select('record_id,data,version,updated_by,updated_at').eq('company_id',companyId).order('updated_at',{ascending:false}))
       ]);
       if(!active)return;
-      if(companyResult.error||recordResults.some(result=>result.error)){setError('Fleet data could not be loaded. Apply latest database migrations, then try again.');setLoaded(true);return}
+      if(companyResult.error||inviteUsageResult.error||recordResults.some(result=>result.error)){setError('Fleet data could not be loaded. Apply latest database migrations, then try again.');setLoaded(true);return}
       const snapshot=emptySnapshot();
       collections.forEach(([collection],index)=>{
         const rows=(recordResults[index].data??[]) as FleetRecordRow[];
@@ -207,7 +208,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       if(!active)return;
       if(!hydrated.crew.length&&!isAdmin)hydrated.crew=[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active'}];
       setInitialData(hydrated);
-      setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry});
+      setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
       setLoaded(true);
     };
     void load();

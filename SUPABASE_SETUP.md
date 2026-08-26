@@ -7,7 +7,15 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Deploy database migrations before deploying frontend that reads normalized tables. Keep legacy `fleet_state` table during rollout as migration backup.
+Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Migration `202508250006_company_crew_invite_limits.sql` adds and enforces company crew invite limits. Existing companies default to `0`; set each limit before enabling more invitations:
+
+```sql
+update public.companies
+set crew_invite_limit = CREW_INVITE_LIMIT
+where company_code = 'COMPANY-CODE';
+```
+
+Deploy database migrations before deploying frontend that reads normalized tables. Keep legacy `fleet_state` table during rollout as migration backup.
 
 For projects that previously deployed the removed admin function, delete it once:
 
@@ -91,13 +99,15 @@ with new_company as (
     name,
     company_code,
     industry,
-    owner_user_id
+    owner_user_id,
+    crew_invite_limit
   )
   values (
     'COMPANY NAME',
     'COMPANY-CODE',
     'INDUSTRY',
-    'OWNER_AUTH_USER_UUID'
+    'OWNER_AUTH_USER_UUID',
+    CREW_INVITE_LIMIT
   )
   returning id
 )
@@ -115,7 +125,7 @@ from new_company;
 commit;
 ```
 
-Company code must be unique and contain 3 to 32 uppercase letters, numbers, or hyphens. Owner UUID must exist in `public.profiles`.
+Company code must be unique and contain 3 to 32 uppercase letters, numbers, or hyphens. Owner UUID must exist in `public.profiles`. `CREW_INVITE_LIMIT` must be zero or greater and excludes company owner. Set it to `0` to disable crew invitations.
 
 ### 3. Verify access
 
@@ -177,7 +187,7 @@ values ('COMPANY_UUID', 'MEMBER_AUTH_USER_UUID', 'member')
 on conflict (company_id, user_id) do update set role = 'member';
 ```
 
-In-app crew invitations remain operational records only. They do not provision Auth users or memberships.
+In-app crew invitations remain operational records only. They do not provision Auth users or memberships. Manual membership additions and in-app invitations both respect company crew invite limit.
 
 ## Remove a crew member
 

@@ -52,7 +52,7 @@ const vehicleDocumentOptions: {key:VehicleDocumentKey;label:string}[] = [
   {key:'dotInspection',label:'DOT inspection'}
 ];
 export type FireOpsUser = {id: string; name: string; role: UserRole};
-export type CompanyInfo = {name: string; code: string; industry: string};
+export type CompanyInfo = {name: string; code: string; industry: string; crewInviteLimit: number; crewInvitedCount: number};
 export type FleetSnapshot = {vehicles: Vehicle[]; issues: FleetIssue[]; crew: CrewMember[]; activities: Activity[]};
 export type FleetRemoteChange =
   | {collection:'vehicles';event:'upsert';record:Vehicle}
@@ -64,7 +64,7 @@ export type FleetRemoteChange =
   | {collection:'activities';event:'upsert';record:Activity}
   | {collection:'activities';event:'delete';id:string};
 const demoUser: FireOpsUser = {id: 'u1', name: 'Ryan Mitchell', role: 'owner'};
-const demoCompany: CompanyInfo = {name:'North Ridge Wildfire',code:'NRW-2048',industry:'Wildland fire contractor'};
+const demoCompany: CompanyInfo = {name:'North Ridge Wildfire',code:'NRW-2048',industry:'Wildland fire contractor',crewInviteLimit:5,crewInvitedCount:2};
 const seedCrew: CrewMember[] = [
   {id:'u1',name:'Ryan Mitchell',email:'ryan@northridgewildfire.com',phone:'(530) 555-0142',role:'owner',status:'Active',joinedAt:'2024-11-08'},
   {id:'u2',name:'Maya Torres',email:'maya@northridgewildfire.com',phone:'(530) 555-0198',role:'member',status:'Active',credentialName:'Red Card',joinedAt:'2025-01-16'},
@@ -149,6 +149,11 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const lastRemoteSequence = useRef(0);
   const canManageFleet = currentUser.role === 'owner';
+  const initialVisibleCrewCount = useRef(crew.filter(member=>member.role==='member').length).current;
+  const visibleCrewCount = crew.filter(member=>member.role==='member').length;
+  const invitedCrewCount = Math.max(0,company.crewInvitedCount+visibleCrewCount-initialVisibleCrewCount);
+  const invitesAvailable = Math.max(0,company.crewInviteLimit-invitedCrewCount);
+  const canInviteCrew = canManageFleet&&invitesAvailable>0;
   useEffect(() => {
     remoteChanges?.filter(change=>change.sequence>lastRemoteSequence.current).forEach(remoteChange=>{
       if(remoteChange.collection==='vehicles'){
@@ -166,6 +171,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
       lastRemoteSequence.current=remoteChange.sequence;
     });
   },[remoteChanges]);
+  useEffect(()=>{if(!canInviteCrew)setInviteOpen(false)},[canInviteCrew]);
   useEffect(() => {
     const snapshot={vehicles,issues,crew,activities};
     let active=true;
@@ -269,6 +275,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     showNotice(assignedTo?'Vehicle assigned to you':'Vehicle assignment removed',{vehicle,label:`Undo assignment change for ${vehicle.unit}`});
   };
   const inviteCrew = (member: CrewMember) => {
+    if(!canInviteCrew){setInviteOpen(false);showNotice('No crew invitations are available');return}
     setCrew(items => [...items, member]); logActivity({action:`${member.name} invited to company`,detail:member.email,targetType:'crew',targetId:member.id,tone:'complete'}); setInviteOpen(false); showNotice(`Invitation to ${company.name} sent to ${member.email}`);
   };
   const updateCrew = (member: CrewMember) => {
@@ -301,8 +308,8 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
-        {page === 'crew' && canManageFleet && <CrewPage crew={crew} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
-        {page === 'settings' && <SettingsPage company={company} owner={currentUser.name}/>}
+        {page === 'crew' && canManageFleet && <CrewPage crew={crew} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
+        {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} showInviteUsage={canManageFleet}/>}
         </div>
       </main>
       <MobileNav page={page} setPage={setPage} user={currentUser}/>
@@ -310,7 +317,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     {formOpen && canManageFleet && <VehicleForm uploadFile={uploadFile} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm vehicle={editing} uploadFile={uploadFile} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
     {issueFormOpen && <IssueForm vehicles={vehicles} initialVehicleId={issueVehicleId} user={currentUser} onClose={() => setIssueFormOpen(false)} onSave={addIssue}/>}
-    {inviteOpen && canManageFleet && <InviteCrewForm existing={crew} companyName={company.name} onClose={() => setInviteOpen(false)} onSave={inviteCrew}/>}
+    {inviteOpen && canInviteCrew && <InviteCrewForm existing={crew} companyName={company.name} onClose={() => setInviteOpen(false)} onSave={inviteCrew}/>}
     {selected && <VehicleDetail vehicle={selected} issues={visibleIssues.filter(issue => issue.vehicleId === selected.id)} crew={crew} user={currentUser} canManage={canManageFleet} onClose={() => setSelected(null)} onEdit={() => {setEditing(selected);setSelected(null)}} onDelete={() => {setDeleteCandidate(selected);setSelected(null)}} onNewIssue={() => {setIssueVehicleId(selected.id);setSelected(null);setIssueFormOpen(true)}} onIssue={issue => {setSelected(null);setSelectedIssue(issue)}} onStatus={s => updateStatus(selected.id, s)} onAssignee={memberId => updateAssignment(selected.id,memberId||undefined)} onAssign={() => assignToMe(selected.id)}/>}
     {deleteCandidate && canManageFleet && <DeleteVehicleDialog vehicle={deleteCandidate} issueCount={issues.filter(issue=>issue.vehicleId===deleteCandidate.id).length} onCancel={() => {setSelected(deleteCandidate);setDeleteCandidate(null)}} onConfirm={() => deleteVehicle(deleteCandidate)}/>}
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
@@ -404,10 +411,10 @@ function Dashboard({vehicles,issues,crew,activities,user,onSelectVehicle,onSelec
     </section>}
   </div>
 }
-function SettingsPage({company,owner}:{company:CompanyInfo;owner:string}) {const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();return <div className="page"><div className="page-heading"><div><h1>Settings</h1></div></div><section className="company-card"><div className="company-logo">{initials}</div><div><h2>{company.name}</h2><p>{company.industry||'Industry not specified'}</p></div><dl><div><dt>Owner</dt><dd>{owner}</dd></div><div><dt>Company ID</dt><dd>{company.code}</dd></div></dl></section></div>}
+function SettingsPage({company,owner,invitedCrewCount,showInviteUsage}:{company:CompanyInfo;owner:string;invitedCrewCount:number;showInviteUsage:boolean}) {const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();const available=Math.max(0,company.crewInviteLimit-invitedCrewCount);return <div className="page"><div className="page-heading"><div><h1>Settings</h1></div></div><section className="company-card"><div className="company-logo">{initials}</div><div><h2>{company.name}</h2><p>{company.industry||'Industry not specified'}</p></div><dl><div><dt>Owner</dt><dd>{owner}</dd></div><div><dt>Company ID</dt><dd>{company.code}</dd></div>{showInviteUsage&&<><div><dt>Crew invite limit</dt><dd>{company.crewInviteLimit}</dd></div><div><dt>Crew invited</dt><dd>{invitedCrewCount}</dd></div><div><dt>Invites available</dt><dd>{available}</dd></div></>}</dl></section></div>}
 
-function CrewPage({crew,onInvite,onSelect}:{crew:CrewMember[];onInvite:()=>void;onSelect:(member:CrewMember)=>void}) {
-  return <div className="page crew-page"><div className="page-heading"><div><h1>Crew</h1></div><div className="fleet-heading-actions"><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button><button className="primary mobile-add-vehicle" onClick={onInvite}><UserPlus/> Invite user</button></div></div>
+function CrewPage({crew,inviteLimit,invitesAvailable,onInvite,onSelect}:{crew:CrewMember[];inviteLimit:number;invitesAvailable:number;onInvite:()=>void;onSelect:(member:CrewMember)=>void}) {
+  return <div className="page crew-page"><div className="page-heading"><div><h1>Crew</h1>{invitesAvailable===0&&<p className="crew-limit-note">{inviteLimit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</p>}</div>{invitesAvailable>0&&<div className="fleet-heading-actions"><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button><button className="primary mobile-add-vehicle" onClick={onInvite}><UserPlus/> Invite user</button></div>}</div>
     <section className="stats-row crew-stats"><Stat label="Total crew" value={crew.length}/><Stat label="Active" value={crew.filter(member=>member.status==='Active').length}/><Stat label="Invitations" value={crew.filter(member=>member.status==='Invited').length}/></section>
     <section className="crew-panel"><div className="list-label"><b>Company crew</b><span>{crew.length} people</span></div><div className="crew-list">{crew.map(member=><button className="crew-row" key={member.id} onClick={()=>onSelect(member)}><span className="crew-copy"><span className="crew-name"><b>{member.name}</b>{member.role==='owner'&&<em>Owner</em>}<i className={member.status.toLowerCase()}>{member.status}</i></span><small><Mail/> {member.email}</small><small><Phone/> {member.phone||'No phone added'}</small></span><span className={member.credential?'credential-state complete':member.credentialName?'credential-state named':'credential-state'}><ShieldCheck/>{member.credential?.name??member.credentialName??'No credential'}</span><ChevronRight className="card-arrow"/></button>)}</div></section>
   </div>;
