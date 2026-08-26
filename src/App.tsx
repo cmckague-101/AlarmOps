@@ -120,7 +120,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,onDataChange,onInviteCrew,onDeleteCrew,onSignOut,onSwitchCompany,uploadFile}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<void>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>}) {
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,onDataChange,onInviteCrew,onDeleteCrew,onSignOut,onSwitchCompany,uploadFile}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>}) {
   const currentUser = user;
   const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? normalizeVehicles(initialData.vehicles) : loadVehicles());
   const [issues, setIssues] = useState<FleetIssue[]>(()=>initialData?.issues??loadIssues());
@@ -286,13 +286,13 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     if(!canManageFleet||member.role==='owner'||member.id===currentUser.id)return;
     setDeletingCrew(true);setCrewDeleteError('');
     try {
-      await onDeleteCrew?.(member);
+      const removal=await onDeleteCrew?.(member);
       const assignmentCount=vehicles.filter(vehicle=>vehicle.assignedTo===member.id).length;
       setCrew(items=>items.filter(item=>item.id!==member.id));
       setVehicles(items=>items.map(vehicle=>vehicle.assignedTo===member.id?{...vehicle,assignedTo:undefined,status:vehicle.status==='Assigned'?'Ready':vehicle.status}:vehicle));
       logActivity({action:`${member.name} removed from crew`,detail:assignmentCount?`App access revoked · ${assignmentCount} vehicle ${assignmentCount===1?'assignment':'assignments'} cleared`:'App access revoked',tone:'urgent'});
       setCrewDeleteCandidate(null);
-      showNotice(`${member.name} removed and access revoked`);
+      showNotice(removal?.accountDeleted?`${member.name} removed and account deleted`:removal?.accountCleanupFailed?`${member.name} removed; access revoked, but account cleanup failed`:`${member.name} removed and access revoked`);
     } catch {
       setCrewDeleteError('Crew member could not be removed. Check your connection and try again.');
     } finally {

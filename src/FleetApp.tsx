@@ -293,14 +293,18 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
-    const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;crewDeleted:boolean}>('remove-company-member',{body:{companyId,userId:member.id}});
+    const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
     if(deleteError){
       const context=(deleteError as {context?:Response}).context;
       const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
       throw new Error(body?.error||'Crew member could not be removed. Check your connection and try again.');
     }
     if(!data?.removed)throw new Error('Crew removal service returned an invalid response.');
+    for(const change of data.attributionChanges??[]){
+      if(change.record?.id)patchPersisted(change.collection,'upsert',change.record.id,change.record,change.version);
+    }
     if(data.crewDeleted)patchPersisted('crew','delete',member.id);
+    return {accountDeleted:data.accountDeleted,accountCleanupFailed:data.accountCleanupFailed};
   },[companyId,patchPersisted]);
 
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
