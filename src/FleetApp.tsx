@@ -34,21 +34,30 @@ const vehicleFileKeys=['photo','contract','viprChecklist','registration','insura
 async function hydrateFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
   await Promise.all(next.vehicles.flatMap(vehicle=>vehicleFileKeys.map(async key=>{vehicle[key]=await refreshFileUrl(vehicle[key])})));
-  await Promise.all(next.crew.map(async member=>{member.credential=await refreshFileUrl(member.credential)}));
+  await Promise.all(next.crew.map(async member=>{
+    member.credential=await refreshFileUrl(member.credential);
+    if(member.credentials)member.credentials=await Promise.all(member.credentials.map(async credential=>({...credential,file:(await refreshFileUrl(credential.file))!})));
+  }));
   return next;
 }
 
 export function stripSignedFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
   next.vehicles.forEach(vehicle=>vehicleFileKeys.forEach(key=>{if(vehicle[key]?.path)vehicle[key]!.dataUrl=''}));
-  next.crew.forEach(member=>{if(member.credential?.path)member.credential.dataUrl=''});
+  next.crew.forEach(member=>{
+    if(member.credential?.path)member.credential.dataUrl='';
+    member.credentials?.forEach(credential=>{if(credential.file.path)credential.file.dataUrl=''});
+  });
   return next;
 }
 
 export function snapshotFilePaths(snapshot:FleetSnapshot){
   const paths=new Set<string>();
   snapshot.vehicles.forEach(vehicle=>vehicleFileKeys.forEach(key=>{const path=vehicle[key]?.path;if(path)paths.add(path)}));
-  snapshot.crew.forEach(member=>{if(member.credential?.path)paths.add(member.credential.path)});
+  snapshot.crew.forEach(member=>{
+    if(member.credential?.path)paths.add(member.credential.path);
+    member.credentials?.forEach(credential=>{if(credential.file.path)paths.add(credential.file.path)});
+  });
   return paths;
 }
 

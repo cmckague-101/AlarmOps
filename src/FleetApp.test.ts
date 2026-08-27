@@ -12,7 +12,7 @@ function snapshot():FleetSnapshot {
       photo:storedFile('company/user/photo.webp'),insurance:storedFile('company/user/insurance.pdf'),
     }],
     issues:[],
-    crew:[{id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',email:'crew@example.com',phone:'',role:'member',status:'Active',credential:storedFile('company/owner/credential.pdf')}],
+    crew:[{id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',email:'crew@example.com',phone:'',role:'member',status:'Active',credential:storedFile('company/owner/credential.pdf'),credentials:[{id:'red-card',name:'Red Card',file:storedFile('company/owner/red-card.pdf')},{id:'emt',name:'EMT',file:storedFile('company/owner/emt.jpg')}]}],
     activities:[],
   };
 }
@@ -37,12 +37,16 @@ describe('fleet file persistence',()=>{
     expect(persisted.vehicles[0].photo?.dataUrl).toBe('');
     expect(persisted.vehicles[0].insurance?.dataUrl).toBe('');
     expect(persisted.crew[0].credential?.dataUrl).toBe('');
+    expect(persisted.crew[0].credentials?.every(credential=>credential.file.dataUrl==='')).toBe(true);
     expect(current.vehicles[0].photo?.dataUrl).toContain('signed.example');
+    expect(current.crew[0].credentials?.[0].file.dataUrl).toContain('signed.example');
   });
 
   it('collects every referenced storage path for orphan cleanup',()=>{
     expect([...snapshotFilePaths(snapshot())].sort()).toEqual([
       'company/owner/credential.pdf',
+      'company/owner/emt.jpg',
+      'company/owner/red-card.pdf',
       'company/user/insurance.pdf',
       'company/user/photo.webp',
     ]);
