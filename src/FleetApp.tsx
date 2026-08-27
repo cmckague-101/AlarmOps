@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Building2, LogOut, ShieldCheck } from 'lucide-react';
-import App, { type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type UserRole, type VehicleFile } from './App';
+import App, { type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile } from './App';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 
@@ -207,6 +207,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [initialData,setInitialData]=useState<FleetSnapshot|undefined>();
   const [remoteChanges,setRemoteChanges]=useState<(FleetRemoteChange&{sequence:number})[]>([]);
   const [company,setCompany]=useState<CompanyInfo|null>(null);
+  const [motiveConnection,setMotiveConnection]=useState<MotiveConnection>({connected:false});
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
@@ -256,9 +257,10 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     channel.subscribe();
     const load=async()=>{
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
-      const [companyResult,inviteUsageResult,...recordResults]=await Promise.all([
+      const [companyResult,inviteUsageResult,motiveResult,...recordResults]=await Promise.all([
         client.from('companies').select('id,name,company_code,industry,crew_invite_limit').eq('id',companyId).single<CompanyRow>(),
         client.rpc('company_crew_seats_used',{target_company_id:companyId}),
+        role==='owner'||isAdmin?client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'status'}}):Promise.resolve({data:{connected:false},error:null}),
         ...collections.map(([,table])=>client.from(table).select('record_id,data,version,updated_by,updated_at').eq('company_id',companyId).order('updated_at',{ascending:false}))
       ]);
       if(!active)return;
@@ -275,6 +277,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       if(!active)return;
       setInitialData(hydrated);
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
+      if(!motiveResult.error&&motiveResult.data)setMotiveConnection(motiveResult.data);
       setLoaded(true);
     };
     void load();
@@ -369,6 +372,21 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     return data.member;
   },[companyId,patchPersisted]);
 
+  const saveMotive=useCallback(async(apiKey:string)=>{
+    if(!supabase)throw new Error('Company is unavailable.');
+    const {data,error:saveError}=await supabase.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'save',apiKey}});
+    if(saveError){const context=(saveError as {context?:Response}).context;const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;throw new Error(body?.error||'Motive API key could not be saved.');}
+    if(!data?.connected)throw new Error('Motive connection returned an invalid response.');
+    setMotiveConnection(data);return data;
+  },[companyId]);
+
+  const disconnectMotive=useCallback(async()=>{
+    if(!supabase)throw new Error('Company is unavailable.');
+    const {data,error:disconnectError}=await supabase.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'disconnect'}});
+    if(disconnectError){const context=(disconnectError as {context?:Response}).context;const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;throw new Error(body?.error||'Motive connection could not be removed.');}
+    const next=data??{connected:false};setMotiveConnection(next);return next;
+  },[companyId]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
@@ -388,7 +406,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

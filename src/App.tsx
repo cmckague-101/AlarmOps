@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import { useDialogA11y } from './useDialogA11y';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, CarFront, Check, ChevronRight,
-  CircleAlert, CircleUserRound, Clock3, ExternalLink, FileImage, FileText, Hash, LayoutDashboard, LogOut, Mail, MessageSquare, Pencil, Phone, Plus,
+  CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Hash, KeyRound, LayoutDashboard, LogOut, Mail, MessageSquare, Pencil, Phone, Plus,
   Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
@@ -58,6 +58,7 @@ const vehicleDocumentOptions: {key:VehicleDocumentKey;label:string}[] = [
 ];
 export type FireOpsUser = {id: string; name: string; role: UserRole};
 export type CompanyInfo = {name: string; code: string; industry: string; crewInviteLimit: number; crewInvitedCount: number};
+export type MotiveConnection = {connected: boolean; lastFour?: string; connectedAt?: string; lastVerifiedAt?: string};
 export type FleetSnapshot = {vehicles: Vehicle[]; issues: FleetIssue[]; crew: CrewMember[]; activities: Activity[]};
 export type FleetRemoteChange =
   | {collection:'vehicles';event:'upsert';record:Vehicle}
@@ -136,7 +137,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,onDataChange,onInviteCrew,onDeleteCrew,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
   const currentUser = user;
   const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? normalizeVehicles(initialData.vehicles) : loadVehicles());
   const [issues, setIssues] = useState<FleetIssue[]>(()=>initialData?.issues??loadIssues());
@@ -327,7 +328,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
-        {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} showInviteUsage={canManageFleet}/>}
+        {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={motiveConnection} onSaveMotive={onSaveMotive} onDisconnectMotive={onDisconnectMotive}/>}
         </div>
       </main>
       <MobileNav page={page} setPage={setPage} user={currentUser}/>
@@ -429,7 +430,20 @@ function Dashboard({vehicles,issues,crew,activities,user,onSelectVehicle,onSelec
     </section>}
   </div>
 }
-function SettingsPage({company,owner,invitedCrewCount,showInviteUsage}:{company:CompanyInfo;owner:string;invitedCrewCount:number;showInviteUsage:boolean}) {const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();const available=Math.max(0,company.crewInviteLimit-invitedCrewCount);return <div className="page"><div className="page-heading"><div><h1>Settings</h1></div></div><section className="company-card"><div className="company-logo">{initials}</div><div><h2>{company.name}</h2><p>{company.industry||'Industry not specified'}</p></div><dl><div><dt>Owner</dt><dd>{owner}</dd></div><div><dt>Company ID</dt><dd>{company.code}</dd></div>{showInviteUsage&&<><div><dt>Crew invite limit</dt><dd>{company.crewInviteLimit}</dd></div><div><dt>Crew invited</dt><dd>{invitedCrewCount}</dd></div><div><dt>Invites available</dt><dd>{available}</dd></div></>}</dl></section></div>}
+function SettingsPage({company,owner,invitedCrewCount,canManage,motiveConnection,onSaveMotive,onDisconnectMotive}:{company:CompanyInfo;owner:string;invitedCrewCount:number;canManage:boolean;motiveConnection?:MotiveConnection;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>}) {
+  const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();
+  const available=Math.max(0,company.crewInviteLimit-invitedCrewCount);
+  const [connection,setConnection]=useState<MotiveConnection>(motiveConnection??{connected:false});
+  const [apiKey,setApiKey]=useState('');
+  const [showKey,setShowKey]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{if(motiveConnection)setConnection(motiveConnection)},[motiveConnection]);
+  const saveMotive=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!apiKey.trim())return;setBusy(true);setError('');setSaved(false);try{const next=onSaveMotive?await onSaveMotive(apiKey.trim()):{connected:true,lastFour:apiKey.trim().slice(-4),lastVerifiedAt:new Date().toISOString()};setConnection(next);setApiKey('');setShowKey(false);setSaved(true)}catch(saveError){setError(saveError instanceof Error?saveError.message:'Motive API key could not be saved.')}finally{setBusy(false)}};
+  const disconnect=async()=>{if(!onDisconnectMotive||!window.confirm('Disconnect Motive? Vehicle tracking and camera data will stop until a new API key is connected.'))return;setBusy(true);setError('');setSaved(false);try{setConnection(await onDisconnectMotive());setApiKey('')}catch(disconnectError){setError(disconnectError instanceof Error?disconnectError.message:'Motive connection could not be removed.')}finally{setBusy(false)}};
+  return <div className="page settings-page"><div className="page-heading"><div><h1>Settings</h1></div></div><div className="settings-stack"><section className="company-card"><div className="company-logo">{initials}</div><div><h2>{company.name}</h2><p>{company.industry||'Industry not specified'}</p></div><dl><div><dt>Owner</dt><dd>{owner}</dd></div><div><dt>Company ID</dt><dd>{company.code}</dd></div>{canManage&&<><div><dt>Crew invite limit</dt><dd>{company.crewInviteLimit}</dd></div><div><dt>Crew invited</dt><dd>{invitedCrewCount}</dd></div><div><dt>Invites available</dt><dd>{available}</dd></div></>}</dl></section>{canManage&&<section className="integration-panel" aria-labelledby="motive-heading"><header><span className="integration-mark"><KeyRound/></span><div><h2 id="motive-heading">Motive</h2><p>Connect vehicle tracking and camera data to FireOps.</p></div><span className={`connection-state ${connection.connected?'connected':''}`}><i/>{connection.connected?'Connected':'Not connected'}</span></header><form onSubmit={saveMotive}><div className="integration-copy"><b>{connection.connected?`API key ending in ${connection.lastFour??'••••'}`:'Motive API key'}</b><p>Key is verified with Motive, encrypted, and never shown again. Vehicles will match Motive records by VIN.</p>{connection.lastVerifiedAt&&<small>Verified {new Date(connection.lastVerifiedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</small>}</div><label className="secret-field"><span>{connection.connected?'Replace API key':'API key'}</span><span className="secret-control"><input type={showKey?'text':'password'} value={apiKey} onChange={event=>{setApiKey(event.target.value);setError('');setSaved(false)}} autoComplete="off" spellCheck={false} disabled={busy} placeholder="Paste Motive API key" aria-describedby="motive-key-help"/><button type="button" onClick={()=>setShowKey(value=>!value)} aria-label={showKey?'Hide API key':'Show API key'}>{showKey?<EyeOff/>:<Eye/>}</button></span><small id="motive-key-help">Find this in Motive Dashboard → Admin → Developers.</small></label>{error&&<div className="integration-error" role="alert">{error}</div>}{saved&&<div className="integration-success" role="status"><Check/> Motive connection saved</div>}<footer><button className="primary" type="submit" disabled={busy||!apiKey.trim()}>{busy?'Verifying...':connection.connected?'Verify and replace key':'Verify and connect'}</button>{connection.connected&&onDisconnectMotive&&<button className="integration-disconnect" type="button" disabled={busy} onClick={()=>void disconnect()}>Disconnect</button>}</footer></form></section>}</div></div>;
+}
 
 function CrewPage({crew,inviteLimit,invitesAvailable,onInvite,onSelect}:{crew:CrewMember[];inviteLimit:number;invitesAvailable:number;onInvite:()=>void;onSelect:(member:CrewMember)=>void}) {
   return <div className="page crew-page"><div className="page-heading"><div><h1>Crew</h1>{invitesAvailable===0&&<p className="crew-limit-note">{inviteLimit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</p>}</div>{invitesAvailable>0&&<div className="fleet-heading-actions"><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button><button className="primary mobile-add-vehicle" onClick={onInvite}><UserPlus/> Invite user</button></div>}</div>
