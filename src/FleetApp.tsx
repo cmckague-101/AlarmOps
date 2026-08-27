@@ -12,6 +12,16 @@ type CompanyRow = { id: string; name: string; company_code: string; industry: st
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
 type FleetChangeResult = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;version:number};
+type AccessCheckError = {code?:string;message?:string}|null;
+
+const accessRetryDelays=[0,350,900];
+
+export function accountAccessErrorMessage(adminError:AccessCheckError,membershipError:AccessCheckError){
+  const missingMigration=[adminError,membershipError].some(error=>error?.code==='PGRST202'||error?.code==='42883');
+  return missingMigration
+    ? 'Account access check is unavailable. Apply latest database migrations.'
+    : 'Account access could not be verified. Check your connection and try again.';
+}
 
 async function refreshFileUrl(file?:VehicleFile){
   if(!supabase||!file?.path)return file;
@@ -90,31 +100,44 @@ function AuthenticatedFleet({session}:{session:Session}){
   const [access,setAccess]=useState<Access|null>(null);
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
+  const [loadAttempt,setLoadAttempt]=useState(0);
 
   useEffect(()=>{
     const client=supabase;
     if(!client)return;
     let active=true;
     const load=async()=>{
-      const [adminResult,profileResult,membershipResult]=await Promise.all([
-        client.rpc('is_system_admin'),
-        client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>(),
-        client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>()
-      ]);
-      if(!active)return;
-      const userName=profileResult.data?.full_name||session.user.email||'FireOps user';
-      if(adminResult.data===true){setAccess({kind:'admin',userName});setLoaded(true);return}
-      if(membershipResult.data){setAccess({kind:'member',userName,companyId:membershipResult.data.company_id,role:membershipResult.data.role});setLoaded(true);return}
-      if(adminResult.error){console.error('System admin access check failed:',adminResult.error);setError('Account access could not be verified. Apply latest database migrations.');setLoaded(true);return}
-      if(membershipResult.error){console.error('Company membership check failed:',membershipResult.error);setError('Account access could not be verified. Try signing in again.');setLoaded(true);return}
-      setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);
+      for(const delay of accessRetryDelays){
+        if(delay)await new Promise(resolve=>window.setTimeout(resolve,delay));
+        if(!active)return;
+        const [adminResult,profileResult,membershipResult]=await Promise.all([
+          client.rpc('is_system_admin'),
+          client.from('profiles').select('full_name').eq('user_id',session.user.id).maybeSingle<Profile>(),
+          client.from('company_members').select('company_id,role').eq('user_id',session.user.id).limit(1).maybeSingle<Membership>()
+        ]);
+        if(!active)return;
+        const userName=profileResult.data?.full_name||session.user.email||'FireOps user';
+        if(adminResult.data===true){setAccess({kind:'admin',userName});setLoaded(true);return}
+        if(membershipResult.data){setAccess({kind:'member',userName,companyId:membershipResult.data.company_id,role:membershipResult.data.role});setLoaded(true);return}
+        if(!adminResult.error&&!membershipResult.error){
+          setError('Your account is not assigned to a company. Ask your company owner for access.');setLoaded(true);return;
+        }
+        const missingMigration=[adminResult.error,membershipResult.error].some(resultError=>resultError?.code==='PGRST202'||resultError?.code==='42883');
+        if(missingMigration||delay===accessRetryDelays[accessRetryDelays.length-1]){
+          if(adminResult.error)console.error('System admin access check failed:',adminResult.error);
+          if(membershipResult.error)console.error('Company membership check failed:',membershipResult.error);
+          setError(accountAccessErrorMessage(adminResult.error,membershipResult.error));setLoaded(true);return;
+        }
+      }
     };
     void load();
     return()=>{active=false};
-  },[session.user.id,session.user.email]);
+  },[session.user.id,session.user.email,loadAttempt]);
+
+  const retry=()=>{setAccess(null);setError('');setLoaded(false);setLoadAttempt(attempt=>attempt+1)};
 
   if(!loaded)return <FleetMessage text="Checking account access..."/>;
-  if(error||!access)return <FleetError text={error}/>;
+  if(error||!access)return <FleetError text={error} onRetry={retry}/>;
   if(access.kind==='admin')return <AdminCompanyAccess session={session} userName={access.userName}/>;
   return <CompanyWorkspace session={session} userName={access.userName} companyId={access.companyId} role={access.role}/>;
 }
@@ -351,5 +374,5 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}
-function FleetError({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p><button className="message-action" onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}
+function FleetError({text,onRetry}:{text:string;onRetry?:()=>void}){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>Fleet unavailable</h1><p>{text}</p>{onRetry&&<button className="message-action" onClick={onRetry}>Try again</button>}<button className={onRetry?'admin-text-action':'message-action'} onClick={()=>supabase?.auth.signOut()}>Sign out</button></div></div>}
 function FleetMessage({text}:{text:string}){return <div className="admin-auth"><div className="admin-message" role="status"><ShieldCheck/><h1>FireOps</h1><p>{text}</p></div></div>}
