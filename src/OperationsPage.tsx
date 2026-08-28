@@ -5,7 +5,7 @@ import type {FeatureCollection} from 'geojson';
 import {feature} from 'topojson-client';
 import type {Topology} from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
-import {ArrowDownAZ, ArrowLeft, CalendarDays, ChevronRight, CircleUserRound, Flame, Gauge, MapPin, RefreshCw, Truck, Users, X} from 'lucide-react';
+import {ArrowDownAZ, ArrowLeft, CalendarDays, ChevronRight, CircleUserRound, Flame, Gauge, MapPin, Plus, RefreshCw, Truck, Users, X} from 'lucide-react';
 import {useDialogA11y} from './useDialogA11y';
 
 const NIFC_QUERY='https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query';
@@ -123,7 +123,7 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({assignedIncidentIds=[],resources=[],motiveEnabled=false,onVehicleSelect}:{assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({assignedIncidentIds=[],resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [showAll,setShowAll]=useState(false);
   const [selectedState,setSelectedState]=useState('');
@@ -170,6 +170,7 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
   const markerScale=viewBox[2]/MAP_FRAME[2];
   const latestUpdate=incidents.reduce<number|null>((latest,incident)=>incident.updated&&(!latest||incident.updated>latest)?incident.updated:latest,null);
   const incidentResources=(incidentId:string)=>resources.filter(resource=>resource.assignedFire?.id===incidentId);
+  const assignableForIncident=(incidentId:string)=>assignableVehicles.filter(vehicle=>vehicle.assignedFire?.id!==incidentId);
   const openVehicle=(vehicleId:string)=>{setSelected(null);onVehicleSelect?.(vehicleId)};
   const showFireTip=(incident:NifcIncident)=>{
     const map=mapRef.current;
@@ -219,7 +220,7 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
         {showAll?(selectedState?<><header className="selected-state-heading"><div><button type="button" onClick={()=>{setSelectedState('');setSelected(null)}}><ArrowLeft/> States</button><h2>{US_STATE_NAMES[selectedState]} fires</h2></div><span>{visible.length}</span></header><div className="fire-list">{sortedVisible.map(incident=><FireRow key={incident.id} incident={incident} onSelect={()=>setSelected(incident)}/>)}</div></>:<><header className="state-list-heading"><h2>States</h2><button className={stateSort==='name'?'active':''} type="button" aria-pressed={stateSort==='name'} onClick={()=>setStateSort(sort=>sort==='count'?'name':'count')} title={stateSort==='name'?'Sort by fire count':'Sort states A to Z'}><ArrowDownAZ/> A–Z</button></header><div className="fire-list state-list"><button className="state-row" onClick={()=>{setSelectedState('');setSelected(null)}}><span>All states</span><b>{incidents.length}</b><ChevronRight/></button>{statesByCount.map(state=><button key={state.code} className="state-row" onClick={()=>{setSelectedState(state.code);setSelected(null)}}><span><b>{state.name}</b><small>{state.code}</small></span><strong aria-label={`${state.count} ${state.count===1?'fire':'fires'}`}>{state.count}</strong><ChevronRight/></button>)}</div></>):<><header><h2>Assigned fires</h2><span>{visible.length}</span></header><div className="fire-list assigned-fire-list">{sortedVisible.map(incident=><AssignedFireGroup key={incident.id} incident={incident} resources={incidentResources(incident.id)} motiveEnabled={motiveEnabled} onSelect={()=>setSelected(incident)} onVehicleSelect={onVehicleSelect?openVehicle:undefined}/>)}</div></>}
       </aside>
     </section>
-    {selected&&createPortal(<IncidentDetail incident={selected} resources={incidentResources(selected.id)} motiveEnabled={motiveEnabled} onVehicleSelect={onVehicleSelect?openVehicle:undefined} onClose={()=>setSelected(null)}/>,document.body)}
+    {selected&&createPortal(<IncidentDetail incident={selected} resources={incidentResources(selected.id)} assignable={assignableForIncident(selected.id)} motiveEnabled={motiveEnabled} onAssignVehicle={onAssignVehicle?((vehicleId)=>onAssignVehicle(vehicleId,{id:selected.id,name:selected.name,state:selected.state})):undefined} onVehicleSelect={onVehicleSelect?openVehicle:undefined} onClose={()=>setSelected(null)}/>,document.body)}
   </div>;
 }
 
@@ -240,22 +241,22 @@ function MapState({icon,title,copy,action}:{icon:React.ReactNode;title:string;co
   return <div className="fire-map-state"><span>{icon}</span><b>{title}</b><p>{copy}</p>{action}</div>;
 }
 
-function IncidentDetail({incident,resources,motiveEnabled,onVehicleSelect,onClose}:{incident:NifcIncident;resources:FireResourceVehicle[];motiveEnabled:boolean;onVehicleSelect?:(vehicleId:string)=>void;onClose:()=>void}){
+function IncidentDetail({incident,resources,assignable,motiveEnabled,onVehicleSelect,onAssignVehicle,onClose}:{incident:NifcIncident;resources:FireResourceVehicle[];assignable:FireResourceVehicle[];motiveEnabled:boolean;onVehicleSelect?:(vehicleId:string)=>void;onAssignVehicle?:(vehicleId:string)=>void;onClose:()=>void}){
   const dialog=useDialogA11y(onClose);
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer incident-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}>
     <header><button className="back-mobile" onClick={onClose} aria-label="Back to operations"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{incident.name}</h2><p>{incident.state?`${incident.state} wildfire`:'Wildfire incident'}</p></div><button className="close" onClick={onClose} aria-label="Close incident details"><X/></button></header>
     <div className="incident-summary"><span className="incident-flame"><Flame/></span><div><span>Active wildfire</span><h3>{incident.name}</h3><p><MapPin/>{incident.state?US_STATE_NAMES[incident.state]??incident.state:'Location not reported'}</p></div></div>
     <IncidentLocationMap incident={incident}/>
     <dl className="incident-metrics"><div><dt>Acres</dt><dd>{formatAcres(incident.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(incident.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(incident.personnel)}</dd></div></dl>
-    <AssignedResources resources={resources} motiveEnabled={motiveEnabled} onVehicleSelect={onVehicleSelect}/>
+    <AssignedResources resources={resources} assignable={assignable} motiveEnabled={motiveEnabled} onAssignVehicle={onAssignVehicle} onVehicleSelect={onVehicleSelect}/>
     <div className="detail-section"><h4>Incident information</h4><dl className="details"><DetailLine icon={<CalendarDays/>} label="Discovered" value={formatDate(incident.discovered)}/><DetailLine icon={<RefreshCw/>} label="NIFC updated" value={formatDateTime(incident.updated)}/><DetailLine icon={<Users/>} label="Personnel" value={formatNumber(incident.personnel)}/></dl></div>
     <div className="incident-source"><p>Incident values come from NIFC WFIGS and may change as agencies update reports.</p><a href={NIFC_ITEM} target="_blank" rel="noreferrer">Open NIFC source</a></div>
   </section></div>;
 }
 
-function AssignedResources({resources,motiveEnabled,onVehicleSelect}:{resources:FireResourceVehicle[];motiveEnabled:boolean;onVehicleSelect?:(vehicleId:string)=>void}){
+function AssignedResources({resources,assignable,motiveEnabled,onAssignVehicle,onVehicleSelect}:{resources:FireResourceVehicle[];assignable:FireResourceVehicle[];motiveEnabled:boolean;onAssignVehicle?:(vehicleId:string)=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const crew=[...new Map(resources.flatMap(resource=>resource.assignedCrew?[resource.assignedCrew]:[]).map(member=>[member.id,member])).values()];
-  return <div className="detail-section incident-resources"><div className="incident-resource-heading"><h4>Assigned resources</h4><span>{resources.length} {resources.length===1?'vehicle':'vehicles'} · {crew.length} crew</span></div>{resources.length?<><div className="incident-vehicle-list">{resources.map(resource=><ResourceVehicleRow key={resource.id} resource={resource} motiveEnabled={motiveEnabled} onSelect={onVehicleSelect?()=>onVehicleSelect(resource.id):undefined}/>)}</div>{crew.length>0&&<div className="incident-crew"><b>Crew on incident</b><div>{crew.map(member=><span key={member.id}><CircleUserRound/>{member.name}</span>)}</div></div>}</>:<p className="no-updates">No company vehicles or crew assigned.</p>}</div>;
+  return <div className="detail-section incident-resources"><div className="incident-resource-heading"><h4>Assigned resources</h4><span>{resources.length} {resources.length===1?'vehicle':'vehicles'} · {crew.length} crew</span></div>{resources.length?<><div className="incident-vehicle-list">{resources.map(resource=><ResourceVehicleRow key={resource.id} resource={resource} motiveEnabled={motiveEnabled} onSelect={onVehicleSelect?()=>onVehicleSelect(resource.id):undefined}/>)}</div>{crew.length>0&&<div className="incident-crew"><b>Crew on incident</b><div>{crew.map(member=><span key={member.id}><CircleUserRound/>{member.name}</span>)}</div></div>}</>:<p className="no-updates">No company vehicles or crew assigned.</p>}{onAssignVehicle&&(assignable.length>0)&&<div className="assign-vehicle-section"><div className="incident-resource-heading"><h4>Assign a vehicle</h4><span>{assignable.length} available</span></div><div className="incident-vehicle-list assign-vehicle-list">{assignable.map(vehicle=><button type="button" className="resource-vehicle-row assign-vehicle-row" key={vehicle.id} onClick={()=>onAssignVehicle(vehicle.id)}><span className="resource-vehicle-icon"><Plus/></span><span className="resource-vehicle-copy"><b>{vehicle.unit}</b><small>{vehicle.type} · {vehicle.year} {vehicle.make} {vehicle.model}</small>{vehicle.assignedCrew&&<small><CircleUserRound/> {vehicle.assignedCrew.name}</small>}<small className={vehicle.assignedFire?'assign-current-fire':''}>{vehicle.assignedFire?<><Flame/> Currently on {vehicle.assignedFire.name}</>:<>Ready to assign</>}</small></span><Plus/></button>)}</div></div>}</div>;
 }
 
 function IncidentLocationMap({incident}:{incident:NifcIncident}){
