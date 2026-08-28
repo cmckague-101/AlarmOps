@@ -1,14 +1,15 @@
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
+import OperationsPage from './OperationsPage';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight,
-  CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, MapPin, MessageSquare, Pencil, Phone, Plus,
+  CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Pencil, Phone, Plus,
   Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'operations' | 'settings';
 export type UserRole = 'owner' | 'member';
 type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 type IssueStatus = 'Open' | 'Resolved';
@@ -337,6 +338,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
+        {page === 'operations' && <OperationsPage/>}
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
@@ -359,6 +361,7 @@ function Brand() { return <div className="brand"><picture><img className="brand-
 function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {
   return <aside className="sidebar"><Brand/><nav>
     <NavItem icon={<LayoutDashboard/>} label="Dashboard" active={page==='overview'} onClick={()=>setPage('overview')}/>
+    <NavItem icon={<MapIcon/>} label="Operations" active={page==='operations'} onClick={()=>setPage('operations')}/>
     <NavItem icon={<Truck/>} label="Fleet" active={page==='vehicles'} onClick={()=>setPage('vehicles')}/>
     {user.role==='owner'&&<NavItem icon={<Users/>} label="Crew" active={page==='crew'} onClick={()=>setPage('crew')}/>}
     <NavItem icon={<SettingsIcon/>} label="Settings" active={page==='settings'} onClick={()=>setPage('settings')}/>
@@ -628,4 +631,4 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {const item=(target:Page,label:string,icon:React.ReactNode)=><button className={page===target?'active':''} aria-current={page===target?'page':undefined} onClick={()=>setPage(target)}>{icon}<span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('vehicles','Fleet',<Truck/>)}{user.role==='owner'&&item('crew','Crew',<Users/>)}{item('settings','Settings',<SettingsIcon/>)}</nav>}
+function MobileNav({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {const item=(target:Page,label:string,icon:React.ReactNode)=><button className={page===target?'active':''} aria-current={page===target?'page':undefined} onClick={()=>setPage(target)}>{icon}<span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{user.role==='owner'&&item('crew','Crew',<Users/>)}{item('settings','Settings',<SettingsIcon/>)}</nav>}
