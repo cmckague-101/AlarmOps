@@ -355,7 +355,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   </div>;
 }
 
-function Brand() { return <div className="brand"><img className="brand-mark" src="/fireops-logo.webp" width="320" height="258" alt=""/><b>FIREOPS</b></div> }
+function Brand() { return <div className="brand"><picture><source media="(prefers-color-scheme: dark)" srcSet="/fireops-wordmark.png"/><img className="brand-mark" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
 function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {
   return <aside className="sidebar"><Brand/><nav>
     <NavItem icon={<LayoutDashboard/>} label="Dashboard" active={page==='overview'} onClick={()=>setPage('overview')}/>
