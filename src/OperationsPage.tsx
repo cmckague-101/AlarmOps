@@ -132,6 +132,9 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [request,setRequest]=useState(0);
+  const mapRef=useRef<HTMLDivElement|null>(null);
+  const [hovered,setHovered]=useState<NifcIncident|null>(null);
+  const [tip,setTip]=useState<{x:number;y:number;flipX:boolean;flipY:boolean}|null>(null);
   const assignedSet=useMemo(()=>new Set(assignedIncidentIds),[assignedIncidentIds]);
 
   useEffect(()=>{
@@ -168,13 +171,28 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
   const latestUpdate=incidents.reduce<number|null>((latest,incident)=>incident.updated&&(!latest||incident.updated>latest)?incident.updated:latest,null);
   const incidentResources=(incidentId:string)=>resources.filter(resource=>resource.assignedFire?.id===incidentId);
   const openVehicle=(vehicleId:string)=>{setSelected(null);onVehicleSelect?.(vehicleId)};
+  const showFireTip=(incident:NifcIncident)=>{
+    const map=mapRef.current;
+    const svg=map?.querySelector('svg');
+    if(!map||!svg)return;
+    const point=projection([incident.longitude,incident.latitude]);
+    const ctm=(svg as SVGSVGElement).getScreenCTM();
+    if(!point||!ctm)return;
+    const rect=map.getBoundingClientRect();
+    const client=new DOMPoint(point[0],point[1]).matrixTransform(ctm);
+    const x=client.x-rect.left;
+    const y=client.y-rect.top;
+    setHovered(incident);
+    setTip({x,y,flipX:x>rect.width-210,flipY:y<74});
+  };
+  const hideFireTip=()=>{setHovered(null);setTip(null)};
 
   return <div className="page operations-page">
     <div className="page-heading operations-heading"><div><h1>Operations</h1><p>Active wildfire incidents reported by NIFC.</p></div><label className="fire-scope-toggle"><span>Show all fires</span><input type="checkbox" checked={showAll} onChange={event=>{setShowAll(event.target.checked);setSelectedState('');setSelected(null)}}/><i aria-hidden="true"/></label></div>
     <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
       <div className="fire-map-panel">
         <header><div><b>{showAll?(selectedState?`${US_STATE_NAMES[selectedState]} fires`:'All active fires'):'Assigned fires'}</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
-        <div className="fire-map" aria-label={`Map showing ${visible.length} wildfire incidents`}>
+        <div className="fire-map" ref={mapRef} onMouseLeave={hideFireTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
           <svg viewBox={viewBox.join(' ')} role="img" aria-labelledby="fire-map-title fire-map-desc">
             <title id="fire-map-title">United States active wildfire map</title>
             <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
@@ -185,11 +203,12 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
               const active=selected?.id===incident.id;
               const radius=Math.max(5,Math.min(11,5+Math.log10(Math.max(1,incident.acres??1))*1.5))*markerScale;
               const select=()=>setSelected(incident);
-              return <g key={incident.id} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}}>
+              return <g key={incident.id} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}} onMouseEnter={()=>showFireTip(incident)} onFocus={()=>showFireTip(incident)} onBlur={hideFireTip}>
                 <circle className="fire-marker-hit" cx={point[0]} cy={point[1]} r={Math.max(14*markerScale,radius+5*markerScale)}/><circle className="fire-marker" cx={point[0]} cy={point[1]} r={radius}/>
               </g>;
             })}</g>
           </svg>
+          {hovered&&tip&&<div className={`fire-tooltip${tip.flipX?' flip-x':''}${tip.flipY?' flip-y':''}`} style={{left:tip.x,top:tip.y}} role="tooltip"><b>{hovered.name}</b><dl><div><dt>Acres</dt><dd>{formatAcres(hovered.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(hovered.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(hovered.personnel)}</dd></div></dl></div>}
           {loading&&<MapState icon={<RefreshCw className="spin"/>} title="Loading current fires" copy="Requesting active incident data from NIFC."/>}
           {!loading&&error&&<MapState icon={<Flame/>} title="NIFC data unavailable" copy={error} action={<button className="secondary" onClick={()=>setRequest(value=>value+1)}><RefreshCw/> Try again</button>}/>} 
           {!loading&&!error&&!visible.length&&<MapState icon={<MapPin/>} title={showAll?'No active fires reported':'No fires assigned yet'} copy={showAll?'NIFC is not reporting any active wildfire incidents.':'Assign a vehicle to an active fire from vehicle details. Use Show all fires to review current incidents.'}/>}
@@ -209,7 +228,7 @@ function AssignedFireGroup({incident,resources,motiveEnabled,onSelect,onVehicleS
 }
 
 function ResourceVehicleRow({resource,motiveEnabled,onSelect}:{resource:FireResourceVehicle;motiveEnabled:boolean;onSelect?:()=>void}){
-  const content=<><span className="resource-vehicle-icon"><Truck/></span><span className="resource-vehicle-copy"><b>{resource.unit}</b><small>{resource.type} · {resource.year} {resource.make} {resource.model}{resource.plate?` · ${resource.plate}`:''}</small>{resource.assignedCrew&&<small><CircleUserRound/> {resource.assignedCrew.name}</small>}{resource.motive?<small className="resource-location"><i>Motive</i><MapPin/> {resource.motive.location}<span><Gauge/> {resource.motive.speed}</span><em>{resource.motive.updatedAt}</em></small>:motiveEnabled&&<small className="resource-location unavailable"><MapPin/> Motive location unavailable</small>}</span>{onSelect&&<ChevronRight/>}</>;
+  const content=<><span className="resource-vehicle-icon"><Truck/></span><span className="resource-vehicle-copy"><b>{resource.unit}</b><small>{resource.type} · {resource.year} {resource.make} {resource.model}{resource.plate?` · ${resource.plate}`:''}</small>{resource.assignedCrew&&<small><CircleUserRound/> {resource.assignedCrew.name}</small>}{motiveEnabled&&(resource.motive?<small className="resource-location"><i>Motive</i><MapPin/> {resource.motive.location}<span><Gauge/> {resource.motive.speed}</span><em>{resource.motive.updatedAt}</em></small>:<small className="resource-location unavailable"><MapPin/> Motive location unavailable</small>)}</span>{onSelect&&<ChevronRight/>}</>;
   return onSelect?<button type="button" className="resource-vehicle-row" onClick={onSelect}>{content}</button>:<div className="resource-vehicle-row">{content}</div>;
 }
 
