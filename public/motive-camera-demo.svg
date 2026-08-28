@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Motive dash camera capture</title>
+  <desc id="desc">View through a vehicle windshield toward a forest access road at dusk</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#839b9b"/><stop offset="1" stop-color="#d9ba8e"/></linearGradient>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#766b58"/><stop offset="1" stop-color="#302f2b"/></linearGradient>
+    <linearGradient id="dash" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#242a28"/><stop offset="1" stop-color="#111514"/></linearGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="4"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <path d="M0 420 145 300l90 120 95-180 100 180 130-250 150 250 100-210 150 210 125-265 175 265 100-170 160 170v210H0Z" fill="#273a30"/>
+  <path d="M0 465 120 365l85 100 110-145 130 145 115-130 120 130 100-105 115 105 120-145 125 145 110-115 140 115v175H0Z" fill="#1b2b23" opacity=".88"/>
+  <path d="M610 900 733 515h130l157 385Z" fill="url(#road)"/>
+  <path d="m771 900 22-385h16l22 385Z" fill="#c7b287" opacity=".72"/>
+  <path d="M0 568c240-36 414-27 618-8l-34 340H0Zm1600 0c-232-36-406-27-692-8l64 340h628Z" fill="#374334"/>
+  <g fill="#101714" opacity=".9"><path d="m65 580 70-260 62 260Z"/><path d="m194 585 62-230 55 230Z"/><path d="m1290 580 68-250 62 250Z"/><path d="m1400 586 62-224 56 224Z"/></g>
+  <ellipse cx="805" cy="532" rx="54" ry="10" fill="#151a18" opacity=".5" filter="url(#soft)"/>
+  <path d="M0 0h1600v58H0Z" fill="#101513" opacity=".84"/>
+  <path d="M0 900V705c280 20 514 45 785 56 307-13 554-35 815-56v195Z" fill="url(#dash)"/>
+  <path d="M0 0h75L0 380Zm1600 0h-75l75 380Z" fill="#101513" opacity=".82"/>
+  <g font-family="Arial, sans-serif" fill="#fff"><text x="40" y="39" font-size="20" font-weight="700" letter-spacing="2">MOTIVE CAMERA • DEMO CAPTURE</text><text x="1560" y="39" text-anchor="end" font-size="18">ENGINE 701</text></g>
+  <circle cx="43" cy="93" r="8" fill="#ef6548"/><text x="62" y="100" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#fff">CAM 1 • FORWARD</text>
+</svg>

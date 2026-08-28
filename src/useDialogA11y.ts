@@ -23,7 +23,8 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(onClose: () =
     const background = Array.from(document.querySelectorAll<HTMLElement>(
       '.app-shell > .sidebar, .app-shell > .app-main, .admin-page > header, .admin-page > main'
     ));
-    background.forEach(element => element.setAttribute('inert', ''));
+    const newlyInert = background.filter(element => !element.hasAttribute('inert'));
+    newlyInert.forEach(element => element.setAttribute('inert', ''));
 
     const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
     window.requestAnimationFrame(() => (
@@ -60,7 +61,7 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(onClose: () =
 
     return () => {
       dialog.removeEventListener('keydown', handleKeyDown);
-      background.forEach(element => element.removeAttribute('inert'));
+      newlyInert.forEach(element => element.removeAttribute('inert'));
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
