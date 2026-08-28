@@ -4,7 +4,7 @@ import { useDialogA11y } from './useDialogA11y';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight,
   CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, MapPin, MessageSquare, Pencil, Phone, Plus,
-  Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
@@ -330,7 +330,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser}/>
     <div className="app-main">
-      <Topbar user={currentUser} saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
@@ -355,7 +355,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   </div>;
 }
 
-function Brand() { return <div className="brand"><picture><source media="(prefers-color-scheme: dark)" srcSet="/fireops-wordmark.png"/><img className="brand-mark" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
+function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
 function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {
   return <aside className="sidebar"><Brand/><nav>
     <NavItem icon={<LayoutDashboard/>} label="Dashboard" active={page==='overview'} onClick={()=>setPage('overview')}/>
@@ -367,9 +367,18 @@ function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:Fire
 function NavItem({icon,label,active,onClick}:{icon:React.ReactNode;label:string;active:boolean;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span></button>
 }
-function Topbar({user,saveState,onSignOut,onSwitchCompany}:{user:FireOpsUser;saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
+function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
+  const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:<Check/>}<span>{saveLabel}</span></div>}<div className="top-user-name">{user.name}</div>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+  const toggleTheme=()=>{
+    const theme=darkMode?'light':'dark';
+    document.documentElement.dataset.theme=theme;
+    document.documentElement.style.colorScheme=theme;
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#0F1317':'#f7f7f4');
+    try{localStorage.setItem('fireops-theme',theme)}catch{/* Storage may be unavailable in private browsing. */}
+    setDarkMode(theme==='dark');
+  };
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
@@ -427,7 +436,7 @@ function Dashboard({vehicles,issues,crew,activities,user,motiveMock,onSelectVehi
   const outOfServiceCount=vehicles.filter(vehicle=>vehicle.status==='Out of service').length;
   const openActivity=(activity:Activity)=>{if(activity.targetType==='vehicle'){const vehicle=vehicles.find(item=>item.id===activity.targetId);if(vehicle)onSelectVehicle(vehicle)}if(activity.targetType==='issue'){const issue=issues.find(item=>item.id===activity.targetId);if(issue)onSelectIssue(issue)}if(activity.targetType==='crew'){const member=crew.find(item=>item.id===activity.targetId);if(member)onSelectCrew(member)}};
   const formatDate = (date:string) => new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div></div>
+  return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
     {isOwner&&<section className="readiness-strip" aria-labelledby="fleet-readiness-title"><div className="readiness-summary"><span className={`readiness-icon ${actionGroups.length?'attention':'ready'}`}>{actionGroups.length?<AlertTriangle/>:<ShieldCheck/>}</span><h2 id="fleet-readiness-title">Fleet readiness</h2></div><dl className="readiness-counts"><div><dt>Ready</dt><dd>{readyCount}</dd></div><div><dt>Assigned</dt><dd>{assignedCount}</dd></div><div><dt>Maintenance</dt><dd>{maintenanceCount}</dd></div><div><dt>Out of service</dt><dd>{outOfServiceCount}</dd></div></dl></section>}
     {(!isOwner||assignedToMe.length>0)&&<AssignedToMe vehicles={assignedToMe} issues={issues} motiveMock={motiveMock} onSelectVehicle={onSelectVehicle}/>}
     {!isOwner&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" emptyMessage="Issues you report will appear here." id="my-issues"/>}
