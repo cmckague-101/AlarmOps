@@ -28,8 +28,8 @@ Users work from offices and field environments. Workflows include vehicle readin
 - Crew members can review assigned resources and report issues.
 - Operations is available to owners and crew.
 - Operations uses current NIFC incident data. Missing incident values display as "Not reported."
-- Operations defaults to incidents with company assignments and can show all active incidents.
-- Assigning company vehicles and personnel to incidents is planned but not part of the first Operations release.
+- Operations defaults to incidents with company vehicle assignments and can show all active incidents.
+- Owners assign crewed vehicles to active NIFC fires from vehicle details. Fire assignments appear in Fleet and Operations.
 - Supabase provides authentication and company data. Demo mode uses browser storage.
 
 ## Brand commitments
