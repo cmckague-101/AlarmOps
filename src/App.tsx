@@ -175,7 +175,10 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [storageError, setStorageError] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveAttempt, setSaveAttempt] = useState(0);
+  const [localRevision, setLocalRevision] = useState(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestSnapshot = useRef<FleetSnapshot>({vehicles,issues,crew,activities});
+  latestSnapshot.current={vehicles,issues,crew,activities};
   const lastRemoteSequence = useRef(0);
   const canManageFleet = currentUser.role === 'owner';
   const initialVisibleCrewCount = useRef(crew.filter(member=>member.role==='member').length).current;
@@ -202,27 +205,34 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   },[remoteChanges]);
   useEffect(()=>{if(!canInviteCrew)setInviteOpen(false)},[canInviteCrew]);
   useEffect(() => {
-    const snapshot={vehicles,issues,crew,activities};
+    // Every local fleet mutation records an activity and increments localRevision.
+    // Realtime state updates intentionally do neither, so they must never echo
+    // back through snapshot persistence and race the originating client.
+    if(localRevision===0&&saveAttempt===0)return;
     let active=true;
     const timer=window.setTimeout(async()=>{
       setSaveState('saving');
       if (onDataChange) {
         try {
-          const saveRequest=saveQueue.current.then(()=>onDataChange(snapshot));
+          const saveRequest=saveQueue.current.then(()=>onDataChange(latestSnapshot.current));
           saveQueue.current=saveRequest.catch(()=>undefined);
           await saveRequest;
           if(active){setStorageError('');setSaveState('saved')}
         } catch (error) {
-          if(active){setStorageError(error instanceof Error&&error.message.startsWith('Record changed by another user')?error.message:'Check your connection or remove large uploads.');setSaveState('error')}
+          if(active){setStorageError(error instanceof Error&&error.message.startsWith('Record changed by another user')?`${error.message} Refresh before making more changes.`:'Check your connection or remove large uploads.');setSaveState('error')}
         }
       } else {
-        const saved=[saveLocal('fireops-vehicles',vehicles),saveLocal('fireops-issues',issues),saveLocal('fireops-crew',crew),saveLocal('fireops-activities',activities)].every(Boolean);
+        const snapshot=latestSnapshot.current;
+        const saved=[saveLocal('fireops-vehicles',snapshot.vehicles),saveLocal('fireops-issues',snapshot.issues),saveLocal('fireops-crew',snapshot.crew),saveLocal('fireops-activities',snapshot.activities)].every(Boolean);
         if(active){setStorageError(saved?'':'Browser storage may be full.');setSaveState(saved?'saved':'error')}
       }
     },300);
     return()=>{active=false;window.clearTimeout(timer)};
-  },[vehicles,issues,crew,activities,onDataChange,saveAttempt]);
-  const logActivity = (activity: Omit<Activity,'id'|'createdAt'|'createdBy'|'createdById'>) => setActivities(items => [{...activity,id:crypto.randomUUID(),createdBy:currentUser.name,createdById:currentUser.id,createdAt:new Date().toISOString()},...items]);
+  },[localRevision,onDataChange,saveAttempt]);
+  const logActivity = (activity: Omit<Activity,'id'|'createdAt'|'createdBy'|'createdById'>) => {
+    setActivities(items => [{...activity,id:crypto.randomUUID(),createdBy:currentUser.name,createdById:currentUser.id,createdAt:new Date().toISOString()},...items]);
+    setLocalRevision(revision=>revision+1);
+  };
   const showNotice = (message:string,undo:UndoAction|null=null) => {
     setNotice(message);setUndoAction(undo);
     window.setTimeout(()=>{setNotice(current=>current===message?'':current);setUndoAction(current=>current===undo?null:current)},undo?7000:3200);
