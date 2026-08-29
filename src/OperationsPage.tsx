@@ -194,8 +194,7 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
       <div className="fire-map-panel">
         <header><div><b>{showAll?(selectedState?`${US_STATE_NAMES[selectedState]} fires`:'All active fires'):'Assigned fires'}</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
         <div className="fire-map" ref={mapRef} onMouseLeave={hideFireTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
-          <svg viewBox={viewBox.join(' ')} role="img" aria-labelledby="fire-map-title fire-map-desc">
-            <title id="fire-map-title">United States active wildfire map</title>
+          <svg viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc">
             <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
             <g className="us-states">{states.features.map((state,index)=><path key={String(state.id??index)} d={path(state)??undefined}/>)}</g>
             <g className="fire-markers">{visible.map(incident=>{
