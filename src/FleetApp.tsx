@@ -57,6 +57,21 @@ export function stripSignedFileUrls(snapshot:FleetSnapshot){
   return next;
 }
 
+function canonicalJsonValue(value:unknown):unknown{
+  if(Array.isArray(value))return value.map(canonicalJsonValue);
+  if(value&&typeof value==='object')return Object.fromEntries(
+    Object.entries(value as Record<string,unknown>)
+      .filter(([,entry])=>entry!==undefined)
+      .sort(([left],[right])=>left.localeCompare(right))
+      .map(([key,entry])=>[key,canonicalJsonValue(entry)])
+  );
+  return value;
+}
+
+export function fleetRecordsEqual(left:unknown,right:unknown){
+  return JSON.stringify(canonicalJsonValue(left))===JSON.stringify(canonicalJsonValue(right));
+}
+
 export function snapshotFilePaths(snapshot:FleetSnapshot){
   const paths=new Set<string>();
   snapshot.vehicles.forEach(vehicle=>{
@@ -329,7 +344,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       const after=new Map((next[collection] as {id:string}[]).map(record=>[record.id,record]));
       after.forEach((record,id)=>{
         const previous=before.get(id);
-        if(previous&&JSON.stringify(previous)===JSON.stringify(record))return;
+        if(previous&&fleetRecordsEqual(previous,record))return;
         const expectedVersion=versions.current[collection].get(id);
         changes.push({collection,event:expectedVersion===undefined?'insert':'update',recordId:id,data:record,...(expectedVersion===undefined?{}:{expectedVersion})});
         records.set(`${collection}:${id}`,{collection,record});

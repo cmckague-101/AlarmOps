@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {FleetSnapshot, VehicleFile} from './App';
-import {accountAccessErrorMessage, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
 
@@ -27,6 +27,19 @@ describe('account access errors',()=>{
     expect(accountAccessErrorMessage({message:'Failed to fetch'},{code:'503'})).toBe(
       'Account access could not be verified. Check your connection and try again.'
     );
+  });
+});
+
+describe('fleet record comparison',()=>{
+  it('ignores JSONB object key ordering and properties omitted by JSON transport',()=>{
+    expect(fleetRecordsEqual(
+      {id:'vehicle-1',unit:'Engine 1',assignedFire:{name:'Mesa',id:'fire-1'},photo:undefined},
+      {unit:'Engine 1',assignedFire:{id:'fire-1',name:'Mesa'},id:'vehicle-1'}
+    )).toBe(true);
+  });
+
+  it('detects persisted value changes',()=>{
+    expect(fleetRecordsEqual({id:'vehicle-1',status:'Ready'},{status:'Assigned',id:'vehicle-1'})).toBe(false);
   });
 });
 
