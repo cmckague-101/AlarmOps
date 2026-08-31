@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {dashboardNotifications, isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
-import {isTrainingUnread, type Training} from './TrainingPage';
+import {isTrainingUnread, trainingStage, type Training} from './TrainingPage';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
 
@@ -115,6 +115,14 @@ describe('training unread rules',()=>{
     expect(isTrainingUnread(training,crew)).toBe(true);
     expect(isTrainingUnread({...training,viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(false);
     expect(isTrainingUnread(training,{...crew,role:'owner'})).toBe(false);
+  });
+
+  it('moves courses to expired next day and removes them one month later',()=>{
+    const dated={...training,date:new Date(2025,8,10,16).toISOString()};
+    expect(trainingStage(dated,new Date(2025,8,10,23,59))).toBe('scheduled');
+    expect(trainingStage(dated,new Date(2025,8,11))).toBe('expired');
+    expect(trainingStage(dated,new Date(2025,9,10,23,59))).toBe('expired');
+    expect(trainingStage(dated,new Date(2025,9,11))).toBe('removed');
   });
 });
 

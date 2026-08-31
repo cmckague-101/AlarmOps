@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {fetchIncidents, type NifcIncident} from './OperationsPage';
-import TrainingPage, {isTrainingUnread, type Training, type TrainingSignup} from './TrainingPage';
+import TrainingPage, {isTrainingUnread, trainingStage, type Training, type TrainingSignup} from './TrainingPage';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Pencil, Phone, Plus,
@@ -196,7 +196,7 @@ export function dashboardNotifications(threads:CommunicationThread[],documents:C
     return latest?[{id:`communication-${thread.id}`,source:'communications' as const,title:thread.subject,detail:latest.detail,createdAt:latest.createdAt,unread:isThreadUnread(thread,user)}]:[];
   });
   const documentItems=documents.map(document=>({id:`document-${document.id}`,source:'documents' as const,title:document.name,detail:'Company document added or updated',createdAt:document.updatedAt,unread:isDocumentUnread(document,user)}));
-  const trainingItems=trainings.map(training=>({id:`training-${training.id}`,source:'training' as const,title:training.courseTitle,detail:`${training.courseCode} · ${new Date(training.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,createdAt:training.createdAt,unread:isTrainingUnread(training,user)}));
+  const trainingItems=trainings.filter(training=>trainingStage(training)==='scheduled').map(training=>({id:`training-${training.id}`,source:'training' as const,title:training.courseTitle,detail:`${training.courseCode} · ${new Date(training.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,createdAt:training.createdAt,unread:isTrainingUnread(training,user)}));
   return [...communicationItems,...documentItems,...trainingItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
 }
 function loadIssues() {
@@ -230,7 +230,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const unreadDocumentCount=documents.filter(document=>isDocumentUnread(document,currentUser)).length;
   const [trainings,setTrainings]=useState<Training[]>(()=>trainingData??loadTrainings());
   useEffect(()=>{if(trainingData)setTrainings(trainingData)},[trainingData]);
-  const unreadTrainingCount=trainings.filter(training=>isTrainingUnread(training,currentUser)).length;
+  const unreadTrainingCount=trainings.filter(training=>trainingStage(training)==='scheduled'&&isTrainingUnread(training,currentUser)).length;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
