@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {isThreadUnread, navigationLayout, type CommunicationThread, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
+import {isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
@@ -20,13 +20,13 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows every owner section directly in desktop sidebar',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','settings']);
-    expect(navigationLayout('member').mobileOverflow).toEqual(['settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','settings']);
+    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','settings']);
   });
 });
 
@@ -81,6 +81,21 @@ describe('communication unread rules',()=>{
     const reply={id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'};
     expect(isThreadUnread(thread({createdById:user.id,createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[reply]}),user)).toBe(true);
     expect(isThreadUnread(thread({createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[{...reply,createdById:user.id,createdAt:'2025-08-28T10:02:00Z'},reply]}),user)).toBe(true);
+  });
+});
+
+describe('document unread rules',()=>{
+  const document:CompanyDocument={id:'document-1',name:'Employee handbook',file:storedFile('company/owner/handbook.pdf'),createdAt:'2025-08-30T10:00:00Z',updatedAt:'2025-08-30T10:00:00Z'};
+
+  it('notifies crew until latest document version is viewed',()=>{
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    expect(isDocumentUnread(document,crew)).toBe(true);
+    expect(isDocumentUnread({...document,viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(false);
+    expect(isDocumentUnread({...document,updatedAt:'2025-08-30T10:02:00Z',viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(true);
+  });
+
+  it('does not notify owners',()=>{
+    expect(isDocumentUnread(document,{id:'owner-1',name:'Owner',role:'owner'})).toBe(false);
   });
 });
 

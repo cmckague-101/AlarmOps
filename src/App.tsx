@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'more' | 'settings';
 type NavigablePage = Exclude<Page,'more'>;
 export type UserRole = 'owner' | 'member';
 
@@ -19,9 +19,10 @@ const navigationMeta = {
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
+  documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
@@ -61,6 +62,7 @@ export type Activity = {
   id: string; action: string; detail: string; createdBy: string; createdById?: string; createdAt: string;
   targetType?: 'vehicle' | 'issue' | 'crew'; targetId?: string; tone?: 'urgent' | 'complete';
 };
+export type CompanyDocument = {id:string;name:string;file:VehicleFile;createdAt:string;updatedAt:string;viewedAt?:string};
 export type CommunicationReply = {id:string;body:string;createdBy:string;createdById:string;createdAt:string};
 export type CommunicationThread = {
   id:string;subject:string;description:string;createdBy:string;createdById:string;createdByRole:UserRole;createdAt:string;
@@ -168,6 +170,13 @@ function loadCommunicationThreads() {
   try {const stored=localStorage.getItem('fireops-communication-threads');return stored?JSON.parse(stored) as CommunicationThread[]:[]}
   catch{return []}
 }
+function loadCompanyDocuments() {
+  try {const stored=localStorage.getItem('fireops-company-documents');return stored?JSON.parse(stored) as CompanyDocument[]:[]}
+  catch{return []}
+}
+export function isDocumentUnread(document:CompanyDocument,user:FireOpsUser){
+  return user.role==='member'&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
+}
 function loadIssues() {
   try {
     const stored = localStorage.getItem('fireops-issues');
@@ -180,7 +189,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
   const currentUser = user;
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
@@ -194,6 +203,9 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??loadCommunicationThreads());
   useEffect(()=>{if(communicationThreads)setThreads(communicationThreads)},[communicationThreads]);
   const unreadThreadCount=threads.filter(thread=>isThreadUnread(thread,currentUser)).length;
+  const [documents,setDocuments]=useState<CompanyDocument[]>(()=>companyDocuments??loadCompanyDocuments());
+  useEffect(()=>{if(companyDocuments)setDocuments(companyDocuments)},[companyDocuments]);
+  const unreadDocumentCount=documents.filter(document=>isDocumentUnread(document,currentUser)).length;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
@@ -206,6 +218,8 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [selectedCrew, setSelectedCrew] = useState<CrewMember | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<Vehicle | null>(null);
   const [crewDeleteCandidate, setCrewDeleteCandidate] = useState<CrewMember | null>(null);
+  const [documentForm,setDocumentForm]=useState<CompanyDocument|null|undefined>(undefined);
+  const [documentDeleteCandidate,setDocumentDeleteCandidate]=useState<CompanyDocument|null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
   const [crewDeleteError, setCrewDeleteError] = useState('');
   const [notice, setNotice] = useState('');
@@ -403,9 +417,32 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     const seenAt=onMarkThreadSeen?await onMarkThreadSeen(threadId):new Date().toISOString();
     setThreads(items=>{const next=items.map(thread=>thread.id===threadId?{...thread,seenAt}:thread);if(!onMarkThreadSeen)saveLocal('fireops-communication-threads',next);return next});
   };
+  const saveDocument=async(name:string,file?:VehicleFile)=>{
+    const editing=documentForm??undefined;
+    if(!editing&&!file)throw new Error('Choose file to upload.');
+    const saved=editing
+      ? onUpdateDocument?await onUpdateDocument(editing,name,file):{...editing,name,file:file??editing.file,updatedAt:new Date().toISOString()}
+      : onCreateDocument?await onCreateDocument(name,file!):{id:crypto.randomUUID(),name,file:file!,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    setDocuments(items=>{const next=[saved,...items.filter(item=>item.id!==saved.id)];if(!onCreateDocument&&!onUpdateDocument)saveLocal('fireops-company-documents',next);return next});
+    if(file)onCommitFiles?.([file]);
+    setDocumentForm(undefined);showNotice(editing?'Document updated':'Document uploaded');
+  };
+  const deleteDocument=async(document:CompanyDocument)=>{
+    if(onDeleteDocument)await onDeleteDocument(document);
+    setDocuments(items=>{const next=items.filter(item=>item.id!==document.id);if(!onDeleteDocument)saveLocal('fireops-company-documents',next);return next});
+    setDocumentDeleteCandidate(null);showNotice('Document deleted');
+  };
+  const viewDocument=(document:CompanyDocument)=>{
+    window.open(document.file.dataUrl,'_blank','noopener,noreferrer');
+    if(!isDocumentUnread(document,currentUser))return;
+    const fallback=new Date().toISOString();
+    const applyViewed=(viewedAt:string|undefined)=>setDocuments(items=>{const next=items.map(item=>item.id===document.id?{...item,viewedAt}:item);if(!onMarkDocumentViewed)saveLocal('fireops-company-documents',next);return next});
+    applyViewed(fallback);
+    void (onMarkDocumentViewed?.(document.id)??Promise.resolve(fallback)).then(applyViewed).catch(()=>applyViewed(document.viewedAt));
+  };
 
   return <div className="app-shell">
-    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount}/>
+    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount}/>
     <div className="app-main">
       <Topbar saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
@@ -415,12 +452,13 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
+        {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
-        {page === 'more' && <MorePage user={currentUser} setPage={setPage}/>}
+        {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} setPage={setPage}/>}
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
-      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount}/>
+      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm vehicle={editing} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
@@ -428,6 +466,8 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     {inviteOpen && canInviteCrew && <InviteCrewForm existing={crew} companyName={company.name} onClose={() => setInviteOpen(false)} onSave={inviteCrew}/>}
     {selected && <VehicleDetail vehicle={selected} issues={visibleIssues.filter(issue => issue.vehicleId === selected.id)} crew={crew} user={currentUser} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onClose={() => setSelected(null)} onEdit={() => {setEditing(selected);setSelected(null)}} onDelete={() => {setDeleteCandidate(selected);setSelected(null)}} onNewIssue={() => {setIssueVehicleId(selected.id);setSelected(null);setIssueFormOpen(true)}} onIssue={issue => {setSelected(null);setSelectedIssue(issue)}} onStatus={s => updateStatus(selected.id, s)} onAssignee={memberId => updateAssignment(selected.id,memberId||undefined)} onFire={fire=>updateFireAssignment(selected.id,fire)} onAssign={() => assignToMe(selected.id)}/>}
     {deleteCandidate && canManageFleet && <DeleteVehicleDialog vehicle={deleteCandidate} issueCount={issues.filter(issue=>issue.vehicleId===deleteCandidate.id).length} onCancel={() => {setSelected(deleteCandidate);setDeleteCandidate(null)}} onConfirm={() => deleteVehicle(deleteCandidate)}/>}
+    {documentForm!==undefined&&canManageFleet&&<DocumentForm document={documentForm??undefined} uploadFile={uploadFile} onDiscardFiles={onDiscardFiles} onClose={()=>setDocumentForm(undefined)} onSave={saveDocument}/>}
+    {documentDeleteCandidate&&canManageFleet&&<DeleteDocumentDialog document={documentDeleteCandidate} onCancel={()=>setDocumentDeleteCandidate(null)} onConfirm={()=>deleteDocument(documentDeleteCandidate)}/>}
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
     {selectedIssue && <IssueDetail issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
     {selectedCrew && canManageFleet && <CrewDetail member={selectedCrew} vehicles={vehicles} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setSelectedCrew(null)} onSave={updateCrew} onAssign={vehicleId=>updateAssignment(vehicleId,selectedCrew.id)} onDelete={selectedCrew.role==='owner'||selectedCrew.id===currentUser.id?undefined:()=>{setCrewDeleteError('');setCrewDeleteCandidate(selectedCrew);setSelectedCrew(null)}}/>}
@@ -436,13 +476,13 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
 }
 
 function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
-function Sidebar({page,setPage,user,unreadCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number}) {
+function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number}) {
   return <aside className="sidebar"><Brand/><nav>
-    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={target==='communications'?unreadCount:0} onClick={()=>setPage(target)}/>})}
+    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
   </nav></aside>
 }
 function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
-  return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span>{notificationCount>0&&<span className="sidebar-nav-badge" aria-label={`${notificationCount} unread ${notificationCount===1?'thread':'threads'}`}>{notificationCount>99?'99+':notificationCount}</span>}</button>
+  return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span>{notificationCount>0&&<span className="sidebar-nav-badge" aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>}</button>
 }
 function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
   const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
@@ -458,9 +498,9 @@ function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSig
   return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
-function MorePage({user,setPage}:{user:FireOpsUser;setPage:(page:Page)=>void}) {
+function MorePage({user,unreadDocumentCount,setPage}:{user:FireOpsUser;unreadDocumentCount:number;setPage:(page:Page)=>void}) {
   const overflow=navigationLayout(user.role).mobileOverflow;
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{target==='documents'&&unreadDocumentCount>0&&<i className="more-notification">{unreadDocumentCount} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
@@ -573,6 +613,33 @@ function ThreadDetail({thread,user,onClose,onReply}:{thread:CommunicationThread;
 }
 
 function formatCommunicationDate(date:string){return new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}
+
+function DocumentsPage({documents,user,error,onAdd,onEdit,onDelete,onView}:{documents:CompanyDocument[];user:FireOpsUser;error?:string;onAdd:()=>void;onEdit:(document:CompanyDocument)=>void;onDelete:(document:CompanyDocument)=>void;onView:(document:CompanyDocument)=>void}) {
+  const canManage=user.role==='owner';
+  const ordered=[...documents].sort((left,right)=>Date.parse(right.updatedAt)-Date.parse(left.updatedAt));
+  return <div className="page documents-page"><div className="page-heading documents-heading"><div><h1>Documents</h1><p>Company files available to every crew member.</p></div>{canManage&&<button className="primary" onClick={onAdd}><Upload/> Upload document</button>}</div>
+    {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
+    <section className="documents-panel" aria-labelledby="company-documents-heading"><header><div><h2 id="company-documents-heading">Company documents</h2><p>{documents.length} {documents.length===1?'document':'documents'}</p></div></header><div className="company-document-list">{ordered.map(document=>{const unread=isDocumentUnread(document,user);return <article className={`company-document-row ${unread?'unread':''}`} key={document.id}><button className="company-document-open" onClick={()=>onView(document)} aria-label={`Open ${document.name}`}><span className="company-document-icon"><FileText/></span><span className="company-document-copy"><span><b>{document.name}</b>{unread&&<i>New</i>}</span><small>{document.file.name}</small><em>Updated {new Date(document.updatedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</em></span><ExternalLink/></button>{canManage&&<span className="company-document-actions"><button onClick={()=>onEdit(document)} aria-label={`Edit ${document.name}`}><Pencil/></button><button className="delete" onClick={()=>onDelete(document)} aria-label={`Delete ${document.name}`}><Trash2/></button></span>}</article>})}{!documents.length&&<div className="empty documents-empty"><FileText/><h3>No company documents</h3><p>{canManage?'Upload first document for crew access.':'Company owner has not uploaded any documents yet.'}</p>{canManage&&<button className="primary" onClick={onAdd}><Upload/> Upload document</button>}</div>}</div></section>
+  </div>;
+}
+
+function DocumentForm({document,uploadFile,onDiscardFiles,onClose,onSave}:{document?:CompanyDocument;uploadFile?:(file:File)=>Promise<VehicleFile>;onDiscardFiles?:()=>Promise<void>|void;onClose:()=>void;onSave:(name:string,file?:VehicleFile)=>Promise<void>}) {
+  const [name,setName]=useState(document?.name??'');
+  const [file,setFile]=useState<VehicleFile>();
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const formRef=useRef<HTMLFormElement>(null);
+  const cancel=()=>{void onDiscardFiles?.();onClose()};
+  const dialog=useDialogA11y(()=>{if(!busy)cancel()});
+  const submit=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!name.trim()||(!document&&!file)){setError(!name.trim()?'Document name is required.':'Choose file to upload.');return}setBusy(true);setError('');try{await onSave(name.trim(),file)}catch(saveError){setError(saveError instanceof Error?saveError.message:'Document could not be saved. Check your connection and try again.');setBusy(false)}};
+  return createPortal(<div className="overlay"><section ref={dialog.ref} className="drawer form-drawer document-form" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} aria-busy={busy} tabIndex={-1}><header><button className="back-mobile" disabled={busy} onClick={cancel}><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{document?'Edit document':'Upload document'}</h2><p>{document?'Change document name or replace file.':'Name document, then choose file.'}</p></div><button className="close" disabled={busy} onClick={cancel} aria-label="Close document form"><X/></button></header><form ref={formRef} onSubmit={submit}><fieldset><div className="form-grid"><Field label="Document name" required wide><input maxLength={160} value={name} disabled={busy} onChange={event=>{setName(event.target.value);setError('')}} placeholder="e.g. Employee handbook" autoFocus/></Field><div className="wide"><FileUpload label={document?'Replace file (optional)':'Document file'} accept="image/*,.pdf,application/pdf" file={file} uploadFile={uploadFile} onChange={setFile}/></div></div>{document&&!file&&<div className="document-current-file"><FileText/><span><b>Current file</b><small>{document.file.name}</small></span></div>}{error&&<div className="form-submit-error" role="alert">{error}</div>}</fieldset><footer><button type="button" className="secondary" disabled={busy} onClick={cancel}>Cancel</button><button className="primary" disabled={busy||!name.trim()||(!document&&!file)}>{busy?'Saving...':document?'Save changes':'Upload document'}</button></footer></form></section></div>,window.document.body);
+}
+
+function DeleteDocumentDialog({document,onCancel,onConfirm}:{document:CompanyDocument;onCancel:()=>void;onConfirm:()=>Promise<void>}) {
+  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const dialog=useDialogA11y(()=>{if(!busy)onCancel()});
+  const remove=async()=>{setBusy(true);setError('');try{await onConfirm()}catch(deleteError){setError(deleteError instanceof Error?deleteError.message:'Document could not be deleted. Check your connection and try again.');setBusy(false)}};
+  return <div className="overlay confirm-overlay"><section ref={dialog.ref} className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby={dialog.titleId} aria-describedby={`${dialog.titleId}-description`} aria-busy={busy} tabIndex={-1}><span className="confirm-icon"><Trash2/></span><div><h2 id={dialog.titleId}>Delete {document.name}?</h2><p id={`${dialog.titleId}-description`}>This permanently deletes document for every crew member. This action cannot be undone.</p>{error&&<div className="confirm-error" role="alert">{error}</div>}</div><footer><button className="secondary" disabled={busy} onClick={onCancel}>Cancel</button><button className="danger-button" disabled={busy} onClick={()=>void remove()}><Trash2/> {busy?'Deleting...':'Delete document'}</button></footer></section></div>;
+}
 
 function SettingsPage({company,owner,invitedCrewCount,canManage,motiveConnection,onSaveMotive,onDisconnectMotive}:{company:CompanyInfo;owner:string;invitedCrewCount:number;canManage:boolean;motiveConnection?:MotiveConnection;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>}) {
   const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();
@@ -789,8 +856,9 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage,user,unreadCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number}) {
+function MobileNav({page,setPage,user,unreadCount,unreadDocumentCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number}) {
   const {mobilePrimary,mobileOverflow}=navigationLayout(user.role);
-  const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} unread ${badge===1?'thread':'threads'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
-  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,target==='communications'?'Comms':label,<Icon/>,page===target,target==='communications'?unreadCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page))}</nav>;
+  const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} new ${badge===1?'item':'items'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
+  const overflowBadge=mobileOverflow.includes('documents')?unreadDocumentCount:0;
+  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,target==='communications'?'Comms':label,<Icon/>,page===target,target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
 }
