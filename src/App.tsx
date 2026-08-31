@@ -5,11 +5,11 @@ import OperationsPage, {fetchIncidents, type NifcIncident} from './OperationsPag
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame,
   CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Pencil, Phone, Plus,
-  Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'operations' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'operations' | 'more' | 'settings';
 export type UserRole = 'owner' | 'member';
 type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 type IssueStatus = 'Open' | 'Resolved';
@@ -353,7 +353,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser}/>
     <div className="app-main">
-      <Topbar saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar page={page} setPage={setPage} saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
@@ -361,6 +361,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
+        {page === 'more' && <MorePage user={currentUser} setPage={setPage}/>}
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
@@ -386,13 +387,12 @@ function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:Fire
     <NavItem icon={<MapIcon/>} label="Operations" active={page==='operations'} onClick={()=>setPage('operations')}/>
     <NavItem icon={<Truck/>} label="Fleet" active={page==='vehicles'} onClick={()=>setPage('vehicles')}/>
     {user.role==='owner'&&<NavItem icon={<Users/>} label="Crew" active={page==='crew'} onClick={()=>setPage('crew')}/>}
-    <NavItem icon={<SettingsIcon/>} label="Settings" active={page==='settings'} onClick={()=>setPage('settings')}/>
   </nav></aside>
 }
 function NavItem({icon,label,active,onClick}:{icon:React.ReactNode;label:string;active:boolean;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span></button>
 }
-function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
+function Topbar({page,setPage,saveState,onSignOut,onSwitchCompany}:{page:Page;setPage:(page:Page)=>void;saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
   const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
   const toggleTheme=()=>{
@@ -403,7 +403,11 @@ function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSig
     try{localStorage.setItem('fireops-theme',theme)}catch{/* Storage may be unavailable in private browsing. */}
     setDarkMode(theme==='dark');
   };
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}<button className={`topbar-settings ${page==='settings'?'active':''}`} type="button" aria-current={page==='settings'?'page':undefined} onClick={()=>setPage('settings')}><SettingsIcon/><span>Settings</span></button></div></header>
+}
+
+function MorePage({user,setPage}:{user:FireOpsUser;setPage:(page:Page)=>void}) {
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Company tools and workspace settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Sections</h2><div className="more-list">{user.role==='owner'&&<button onClick={()=>setPage('crew')}><span className="more-icon"><Users/></span><span><b>Crew</b><small>Manage access, assignments, and credentials</small></span><ChevronRight/></button>}<button onClick={()=>setPage('settings')}><span className="more-icon"><SettingsIcon/></span><span><b>Settings</b><small>Company details and integrations</small></span><ChevronRight/></button></div></section></div>;
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
@@ -689,4 +693,4 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {const item=(target:Page,label:string,icon:React.ReactNode)=><button className={page===target?'active':''} aria-current={page===target?'page':undefined} onClick={()=>setPage(target)}>{icon}<span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{user.role==='owner'&&item('crew','Crew',<Users/>)}{item('settings','Settings',<SettingsIcon/>)}</nav>}
+function MobileNav({page,setPage}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {const item=(target:Page,label:string,icon:React.ReactNode,active=page===target)=><button className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}>{icon}<span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{item('more','More',<Ellipsis/>,page==='more'||page==='crew')}</nav>}
