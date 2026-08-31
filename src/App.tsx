@@ -2,14 +2,15 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {fetchIncidents, type NifcIncident} from './OperationsPage';
+import TrainingPage, {isTrainingUnread, type Training, type TrainingSignup} from './TrainingPage';
 import {
-  AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame,
+  AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Pencil, Phone, Plus,
   Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'training' | 'more' | 'settings';
 type NavigablePage = Exclude<Page,'more'>;
 export type UserRole = 'owner' | 'member';
 
@@ -20,9 +21,10 @@ const navigationMeta = {
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
+  training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','training','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
@@ -174,11 +176,15 @@ function loadCompanyDocuments() {
   try {const stored=localStorage.getItem('fireops-company-documents');return stored?JSON.parse(stored) as CompanyDocument[]:[]}
   catch{return []}
 }
+function loadTrainings() {
+  try {const stored=localStorage.getItem('fireops-trainings');return stored?JSON.parse(stored) as Training[]:[]}
+  catch{return []}
+}
 export function isDocumentUnread(document:CompanyDocument,user:FireOpsUser){
   return user.role==='member'&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
 }
-export type DashboardNotification={id:string;source:'communications'|'documents';title:string;detail:string;createdAt:string;unread:boolean};
-export function dashboardNotifications(threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=10):DashboardNotification[]{
+export type DashboardNotification={id:string;source:'communications'|'documents'|'training';title:string;detail:string;createdAt:string;unread:boolean};
+export function dashboardNotifications(threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=10,trainings:Training[]=[]):DashboardNotification[]{
   if(user.role!=='member')return [];
   const communicationItems=threads.flatMap(thread=>{
     const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
@@ -190,7 +196,8 @@ export function dashboardNotifications(threads:CommunicationThread[],documents:C
     return latest?[{id:`communication-${thread.id}`,source:'communications' as const,title:thread.subject,detail:latest.detail,createdAt:latest.createdAt,unread:isThreadUnread(thread,user)}]:[];
   });
   const documentItems=documents.map(document=>({id:`document-${document.id}`,source:'documents' as const,title:document.name,detail:'Company document added or updated',createdAt:document.updatedAt,unread:isDocumentUnread(document,user)}));
-  return [...communicationItems,...documentItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
+  const trainingItems=trainings.map(training=>({id:`training-${training.id}`,source:'training' as const,title:training.courseTitle,detail:`${training.courseCode} · ${new Date(training.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,createdAt:training.createdAt,unread:isTrainingUnread(training,user)}));
+  return [...communicationItems,...documentItems,...trainingItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
 }
 function loadIssues() {
   try {
@@ -204,7 +211,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;trainings?:Training[];trainingError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;onCreateTraining?:(training:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onSignupTraining?:(trainingId:string)=>Promise<TrainingSignup>;onCancelTrainingSignup?:(trainingId:string)=>Promise<void>;onMarkTrainingViewed?:(trainingId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
   const currentUser = user;
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
@@ -221,6 +228,9 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [documents,setDocuments]=useState<CompanyDocument[]>(()=>companyDocuments??loadCompanyDocuments());
   useEffect(()=>{if(companyDocuments)setDocuments(companyDocuments)},[companyDocuments]);
   const unreadDocumentCount=documents.filter(document=>isDocumentUnread(document,currentUser)).length;
+  const [trainings,setTrainings]=useState<Training[]>(()=>trainingData??loadTrainings());
+  useEffect(()=>{if(trainingData)setTrainings(trainingData)},[trainingData]);
+  const unreadTrainingCount=trainings.filter(training=>isTrainingUnread(training,currentUser)).length;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
@@ -455,25 +465,51 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     applyViewed(fallback);
     void (onMarkDocumentViewed?.(document.id)??Promise.resolve(fallback)).then(applyViewed).catch(()=>applyViewed(document.viewedAt));
   };
+  const createTraining=async(values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>{
+    const now=new Date().toISOString();
+    const training=onCreateTraining?await onCreateTraining(values):{...values,id:crypto.randomUUID(),createdAt:now,updatedAt:now,signups:[]};
+    setTrainings(items=>{const next=[training,...items.filter(item=>item.id!==training.id)];if(!onCreateTraining)saveLocal('fireops-trainings',next);return next});
+    showNotice('Training created and crew notified');return training;
+  };
+  const signupTraining=async(training:Training)=>{
+    const signup=onSignupTraining?await onSignupTraining(training.id):{userId:currentUser.id,userName:currentUser.name,signedUpAt:new Date().toISOString()};
+    setTrainings(items=>{const next=items.map(item=>item.id===training.id?{...item,signups:[...item.signups.filter(entry=>entry.userId!==signup.userId),signup]}:item);if(!onSignupTraining)saveLocal('fireops-trainings',next);return next});
+    showNotice(`Registered for ${training.courseTitle}`);return signup;
+  };
+  const cancelTrainingSignup=async(training:Training)=>{
+    await onCancelTrainingSignup?.(training.id);
+    setTrainings(items=>{const next=items.map(item=>item.id===training.id?{...item,signups:item.signups.filter(entry=>entry.userId!==currentUser.id)}:item);if(!onCancelTrainingSignup)saveLocal('fireops-trainings',next);return next});
+    showNotice(`Registration canceled for ${training.courseTitle}`);
+  };
+  const markTrainingViewed=(training:Training)=>{
+    if(!isTrainingUnread(training,currentUser))return;
+    const fallback=new Date().toISOString();
+    const applyViewed=(viewedAt:string|undefined)=>setTrainings(items=>{const next=items.map(item=>item.id===training.id?{...item,viewedAt}:item);if(!onMarkTrainingViewed)saveLocal('fireops-trainings',next);return next});
+    applyViewed(fallback);
+    void (onMarkTrainingViewed?.(training.id)??Promise.resolve(fallback)).then(applyViewed).catch(()=>applyViewed(training.viewedAt));
+  };
 
   return <div className="app-shell">
-    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount}/>
+    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount}/>
     <div className="app-main">
-      <Topbar saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar saveState={saveState} notificationCount={currentUser.role==='member'?unreadThreadCount+unreadDocumentCount+unreadTrainingCount:undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
-        {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage}/>}
+        {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
+        {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
+
         {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
-        {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} setPage={setPage}/>}
+        {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} setPage={setPage}/>}
+
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
-      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount}/>
+      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm vehicle={editing} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
@@ -491,15 +527,15 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
 }
 
 function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
-function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number}) {
+function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number}) {
   return <aside className="sidebar"><Brand/><nav>
-    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
+    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
   </nav></aside>
 }
 function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span>{notificationCount>0&&<span className="sidebar-nav-badge" aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>}</button>
 }
-function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
+function Topbar({saveState,notificationCount,onNotifications,onSignOut,onSwitchCompany}:{saveState:SaveState;notificationCount?:number;onNotifications?:()=>void;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
   const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
   const toggleTheme=()=>{
@@ -510,12 +546,12 @@ function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSig
     try{localStorage.setItem('fireops-theme',theme)}catch{/* Storage may be unavailable in private browsing. */}
     setDarkMode(theme==='dark');
   };
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}{notificationCount!==undefined&&<button className="notification-button" onClick={onNotifications} aria-label={notificationCount?`Open notifications, ${notificationCount} unread`:'Open notifications'}><Bell/>{notificationCount>0&&<b>{notificationCount>99?'99+':notificationCount}</b>}</button>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
-function MorePage({user,unreadDocumentCount,setPage}:{user:FireOpsUser;unreadDocumentCount:number;setPage:(page:Page)=>void}) {
+function MorePage({user,unreadDocumentCount,unreadTrainingCount,setPage}:{user:FireOpsUser;unreadDocumentCount:number;unreadTrainingCount:number;setPage:(page:Page)=>void}) {
   const overflow=navigationLayout(user.role).mobileOverflow;
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{target==='documents'&&unreadDocumentCount>0&&<i className="more-notification">{unreadDocumentCount} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
@@ -551,16 +587,16 @@ function AssignedToMe({vehicles,issues,motiveMock,onSelectVehicle}:{vehicles:Veh
   </section>;
 }
 
-function MemberNotifications({threads,documents,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];user:FireOpsUser;onOpen:(page:'communications'|'documents')=>void}){
-  const notifications=dashboardNotifications(threads,documents,user);
+function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onOpen:(page:'communications'|'documents'|'training')=>void}){
+  const notifications=dashboardNotifications(threads,documents,user,10,trainings);
   const unreadCount=notifications.filter(notification=>notification.unread).length;
   const formatDate=(date:string)=>new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  return <section className="action-section notification-section" aria-labelledby="notifications-title"><div className="action-heading"><div><h2 id="notifications-title">Notifications</h2><p>Communications and documents shared with you</p></div>{unreadCount>0&&<span className="notification-count" aria-label={`${unreadCount} unread ${unreadCount===1?'notification':'notifications'}`}>{unreadCount}</span>}</div>
-    <div className="notification-list">{notifications.map(notification=><button className={`notification-row ${notification.unread?'unread':''}`} key={notification.id} onClick={()=>onOpen(notification.source)}><span className={`notification-icon ${notification.source}`}>{notification.source==='communications'?<MessageSquare/>:<FileText/>}</span><span className="notification-copy"><span><b>{notification.title}</b>{notification.unread&&<i>New</i>}</span><small>{notification.detail}</small></span><span className="notification-meta"><em>{notification.source==='communications'?'Communication':'Document'}</em><time dateTime={notification.createdAt}>{formatDate(notification.createdAt)}</time></span><ChevronRight/></button>)}{!notifications.length&&<div className="notification-empty"><span><Bell/></span><div><b>No notifications yet</b><p>New communications and documents will appear here.</p></div></div>}</div>
+  return <section className="action-section notification-section" aria-labelledby="notifications-title"><div className="action-heading"><div><h2 id="notifications-title">Notifications</h2><p>Company updates shared with you</p></div>{unreadCount>0&&<span className="notification-count" aria-label={`${unreadCount} unread ${unreadCount===1?'notification':'notifications'}`}>{unreadCount}</span>}</div>
+    <div className="notification-list">{notifications.map(notification=><button className={`notification-row ${notification.unread?'unread':''}`} key={notification.id} onClick={()=>onOpen(notification.source)}><span className={`notification-icon ${notification.source}`}>{notification.source==='communications'?<MessageSquare/>:notification.source==='training'?<GraduationCap/>:<FileText/>}</span><span className="notification-copy"><span><b>{notification.title}</b>{notification.unread&&<i>New</i>}</span><small>{notification.detail}</small></span><span className="notification-meta"><em>{notification.source==='communications'?'Communication':notification.source==='training'?'Training':'Document'}</em><time dateTime={notification.createdAt}>{formatDate(notification.createdAt)}</time></span><ChevronRight/></button>)}{!notifications.length&&<div className="notification-empty"><span><Bell/></span><div><b>No notifications yet</b><p>New company updates will appear here.</p></div></div>}</div>
   </section>;
 }
 
-function Dashboard({vehicles,issues,crew,activities,threads,documents,user,motiveMock,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];user:FireOpsUser;motiveMock:boolean;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents')=>void}) {
+function Dashboard({vehicles,issues,crew,activities,threads,documents,trainings,user,motiveMock,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;motiveMock:boolean;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void}) {
   const isOwner=user.role==='owner';
   const assignedToMe=vehicles.filter(vehicle=>vehicle.assignedTo===user.id);
   const openIssues = issues.filter(issue => issue.status === 'Open');
@@ -586,7 +622,8 @@ function Dashboard({vehicles,issues,crew,activities,threads,documents,user,motiv
     {isOwner&&<section className="readiness-strip" aria-labelledby="fleet-readiness-title"><div className="readiness-summary"><span className={`readiness-icon ${actionGroups.length?'attention':'ready'}`}>{actionGroups.length?<AlertTriangle/>:<ShieldCheck/>}</span><h2 id="fleet-readiness-title">Fleet readiness</h2></div><dl className="readiness-counts"><div><dt>Ready</dt><dd>{readyCount}</dd></div><div><dt>Assigned</dt><dd>{assignedCount}</dd></div><div><dt>Maintenance</dt><dd>{maintenanceCount}</dd></div><div><dt>Out of service</dt><dd>{outOfServiceCount}</dd></div></dl></section>}
     {(!isOwner||assignedToMe.length>0)&&<AssignedToMe vehicles={assignedToMe} issues={issues} motiveMock={motiveMock} onSelectVehicle={onSelectVehicle}/>}
     {!isOwner&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" emptyMessage="Issues you report will appear here." id="my-issues"/>}
-    {!isOwner&&<MemberNotifications threads={threads} documents={documents} user={user} onOpen={onOpenNotifications}/>}
+    {!isOwner&&<MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>}
+
     {isOwner&&<section className="action-section"><div className="action-heading"><div><h2>Issues</h2><p>Grouped by vehicle, highest severity first</p></div><span className="action-count" aria-label={`${actionGroups.length} ${actionGroups.length===1?'vehicle needs':'vehicles need'} attention`}>{actionGroups.length}</span></div>
       <div className="action-list">{actionGroups.map(group=>{const leadIssue=group.issues[0];const unit=group.vehicle?.unit??'Unknown vehicle';const issueCopy=leadIssue?`${leadIssue.title}${group.issues.length>1?` + ${group.issues.length-1} more`:''}`:'Status requires review';const context=group.vehicle?.status??'Vehicle record unavailable';const statusSeverity:Priority=group.vehicle?.status==='Out of service'?'High':group.vehicle?.status==='Maintenance'?'Medium':'Low';const badge=leadIssue&&priorityRank[leadIssue.priority]<=priorityRank[statusSeverity]?`${leadIssue.priority} priority`:context;return <button className={`action-row blocker-row ${group.severity.toLowerCase()}`} key={group.key} onClick={()=>group.vehicle?onSelectVehicle(group.vehicle):onSelectIssue(leadIssue)}><span className={`action-icon urgent ${group.severity.toLowerCase()}`}><AlertTriangle/></span><span className="action-copy"><b>{unit}</b><small>{issueCopy} · {context}</small></span><span className={`triage-severity ${group.severity.toLowerCase()}`}>{badge}</span><ChevronRight/></button>})}
       {!actionGroups.length&&<div className="action-empty"><span><Check/></span><div><b>Ready to deploy</b><p>No fleet blockers need attention.</p></div></div>}</div>
@@ -881,9 +918,9 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage,user,unreadCount,unreadDocumentCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number}) {
+function MobileNav({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number}) {
   const {mobilePrimary,mobileOverflow}=navigationLayout(user.role);
   const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} new ${badge===1?'item':'items'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
-  const overflowBadge=mobileOverflow.includes('documents')?unreadDocumentCount:0;
+  const overflowBadge=(mobileOverflow.includes('documents')?unreadDocumentCount:0)+(mobileOverflow.includes('training')?unreadTrainingCount:0);
   return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,target==='communications'?'Comms':label,<Icon/>,page===target,target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
 }

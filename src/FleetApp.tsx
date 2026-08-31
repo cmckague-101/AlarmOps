@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Building2, LogOut, ShieldCheck } from 'lucide-react';
 import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile } from './App';
+import type { Training, TrainingSignup } from './TrainingPage';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 
@@ -13,6 +14,9 @@ type CommunicationReplyRow = {id:string;thread_id:string;body:string;created_by:
 type CommunicationReadRow = {thread_id:string;seen_at:string};
 type CompanyDocumentRow = {id:string;name:string;file_name:string;mime_type:string;storage_path:string;created_at:string;updated_at:string};
 type DocumentReadRow = {document_id:string;viewed_at:string};
+type TrainingRow = {id:string;course_code:string;course_title:string;starts_at:string;location:string;instructor:string;capacity:number;course_information:string;created_at:string;updated_at:string};
+type TrainingSignupRow = {training_id:string;user_id:string;user_name:string;signed_up_at:string};
+type TrainingReadRow = {training_id:string;viewed_at:string};
 type CompanyRow = { id: string; name: string; company_code: string; industry: string; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
@@ -232,6 +236,8 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [communicationError,setCommunicationError]=useState('');
   const [companyDocuments,setCompanyDocuments]=useState<CompanyDocument[]>([]);
   const [documentError,setDocumentError]=useState('');
+  const [trainings,setTrainings]=useState<Training[]>([]);
+  const [trainingError,setTrainingError]=useState('');
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
@@ -272,6 +278,20 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       return {id:row.id,name:row.name,file:file!,createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id)};
     }));
     setCompanyDocuments(documents);setDocumentError('');
+  },[companyId,session.user.id]);
+
+  const loadTrainings=useCallback(async()=>{
+    const client=supabase;if(!client)return;
+    const [trainingResult,signupResult,readResult]=await Promise.all([
+      client.from('company_trainings').select('id,course_code,course_title,starts_at,location,instructor,capacity,course_information,created_at,updated_at').eq('company_id',companyId).order('starts_at',{ascending:true}),
+      client.from('company_training_signups').select('training_id,user_id,user_name,signed_up_at').eq('company_id',companyId),
+      client.from('company_training_reads').select('training_id,viewed_at').eq('company_id',companyId).eq('user_id',session.user.id)
+    ]);
+    if(trainingResult.error||signupResult.error||readResult.error){setTrainingError('Training could not be loaded. Apply latest database migration, then try again.');return}
+    const signups=(signupResult.data??[]) as TrainingSignupRow[];
+    const reads=new Map(((readResult.data??[]) as TrainingReadRow[]).map(read=>[read.training_id,read.viewed_at]));
+    setTrainings(((trainingResult.data??[]) as TrainingRow[]).map(row=>({id:row.id,courseCode:row.course_code,courseTitle:row.course_title,date:row.starts_at,location:row.location,instructor:row.instructor,capacity:row.capacity,information:row.course_information,createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id),signups:signups.filter(signup=>signup.training_id===row.id).map(signup=>({userId:signup.user_id,userName:signup.user_name,signedUpAt:signup.signed_up_at}))})));
+    setTrainingError('');
   },[companyId,session.user.id]);
 
   const patchPersisted=useCallback((collection:FleetCollection,event:'upsert'|'delete',id:string,record?:unknown,version?:number)=>{
@@ -322,6 +342,11 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       documentChannel=documentChannel.on('postgres_changes',{event:'*',schema:'public',table,filter:`company_id=eq.${companyId}`},()=>void loadDocuments());
     });
     documentChannel.subscribe();
+    let trainingChannel=client.channel(`company-training:${companyId}`);
+    ['company_trainings','company_training_signups','company_training_reads'].forEach(table=>{
+      trainingChannel=trainingChannel.on('postgres_changes',{event:'*',schema:'public',table,filter:`company_id=eq.${companyId}`},()=>void loadTrainings());
+    });
+    trainingChannel.subscribe();
     const load=async()=>{
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
       const [companyResult,inviteUsageResult,motiveResult,...recordResults]=await Promise.all([
@@ -350,8 +375,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     void load();
     void loadCommunications();
     void loadDocuments();
-    return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel);void client.removeChannel(documentChannel)};
-  },[companyId,isAdmin,loadCommunications,loadDocuments,patchPersisted,role,session.user.email,session.user.id,userName]);
+    void loadTrainings();
+    return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel);void client.removeChannel(documentChannel);void client.removeChannel(trainingChannel)};
+  },[companyId,isAdmin,loadCommunications,loadDocuments,loadTrainings,patchPersisted,role,session.user.email,session.user.id,userName]);
 
   const upload=useCallback(async(file:File)=>{
     if(!supabase)throw new Error('Company is unavailable');
@@ -521,6 +547,36 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     setCompanyDocuments(items=>items.map(document=>document.id===documentId?{...document,viewedAt:data.viewed_at}:document));return data.viewed_at;
   },[companyId,session.user.id]);
 
+  const createTraining=useCallback(async(values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');
+    const {data,error:createError}=await client.from('company_trainings').insert({company_id:companyId,course_code:values.courseCode,course_title:values.courseTitle,starts_at:values.date,location:values.location,instructor:values.instructor,capacity:values.capacity,course_information:values.information}).select('id,course_code,course_title,starts_at,location,instructor,capacity,course_information,created_at,updated_at').single<TrainingRow>();
+    if(createError)throw new Error(createError.message);
+    const training:Training={id:data.id,courseCode:data.course_code,courseTitle:data.course_title,date:data.starts_at,location:data.location,instructor:data.instructor,capacity:data.capacity,information:data.course_information,createdAt:data.created_at,updatedAt:data.updated_at,signups:[]};
+    setTrainings(items=>[training,...items.filter(item=>item.id!==training.id)]);return training;
+  },[companyId]);
+
+  const signupTraining=useCallback(async(trainingId:string)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');
+    const {data,error:signupError}=await client.from('company_training_signups').insert({company_id:companyId,training_id:trainingId,user_id:session.user.id,user_name:userName}).select('training_id,user_id,user_name,signed_up_at').single<TrainingSignupRow>();
+    if(signupError)throw new Error(signupError.message.includes('full')?'Course is full.':signupError.message);
+    const signup:TrainingSignup={userId:data.user_id,userName:data.user_name,signedUpAt:data.signed_up_at};
+    setTrainings(items=>items.map(training=>training.id===trainingId?{...training,signups:[...training.signups.filter(item=>item.userId!==signup.userId),signup]}:training));return signup;
+  },[companyId,session.user.id,userName]);
+
+  const cancelTrainingSignup=useCallback(async(trainingId:string)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');
+    const {error:cancelError}=await client.from('company_training_signups').delete().eq('company_id',companyId).eq('training_id',trainingId).eq('user_id',session.user.id);
+    if(cancelError)throw new Error(cancelError.message);
+    setTrainings(items=>items.map(training=>training.id===trainingId?{...training,signups:training.signups.filter(signup=>signup.userId!==session.user.id)}:training));
+  },[companyId,session.user.id]);
+
+  const markTrainingViewed=useCallback(async(trainingId:string)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');const viewedAt=new Date().toISOString();
+    const {data,error:viewError}=await client.from('company_training_reads').upsert({company_id:companyId,training_id:trainingId,user_id:session.user.id,viewed_at:viewedAt},{onConflict:'company_id,training_id,user_id'}).select('viewed_at').single<{viewed_at:string}>();
+    if(viewError)throw new Error(viewError.message);
+    setTrainings(items=>items.map(training=>training.id===trainingId?{...training,viewedAt:data.viewed_at}:training));return data.viewed_at;
+  },[companyId,session.user.id]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
@@ -540,7 +596,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

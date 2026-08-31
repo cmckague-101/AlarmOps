@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {dashboardNotifications, isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+import {isTrainingUnread, type Training} from './TrainingPage';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
 
@@ -20,13 +21,13 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows every owner section directly in desktop sidebar',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','training','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','settings']);
-    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','training','settings']);
+    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','training','settings']);
   });
 });
 
@@ -103,6 +104,17 @@ describe('dashboard notifications',()=>{
     const documents=Array.from({length:12},(_,index)=>document(`document-${index}`,`2025-08-30T${String(index).padStart(2,'0')}:00:00Z`));
     expect(dashboardNotifications([],documents,crew)).toHaveLength(10);
     expect(dashboardNotifications([],documents,{...crew,role:'owner'})).toEqual([]);
+  });
+});
+
+describe('training unread rules',()=>{
+  const training:Training={id:'training-1',courseCode:'S-130',courseTitle:'Firefighter Training',date:'2025-09-10T16:00:00Z',location:'Station 1',instructor:'Alex Reed',capacity:20,information:'',createdAt:'2025-08-30T10:00:00Z',updatedAt:'2025-08-30T10:00:00Z',signups:[]};
+
+  it('notifies crew until training is opened',()=>{
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    expect(isTrainingUnread(training,crew)).toBe(true);
+    expect(isTrainingUnread({...training,viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(false);
+    expect(isTrainingUnread(training,{...crew,role:'owner'})).toBe(false);
   });
 });
 
