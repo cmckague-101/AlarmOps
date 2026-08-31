@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import type {FleetSnapshot, VehicleFile} from './App';
+import {isThreadUnread, type CommunicationThread, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
@@ -40,6 +40,35 @@ describe('fleet record comparison',()=>{
 
   it('detects persisted value changes',()=>{
     expect(fleetRecordsEqual({id:'vehicle-1',status:'Ready'},{status:'Assigned',id:'vehicle-1'})).toBe(false);
+  });
+});
+
+describe('communication unread rules',()=>{
+  const user:FireOpsUser={id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',role:'member'};
+  const thread=(overrides:Partial<CommunicationThread>={}):CommunicationThread=>({
+    id:'thread-1',subject:'Dispatch update',description:'Meet at staging.',createdBy:'Company Owner',createdById:'11111111-1111-4111-8111-111111111111',createdByRole:'owner',createdAt:'2025-08-28T10:00:00Z',replies:[],...overrides
+  });
+
+  it('notifies crew about unseen owner threads',()=>{
+    expect(isThreadUnread(thread(),user)).toBe(true);
+    expect(isThreadUnread(thread({seenAt:'2025-08-28T10:01:00Z'}),user)).toBe(false);
+  });
+
+  it('does not notify all crew about a crew-created thread',()=>{
+    expect(isThreadUnread(thread({createdByRole:'member'}),user)).toBe(false);
+  });
+
+  it('notifies owner about every new thread, but not unrelated replies',()=>{
+    const owner:FireOpsUser={id:'11111111-1111-4111-8111-111111111111',name:'Company Owner',role:'owner'};
+    const crewThread=thread({createdBy:'Crew Member',createdById:user.id,createdByRole:'member'});
+    expect(isThreadUnread(crewThread,owner)).toBe(true);
+    expect(isThreadUnread({...crewThread,seenAt:'2025-08-28T10:01:00Z',replies:[{id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'}]},owner)).toBe(false);
+  });
+
+  it('notifies thread creators and participants about new replies',()=>{
+    const reply={id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'};
+    expect(isThreadUnread(thread({createdById:user.id,createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[reply]}),user)).toBe(true);
+    expect(isThreadUnread(thread({createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[{...reply,createdById:user.id,createdAt:'2025-08-28T10:02:00Z'},reply]}),user)).toBe(true);
   });
 });
 

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Building2, LogOut, ShieldCheck } from 'lucide-react';
-import App, { type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile } from './App';
+import App, { type CommunicationReply, type CommunicationThread, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile } from './App';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 
 type Membership = { company_id: string; role: UserRole };
 type Profile = { full_name: string };
 type FleetRecordRow = { record_id: string; data: unknown; version: number; updated_by: string; updated_at: string };
+type CommunicationThreadRow = {id:string;subject:string;description:string;created_by:string|null;created_by_name:string;created_by_role:UserRole;created_at:string};
+type CommunicationReplyRow = {id:string;thread_id:string;body:string;created_by:string|null;created_by_name:string;created_at:string};
+type CommunicationReadRow = {thread_id:string;seen_at:string};
 type CompanyRow = { id: string; name: string; company_code: string; industry: string; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
@@ -223,6 +226,8 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [remoteChanges,setRemoteChanges]=useState<(FleetRemoteChange&{sequence:number})[]>([]);
   const [company,setCompany]=useState<CompanyInfo|null>(null);
   const [motiveConnection,setMotiveConnection]=useState<MotiveConnection>({connected:false});
+  const [communicationThreads,setCommunicationThreads]=useState<CommunicationThread[]>([]);
+  const [communicationError,setCommunicationError]=useState('');
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
@@ -231,6 +236,24 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const cleanupQueue=useRef(new Set<string>());
   const remoteSequence=useRef(0);
   const versions=useRef<Record<FleetCollection,Map<string,number>>>({vehicles:new Map(),issues:new Map(),crew:new Map(),activities:new Map()});
+
+  const loadCommunications=useCallback(async()=>{
+    const client=supabase;
+    if(!client)return;
+    const [threadResult,replyResult,readResult]=await Promise.all([
+      client.from('communication_threads').select('id,subject,description,created_by,created_by_name,created_by_role,created_at').eq('company_id',companyId).order('created_at',{ascending:false}),
+      client.from('communication_replies').select('id,thread_id,body,created_by,created_by_name,created_at').eq('company_id',companyId).order('created_at',{ascending:true}),
+      client.from('communication_reads').select('thread_id,seen_at').eq('company_id',companyId).eq('user_id',session.user.id)
+    ]);
+    if(threadResult.error||replyResult.error||readResult.error){setCommunicationError('Communications could not be loaded. Apply latest database migration, then try again.');return}
+    const replies=(replyResult.data??[]) as CommunicationReplyRow[];
+    const reads=new Map(((readResult.data??[]) as CommunicationReadRow[]).map(read=>[read.thread_id,read.seen_at]));
+    setCommunicationThreads(((threadResult.data??[]) as CommunicationThreadRow[]).map(thread=>({
+      id:thread.id,subject:thread.subject,description:thread.description,createdBy:thread.created_by_name,createdById:thread.created_by??'',createdByRole:thread.created_by_role,createdAt:thread.created_at,seenAt:reads.get(thread.id),
+      replies:replies.filter(reply=>reply.thread_id===thread.id).map(reply=>({id:reply.id,body:reply.body,createdBy:reply.created_by_name,createdById:reply.created_by??'',createdAt:reply.created_at}))
+    })));
+    setCommunicationError('');
+  },[companyId,session.user.id]);
 
   const patchPersisted=useCallback((collection:FleetCollection,event:'upsert'|'delete',id:string,record?:unknown,version?:number)=>{
     const currentVersion=versions.current[collection].get(id)??0;
@@ -270,6 +293,11 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       channel=channel.on('postgres_changes',{event:'*',schema:'public',table,filter:`company_id=eq.${companyId}`},payload=>void handleChange(collection,payload as never));
     });
     channel.subscribe();
+    let communicationChannel=client.channel(`communications:${companyId}`);
+    ['communication_threads','communication_replies','communication_reads'].forEach(table=>{
+      communicationChannel=communicationChannel.on('postgres_changes',{event:'*',schema:'public',table,filter:`company_id=eq.${companyId}`},()=>void loadCommunications());
+    });
+    communicationChannel.subscribe();
     const load=async()=>{
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
       const [companyResult,inviteUsageResult,motiveResult,...recordResults]=await Promise.all([
@@ -296,8 +324,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       setLoaded(true);
     };
     void load();
-    return()=>{active=false;void client.removeChannel(channel)};
-  },[companyId,isAdmin,patchPersisted,role,session.user.email,session.user.id,userName]);
+    void loadCommunications();
+    return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel)};
+  },[companyId,isAdmin,loadCommunications,patchPersisted,role,session.user.email,session.user.id,userName]);
 
   const upload=useCallback(async(file:File)=>{
     if(!supabase)throw new Error('Company is unavailable');
@@ -402,6 +431,37 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const next=data??{connected:false};setMotiveConnection(next);return next;
   },[companyId]);
 
+  const createCommunicationThread=useCallback(async(subject:string,description:string)=>{
+    const client=supabase;
+    if(!client)throw new Error('Company is unavailable.');
+    const {data,error:createError}=await client.from('communication_threads').insert({company_id:companyId,subject,description}).select('id,subject,description,created_by,created_by_name,created_by_role,created_at').single<CommunicationThreadRow>();
+    if(createError)throw new Error(createError.message);
+    const thread:CommunicationThread={id:data.id,subject:data.subject,description:data.description,createdBy:data.created_by_name,createdById:data.created_by??'',createdByRole:data.created_by_role,createdAt:data.created_at,seenAt:data.created_at,replies:[]};
+    setCommunicationThreads(items=>[thread,...items.filter(item=>item.id!==thread.id)]);
+    return thread;
+  },[companyId]);
+
+  const replyToCommunicationThread=useCallback(async(threadId:string,body:string)=>{
+    const client=supabase;
+    if(!client)throw new Error('Company is unavailable.');
+    const {data,error:replyError}=await client.from('communication_replies').insert({company_id:companyId,thread_id:threadId,body}).select('id,thread_id,body,created_by,created_by_name,created_at').single<CommunicationReplyRow>();
+    if(replyError)throw new Error(replyError.message);
+    const reply:CommunicationReply={id:data.id,body:data.body,createdBy:data.created_by_name,createdById:data.created_by??'',createdAt:data.created_at};
+    setCommunicationThreads(items=>items.map(thread=>thread.id===threadId?{...thread,replies:[...thread.replies.filter(item=>item.id!==reply.id),reply],seenAt:reply.createdAt}:thread));
+    return reply;
+  },[companyId]);
+
+  const markCommunicationThreadSeen=useCallback(async(threadId:string)=>{
+    const client=supabase;
+    if(!client)throw new Error('Company is unavailable.');
+    const seenAt=new Date().toISOString();
+    const {data,error:seenError}=await client.from('communication_reads').upsert({company_id:companyId,thread_id:threadId,user_id:session.user.id,seen_at:seenAt},{onConflict:'company_id,thread_id,user_id'}).select('seen_at').single<{seen_at:string}>();
+    if(seenError)throw new Error(seenError.message);
+    const savedAt=data.seen_at;
+    setCommunicationThreads(items=>items.map(thread=>thread.id===threadId?{...thread,seenAt:savedAt}:thread));
+    return savedAt;
+  },[companyId,session.user.id]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
@@ -421,7 +481,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

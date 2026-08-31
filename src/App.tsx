@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'operations' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'more' | 'settings';
 export type UserRole = 'owner' | 'member';
 type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 type IssueStatus = 'Open' | 'Resolved';
@@ -43,6 +43,19 @@ export type Activity = {
   id: string; action: string; detail: string; createdBy: string; createdById?: string; createdAt: string;
   targetType?: 'vehicle' | 'issue' | 'crew'; targetId?: string; tone?: 'urgent' | 'complete';
 };
+export type CommunicationReply = {id:string;body:string;createdBy:string;createdById:string;createdAt:string};
+export type CommunicationThread = {
+  id:string;subject:string;description:string;createdBy:string;createdById:string;createdByRole:UserRole;createdAt:string;
+  replies:CommunicationReply[];seenAt?:string;
+};
+
+export function isThreadUnread(thread:CommunicationThread,user:FireOpsUser){
+  const seenAt=thread.seenAt?Date.parse(thread.seenAt):0;
+  const newThread=thread.createdById!==user.id&&Date.parse(thread.createdAt)>seenAt&&(user.role==='owner'||thread.createdByRole==='owner');
+  const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
+  const relevantReply=participates&&thread.replies.some(reply=>reply.createdById!==user.id&&Date.parse(reply.createdAt)>seenAt);
+  return newThread||relevantReply;
+}
 
 const seed: Vehicle[] = [
   {id:'v1',unit:'Engine 701',type:'Type 3 Engine',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',plate:'CA 8F701',status:'Ready',createdAt:'2025-02-04'},
@@ -133,6 +146,10 @@ function loadActivities() {
     return history.sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
   } catch { return []; }
 }
+function loadCommunicationThreads() {
+  try {const stored=localStorage.getItem('fireops-communication-threads');return stored?JSON.parse(stored) as CommunicationThread[]:[]}
+  catch{return []}
+}
 function loadIssues() {
   try {
     const stored = localStorage.getItem('fireops-issues');
@@ -145,7 +162,7 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
   const currentUser = user;
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
@@ -156,6 +173,9 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??loadCrew());
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
   const [page, setPage] = useState<Page>('overview');
+  const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??loadCommunicationThreads());
+  useEffect(()=>{if(communicationThreads)setThreads(communicationThreads)},[communicationThreads]);
+  const unreadThreadCount=threads.filter(thread=>isThreadUnread(thread,currentUser)).length;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
@@ -350,22 +370,39 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     }
   };
 
+  const createThread=async(subject:string,description:string)=>{
+    const thread=onCreateThread?await onCreateThread(subject,description):{id:crypto.randomUUID(),subject,description,createdBy:currentUser.name,createdById:currentUser.id,createdByRole:currentUser.role,createdAt:new Date().toISOString(),replies:[]};
+    setThreads(items=>[thread,...items.filter(item=>item.id!==thread.id)]);
+    if(!onCreateThread)saveLocal('fireops-communication-threads',[thread,...threads.filter(item=>item.id!==thread.id)]);
+    return thread;
+  };
+  const replyToThread=async(threadId:string,body:string)=>{
+    const reply=onReplyToThread?await onReplyToThread(threadId,body):{id:crypto.randomUUID(),body,createdBy:currentUser.name,createdById:currentUser.id,createdAt:new Date().toISOString()};
+    setThreads(items=>{const next=items.map(thread=>thread.id===threadId?{...thread,replies:[...thread.replies.filter(item=>item.id!==reply.id),reply],seenAt:reply.createdAt}:thread);if(!onReplyToThread)saveLocal('fireops-communication-threads',next);return next});
+    return reply;
+  };
+  const markThreadSeen=async(threadId:string)=>{
+    const seenAt=onMarkThreadSeen?await onMarkThreadSeen(threadId):new Date().toISOString();
+    setThreads(items=>{const next=items.map(thread=>thread.id===threadId?{...thread,seenAt}:thread);if(!onMarkThreadSeen)saveLocal('fireops-communication-threads',next);return next});
+  };
+
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser}/>
     <div className="app-main">
-      <Topbar page={page} setPage={setPage} saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar saveState={saveState} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
+        {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} setPage={setPage}/>}
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
-      <MobileNav page={page} setPage={setPage} user={currentUser}/>
+      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm vehicle={editing} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
@@ -385,14 +422,16 @@ function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:Fire
   return <aside className="sidebar"><Brand/><nav>
     <NavItem icon={<LayoutDashboard/>} label="Dashboard" active={page==='overview'} onClick={()=>setPage('overview')}/>
     <NavItem icon={<MapIcon/>} label="Operations" active={page==='operations'} onClick={()=>setPage('operations')}/>
+    <NavItem icon={<MessageSquare/>} label="Communications" active={page==='communications'} onClick={()=>setPage('communications')}/>
     <NavItem icon={<Truck/>} label="Fleet" active={page==='vehicles'} onClick={()=>setPage('vehicles')}/>
     {user.role==='owner'&&<NavItem icon={<Users/>} label="Crew" active={page==='crew'} onClick={()=>setPage('crew')}/>}
+    <NavItem icon={<Ellipsis/>} label="More" active={page==='more'||page==='settings'} onClick={()=>setPage('more')}/>
   </nav></aside>
 }
 function NavItem({icon,label,active,onClick}:{icon:React.ReactNode;label:string;active:boolean;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span></button>
 }
-function Topbar({page,setPage,saveState,onSignOut,onSwitchCompany}:{page:Page;setPage:(page:Page)=>void;saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
+function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
   const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
   const toggleTheme=()=>{
@@ -403,7 +442,7 @@ function Topbar({page,setPage,saveState,onSignOut,onSwitchCompany}:{page:Page;se
     try{localStorage.setItem('fireops-theme',theme)}catch{/* Storage may be unavailable in private browsing. */}
     setDarkMode(theme==='dark');
   };
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}<button className={`topbar-settings ${page==='settings'?'active':''}`} type="button" aria-current={page==='settings'?'page':undefined} onClick={()=>setPage('settings')}><SettingsIcon/><span>Settings</span></button></div></header>
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
 function MorePage({user,setPage}:{user:FireOpsUser;setPage:(page:Page)=>void}) {
@@ -478,6 +517,49 @@ function Dashboard({vehicles,issues,crew,activities,user,motiveMock,onSelectVehi
     </section>}
   </div>
 }
+function CommunicationsPage({threads,user,error,onCreate,onReply,onSeen}:{threads:CommunicationThread[];user:FireOpsUser;error?:string;onCreate:(subject:string,description:string)=>Promise<CommunicationThread>;onReply:(threadId:string,body:string)=>Promise<CommunicationReply>;onSeen:(threadId:string)=>Promise<void>}) {
+  const [newThreadOpen,setNewThreadOpen]=useState(false);
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const selected=threads.find(thread=>thread.id===selectedId);
+  const ordered=[...threads].sort((left,right)=>{
+    const leftDate=left.replies[left.replies.length-1]?.createdAt??left.createdAt;
+    const rightDate=right.replies[right.replies.length-1]?.createdAt??right.createdAt;
+    return Date.parse(rightDate)-Date.parse(leftDate);
+  });
+  useEffect(()=>{if(selected&&isThreadUnread(selected,user))void onSeen(selected.id).catch(()=>undefined)},[selected,user.id]);
+  const openThread=(thread:CommunicationThread)=>setSelectedId(thread.id);
+  return <div className="page communications-page"><div className="page-heading communications-heading"><div><h1>Communications</h1><p>Company threads and crew replies.</p></div><button className="primary" onClick={()=>setNewThreadOpen(true)}><Plus/> New thread</button></div>
+    {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
+    <section className="thread-panel" aria-labelledby="thread-list-heading"><div className="thread-panel-heading"><div><h2 id="thread-list-heading">Threads</h2><p>{threads.length} {threads.length===1?'conversation':'conversations'}</p></div></div><div className="thread-list">{ordered.map(thread=>{const unread=isThreadUnread(thread,user);const latest=thread.replies[thread.replies.length-1];return <button className={`thread-row ${unread?'unread':''}`} key={thread.id} onClick={()=>openThread(thread)}><span className="thread-mark"><MessageSquare/></span><span className="thread-copy"><span className="thread-title"><b>{thread.subject}</b>{unread&&<i>Unread</i>}</span><span className="thread-preview">{latest?.body??thread.description}</span><small>{latest?`${latest.createdBy} replied`:`Started by ${thread.createdBy}`} · {formatCommunicationDate(latest?.createdAt??thread.createdAt)}</small></span><span className="thread-reply-count" aria-label={`${thread.replies.length} ${thread.replies.length===1?'reply':'replies'}`}><MessageSquare/>{thread.replies.length}</span><ChevronRight/></button>})}{!threads.length&&<div className="empty communication-empty"><MessageSquare/><h3>No threads yet</h3><p>Start a thread to share updates or ask crew a question.</p><button className="primary" onClick={()=>setNewThreadOpen(true)}><Plus/> New thread</button></div>}</div></section>
+    {newThreadOpen&&<NewThreadForm onClose={()=>setNewThreadOpen(false)} onSave={async(subject,description)=>{const thread=await onCreate(subject,description);setNewThreadOpen(false);setSelectedId(thread.id)}}/>}
+    {selected&&<ThreadDetail thread={selected} user={user} onClose={()=>setSelectedId(null)} onReply={onReply}/>}
+  </div>;
+}
+
+function NewThreadForm({onClose,onSave}:{onClose:()=>void;onSave:(subject:string,description:string)=>Promise<void>}) {
+  const [subject,setSubject]=useState('');
+  const [description,setDescription]=useState('');
+  const [errors,setErrors]=useState<Record<string,string>>({});
+  const [submitError,setSubmitError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const formRef=useRef<HTMLFormElement>(null);
+  const dialog=useDialogA11y(()=>{if(!busy)onClose()});
+  const submit=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();const next:Record<string,string>={};if(!subject.trim())next.subject='Subject is required';if(!description.trim())next.description='Description is required';setErrors(next);setSubmitError('');if(Object.keys(next).length){focusFirstInvalid(event.currentTarget);return}setBusy(true);try{await onSave(subject.trim(),description.trim())}catch(error){setSubmitError(error instanceof Error?error.message:'Thread could not be created. Check your connection and try again.');setBusy(false)}};
+  return createPortal(<div className="overlay"><section ref={dialog.ref} className="drawer form-drawer communication-form" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" type="button" onClick={onClose}><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>New thread</h2><p>Start a company conversation.</p></div><button className="close" type="button" onClick={onClose} aria-label="Close new thread"><X/></button></header><form ref={formRef} onSubmit={submit} noValidate><FormErrorSummary errors={errors} formRef={formRef}/><fieldset><legend>Thread details</legend><div className="form-grid"><Field label="Subject" required error={errors.subject} wide><input name="subject" maxLength={160} value={subject} onChange={event=>setSubject(event.target.value)} autoFocus/></Field><Field label="Description" required error={errors.description} wide><textarea name="description" maxLength={5000} value={description} onChange={event=>setDescription(event.target.value)} placeholder="Share context, an update, or a question"/></Field></div>{submitError&&<div className="form-submit-error" role="alert">{submitError}</div>}</fieldset><footer><button className="secondary" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?'Posting...':'Post thread'}</button></footer></form></section></div>,document.body);
+}
+
+function ThreadDetail({thread,user,onClose,onReply}:{thread:CommunicationThread;user:FireOpsUser;onClose:()=>void;onReply:(threadId:string,body:string)=>Promise<CommunicationReply>}) {
+  const [reply,setReply]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const dialog=useDialogA11y(()=>{if(!busy)onClose()});
+  const replyId=useId();
+  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!reply.trim())return;setBusy(true);setError('');try{await onReply(thread.id,reply.trim());setReply('')}catch(replyError){setError(replyError instanceof Error?replyError.message:'Reply could not be posted. Check your connection and try again.')}finally{setBusy(false)}};
+  return createPortal(<div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer thread-detail" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" onClick={onClose}><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{thread.subject}</h2><p>Started by {thread.createdBy}</p></div><button className="close" onClick={onClose} aria-label="Close thread"><X/></button></header><div className="thread-opening"><div className="thread-author"><span>{thread.createdBy.slice(0,1).toUpperCase()}</span><div><b>{thread.createdBy}</b><small>{thread.createdByRole==='owner'?'Company owner':'Crew'} · {formatCommunicationDate(thread.createdAt)}</small></div></div><p>{thread.description}</p></div><section className="thread-replies" aria-labelledby="thread-replies-heading"><h3 id="thread-replies-heading">Replies <span>{thread.replies.length}</span></h3>{thread.replies.map(item=><article className={item.createdById===user.id?'mine':''} key={item.id}><div className="thread-author"><span>{item.createdBy.slice(0,1).toUpperCase()}</span><div><b>{item.createdBy}</b><small>{formatCommunicationDate(item.createdAt)}</small></div></div><p>{item.body}</p></article>)}{!thread.replies.length&&<p className="no-updates">No replies yet.</p>}</section><form className="thread-reply-form" onSubmit={submit}><label htmlFor={replyId}>Reply to thread</label><textarea id={replyId} maxLength={5000} value={reply} onChange={event=>setReply(event.target.value)} placeholder="Write a reply"/>{error&&<div className="form-submit-error" role="alert">{error}</div>}<button className="primary" disabled={busy||!reply.trim()}><MessageSquare/>{busy?'Posting...':'Post reply'}</button></form></section></div>,document.body);
+}
+
+function formatCommunicationDate(date:string){return new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}
+
 function SettingsPage({company,owner,invitedCrewCount,canManage,motiveConnection,onSaveMotive,onDisconnectMotive}:{company:CompanyInfo;owner:string;invitedCrewCount:number;canManage:boolean;motiveConnection?:MotiveConnection;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>}) {
   const initials=company.name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase();
   const available=Math.max(0,company.crewInviteLimit-invitedCrewCount);
@@ -693,4 +775,4 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {const item=(target:Page,label:string,icon:React.ReactNode,active=page===target)=><button className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}>{icon}<span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{item('more','More',<Ellipsis/>,page==='more'||page==='crew')}</nav>}
+function MobileNav({page,setPage,unreadCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number}) {const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} unread ${badge===1?'thread':'threads'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{item('communications','Communications',<MessageSquare/>,page==='communications',unreadCount)}{item('more','More',<Ellipsis/>,page==='more'||page==='crew'||page==='settings')}</nav>}
