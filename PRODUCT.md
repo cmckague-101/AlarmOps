@@ -28,6 +28,7 @@ Users work from offices and field environments. Workflows include vehicle readin
 - Crew members can review assigned resources, view company documents, and report issues.
 - Company documents notify crew until each new or updated file is viewed.
 - Owners schedule company training and review attendee rosters. Crew receive new-course notifications and can register up to course capacity.
+- Owners manage company inventory item names and quantities. Inventory is hidden from crew members.
 - Operations is available to owners and crew.
 - Operations uses current NIFC incident data. Missing incident values display as "Not reported."
 - Operations defaults to incidents with company vehicle assignments and can show all active incidents.

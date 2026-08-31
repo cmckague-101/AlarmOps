@@ -7,7 +7,7 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Migration `202508250006_company_crew_invite_limits.sql` adds and enforces company crew invite limits. Migration `202508260002_p1_hardening.sql` adds atomic fleet writes, scoped administrator sessions, and server-side issue/activity integrity rules. Existing companies default to `0`; set each limit before enabling more invitations:
+Migration `202508250005_normalized_fleet_records.sql` copies existing `fleet_state` data into record-level tables and enables Realtime for them. Migration `202508250006_company_crew_invite_limits.sql` adds and enforces company crew invite limits. Migration `202508260002_p1_hardening.sql` adds atomic fleet writes, scoped administrator sessions, and server-side issue/activity integrity rules. Migration `202509020001_company_inventory.sql` adds owner-only company inventory items and quantity updates. Existing companies default to `0`; set each limit before enabling more invitations:
 
 ```sql
 update public.companies

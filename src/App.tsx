@@ -3,14 +3,15 @@ import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {fetchIncidents, type NifcIncident} from './OperationsPage';
 import TrainingPage, {isTrainingUnread, trainingStage, type Training, type TrainingSignup} from './TrainingPage';
+import InventoryPage, {type InventoryItem} from './InventoryPage';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame, GraduationCap,
-  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Pencil, Phone, Plus,
+  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
   Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'training' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'training' | 'inventory' | 'more' | 'settings';
 type NavigablePage = Exclude<Page,'more'>;
 export type UserRole = 'owner' | 'member';
 
@@ -22,13 +23,14 @@ const navigationMeta = {
   crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
+  inventory:{label:'Inventory',description:'Company supplies and equipment counts',Icon:Package},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','training','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','training','inventory','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
-  const desktop=navigationOrder.filter(page=>page!=='crew'||role==='owner');
+  const desktop=navigationOrder.filter(page=>!['crew','inventory'].includes(page)||role==='owner');
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
 }
@@ -180,6 +182,10 @@ function loadTrainings() {
   try {const stored=localStorage.getItem('fireops-trainings');return stored?JSON.parse(stored) as Training[]:[]}
   catch{return []}
 }
+function loadInventory() {
+  try {const stored=localStorage.getItem('fireops-inventory');return stored?JSON.parse(stored) as InventoryItem[]:[]}
+  catch{return []}
+}
 export function isDocumentUnread(document:CompanyDocument,user:FireOpsUser){
   return user.role==='member'&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
 }
@@ -211,7 +217,18 @@ function loadIssues() {
   } catch { return []; }
 }
 
-export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:{user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;trainings?:Training[];trainingError?:string;onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;onCreateTraining?:(training:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onUpdateTraining?:(trainingId:string,values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onDeleteTraining?:(trainingId:string)=>Promise<void>;onSignupTraining?:(trainingId:string)=>Promise<TrainingSignup>;onCancelTrainingSignup?:(trainingId:string)=>Promise<void>;onMarkTrainingViewed?:(trainingId:string)=>Promise<string>;onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void}) {
+type AppProps={
+  user?:FireOpsUser;company?:CompanyInfo;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;
+  communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;trainings?:Training[];trainingError?:string;inventoryItems?:InventoryItem[];inventoryError?:string;
+  onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;
+  onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;
+  onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;
+  onCreateTraining?:(training:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onUpdateTraining?:(trainingId:string,values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onDeleteTraining?:(trainingId:string)=>Promise<void>;onSignupTraining?:(trainingId:string)=>Promise<TrainingSignup>;onCancelTrainingSignup?:(trainingId:string)=>Promise<void>;onMarkTrainingViewed?:(trainingId:string)=>Promise<string>;
+  onCreateInventoryItem?:(name:string,quantity:number)=>Promise<InventoryItem>;onUpdateInventoryItem?:(item:InventoryItem,quantity:number)=>Promise<InventoryItem>;onDeleteInventoryItem?:(item:InventoryItem)=>Promise<void>;
+  onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;
+};
+
+export default function App({user=demoUser,company=demoCompany,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:AppProps) {
   const currentUser = user;
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
@@ -231,6 +248,8 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
   const [trainings,setTrainings]=useState<Training[]>(()=>trainingData??loadTrainings());
   useEffect(()=>{if(trainingData)setTrainings(trainingData)},[trainingData]);
   const unreadTrainingCount=trainings.filter(training=>trainingStage(training)==='scheduled'&&isTrainingUnread(training,currentUser)).length;
+  const [inventoryItems,setInventoryItems]=useState<InventoryItem[]>(()=>inventoryData??loadInventory());
+  useEffect(()=>{if(inventoryData)setInventoryItems(inventoryData)},[inventoryData]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
@@ -499,6 +518,22 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
     applyViewed(fallback);
     void (onMarkTrainingViewed?.(training.id)??Promise.resolve(fallback)).then(applyViewed).catch(()=>applyViewed(training.viewedAt));
   };
+  const createInventoryItem=async(name:string,quantity:number)=>{
+    if(!canManageFleet)throw new Error('Company owner access required.');
+    const now=new Date().toISOString();
+    const item=onCreateInventoryItem?await onCreateInventoryItem(name,quantity):{id:crypto.randomUUID(),name,quantity,createdAt:now,updatedAt:now};
+    setInventoryItems(items=>{const next=[item,...items.filter(entry=>entry.id!==item.id)];if(!onCreateInventoryItem)saveLocal('fireops-inventory',next);return next});showNotice(`${item.name} added`);return item;
+  };
+  const updateInventoryItem=async(item:InventoryItem,quantity:number)=>{
+    if(!canManageFleet)throw new Error('Company owner access required.');
+    const updated=onUpdateInventoryItem?await onUpdateInventoryItem(item,quantity):{...item,quantity,updatedAt:new Date().toISOString()};
+    setInventoryItems(items=>{const next=items.map(entry=>entry.id===updated.id?updated:entry);if(!onUpdateInventoryItem)saveLocal('fireops-inventory',next);return next});return updated;
+  };
+  const deleteInventoryItem=async(item:InventoryItem)=>{
+    if(!canManageFleet)throw new Error('Company owner access required.');
+    if(onDeleteInventoryItem)await onDeleteInventoryItem(item);
+    setInventoryItems(items=>{const next=items.filter(entry=>entry.id!==item.id);if(!onDeleteInventoryItem)saveLocal('fireops-inventory',next);return next});showNotice(`${item.name} deleted`);
+  };
 
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount}/>
@@ -513,6 +548,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
+        {page === 'inventory' && canManageFleet && <InventoryPage items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem}/>}
 
         {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} setPage={setPage}/>}
