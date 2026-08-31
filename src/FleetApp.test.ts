@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
+import {dashboardNotifications, isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
@@ -81,6 +81,28 @@ describe('communication unread rules',()=>{
     const reply={id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'};
     expect(isThreadUnread(thread({createdById:user.id,createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[reply]}),user)).toBe(true);
     expect(isThreadUnread(thread({createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[{...reply,createdById:user.id,createdAt:'2025-08-28T10:02:00Z'},reply]}),user)).toBe(true);
+  });
+});
+
+describe('dashboard notifications',()=>{
+  const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+  const thread=(id:string,createdAt:string):CommunicationThread=>({id,subject:`Dispatch ${id}`,description:'Report to staging.',createdBy:'Company Owner',createdById:'owner-1',createdByRole:'owner',createdAt,replies:[]});
+  const document=(id:string,updatedAt:string):CompanyDocument=>({id,name:`Document ${id}`,file:storedFile(`company/owner/${id}.pdf`),createdAt:updatedAt,updatedAt});
+
+  it('combines communication and document notifications newest first',()=>{
+    const notifications=dashboardNotifications(
+      [thread('thread-1','2025-08-30T10:00:00Z')],
+      [document('document-1','2025-08-30T11:00:00Z')],
+      crew
+    );
+    expect(notifications.map(item=>item.source)).toEqual(['documents','communications']);
+    expect(notifications.every(item=>item.unread)).toBe(true);
+  });
+
+  it('limits member notifications to 10 and hides section data from owners',()=>{
+    const documents=Array.from({length:12},(_,index)=>document(`document-${index}`,`2025-08-30T${String(index).padStart(2,'0')}:00:00Z`));
+    expect(dashboardNotifications([],documents,crew)).toHaveLength(10);
+    expect(dashboardNotifications([],documents,{...crew,role:'owner'})).toEqual([]);
   });
 });
 
