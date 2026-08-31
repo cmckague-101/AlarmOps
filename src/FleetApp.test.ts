@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {isThreadUnread, type CommunicationThread, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
+import {isThreadUnread, navigationLayout, type CommunicationThread, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
@@ -17,6 +17,18 @@ function snapshot():FleetSnapshot {
     activities:[],
   };
 }
+
+describe('responsive navigation',()=>{
+  it('shows every owner section directly in desktop sidebar',()=>{
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','settings']);
+  });
+
+  it('moves only footer overflow into More on mobile',()=>{
+    expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','settings']);
+    expect(navigationLayout('member').mobileOverflow).toEqual(['settings']);
+  });
+});
 
 describe('account access errors',()=>{
   it('reserves migration guidance for a missing database function',()=>{

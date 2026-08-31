@@ -10,7 +10,25 @@ import {
 
 type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'more' | 'settings';
+type NavigablePage = Exclude<Page,'more'>;
 export type UserRole = 'owner' | 'member';
+
+const navigationMeta = {
+  overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
+  operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
+  communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
+  vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
+  crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
+  settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
+} satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','settings'];
+const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
+
+export function navigationLayout(role:UserRole){
+  const desktop=navigationOrder.filter(page=>page!=='crew'||role==='owner');
+  const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
+  return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
+}
 type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 type IssueStatus = 'Open' | 'Resolved';
 type VehicleDocumentKey = 'contract' | 'viprChecklist' | 'registration' | 'insurance' | 'dotInspection';
@@ -420,12 +438,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
 function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
 function Sidebar({page,setPage,user}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser}) {
   return <aside className="sidebar"><Brand/><nav>
-    <NavItem icon={<LayoutDashboard/>} label="Dashboard" active={page==='overview'} onClick={()=>setPage('overview')}/>
-    <NavItem icon={<MapIcon/>} label="Operations" active={page==='operations'} onClick={()=>setPage('operations')}/>
-    <NavItem icon={<MessageSquare/>} label="Communications" active={page==='communications'} onClick={()=>setPage('communications')}/>
-    <NavItem icon={<Truck/>} label="Fleet" active={page==='vehicles'} onClick={()=>setPage('vehicles')}/>
-    {user.role==='owner'&&<NavItem icon={<Users/>} label="Crew" active={page==='crew'} onClick={()=>setPage('crew')}/>}
-    <NavItem icon={<Ellipsis/>} label="More" active={page==='more'||page==='settings'} onClick={()=>setPage('more')}/>
+    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} onClick={()=>setPage(target)}/>})}
   </nav></aside>
 }
 function NavItem({icon,label,active,onClick}:{icon:React.ReactNode;label:string;active:boolean;onClick:()=>void}) {
@@ -446,7 +459,8 @@ function Topbar({saveState,onSignOut,onSwitchCompany}:{saveState:SaveState;onSig
 }
 
 function MorePage({user,setPage}:{user:FireOpsUser;setPage:(page:Page)=>void}) {
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Company tools and workspace settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Sections</h2><div className="more-list">{user.role==='owner'&&<button onClick={()=>setPage('crew')}><span className="more-icon"><Users/></span><span><b>Crew</b><small>Manage access, assignments, and credentials</small></span><ChevronRight/></button>}<button onClick={()=>setPage('settings')}><span className="more-icon"><SettingsIcon/></span><span><b>Settings</b><small>Company details and integrations</small></span><ChevronRight/></button></div></section></div>;
+  const overflow=navigationLayout(user.role).mobileOverflow;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
@@ -775,4 +789,8 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   </section></div>
 }
 function Detail({icon,label,value}:{icon:React.ReactNode;label:string;value:React.ReactNode}) {return <div><dt>{icon}<span>{label}</span></dt><dd>{value}</dd></div>}
-function MobileNav({page,setPage,unreadCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number}) {const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} unread ${badge===1?'thread':'threads'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;return <nav className="mobile-nav" aria-label="Primary">{item('overview','Dashboard',<LayoutDashboard/>)}{item('operations','Operations',<MapIcon/>)}{item('vehicles','Fleet',<Truck/>)}{item('communications','Communications',<MessageSquare/>,page==='communications',unreadCount)}{item('more','More',<Ellipsis/>,page==='more'||page==='crew'||page==='settings')}</nav>}
+function MobileNav({page,setPage,user,unreadCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number}) {
+  const {mobilePrimary,mobileOverflow}=navigationLayout(user.role);
+  const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} unread ${badge===1?'thread':'threads'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
+  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,target==='communications'?'Comms':label,<Icon/>,page===target,target==='communications'?unreadCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page))}</nav>;
+}
