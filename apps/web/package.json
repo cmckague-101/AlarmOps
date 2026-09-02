@@ -1,0 +1,32 @@
+{
+  "name": "fireops-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
+    "@vitejs/plugin-react": "latest",
+    "d3-geo": "^3.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "topojson-client": "^3.1.0",
+    "us-atlas": "^3.0.1",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/topojson-client": "^3.1.5",
+    "typescript": "latest",
+    "vitest": "^3.2.7"
+  }
+}
