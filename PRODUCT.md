@@ -4,7 +4,7 @@
 
 ## Platform
 
-web
+Adaptive: responsive web plus Expo/React Native clients for iOS and Android. Mobile launches phone-first while preserving adaptive tablet layouts.
 
 ## Users
 
@@ -20,7 +20,7 @@ FireOps connects contractor fleet and crew records to wildfire operations instea
 
 ## Operating context
 
-Users work from offices and field environments. Workflows include vehicle readiness, issue tracking, crew credentials, equipment assignment, and reviewing active NIFC wildfire incidents.
+Users work from offices and field environments. Mobile primarily serves crew members working from phones; owner tools follow core field workflows. Workflows include vehicle readiness, issue tracking, crew credentials, equipment assignment, and reviewing active NIFC wildfire incidents.
 
 ## Capabilities and constraints
 
@@ -33,7 +33,9 @@ Users work from offices and field environments. Workflows include vehicle readin
 - Operations uses current NIFC incident data. Missing incident values display as "Not reported."
 - Operations defaults to incidents with company vehicle assignments and can show all active incidents.
 - Owners assign crewed vehicles to active NIFC fires from vehicle details. Fire assignments appear in Fleet and Operations.
-- Supabase provides authentication and company data. Demo mode uses browser storage.
+- Supabase provides authentication and company data shared by web, iOS, and Android.
+- Mobile uses existing invited accounts with email/password login and no public signup.
+- Demo mode uses browser storage and remains web-only.
 
 ## Brand commitments
 
@@ -56,4 +58,4 @@ Product name is FireOps, powered by Fireco. Existing FireOps logos, direct opera
 
 ## Accessibility & inclusion
 
-Preserve keyboard access, visible focus, text labels alongside color, reduced-motion support, responsive layouts, and 44px touch targets on coarse pointers.
+Preserve keyboard access, visible focus, text labels alongside color, reduced-motion support, responsive layouts, and platform-native accessibility. Touch targets meet 44pt on iOS and 48dp on Android.

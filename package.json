@@ -5,9 +5,16 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
   "scripts": {
     "dev": "npm run dev --workspace=fireops-web",
     "dev:web": "npm run dev --workspace=fireops-web",
+    "dev:mobile": "npm run start --workspace=@fireops/mobile",
+    "ios": "npm run ios --workspace=@fireops/mobile",
+    "android": "npm run android --workspace=@fireops/mobile",
     "build": "npm run build --workspace=fireops-web",
     "build:web": "npm run build --workspace=fireops-web",
     "typecheck": "npm run typecheck --workspaces --if-present",

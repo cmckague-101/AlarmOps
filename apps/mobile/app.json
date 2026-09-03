@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "FireOps",
+    "slug": "fireops",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/fireops-icon.png",
+    "scheme": "fireops",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "icon": "./assets/images/fireops-icon.png",
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#19201D",
+          "image": "./assets/images/fireops-icon.png",
+          "imageWidth": 88
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
