@@ -56,12 +56,18 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
   );
 }
 
-function IssueRow({ issue, vehicleName, styles }: { issue: FleetIssue; vehicleName: string; styles: FleetStyles }) {
+function IssueRow({ issue, vehicleName, styles, onPress }: { issue: FleetIssue; vehicleName: string; styles: FleetStyles; onPress: () => void }) {
   const high = issue.priority === 'Critical' || issue.priority === 'High';
   const markerTone = high ? styles.priorityHighMarker : issue.priority === 'Medium' ? styles.priorityMediumMarker : styles.priorityLowMarker;
   const labelTone = high ? styles.priorityHighLabel : issue.priority === 'Medium' ? styles.priorityMediumLabel : styles.priorityLowLabel;
   return (
-    <View style={styles.issueRow}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${issue.title}, ${issue.priority} priority`}
+      accessibilityHint="Opens issue details"
+      onPress={onPress}
+      style={({ pressed }) => [styles.issueRow, pressed && styles.issueRowPressed]}
+    >
       <View style={[styles.priorityMarker, markerTone]} />
       <View style={styles.issueMain}>
         <View style={styles.issueHeading}>
@@ -71,7 +77,8 @@ function IssueRow({ issue, vehicleName, styles }: { issue: FleetIssue; vehicleNa
         <Text style={styles.issueDescription} numberOfLines={2}>{issue.description}</Text>
         <Text style={styles.issueMeta}>{vehicleName} · Reported by {issue.createdBy}</Text>
       </View>
-    </View>
+      <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' } as never} color={styles.icon.color} size={16} />
+    </Pressable>
   );
 }
 
@@ -199,6 +206,7 @@ export default function FleetScreen() {
                     issue={issue}
                     vehicleName={vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.name ?? 'Unknown vehicle'}
                     styles={styles}
+                    onPress={() => router.push(`/issue/${encodeURIComponent(issue.id)}` as never)}
                   />
                 ))}
               </View>
@@ -254,7 +262,8 @@ function createStyles(theme: FireOpsTheme) {
   sectionTitle: { color: theme.ink, fontSize: 20, lineHeight: 26, fontWeight: '700' },
   sectionCount: { color: theme.secondary, fontSize: 13, lineHeight: 18, fontVariant: ['tabular-nums'] },
   issueList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
-  issueRow: { flexDirection: 'row', gap: 13, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+  issueRow: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 16, paddingHorizontal: 6, marginHorizontal: -6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 8 },
+  issueRowPressed: { backgroundColor: theme.surfaceAlt },
   priorityMarker: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
   priorityHighMarker: { backgroundColor: theme.danger },
   priorityMediumMarker: { backgroundColor: theme.warning },

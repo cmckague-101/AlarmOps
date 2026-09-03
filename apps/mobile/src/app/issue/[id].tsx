@@ -1,0 +1,203 @@
+import { useMemo, useState } from 'react';
+import type { IssueStatus } from '@fireops/domain';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { AppSymbol } from '@/components/app-symbol';
+import { createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
+import { useSession } from '@/providers/session-provider';
+import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+export default function IssueDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const theme = useFireOpsTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { session, access } = useSession();
+  const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
+  const user = access.value?.kind === 'member' ? access.value.user : null;
+  const { vehicles, issues, loading, error } = useFleetVehicles(companyId);
+  const candidate = issues.find((item) => item.id === id);
+  const canView = candidate && user && (user.role === 'owner' || (candidate.createdById ? candidate.createdById === user.id : candidate.createdBy === user.name));
+  const issue = canView ? candidate : undefined;
+  const vehicle = vehicles.find((item) => item.id === issue?.vehicleId);
+  const [updateText, setUpdateText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  if (!session || access.status === 'error') return <Redirect href="/" />;
+
+  const saveUpdate = async (nextStatus?: IssueStatus) => {
+    if (!issue || !user || !updateText.trim()) return;
+    const now = new Date().toISOString();
+    const status = nextStatus ?? issue.status;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await saveFleetRecord('issues', {
+        ...issue,
+        status,
+        resolvedAt: status === 'Resolved' ? issue.resolvedAt ?? now : undefined,
+        updates: [{ id: createFleetId(), text: updateText.trim(), createdBy: user.name, createdById: user.id, createdAt: now }, ...issue.updates],
+      });
+      setUpdateText('');
+    } catch (saveIssueError) {
+      setSaveError(saveIssueError instanceof Error ? saveIssueError.message : 'Issue update could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <Stack.Screen options={{ title: issue?.title ?? 'Issue' }} />
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {loading ? <Text style={styles.stateText}>Loading issue…</Text> : null}
+
+          {!loading && (error || !issue) ? (
+            <View style={styles.message}>
+              <Text style={styles.messageTitle}>{error ? 'Issue unavailable' : 'Issue not found'}</Text>
+              <Text style={styles.messageText}>{error ?? 'This issue may have been removed or you may not have access.'}</Text>
+            </View>
+          ) : null}
+
+          {issue ? (
+            <>
+              {vehicle ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityHint="Opens vehicle details"
+                  onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}` as never)}
+                  style={({ pressed }) => [styles.vehicleContext, pressed && styles.pressed]}
+                >
+                  <View style={styles.vehicleCopy}>
+                    <Text style={styles.vehicleName}>{vehicle.name}</Text>
+                    <Text style={styles.vehicleMeta}>{[vehicle.detail, vehicle.type].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                  <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' } as never} color={theme.secondary} size={17} />
+                </Pressable>
+              ) : null}
+
+              <View style={styles.summary}>
+                <View style={styles.badges}>
+                  <Text style={[styles.badge, issue.status === 'Open' ? styles.openBadge : styles.resolvedBadge]}>{issue.status}</Text>
+                  <Text style={[styles.priority, (issue.priority === 'Critical' || issue.priority === 'High') ? styles.highPriority : issue.priority === 'Medium' ? styles.mediumPriority : styles.lowPriority]}>{issue.priority} priority</Text>
+                </View>
+                <Text style={styles.title}>{issue.title}</Text>
+                <Text style={styles.description} selectable>{issue.description}</Text>
+                <Text style={styles.reported}>Reported by {issue.createdBy} · {formatDate(issue.createdAt)}</Text>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Add update</Text>
+                <Text style={styles.sectionHelp}>Progress, repair, or inspection notes</Text>
+                <TextInput
+                  accessibilityLabel="Issue update"
+                  maxLength={2000}
+                  multiline
+                  onChangeText={setUpdateText}
+                  placeholder="Describe work completed or next steps"
+                  placeholderTextColor={theme.secondary}
+                  style={styles.updateInput}
+                  textAlignVertical="top"
+                  value={updateText}
+                />
+                {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
+                <View style={styles.actions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={saving || !updateText.trim()}
+                    onPress={() => void saveUpdate()}
+                    style={({ pressed }) => [styles.primaryButton, (saving || !updateText.trim()) && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.primaryLabel}>{saving ? 'Saving…' : 'Add update'}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={saving || !updateText.trim()}
+                    onPress={() => void saveUpdate(issue.status === 'Open' ? 'Resolved' : 'Open')}
+                    style={({ pressed }) => [styles.statusButton, (saving || !updateText.trim()) && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.statusButtonLabel}>{issue.status === 'Open' ? 'Mark resolved' : 'Reopen issue'}</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Updates · {issue.updates.length}</Text>
+                {issue.updates.length ? (
+                  <View style={styles.timeline}>
+                    {issue.updates.map((update) => (
+                      <View key={update.id} style={styles.updateRow}>
+                        <View style={styles.timelineDot} />
+                        <View style={styles.updateCopy}>
+                          <Text style={styles.updateBody} selectable>{update.text}</Text>
+                          <Text style={styles.updateMeta}>{update.createdBy} · {formatDate(update.createdAt)}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : <Text style={styles.noUpdates}>No updates yet.</Text>}
+              </View>
+            </>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+function createStyles(theme: FireOpsTheme) {
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    safeArea: { flex: 1, backgroundColor: theme.canvas },
+    content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 48, gap: 28 },
+    stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 32 },
+    vehicleContext: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.surfaceAlt, borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11 },
+    vehicleCopy: { flex: 1, gap: 3 },
+    vehicleName: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
+    vehicleMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
+    summary: { gap: 10 },
+    badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    badge: { overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 12, lineHeight: 16, fontWeight: '800' },
+    openBadge: { color: theme.danger, backgroundColor: theme.dangerSurface },
+    resolvedBadge: { color: theme.green, backgroundColor: theme.greenSurface },
+    priority: { overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 12, lineHeight: 16, fontWeight: '700' },
+    highPriority: { color: theme.danger, backgroundColor: theme.dangerSurface },
+    mediumPriority: { color: theme.warning, backgroundColor: theme.warningSurface },
+    lowPriority: { color: theme.green, backgroundColor: theme.greenSurface },
+    title: { color: theme.ink, fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
+    description: { color: theme.ink, fontSize: 16, lineHeight: 24 },
+    reported: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
+    section: { gap: 10 },
+    sectionTitle: { color: theme.ink, fontSize: 19, lineHeight: 25, fontWeight: '700' },
+    sectionHelp: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
+    updateInput: { minHeight: 116, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, color: theme.ink, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 13, fontSize: 15, lineHeight: 22 },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+    primaryButton: { minHeight: 44, justifyContent: 'center', backgroundColor: theme.command, borderRadius: 10, paddingHorizontal: 15 },
+    primaryLabel: { color: theme.commandText, fontSize: 14, fontWeight: '700' },
+    statusButton: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper, borderRadius: 10, paddingHorizontal: 15 },
+    statusButtonLabel: { color: theme.ink, fontSize: 14, fontWeight: '700' },
+    saveError: { color: theme.danger, backgroundColor: theme.dangerSurface, borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 19 },
+    timeline: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
+    updateRow: { flexDirection: 'row', gap: 12, paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.green, marginTop: 6 },
+    updateCopy: { flex: 1, gap: 6 },
+    updateBody: { color: theme.ink, fontSize: 15, lineHeight: 22 },
+    updateMeta: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
+    noUpdates: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
+    message: { paddingVertical: 48, gap: 9 },
+    messageTitle: { color: theme.ink, fontSize: 22, lineHeight: 28, fontWeight: '700' },
+    messageText: { color: theme.secondary, fontSize: 15, lineHeight: 22 },
+    pressed: { opacity: 0.74 },
+    disabled: { opacity: 0.45 },
+  });
+}

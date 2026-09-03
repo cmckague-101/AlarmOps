@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppSymbol } from '@/components/app-symbol';
 import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -45,13 +46,15 @@ type DetailStyles = ReturnType<typeof createStyles>;
 
 export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
-  const { vehicles, crew, loading, error } = useFleetVehicles(companyId);
+  const { vehicles, issues, crew, loading, error } = useFleetVehicles(companyId);
   const vehicle = vehicles.find((item) => item.id === id);
   const assignedName = crew.find((member) => member.id === vehicle?.assignedTo)?.name;
+  const openIssues = issues.filter((issue) => issue.vehicleId === id && issue.status === 'Open');
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
 
@@ -82,7 +85,36 @@ export default function VehicleDetailScreen() {
               </View>
               <Text style={styles.vehicleSummary}>{[vehicle.type, vehicle.detail].filter(Boolean).join(' · ')}</Text>
               {vehicle.assignedTo ? <Text style={styles.assignment}>Assigned to {assignedName ?? 'Crew member'}</Text> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push({ pathname: '/issue/new' as never, params: { vehicleId: vehicle.id } })}
+                style={({ pressed }) => [styles.openIssueButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.openIssueLabel}>Open issue</Text>
+              </Pressable>
             </View>
+
+            {openIssues.length ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Open issues · {openIssues.length}</Text>
+                <View style={styles.issueList}>
+                  {openIssues.map((issue) => (
+                    <Pressable
+                      key={issue.id}
+                      accessibilityRole="button"
+                      onPress={() => router.push(`/issue/${encodeURIComponent(issue.id)}` as never)}
+                      style={({ pressed }) => [styles.detailIssueRow, pressed && styles.buttonPressed]}
+                    >
+                      <View style={styles.detailIssueMain}>
+                        <Text style={styles.detailIssueTitle}>{issue.title}</Text>
+                        <Text style={styles.detailIssueMeta}>{issue.priority} priority · {issue.updates.length} {issue.updates.length === 1 ? 'update' : 'updates'}</Text>
+                      </View>
+                      <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' } as never} color={theme.secondary} size={17} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Vehicle information</Text>
@@ -147,7 +179,15 @@ function createStyles(theme: FireOpsTheme) {
     attentionText: { color: theme.danger },
     vehicleSummary: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
     assignment: { color: theme.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+    openIssueButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', backgroundColor: theme.command, borderRadius: 10, paddingHorizontal: 16, marginTop: 8 },
+    openIssueLabel: { color: theme.commandText, fontSize: 14, fontWeight: '700' },
+    buttonPressed: { opacity: 0.76 },
     section: { gap: 13 },
+    issueList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
+    detailIssueRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    detailIssueMain: { flex: 1, gap: 4 },
+    detailIssueTitle: { color: theme.ink, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+    detailIssueMeta: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
     sectionTitle: { color: theme.ink, fontSize: 18, lineHeight: 23, fontWeight: '700' },
     details: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
     detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 24, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },

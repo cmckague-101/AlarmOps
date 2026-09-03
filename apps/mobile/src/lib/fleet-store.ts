@@ -140,6 +140,36 @@ function emit(next: SharedFleetSnapshot) {
   listeners.forEach((listener) => listener());
 }
 
+export function createFleetId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = token === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+export async function saveFleetRecord<T extends { id: string }>(collection: FleetCollection, record: T) {
+  if (!supabase || !activeCompanyId) throw new Error('Company fleet is unavailable.');
+  const expectedVersion = versions[collection].get(record.id);
+  const change = {
+    collection,
+    event: expectedVersion === undefined ? 'insert' : 'update',
+    recordId: record.id,
+    data: record,
+    ...(expectedVersion === undefined ? {} : { expectedVersion }),
+  };
+  const { error } = await supabase.rpc('apply_fleet_changes', {
+    target_company_id: activeCompanyId,
+    changes: [change],
+  });
+  if (error) {
+    if (error.code === '40001') throw new Error('Record changed elsewhere. Refresh and try again.');
+    throw new Error(error.message);
+  }
+  await refreshFleet();
+}
+
 export function refreshFleet() {
   if (request && requestVersion === companyVersion) return request;
   const version = companyVersion;
