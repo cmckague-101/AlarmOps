@@ -1,7 +1,10 @@
 import {describe, expect, it} from 'vitest';
-import {dashboardNotifications, isDocumentUnread, isThreadUnread, navigationLayout, type CommunicationThread, type CompanyDocument, type FireOpsUser, type FleetSnapshot, type VehicleFile} from './App';
+import {navigationLayout} from './App';
+import {
+  dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,
+  type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetSnapshot,type Training,type VehicleFile,
+} from '@fireops/domain';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
-import {isTrainingUnread, trainingStage, type Training} from './TrainingPage';
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
 

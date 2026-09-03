@@ -2,14 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, CalendarDays, Check, ChevronRight, CircleAlert, Clock3, GraduationCap, MapPin, Pencil, Plus, Trash2, UserRound, Users, X } from 'lucide-react';
 import { useDialogA11y } from './useDialogA11y';
-
-export type TrainingSignup={userId:string;userName:string;signedUpAt:string};
-export type Training={
-  id:string;courseCode:string;courseTitle:string;date:string;location:string;instructor:string;capacity:number;
-  information:string;createdAt:string;updatedAt:string;viewedAt?:string;signups:TrainingSignup[];
-};
-
-type TrainingUser={id:string;name:string;role:'owner'|'member'};
+import {isTrainingUnread,trainingStage,type FireOpsUser as TrainingUser,type Training,type TrainingSignup} from '@fireops/domain';
+export {isTrainingUnread,trainingStage} from '@fireops/domain';
+export type {Training,TrainingSignup,TrainingStage} from '@fireops/domain';
 
 type Props={
   trainings:Training[];user:TrainingUser;error?:string;
@@ -21,19 +16,7 @@ type Props={
   onViewed:(training:Training)=>void;
 };
 
-export function isTrainingUnread(training:Training,user:TrainingUser){
-  return user.role==='member'&&Date.parse(training.createdAt)>Date.parse(training.viewedAt??'1970-01-01');
-}
-
 const trainingDate=(value:string,options?:Intl.DateTimeFormatOptions)=>new Date(value).toLocaleString('en-US',options??{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
-export type TrainingStage='scheduled'|'expired'|'removed';
-export function trainingStage(training:Training,now=new Date()):TrainingStage{
-  const courseDate=new Date(training.date);
-  const expiresAt=new Date(courseDate.getFullYear(),courseDate.getMonth(),courseDate.getDate()+1);
-  const removesAt=new Date(expiresAt);
-  removesAt.setMonth(removesAt.getMonth()+1);
-  return now<expiresAt?'scheduled':now<removesAt?'expired':'removed';
-}
 
 export default function TrainingPage({trainings,user,error,onCreate,onEdit,onDelete,onSignup,onCancelSignup,onViewed}:Props){
   const [formOpen,setFormOpen]=useState(false);

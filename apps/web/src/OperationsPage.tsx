@@ -7,32 +7,14 @@ import type {Topology} from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
 import {ArrowDownAZ, ArrowLeft, CalendarDays, ChevronRight, CircleUserRound, Flame, Gauge, MapPin, Plus, RefreshCw, Truck, Users, X} from 'lucide-react';
 import {useDialogA11y} from './useDialogA11y';
+import type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
+export type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
 
 const NIFC_QUERY='https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query';
 const NIFC_ITEM='https://data-nifc.opendata.arcgis.com/datasets/nifc::wfigs-incident-locations-current/about';
 const OUT_FIELDS='OBJECTID,UniqueFireIdentifier,IncidentName,IncidentSize,PercentContained,TotalIncidentPersonnel,POOState,FireDiscoveryDateTime,ModifiedOnDateTime_dt,InitialLatitude,InitialLongitude';
 const US_STATE_NAMES:Record<string,string>={
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'District of Columbia'
-};
-
-export type NifcIncident={
-  id:string;
-  name:string;
-  acres:number|null;
-  contained:number|null;
-  personnel:number|null;
-  state:string;
-  discovered:number|null;
-  updated:number|null;
-  latitude:number;
-  longitude:number;
-};
-
-export type FireResourceVehicle={
-  id:string;unit:string;type:string;year:number;make:string;model:string;plate?:string;
-  assignedFire?:{id:string;name:string;state:string};
-  assignedCrew?:{id:string;name:string};
-  motive?:{location:string;speed:string;updatedAt:string};
 };
 
 type ArcGisFeature={attributes:Record<string,string|number|null>;geometry?:{x:number;y:number}};

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, CircleAlert, Minus, Package, Plus, Search, Trash2, X } from 'lucide-react';
 import { useDialogA11y } from './useDialogA11y';
-
-export type InventoryItem={id:string;name:string;quantity:number;createdAt:string;updatedAt:string};
+import type {InventoryItem} from '@fireops/domain';
+export type {InventoryItem} from '@fireops/domain';
 
 type Props={
   items:InventoryItem[];

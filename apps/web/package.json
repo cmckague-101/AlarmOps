@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fireops/domain": "*",
     "@supabase/supabase-js": "^2.112.4",
     "@vitejs/plugin-react": "latest",
     "d3-geo": "^3.1.1",
