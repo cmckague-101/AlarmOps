@@ -69,6 +69,7 @@ let companyVersion = 0;
 let channel: RealtimeChannel | null = null;
 let request: Promise<void> | null = null;
 let requestVersion = -1;
+let refreshQueued = false;
 const listeners = new Set<() => void>();
 
 function text(row: VehicleRow, ...keys: string[]) {
@@ -255,7 +256,11 @@ export async function updateFleetVehicle(
 }
 
 export function refreshFleet() {
-  if (request && requestVersion === companyVersion) return request;
+  if (request && requestVersion === companyVersion) {
+    refreshQueued = true;
+    return request;
+  }
+  refreshQueued = false;
   const version = companyVersion;
   const companyId = activeCompanyId;
 
@@ -278,13 +283,22 @@ export function refreshFleet() {
 
     const client = supabase;
     const collections = Object.entries(tables) as [FleetCollection, string][];
-    const results = await Promise.all(
-      collections.map(([, table]) => client
-        .from(table)
-        .select('record_id, data, version, updated_at')
-        .eq('company_id', companyId)
-        .order('updated_at', { ascending: false })),
-    );
+    let results;
+    try {
+      results = await Promise.all(
+        collections.map(([, table]) => client
+          .from(table)
+          .select('record_id, data, version, updated_at')
+          .eq('company_id', companyId)
+          .order('updated_at', { ascending: false })),
+      );
+    } catch (loadError) {
+      if (version === companyVersion) {
+        const message = loadError instanceof Error ? loadError.message : 'Network request failed.';
+        emit({ ...snapshot, loading: false, refreshing: false, error: `Fleet could not load. ${message}` });
+      }
+      return;
+    }
     if (version !== companyVersion) return;
 
     const failed = results.find((result) => result.error);
@@ -316,7 +330,12 @@ export function refreshFleet() {
       error: null,
     });
   })().finally(() => {
-    if (requestVersion === version) request = null;
+    if (requestVersion !== version) return;
+    request = null;
+    if (refreshQueued && version === companyVersion) {
+      refreshQueued = false;
+      void refreshFleet();
+    }
   });
   requestVersion = version;
   return request;
@@ -326,6 +345,7 @@ function selectCompany(companyId: string | null) {
   if (companyId === activeCompanyId) return;
   activeCompanyId = companyId;
   companyVersion += 1;
+  refreshQueued = false;
 
   if (channel && supabase) void supabase.removeChannel(channel);
   channel = null;

@@ -118,7 +118,8 @@ export default function VehicleFormScreen() {
         notes: form.notes.trim(),
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),
       }, user, editing);
-      router.replace(`/vehicle/${recordId}`);
+      if (editing) router.back();
+      else router.replace(`/vehicle/${recordId}`);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Vehicle could not be saved. Try again.');
     } finally {
