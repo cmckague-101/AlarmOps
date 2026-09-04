@@ -1,9 +1,10 @@
-import {isDocumentUnread} from '@fireops/domain';
+import {isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
 import {Pressable,StyleSheet,Text,View} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
+import {useTrainings} from '@/lib/training-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -11,10 +12,12 @@ const sections=['Documents','Training','Crew','Inventory','Settings'];
 export default function More(){
   const router=useRouter();const theme=useFireOpsTheme();const {access,signOut}=useSession();const member=access.value?.kind==='member'?access.value:null;
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
+  const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
+  const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
   const visible=sections.filter(item=>member?.user.role==='owner'||!['Crew','Inventory'].includes(item));
   return <SectionScreen title="More" description="Documents, training, and account settings">
-    <View style={[styles.list,{backgroundColor:theme.paper,borderColor:theme.divider}]}>{visible.map((item,index)=>item==='Documents'?<Pressable accessibilityRole="button" key={item} onPress={()=>router.push('/documents' as never)} style={({pressed})=>[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider},pressed&&styles.pressed]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text>{unreadDocuments>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unreadDocuments} new</Text>}<AppSymbol name={{ios:'chevron.right',android:'chevron_right'} as never} color={theme.secondary} size={17}/></Pressable>:<View key={item} style={[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider}]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text><Text style={[styles.pending,{color:theme.secondary}]}>Coming next</Text></View>)}</View>
+    <View style={[styles.list,{backgroundColor:theme.paper,borderColor:theme.divider}]}>{visible.map((item,index)=>['Documents','Training'].includes(item)?<Pressable accessibilityRole="button" key={item} onPress={()=>router.push((item==='Documents'?'/documents':'/training') as never)} style={({pressed})=>[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider},pressed&&styles.pressed]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text>{(item==='Documents'?unreadDocuments:unreadTrainings)>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{item==='Documents'?unreadDocuments:unreadTrainings} new</Text>}<AppSymbol name={{ios:'chevron.right',android:'chevron_right'} as never} color={theme.secondary} size={17}/></Pressable>:<View key={item} style={[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider}]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text><Text style={[styles.pending,{color:theme.secondary}]}>Coming next</Text></View>)}</View>
     <Pressable accessibilityRole="button" onPress={()=>void signOut()} style={[styles.signOut,{borderColor:theme.divider}]}><Text style={[styles.signOutLabel,{color:theme.danger}]}>Sign out</Text></Pressable>
   </SectionScreen>;
 }

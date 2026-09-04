@@ -15,9 +15,13 @@
     "dev:mobile": "npm run start --workspace=@fireops/mobile",
     "ios": "npm run ios --workspace=@fireops/mobile",
     "android": "npm run android --workspace=@fireops/mobile",
+    "postinstall": "patch-package",
     "build": "npm run build --workspace=fireops-web",
     "build:web": "npm run build --workspace=fireops-web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }

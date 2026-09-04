@@ -56,13 +56,46 @@ Source of truth for mobile fleet work. Check items only after implementation and
   - New-thread validation and reply controls
   - No test content posted to company communications
 
-## Later mobile parity
+## Remaining web-to-mobile parity
+
+Complete and validate items in order unless product priority changes.
 
 - [x] Company documents
-- [ ] Training and registration
-- [ ] Owner crew management and credentials
-- [ ] Owner inventory management
-- [ ] Account and integration settings
+- [x] Training and registration
+- [x] Mobile Operations incident discovery
+  - Assigned-fire map remains available
+  - All Fires uses state and incident lists instead of map
+  - Fire-name search opens incident details
+- [ ] 1. Owner crew management and credentials
+  - Crew list, status counts, and invitation limits
+  - Invite crew members
+  - Contact details and member status
+  - Upload, open, and remove credentials
+  - View and change vehicle/fire assignments
+  - Remove crew members and clear assignments safely
+- [ ] 2. Owner inventory management
+  - List company inventory
+  - Add and rename items
+  - Adjust quantities
+  - Delete items with confirmation
+  - Preserve owner-only access
+- [ ] 3. Account and integration settings
+  - Company details and crew seat usage
+  - Motive API verification, replacement, and disconnect
+  - Switch company
+- [ ] 4. Motive vehicle detail parity
+  - Live location, speed, connection state, and last update
+  - Camera status and image capture
+- [ ] 5. Dashboard notification parity
+  - Combined unread communications, documents, and training
+  - Open each notification in its source screen
+- [ ] 6. Vehicle-side fire assignment
+  - Search and select a NIFC fire from vehicle details
+  - Clear fire assignment from vehicle details
+- [ ] 7. Resolved issue history in vehicle details
+- [ ] 8. Owner issue editing
+  - Edit title, description, and priority
+- [ ] 9. Manual light/dark theme control
 
 ## Company documents
 
@@ -76,3 +109,28 @@ Source of truth for mobile fleet work. Check items only after implementation and
   - Live company document list rendered
   - Owner upload form and responsive layout rendered
   - Destructive delete and file upload were not executed against company data
+
+## Training and registration
+
+- [x] Scheduled and recently expired course lists
+- [x] Member unread state and More tab badge
+- [x] Course detail and owner attendee roster
+- [x] Member signup and cancellation with capacity enforcement
+- [x] Owner create and edit forms with validation
+- [x] Owner destructive delete confirmation
+- [x] Realtime refresh shared with web
+- [x] iOS Simulator interaction pass
+  - Live scheduled-course list rendered with registration capacity
+  - Owner create form and mobile date/time fields rendered
+  - Registration, course creation, and deletion were not executed against company data
+
+## Operations map and incident discovery
+
+- [x] Native incident map defaults to fires assigned to the company fleet
+- [x] Assigned and All Fires scopes
+- [x] All Fires hides the map and prioritizes incident discovery on mobile
+- [x] All-fire state list sorted alphabetically by full state name
+- [x] Fire-name search with selectable incident results
+- [x] State incident lists sorted largest to smallest by reported acreage
+- [x] Paginated NIFC loading beyond the previous 1,000-incident limit
+- [ ] iOS Simulator interaction pass
