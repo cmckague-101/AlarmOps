@@ -29,8 +29,8 @@ export async function uploadFleetFile(
   const localFile = new File(file.uri);
   if (!localFile.exists)
     throw new Error("Selected file is no longer available.");
-  if (localFile.size > 25 * 1024 * 1024)
-    throw new Error("Attachment must be smaller than 25 MB.");
+  if (localFile.size > 8 * 1024 * 1024)
+    throw new Error("Attachment must be 8 MB or smaller.");
   const body = await localFile.arrayBuffer();
   const { error } = await supabase.storage.from(bucket).upload(path, body, {
     contentType: file.type ?? "application/octet-stream",

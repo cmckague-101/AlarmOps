@@ -58,8 +58,21 @@ Source of truth for mobile fleet work. Check items only after implementation and
 
 ## Later mobile parity
 
-- [ ] Company documents
+- [x] Company documents
 - [ ] Training and registration
 - [ ] Owner crew management and credentials
 - [ ] Owner inventory management
 - [ ] Account and integration settings
+
+## Company documents
+
+- [x] Company-scoped list with realtime refresh
+- [x] Member unread state and More tab badge
+- [x] Open attachments with signed URLs
+- [x] Owner upload and edit forms
+- [x] Owner destructive delete confirmation
+- [x] Safe cleanup for abandoned, replaced, and deleted uploads
+- [x] iOS Simulator interaction pass
+  - Live company document list rendered
+  - Owner upload form and responsive layout rendered
+  - Destructive delete and file upload were not executed against company data
