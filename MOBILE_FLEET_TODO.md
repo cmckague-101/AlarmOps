@@ -89,7 +89,7 @@ Complete and validate items in order unless product priority changes.
 - [x] 5. Dashboard notification parity
   - Combined unread communications, documents, and training
   - Open each notification in its source screen
-- [ ] 6. Vehicle-side fire assignment
+- [x] 6. Vehicle-side fire assignment
   - Search and select a NIFC fire from vehicle details
   - Clear fire assignment from vehicle details
 - [ ] 7. Resolved issue history in vehicle details

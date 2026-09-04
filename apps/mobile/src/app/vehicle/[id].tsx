@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
-import type { VehicleStatus } from "@fireops/domain";
+import { useEffect, useMemo, useState } from "react";
+import type { NifcIncident, VehicleStatus } from "@fireops/domain";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -35,6 +36,7 @@ import {
   type FleetVehicleDocument,
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
+import { fetchNifcIncidents } from "@/lib/nifc";
 import { useSession } from "@/providers/session-provider";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
@@ -145,9 +147,45 @@ export default function VehicleDetailScreen() {
   const [documentName, setDocumentName] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [cameraCapture, setCameraCapture] = useState<string | null>(null);
+  const [firePickerOpen, setFirePickerOpen] = useState(false);
+  const [fireQuery, setFireQuery] = useState("");
+  const [incidents, setIncidents] = useState<NifcIncident[]>([]);
+  const [incidentLoading, setIncidentLoading] = useState(false);
+  const [incidentError, setIncidentError] = useState("");
+  const [incidentRequest, setIncidentRequest] = useState(0);
   const visibleCrew = activeCrew.filter((member) =>
     member.name.toLowerCase().includes(crewQuery.trim().toLowerCase()),
   );
+  const normalizedFireQuery = fireQuery.trim().toLowerCase();
+  const visibleIncidents = useMemo(
+    () =>
+      incidents
+        .filter((incident) =>
+          `${incident.name} ${incident.state}`
+            .toLowerCase()
+            .includes(normalizedFireQuery),
+        )
+        .slice(0, 50),
+    [incidents, normalizedFireQuery],
+  );
+
+  useEffect(() => {
+    if (!firePickerOpen) return;
+    const controller = new AbortController();
+    void fetchNifcIncidents(controller.signal)
+      .then(setIncidents)
+      .catch((fetchError) => {
+        if (fetchError instanceof Error && fetchError.name === "AbortError")
+          return;
+        setIncidentError(
+          "Active fires could not be loaded. Check your connection and retry.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIncidentLoading(false);
+      });
+    return () => controller.abort();
+  }, [firePickerOpen, incidentRequest]);
 
   if (!session || access.status === "error") return <Redirect href="/" />;
 
@@ -427,6 +465,50 @@ export default function VehicleDetailScreen() {
     );
   };
 
+  const changeFireAssignment = async (incident?: NifcIncident) => {
+    if (!vehicle || !user || !canManage || saving || !vehicle.assignedTo)
+      return;
+    if (incident?.id === vehicle.assignedFire?.id) {
+      setFirePickerOpen(false);
+      return;
+    }
+    setSaving(true);
+    setSaveError("");
+    try {
+      await updateFleetVehicle(
+        vehicle,
+        incident
+          ? {
+              status: "Assigned",
+              assignedFire: {
+                id: incident.id,
+                name: incident.name,
+                state: incident.state,
+              },
+            }
+          : { clearFireAssignment: true },
+        user,
+        {
+          action: `${vehicle.name} fire assignment updated`,
+          detail: incident
+            ? `Assigned to ${incident.name}`
+            : "Fire assignment cleared",
+          tone: "complete",
+        },
+      );
+      setFirePickerOpen(false);
+      setFireQuery("");
+    } catch (mutationError) {
+      setSaveError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "Fire assignment could not be changed.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const changeAssignment = async (memberId?: string) => {
     if (!vehicle || !user || saving) return;
     const member = activeCrew.find((item) => item.id === memberId);
@@ -552,6 +634,14 @@ export default function VehicleDetailScreen() {
               {vehicle.assignedTo ? (
                 <Text style={styles.assignment}>
                   Assigned to {assignedName ?? "Crew member"}
+                </Text>
+              ) : null}
+              {vehicle.assignedFire ? (
+                <Text style={styles.fireAssignment}>
+                  Fire: {vehicle.assignedFire.name}
+                  {vehicle.assignedFire.state
+                    ? ` · ${vehicle.assignedFire.state}`
+                    : ""}
                 </Text>
               ) : null}
               <Pressable
@@ -734,6 +824,83 @@ export default function VehicleDetailScreen() {
                 </Text>
               ) : null}
             </View>
+
+            {canManage ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Fire assignment</Text>
+                {vehicle.assignedTo ? (
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Assigned NIFC fire"
+                      accessibilityState={{
+                        expanded: firePickerOpen,
+                        disabled: saving,
+                      }}
+                      disabled={saving}
+                      onPress={() => {
+                        setIncidentLoading(true);
+                        setIncidentError("");
+                        setFirePickerOpen(true);
+                      }}
+                      style={({ pressed }) => [
+                        styles.fireDropdown,
+                        saving && styles.disabled,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <View style={styles.fireDropdownCopy}>
+                        <Text
+                          style={[
+                            styles.fireDropdownText,
+                            !vehicle.assignedFire &&
+                              styles.crewDropdownPlaceholder,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {vehicle.assignedFire?.name ?? "Search active fires"}
+                        </Text>
+                        {vehicle.assignedFire?.state ? (
+                          <Text style={styles.fireDropdownMeta}>
+                            {vehicle.assignedFire.state} · NIFC WFIGS
+                          </Text>
+                        ) : null}
+                      </View>
+                      <AppSymbol
+                        name={{ ios: "chevron.down", android: "arrow_drop_down" } as never}
+                        color={theme.secondary}
+                        size={18}
+                      />
+                    </Pressable>
+                    {vehicle.assignedFire ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Clear fire assignment to ${vehicle.assignedFire.name}`}
+                        disabled={saving}
+                        onPress={() => void changeFireAssignment()}
+                        style={({ pressed }) => [
+                          styles.clearFireButton,
+                          saving && styles.disabled,
+                          pressed && styles.buttonPressed,
+                        ]}
+                      >
+                        <Text style={styles.clearFireLabel}>
+                          {saving ? "Saving…" : "Clear fire assignment"}
+                        </Text>
+                      </Pressable>
+                    ) : (
+                      <Text style={styles.fireHelp}>
+                        Search active NIFC incidents and assign this vehicle.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.readOnlyStatus}>
+                    Assign crew member before selecting fire.
+                  </Text>
+                )}
+              </View>
+            ) : null}
 
             {openIssues.length ? (
               <View style={styles.section}>
@@ -1097,6 +1264,134 @@ export default function VehicleDetailScreen() {
 
       <Modal
         animationType="slide"
+        onRequestClose={() => {
+          if (!saving) {
+            setFirePickerOpen(false);
+            setFireQuery("");
+          }
+        }}
+        presentationStyle="pageSheet"
+        visible={firePickerOpen}
+      >
+        <SafeAreaView style={styles.modalSafeArea} edges={["top", "bottom"]}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeadingCopy}>
+              <Text style={styles.modalTitle}>Select active fire</Text>
+              <Text style={styles.modalSubtitle}>NIFC WFIGS incidents</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close fire picker"
+              disabled={saving}
+              onPress={() => {
+                setFirePickerOpen(false);
+                setFireQuery("");
+              }}
+              hitSlop={10}
+            >
+              <Text style={styles.cancelLabel}>Cancel</Text>
+            </Pressable>
+          </View>
+          <View style={styles.fireSearch}>
+            <AppSymbol
+              name={{ ios: "magnifyingglass", android: "search" } as never}
+              color={theme.secondary}
+              size={18}
+            />
+            <TextInput
+              accessibilityLabel="Search fires by name or state"
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              editable={!saving}
+              onChangeText={setFireQuery}
+              placeholder="Search fire name or state"
+              placeholderTextColor={theme.secondary}
+              style={styles.fireSearchInput}
+              value={fireQuery}
+            />
+          </View>
+          {incidentLoading ? (
+            <View style={styles.fireLoading}>
+              <ActivityIndicator color={theme.ember} />
+              <Text style={styles.noCrewResults}>Loading active fires…</Text>
+            </View>
+          ) : incidentError ? (
+            <View style={styles.fireErrorBlock}>
+              <Text accessibilityRole="alert" style={styles.saveError}>
+                {incidentError}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setIncidentLoading(true);
+                  setIncidentError("");
+                  setIncidentRequest((value) => value + 1);
+                }}
+                style={styles.retryButton}
+              >
+                <Text style={styles.retryLabel}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <FlatList
+              contentContainerStyle={styles.fireResults}
+              data={visibleIncidents}
+              keyboardShouldPersistTaps="handled"
+              keyExtractor={(incident) => incident.id}
+              ListEmptyComponent={
+                <Text style={styles.noCrewResults}>
+                  No active fires match “{fireQuery.trim()}”.
+                </Text>
+              }
+              renderItem={({ item: incident }) => {
+                const selected = vehicle?.assignedFire?.id === incident.id;
+                return (
+                  <Pressable
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: saving }}
+                    disabled={saving}
+                    onPress={() => void changeFireAssignment(incident)}
+                    style={({ pressed }) => [
+                      styles.fireOption,
+                      selected && styles.crewOptionSelected,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <View style={styles.fireIcon}>
+                      <AppSymbol
+                        name={{ ios: "flame.fill", android: "local_fire_department" } as never}
+                        color={theme.danger}
+                        size={17}
+                      />
+                    </View>
+                    <View style={styles.crewOptionCopy}>
+                      <Text style={styles.crewOptionName}>{incident.name}</Text>
+                      <Text style={styles.crewOptionMeta}>
+                        {incident.state || "State not reported"}
+                        {incident.acres === null
+                          ? " · Acres unavailable"
+                          : ` · ${Math.round(incident.acres).toLocaleString()} acres`}
+                      </Text>
+                    </View>
+                    {selected ? (
+                      <Text style={styles.crewOptionCheck}>Selected</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              }}
+            />
+          )}
+          {saveError ? (
+            <Text accessibilityRole="alert" style={styles.modalSaveError}>
+              {saveError}
+            </Text>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        animationType="slide"
         onRequestClose={() => setCrewPickerOpen(false)}
         presentationStyle="pageSheet"
         visible={crewPickerOpen}
@@ -1247,6 +1542,12 @@ function createStyles(theme: FireOpsTheme) {
       lineHeight: 20,
       fontWeight: "600",
     },
+    fireAssignment: {
+      color: theme.danger,
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: "700",
+    },
     openIssueButton: {
       alignSelf: "flex-start",
       minHeight: 44,
@@ -1355,6 +1656,34 @@ function createStyles(theme: FireOpsTheme) {
       fontWeight: "600",
     },
     crewDropdownPlaceholder: { color: theme.secondary, fontWeight: "400" },
+    fireDropdown: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderWidth: 1,
+      borderColor: theme.divider,
+      borderRadius: 12,
+      backgroundColor: theme.paper,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    fireDropdownCopy: { flex: 1, gap: 3 },
+    fireDropdownText: {
+      color: theme.ink,
+      fontSize: 16,
+      lineHeight: 21,
+      fontWeight: "600",
+    },
+    fireDropdownMeta: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
+    clearFireButton: {
+      alignSelf: "flex-start",
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 2,
+    },
+    clearFireLabel: { color: theme.danger, fontSize: 14, fontWeight: "700" },
+    fireHelp: { color: theme.secondary, fontSize: 13, lineHeight: 19 },
     assignmentButton: {
       minHeight: 46,
       alignItems: "center",
@@ -1568,6 +1897,7 @@ function createStyles(theme: FireOpsTheme) {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.divider,
     },
+    modalHeadingCopy: { flex: 1 },
     modalTitle: {
       color: theme.ink,
       fontSize: 20,
@@ -1599,6 +1929,55 @@ function createStyles(theme: FireOpsTheme) {
       fontSize: 16,
     },
     documentForm: { paddingTop: 8, gap: 8 },
+    fireSearch: {
+      minHeight: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginHorizontal: 20,
+      marginVertical: 14,
+      borderWidth: 1,
+      borderColor: theme.divider,
+      borderRadius: 12,
+      backgroundColor: theme.paper,
+      paddingHorizontal: 14,
+    },
+    fireSearchInput: {
+      flex: 1,
+      minHeight: 48,
+      color: theme.ink,
+      fontSize: 16,
+      paddingVertical: 0,
+    },
+    fireLoading: { alignItems: "center", paddingTop: 28 },
+    fireErrorBlock: { alignItems: "center", gap: 4, paddingHorizontal: 20 },
+    fireResults: { paddingHorizontal: 20, paddingBottom: 32 },
+    fireOption: {
+      minHeight: 68,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.divider,
+    },
+    fireIcon: {
+      width: 34,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 17,
+      backgroundColor: theme.dangerSurface,
+    },
+    modalSaveError: {
+      color: theme.danger,
+      backgroundColor: theme.dangerSurface,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      fontSize: 13,
+      lineHeight: 19,
+    },
     crewResults: { paddingHorizontal: 20, paddingBottom: 24 },
     crewOption: {
       minHeight: 62,

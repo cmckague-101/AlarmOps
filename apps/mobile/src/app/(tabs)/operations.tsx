@@ -18,13 +18,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NifcIncident } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshFleet, updateFleetVehicle, useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
+import { fetchNifcIncidents } from '@/lib/nifc';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
-
-const NIFC_QUERY = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query';
-
-type ArcGisFeature = { attributes: Record<string, string | number | null>; geometry?: { x: number; y: number } };
-type ArcGisResponse = { features?: ArcGisFeature[]; exceededTransferLimit?: boolean; error?: { message?: string } };
 
 const US_STATE_NAMES: Record<string, string> = {
   AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado',
@@ -44,52 +40,6 @@ const US_REGION = {
   latitudeDelta: 41,
   longitudeDelta: 64,
 };
-
-function nullableNumber(value: unknown) {
-  return value === null || value === undefined || value === '' ? null : Number(value);
-}
-
-function parseIncident(item: ArcGisFeature): NifcIncident | null {
-  const attributes = item.attributes;
-  const latitude = Number(item.geometry?.y ?? attributes.InitialLatitude);
-  const longitude = Number(item.geometry?.x ?? attributes.InitialLongitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  return {
-    id: String(attributes.UniqueFireIdentifier ?? attributes.OBJECTID),
-    name: String(attributes.IncidentName ?? 'Unnamed incident'),
-    acres: nullableNumber(attributes.IncidentSize),
-    contained: nullableNumber(attributes.PercentContained),
-    personnel: nullableNumber(attributes.TotalIncidentPersonnel),
-    state: String(attributes.POOState ?? '').replace(/^US-/, ''),
-    discovered: nullableNumber(attributes.FireDiscoveryDateTime),
-    updated: nullableNumber(attributes.ModifiedOnDateTime_dt),
-    latitude,
-    longitude,
-  };
-}
-
-async function fetchIncidents(signal: AbortSignal) {
-  const incidents: NifcIncident[] = [];
-  for (let page = 0; page < 5; page += 1) {
-    const params = new URLSearchParams({
-      f: 'json',
-      where: "IncidentTypeCategory='WF' AND FireOutDateTime IS NULL",
-      outFields: 'OBJECTID,UniqueFireIdentifier,IncidentName,IncidentSize,PercentContained,TotalIncidentPersonnel,POOState,FireDiscoveryDateTime,ModifiedOnDateTime_dt,InitialLatitude,InitialLongitude',
-      returnGeometry: 'true',
-      outSR: '4326',
-      orderByFields: 'ModifiedOnDateTime_dt DESC',
-      resultOffset: String(page * 1000),
-      resultRecordCount: '1000',
-    });
-    const response = await fetch(`${NIFC_QUERY}?${params}`, { signal });
-    if (!response.ok) throw new Error(`NIFC request failed with ${response.status}`);
-    const body = (await response.json()) as ArcGisResponse;
-    if (body.error) throw new Error(body.error.message ?? 'NIFC returned an error');
-    incidents.push(...(body.features ?? []).map(parseIncident).filter((item): item is NifcIncident => Boolean(item)));
-    if (!body.exceededTransferLimit || (body.features?.length ?? 0) < 1000) break;
-  }
-  return incidents;
-}
 
 function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
@@ -134,7 +84,7 @@ export default function OperationsScreen() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchIncidents(controller.signal)
+    void fetchNifcIncidents(controller.signal)
       .then(setIncidents)
       .catch((fetchError) => {
         if (fetchError instanceof Error && fetchError.name === 'AbortError') return;
@@ -198,6 +148,15 @@ export default function OperationsScreen() {
     setVehiclePickerOpen(false);
     setSaveError('');
     setSelected(incident);
+  };
+
+  const openVehicleFromIncident = (vehicleId: string) => {
+    closeIncidentDetails();
+    // Wait for native page-sheet dismissal so next route presents above it.
+    setTimeout(
+      () => router.push(`/vehicle/${encodeURIComponent(vehicleId)}`),
+      350,
+    );
   };
 
   const assignVehicle = async (vehicle: FleetVehicle, incident: NifcIncident | null) => {
@@ -606,7 +565,7 @@ export default function OperationsScreen() {
                       key={vehicle.id}
                       accessibilityRole="button"
                       accessibilityLabel={`Open ${vehicle.name}`}
-                      onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}`)}
+                      onPress={() => openVehicleFromIncident(vehicle.id)}
                       style={({ pressed }) => [styles.assignmentRow, pressed && styles.pressed]}
                     >
                       <View style={styles.assignmentCopy}>
