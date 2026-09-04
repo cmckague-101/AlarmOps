@@ -8,7 +8,12 @@
     "scheme": "fireops",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/images/fireops-ios-icon.png",
+      "bundleIdentifier": "com.tinykings.fireops",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "icon": "./assets/images/fireops-icon.png",
@@ -28,11 +33,25 @@
           "imageWidth": 88
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FireOps to select vehicle photos for your company fleet records.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "87cec740-d031-4aa2-9c0a-cf8151395d9e"
+      }
+    },
+    "owner": "ryan.inslee"
   }
 }

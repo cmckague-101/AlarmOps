@@ -2,9 +2,7 @@ diff --git a/node_modules/react-native-maps/src/MapView.tsx b/node_modules/react
 index d6866df..28216bf 100644
 --- a/node_modules/react-native-maps/src/MapView.tsx
 +++ b/node_modules/react-native-maps/src/MapView.tsx
-@@ -816,6 +816,9 @@ class MapView extends React.Component<MapViewProps, State> {
-   }
- 
+@@ -817,4 +817,7 @@ class MapView extends React.Component<MapViewProps, State> {
    private _onMapReady() {
 +    if (this.state.isReady) {
 +      return;
