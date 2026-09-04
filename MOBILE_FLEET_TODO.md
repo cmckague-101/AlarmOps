@@ -93,8 +93,9 @@ Complete and validate items in order unless product priority changes.
   - Search and select a NIFC fire from vehicle details
   - Clear fire assignment from vehicle details
 - [x] 7. Resolved issue history in vehicle details
-- [ ] 8. Owner issue editing
+- [x] 8. Owner issue editing
   - Edit title, description, and priority
+  - Required-field validation and optimistic-concurrency conflict handling
 - [ ] 9. Manual light/dark theme control
 
 ## Company documents
