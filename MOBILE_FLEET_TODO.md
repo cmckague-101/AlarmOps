@@ -83,10 +83,10 @@ Complete and validate items in order unless product priority changes.
   - Company details and crew seat usage
   - Motive API verification, replacement, and disconnect
   - Switch company
-- [ ] 4. Motive vehicle detail parity
+- [x] 4. Motive vehicle detail parity
   - Live location, speed, connection state, and last update
   - Camera status and image capture
-- [ ] 5. Dashboard notification parity
+- [x] 5. Dashboard notification parity
   - Combined unread communications, documents, and training
   - Open each notification in its source screen
 - [ ] 6. Vehicle-side fire assignment

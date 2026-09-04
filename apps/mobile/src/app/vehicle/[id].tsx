@@ -6,6 +6,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   Alert,
   FlatList,
+  Image,
   Linking,
   Modal,
   Pressable,
@@ -70,6 +71,16 @@ function formattedDate(value: string | null) {
   }).format(date);
 }
 
+function telemetryIsCurrent(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && Date.now() - timestamp < 15 * 60 * 1000;
+}
+
+function formatSpeed(value: string) {
+  const speed = Number(value);
+  return Number.isFinite(speed) ? `${Math.round(speed)} mph` : value || "Unavailable";
+}
+
 function DetailRow({
   label,
   value,
@@ -132,11 +143,21 @@ export default function VehicleDetailScreen() {
     null,
   );
   const [documentName, setDocumentName] = useState("");
+  const [capturing, setCapturing] = useState(false);
+  const [cameraCapture, setCameraCapture] = useState<string | null>(null);
   const visibleCrew = activeCrew.filter((member) =>
     member.name.toLowerCase().includes(crewQuery.trim().toLowerCase()),
   );
 
   if (!session || access.status === "error") return <Redirect href="/" />;
+
+  const captureCameraImage = async () => {
+    if (!vehicle?.motive || capturing || vehicle.motive.camera?.status === "offline" || vehicle.motive.camera?.status === "unavailable") return;
+    setCapturing(true);
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    setCameraCapture(vehicle.motive.camera?.capturedAt ?? new Date().toISOString());
+    setCapturing(false);
+  };
 
   const changeStatus = async (status: VehicleStatus) => {
     if (!vehicle || !user || !canManage || vehicle.status === status) return;
@@ -550,6 +571,45 @@ export default function VehicleDetailScreen() {
               </Pressable>
             </View>
 
+            {vehicle.motive ? (
+              <View accessibilityLabel="Motive vehicle status" style={styles.motiveCard}>
+                <View style={styles.motiveHeading}>
+                  <View style={styles.motiveLive}>
+                    <View style={[styles.connectionDot, telemetryIsCurrent(vehicle.motive.updatedAt) && styles.connectionDotLive]} />
+                    <Text style={styles.motiveTitle}>Motive {telemetryIsCurrent(vehicle.motive.updatedAt) ? "live" : "last known"}</Text>
+                  </View>
+                  <Text style={styles.motiveUpdated}>Updated {formattedDate(vehicle.motive.updatedAt) ?? vehicle.motive.updatedAt}</Text>
+                </View>
+                <View style={styles.motiveReading}>
+                  <AppSymbol name={{ ios: "location.fill", android: "location_on" } as never} color={theme.ember} size={18} />
+                  <View style={styles.motiveReadingCopy}>
+                    <Text style={styles.motiveLabel}>Location</Text>
+                    <Text style={styles.motiveValue}>{vehicle.motive.location || "Unavailable"}</Text>
+                  </View>
+                </View>
+                <View style={styles.motiveReading}>
+                  <AppSymbol name={{ ios: "gauge.with.dots.needle.67percent", android: "speed" } as never} color={theme.ember} size={18} />
+                  <View style={styles.motiveReadingCopy}>
+                    <Text style={styles.motiveLabel}>Speed</Text>
+                    <Text style={styles.motiveValue}>{formatSpeed(vehicle.motive.speed)}</Text>
+                  </View>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Capture Motive camera image"
+                  accessibilityState={{ disabled: capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "online") }}
+                  disabled={capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "online")}
+                  onPress={() => void captureCameraImage()}
+                  style={({ pressed }) => [styles.cameraButton, pressed && styles.buttonPressed]}
+                >
+                  <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.commandText} size={18} />
+                  <Text style={styles.cameraButtonLabel}>
+                    {capturing ? "Capturing…" : vehicle.motive.camera?.status === "offline" ? "Camera offline" : vehicle.motive.camera?.status === "unavailable" ? "Camera unavailable" : "Camera online · Capture image"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Current status</Text>
               {canManage ? (
@@ -948,6 +1008,31 @@ export default function VehicleDetailScreen() {
       </ScrollView>
 
       <Modal
+        animationType="fade"
+        onRequestClose={() => setCameraCapture(null)}
+        presentationStyle="fullScreen"
+        visible={Boolean(cameraCapture)}
+      >
+        <SafeAreaView style={styles.cameraViewer} edges={["top", "bottom"]}>
+          <View style={styles.cameraViewerHeader}>
+            <View style={styles.cameraViewerCopy}>
+              <Text style={styles.cameraViewerTitle}>{vehicle?.name ?? "Vehicle"} camera image</Text>
+              <Text style={styles.cameraViewerTime}>Captured {formattedDate(cameraCapture)}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close camera image" hitSlop={10} onPress={() => setCameraCapture(null)} style={styles.cameraClose}>
+              <AppSymbol name={{ ios: "xmark", android: "close" } as never} color="#FFFFFF" size={22} />
+            </Pressable>
+          </View>
+          <Image
+            accessibilityLabel={`Forward camera capture from ${vehicle?.name ?? "vehicle"}`}
+            resizeMode="contain"
+            source={vehicle?.motive?.camera?.imageUrl ? { uri: vehicle.motive.camera.imageUrl } : require("../../../assets/images/motive-camera-demo.png")}
+            style={styles.cameraImage}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
         animationType="slide"
         onRequestClose={() => {
           if (!fileBusy) setPendingDocument(null);
@@ -1177,6 +1262,39 @@ function createStyles(theme: FireOpsTheme) {
       fontWeight: "700",
     },
     buttonPressed: { opacity: 0.76 },
+    motiveCard: {
+      gap: 14,
+      borderRadius: 14,
+      backgroundColor: theme.command,
+      padding: 16,
+    },
+    motiveHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    motiveLive: { flexDirection: "row", alignItems: "center", gap: 7 },
+    connectionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.secondary },
+    connectionDotLive: { backgroundColor: "#52D394" },
+    motiveTitle: { color: theme.commandText, fontSize: 15, fontWeight: "800" },
+    motiveUpdated: { flex: 1, color: "#BFC9C2", fontSize: 11, textAlign: "right" },
+    motiveReading: { flexDirection: "row", alignItems: "center", gap: 11 },
+    motiveReadingCopy: { flex: 1, gap: 2 },
+    motiveLabel: { color: "#BFC9C2", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+    motiveValue: { color: theme.commandText, fontSize: 15, lineHeight: 21, fontWeight: "700" },
+    cameraButton: {
+      minHeight: 46,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      borderWidth: 1,
+      borderColor: "#526158",
+      borderRadius: 10,
+      paddingHorizontal: 12,
+    },
+    cameraButtonLabel: { color: theme.commandText, fontSize: 13, fontWeight: "800" },
     section: { gap: 13 },
     sectionHeading: {
       minHeight: 40,
@@ -1424,6 +1542,21 @@ function createStyles(theme: FireOpsTheme) {
     },
     retryButtonPressed: { opacity: 0.82 },
     retryLabel: { color: theme.commandText, fontSize: 15, fontWeight: "700" },
+    cameraViewer: { flex: 1, backgroundColor: "#080B0A" },
+    cameraViewerHeader: {
+      minHeight: 78,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      paddingHorizontal: 20,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: "#344039",
+    },
+    cameraViewerCopy: { flex: 1, gap: 3 },
+    cameraViewerTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
+    cameraViewerTime: { color: "#AEB8B1", fontSize: 12 },
+    cameraClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+    cameraImage: { flex: 1, width: "100%" },
     modalSafeArea: { flex: 1, backgroundColor: theme.canvas },
     modalHeader: {
       minHeight: 74,

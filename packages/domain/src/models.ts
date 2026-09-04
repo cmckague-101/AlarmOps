@@ -39,7 +39,10 @@ export type Activity = {
 
 export type FireOpsUser = {id:string;name:string;role:UserRole};
 export type CompanyInfo = {name:string;code:string;industry:string;crewInviteLimit:number;crewInvitedCount:number};
-export type MotiveVehicleSnapshot = {vin:string;location:string;speed:string;updatedAt:string};
+export type MotiveVehicleSnapshot = {
+  vin:string;location:string;speed:string;updatedAt:string;
+  camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
+};
 export type MotiveConnection = {connected:boolean;lastFour?:string;connectedAt?:string;lastVerifiedAt?:string;mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
 export type FleetSnapshot = {vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[]};
 export type FleetRemoteChange =
