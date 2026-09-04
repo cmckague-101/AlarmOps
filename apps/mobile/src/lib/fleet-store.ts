@@ -4,6 +4,8 @@ import type {
   CrewMember,
   FireOpsUser,
   FleetIssue,
+  MotiveVehicleSnapshot,
+  NifcIncident,
   VehicleStatus,
 } from "@fireops/domain";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -35,6 +37,8 @@ export type FleetVehicle = {
   vin: string | null;
   plate: string | null;
   assignedTo: string | null;
+  assignedFire?: Pick<NifcIncident, "id" | "name" | "state">;
+  motive?: MotiveVehicleSnapshot;
   notes: string | null;
   photo: FleetVehicleFile | null;
   documents: FleetVehicleDocument[];
@@ -165,6 +169,14 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
     vin: text(payload, "vin"),
     plate: text(payload, "plate"),
     assignedTo,
+    assignedFire:
+      payload.assignedFire && typeof payload.assignedFire === "object"
+        ? (payload.assignedFire as Pick<NifcIncident, "id" | "name" | "state">)
+        : undefined,
+    motive:
+      payload.motive && typeof payload.motive === "object"
+        ? (payload.motive as MotiveVehicleSnapshot)
+        : undefined,
     notes: text(payload, "notes"),
     photo,
     documents,
@@ -362,6 +374,8 @@ export async function updateFleetVehicle(
     status?: VehicleStatus;
     assignedTo?: string;
     clearAssignment?: boolean;
+    assignedFire?: Pick<NifcIncident, "id" | "name" | "state">;
+    clearFireAssignment?: boolean;
   },
   user: FireOpsUser,
   activity: { action: string; detail: string; tone?: Activity["tone"] },
@@ -375,6 +389,11 @@ export async function updateFleetVehicle(
       ? { assignedTo: undefined, assignedFire: undefined }
       : {}),
     ...(patch.assignedTo ? { assignedTo: patch.assignedTo } : {}),
+    ...(patch.clearFireAssignment
+      ? { assignedFire: undefined }
+      : patch.assignedFire
+        ? { assignedFire: patch.assignedFire }
+        : {}),
   };
   const activityRecord: Activity = {
     id: createFleetId(),

@@ -33,7 +33,7 @@ Source of truth for mobile fleet work. Check items only after implementation and
 - [x] 7. Dashboard parity
   - Open-issue blockers and assigned-to-me sections
   - Activity feed links
-- [ ] 8. Fire assignment and Motive telemetry
+- [x] 8. Fire assignment and Motive telemetry
   - NIFC fire assignment
   - Motive location, speed, and connection state
 
