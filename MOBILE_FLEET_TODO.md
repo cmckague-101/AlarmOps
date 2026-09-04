@@ -92,7 +92,7 @@ Complete and validate items in order unless product priority changes.
 - [x] 6. Vehicle-side fire assignment
   - Search and select a NIFC fire from vehicle details
   - Clear fire assignment from vehicle details
-- [ ] 7. Resolved issue history in vehicle details
+- [x] 7. Resolved issue history in vehicle details
 - [ ] 8. Owner issue editing
   - Edit title, description, and priority
 - [ ] 9. Manual light/dark theme control

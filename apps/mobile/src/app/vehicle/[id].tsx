@@ -129,6 +129,13 @@ export default function VehicleDetailScreen() {
   const openIssues = issues.filter(
     (issue) => issue.vehicleId === id && issue.status === "Open",
   );
+  const resolvedIssues = issues
+    .filter((issue) => issue.vehicleId === id && issue.status === "Resolved")
+    .sort(
+      (a, b) =>
+        Date.parse(b.resolvedAt ?? b.createdAt) -
+        Date.parse(a.resolvedAt ?? a.createdAt),
+    );
   const activeCrew = crew.filter((member) => member.status === "Active");
   const canManage = user?.role === "owner";
   const [saving, setSaving] = useState(false);
@@ -1120,6 +1127,57 @@ export default function VehicleDetailScreen() {
               ) : null}
             </View>
 
+            {resolvedIssues.length ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Resolved issues · {resolvedIssues.length}
+                </Text>
+                <View style={styles.issueList}>
+                  {resolvedIssues.map((issue) => (
+                    <Pressable
+                      key={issue.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open resolved issue ${issue.title}`}
+                      onPress={() =>
+                        router.push(
+                          `/issue/${encodeURIComponent(issue.id)}` as never,
+                        )
+                      }
+                      style={({ pressed }) => [
+                        styles.detailIssueRow,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <View style={styles.resolvedIssueIcon}>
+                        <AppSymbol
+                          name={{ ios: "checkmark", android: "check" } as never}
+                          color={theme.green}
+                          size={15}
+                        />
+                      </View>
+                      <View style={styles.detailIssueMain}>
+                        <Text style={styles.detailIssueTitle}>
+                          {issue.title}
+                        </Text>
+                        <Text style={styles.detailIssueMeta}>
+                          Resolved {formattedDate(issue.resolvedAt ?? issue.createdAt)} · {issue.updates.length}{" "}
+                          {issue.updates.length === 1 ? "update" : "updates"}
+                        </Text>
+                      </View>
+                      <AppSymbol
+                        name={{
+                          ios: "chevron.right",
+                          android: "chevron_right",
+                        } as never}
+                        color={theme.secondary}
+                        size={17}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
             {vehicle.notes ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Notes</Text>
@@ -1721,6 +1779,14 @@ function createStyles(theme: FireOpsTheme) {
       borderBottomColor: theme.divider,
     },
     detailIssueMain: { flex: 1, gap: 4 },
+    resolvedIssueIcon: {
+      width: 30,
+      height: 30,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 15,
+      backgroundColor: theme.greenSurface,
+    },
     detailIssueTitle: {
       color: theme.ink,
       fontSize: 15,
