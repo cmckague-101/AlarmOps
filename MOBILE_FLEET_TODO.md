@@ -43,3 +43,23 @@ Source of truth for mobile fleet work. Check items only after implementation and
 - [x] Mobile lint
 - [ ] Simulator interaction pass for status and assignment changes
 - [ ] Cross-client realtime check between web and mobile
+
+## Next feature set: Communications
+
+- [x] Company thread list ordered by latest activity
+- [x] Unread thread state and tab badge
+- [x] Create a company thread
+- [x] Thread detail and replies
+- [x] Realtime refresh shared with web
+- [x] iOS Simulator interaction pass
+  - Live thread list and thread detail render
+  - New-thread validation and reply controls
+  - No test content posted to company communications
+
+## Later mobile parity
+
+- [ ] Company documents
+- [ ] Training and registration
+- [ ] Owner crew management and credentials
+- [ ] Owner inventory management
+- [ ] Account and integration settings
