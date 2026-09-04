@@ -73,7 +73,7 @@ Complete and validate items in order unless product priority changes.
   - Upload, open, and remove credentials
   - View and change vehicle/fire assignments
   - Remove crew members and clear assignments safely
-- [ ] 2. Owner inventory management
+- [x] 2. Owner inventory management
   - List company inventory
   - Add and rename items
   - Adjust quantities
