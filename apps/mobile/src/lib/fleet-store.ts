@@ -256,6 +256,59 @@ export async function saveFleetRecord<T extends { id: string }>(
   await saveFleetRecords([{ collection, record }]);
 }
 
+export async function inviteCrewMember(
+  companyId: string,
+  details: { email: string; name: string; phone: string },
+) {
+  if (!supabase) throw new Error("Invitation service is unavailable.");
+  const { data, error } = await supabase.functions.invoke("invite-company-member", {
+    body: { companyId, ...details },
+  });
+  if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
+  await refreshFleet();
+}
+
+export async function saveCrewMember(
+  member: CrewMember,
+  user: FireOpsUser,
+  detail: string,
+) {
+  const activity: Activity = {
+    id: createFleetId(),
+    action: `Credentials updated for ${member.name}`,
+    detail,
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: "crew",
+    targetId: member.id,
+    tone: "complete",
+  };
+  await saveFleetRecords([
+    { collection: "crew", record: member },
+    { collection: "activities", record: activity },
+  ]);
+}
+
+export async function removeCrewMember(companyId: string, userId: string) {
+  if (!supabase) throw new Error("Crew removal service is unavailable.");
+  const { data, error } = await supabase.functions.invoke("remove-company-member", {
+    body: { companyId, userId },
+  });
+  if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
+  await refreshFleet();
+  return data as { accountDeleted?: boolean; accountCleanupFailed?: boolean };
+}
+
+export async function loadCrewSeatsUsed(companyId: string) {
+  if (!supabase) throw new Error("Crew usage is unavailable.");
+  const { data, error } = await supabase.rpc("company_crew_seats_used", {
+    target_company_id: companyId,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
 export async function deleteFleetVehicle(
   vehicle: FleetVehicle,
   linkedIssues: FleetIssue[],

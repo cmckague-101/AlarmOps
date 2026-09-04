@@ -66,7 +66,7 @@ Complete and validate items in order unless product priority changes.
   - Assigned-fire map remains available
   - All Fires uses state and incident lists instead of map
   - Fire-name search opens incident details
-- [ ] 1. Owner crew management and credentials
+- [x] 1. Owner crew management and credentials
   - Crew list, status counts, and invitation limits
   - Invite crew members
   - Contact details and member status

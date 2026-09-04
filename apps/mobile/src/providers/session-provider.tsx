@@ -6,7 +6,7 @@ import {supabase,supabaseConfigured} from '@/lib/supabase';
 type CompanyAccess={
   kind:'member';
   user:FireOpsUser;
-  company:{id:string;name:string;code:string;industry:string};
+  company:{id:string;name:string;code:string;industry:string;crewInviteLimit:number};
 };
 type AdminAccess={kind:'admin';userName:string};
 export type AccountAccess=CompanyAccess|AdminAccess;
@@ -57,14 +57,14 @@ export function SessionProvider({children}:PropsWithChildren){
       }
       const membership=membershipResult.data;
       if(!membership){setAccess({status:'error',value:null,error:'Your account is not assigned to a company. Ask your company owner for access.'});return}
-      const companyResult=await supabase.from('companies').select('id,name,company_code,industry').eq('id',membership.company_id).single<{id:string;name:string;company_code:string;industry:string}>();
+      const companyResult=await supabase.from('companies').select('id,name,company_code,industry,crew_invite_limit').eq('id',membership.company_id).single<{id:string;name:string;company_code:string;industry:string;crew_invite_limit:number}>();
       if(!active)return;
       if(companyResult.error){
         console.error('Company access check failed',companyResult.error);
         setAccess({status:'error',value:null,error:'Company details could not be loaded. Check your connection and try again.'});
         return;
       }
-      setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry}},error:''});
+      setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit}},error:''});
     })();
     return()=>{active=false};
   },[sessionUserId,sessionUserEmail,attempt]);
