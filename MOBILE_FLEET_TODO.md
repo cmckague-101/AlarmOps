@@ -79,7 +79,7 @@ Complete and validate items in order unless product priority changes.
   - Adjust quantities
   - Delete items with confirmation
   - Preserve owner-only access
-- [ ] 3. Account and integration settings
+- [x] 3. Account and integration settings
   - Company details and crew seat usage
   - Motive API verification, replacement, and disconnect
   - Switch company

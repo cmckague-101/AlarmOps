@@ -3,18 +3,21 @@ import type {Session} from '@supabase/supabase-js';
 import type {FireOpsUser,UserRole} from '@fireops/domain';
 import {supabase,supabaseConfigured} from '@/lib/supabase';
 
-type CompanyAccess={
+export type CompanyAccess={
   kind:'member';
   user:FireOpsUser;
   company:{id:string;name:string;code:string;industry:string;crewInviteLimit:number};
+  isAdmin?:boolean;
 };
 type AdminAccess={kind:'admin';userName:string};
+export type AdminCompany={id:string;name:string;code:string;industry:string;crewInviteLimit:number};
 export type AccountAccess=CompanyAccess|AdminAccess;
 type AccessState={status:'idle'|'loading'|'ready'|'error';value:null|AccountAccess;error:string};
 
 type SessionContextValue={
   configured:boolean;loading:boolean;session:Session|null;access:AccessState;
   retryAccess:()=>void;signOut:()=>Promise<void>;
+  selectCompany:(company:AdminCompany)=>Promise<void>;clearCompany:()=>void;
 };
 
 const SessionContext=createContext<SessionContextValue|null>(null);
@@ -71,7 +74,14 @@ export function SessionProvider({children}:PropsWithChildren){
 
   const retryAccess=useCallback(()=>setAttempt(value=>value+1),[]);
   const signOut=useCallback(async()=>{if(supabase)await supabase.auth.signOut()},[]);
-  const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut}),[loading,session,access,retryAccess,signOut]);
+  const selectCompany=useCallback(async(company:AdminCompany)=>{
+    if(!supabase||access.value?.kind!=='admin')throw new Error('Administrator access is unavailable.');
+    const {error}=await supabase.rpc('admin_access_company',{target_company_id:company.id});
+    if(error)throw new Error(error.message);
+    setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId!,name:access.value.userName,role:'owner'},company,isAdmin:true},error:''});
+  },[access.value,sessionUserId]);
+  const clearCompany=useCallback(()=>setAttempt(value=>value+1),[]);
+  const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut,selectCompany,clearCompany}),[loading,session,access,retryAccess,signOut,selectCompany,clearCompany]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

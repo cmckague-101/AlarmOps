@@ -9,6 +9,6 @@ export default function Index(){
   if(!session)return <Redirect href="/sign-in"/>;
   if(access.status==='idle'||access.status==='loading')return <ScreenState title="Checking access" message="Confirming company membership…" busy/>;
   if(access.status==='error')return <ScreenState title="Access unavailable" message={access.error} actionLabel="Try again" onAction={retryAccess} secondaryLabel="Sign out" onSecondary={()=>void signOut()}/>;
-  if(access.value?.kind==='admin')return <ScreenState title="Use FireOps on web" message="System administrator troubleshooting remains in the web app." actionLabel="Sign out" onAction={()=>void signOut()}/>;
+  if(access.value?.kind==='admin')return <Redirect href="/companies"/>;
   return <Redirect href="/(tabs)"/>;
 }
