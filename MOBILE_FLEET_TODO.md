@@ -30,7 +30,7 @@ Source of truth for mobile fleet work. Check items only after implementation and
 - [x] 6. Delete vehicle
   - Owner-only destructive confirmation
   - Delete linked issues consistently
-- [ ] 7. Dashboard parity
+- [x] 7. Dashboard parity
   - Open-issue blockers and assigned-to-me sections
   - Activity feed links
 - [ ] 8. Fire assignment and Motive telemetry
