@@ -26,6 +26,7 @@ import {
 } from "@/lib/fleet-files";
 import {
   createFleetId,
+  deleteFleetVehicle,
   refreshFleet,
   updateFleetVehicle,
   updateFleetVehicleFiles,
@@ -119,6 +120,8 @@ export default function VehicleDetailScreen() {
   const canManage = user?.role === "owner";
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [crewPickerOpen, setCrewPickerOpen] = useState(false);
   const [crewQuery, setCrewQuery] = useState("");
   const [fileBusy, setFileBusy] = useState<
@@ -345,6 +348,58 @@ export default function VehicleDetailScreen() {
                 );
               })
               .finally(() => setFileBusy(null));
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmDeleteVehicle = () => {
+    if (!vehicle || !user || !canManage || deleting) return;
+    const linkedIssues = issues.filter((issue) => issue.vehicleId === vehicle.id);
+    Alert.alert(
+      `Delete ${vehicle.name}?`,
+      `This permanently deletes the vehicle record${
+        linkedIssues.length
+          ? ` and ${linkedIssues.length} linked ${linkedIssues.length === 1 ? "issue" : "issues"}`
+          : ""
+      }. This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete vehicle",
+          style: "destructive",
+          onPress: () => {
+            setDeleting(true);
+            setDeleteError("");
+            const filePaths = [
+              vehicle.photo?.path,
+              ...vehicle.files.map(({ file }) => file.path),
+            ];
+            void deleteFleetVehicle(vehicle, linkedIssues, user)
+              .then(async () => {
+                let cleanupFailed = false;
+                try {
+                  await removeFleetFiles(filePaths);
+                } catch {
+                  cleanupFailed = true;
+                }
+                router.back();
+                if (cleanupFailed) {
+                  Alert.alert(
+                    "Vehicle deleted",
+                    "Vehicle record was deleted, but some stored uploads could not be cleaned up.",
+                  );
+                }
+              })
+              .catch((deleteFailure) => {
+                setDeleteError(
+                  deleteFailure instanceof Error
+                    ? deleteFailure.message
+                    : "Vehicle could not be deleted.",
+                );
+              })
+              .finally(() => setDeleting(false));
           },
         },
       ],
@@ -852,6 +907,42 @@ export default function VehicleDetailScreen() {
                 Updated {formattedDate(vehicle.updatedAt)}
               </Text>
             ) : null}
+
+            {canManage ? (
+              <View style={styles.dangerSection}>
+                <Text style={styles.dangerTitle}>Delete vehicle</Text>
+                <Text style={styles.dangerCopy}>
+                  Permanently removes this vehicle and all linked issues.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${vehicle.name}`}
+                  accessibilityHint="Shows a destructive confirmation"
+                  accessibilityState={{ disabled: deleting }}
+                  disabled={deleting}
+                  onPress={confirmDeleteVehicle}
+                  style={({ pressed }) => [
+                    styles.deleteButton,
+                    deleting && styles.disabled,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <AppSymbol
+                    name={{ ios: "trash", android: "delete" } as never}
+                    color={theme.danger}
+                    size={17}
+                  />
+                  <Text style={styles.deleteButtonLabel}>
+                    {deleting ? "Deleting…" : "Delete vehicle"}
+                  </Text>
+                </Pressable>
+                {deleteError ? (
+                  <Text accessibilityRole="alert" style={styles.saveError}>
+                    {deleteError}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -1288,6 +1379,33 @@ function createStyles(theme: FireOpsTheme) {
       lineHeight: 17,
       fontVariant: ["tabular-nums"],
     },
+    dangerSection: {
+      gap: 9,
+      paddingTop: 20,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.divider,
+    },
+    dangerTitle: {
+      color: theme.danger,
+      fontSize: 18,
+      lineHeight: 23,
+      fontWeight: "700",
+    },
+    dangerCopy: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
+    deleteButton: {
+      minHeight: 46,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      borderWidth: 1,
+      borderColor: theme.danger,
+      borderRadius: 10,
+      backgroundColor: theme.paper,
+      paddingHorizontal: 15,
+      marginTop: 4,
+    },
+    deleteButtonLabel: { color: theme.danger, fontSize: 14, fontWeight: "700" },
     message: { paddingVertical: 48, gap: 9 },
     messageTitle: {
       color: theme.ink,

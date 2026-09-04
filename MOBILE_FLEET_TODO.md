@@ -27,7 +27,7 @@ Source of truth for mobile fleet work. Check items only after implementation and
   - Upload vehicle photo and named documents
   - Open attachments with signed URLs
   - Remove abandoned/replaced uploads safely
-- [ ] 6. Delete vehicle
+- [x] 6. Delete vehicle
   - Owner-only destructive confirmation
   - Delete linked issues consistently
 - [ ] 7. Dashboard parity

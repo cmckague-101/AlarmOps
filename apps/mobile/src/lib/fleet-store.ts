@@ -244,6 +244,66 @@ export async function saveFleetRecord<T extends { id: string }>(
   await saveFleetRecords([{ collection, record }]);
 }
 
+export async function deleteFleetVehicle(
+  vehicle: FleetVehicle,
+  linkedIssues: FleetIssue[],
+  user: FireOpsUser,
+) {
+  if (!supabase || !activeCompanyId)
+    throw new Error("Company fleet is unavailable.");
+  const vehicleVersion = versions.vehicles.get(vehicle.id);
+  if (vehicleVersion === undefined)
+    throw new Error("Vehicle changed elsewhere. Refresh and try again.");
+
+  const issueChanges = linkedIssues.map((issue) => {
+    const expectedVersion = versions.issues.get(issue.id);
+    if (expectedVersion === undefined)
+      throw new Error("Linked issues changed elsewhere. Refresh and try again.");
+    return {
+      collection: "issues",
+      event: "delete",
+      recordId: issue.id,
+      expectedVersion,
+    };
+  });
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: `${vehicle.name} deleted from fleet`,
+    detail: linkedIssues.length
+      ? `${linkedIssues.length} linked ${linkedIssues.length === 1 ? "issue" : "issues"} also deleted`
+      : "Vehicle record deleted",
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    tone: "urgent",
+  };
+  const changes = [
+    ...issueChanges,
+    {
+      collection: "vehicles",
+      event: "delete",
+      recordId: vehicle.id,
+      expectedVersion: vehicleVersion,
+    },
+    {
+      collection: "activities",
+      event: "insert",
+      recordId: activityRecord.id,
+      data: activityRecord,
+    },
+  ];
+  const { error } = await supabase.rpc("apply_fleet_changes", {
+    target_company_id: activeCompanyId,
+    changes,
+  });
+  if (error) {
+    if (error.code === "40001")
+      throw new Error("Fleet changed elsewhere. Refresh and try again.");
+    throw new Error(error.message);
+  }
+  await refreshFleet();
+}
+
 export async function saveFleetVehicleRecord(
   record: { id: string; unit: string; [key: string]: unknown },
   user: FireOpsUser,
