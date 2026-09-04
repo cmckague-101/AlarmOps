@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { Activity, CrewMember, FleetIssue } from '@fireops/domain';
+import type { Activity, CrewMember, FireOpsUser, FleetIssue, VehicleStatus } from '@fireops/domain';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
@@ -25,6 +25,7 @@ export type FleetVehicle = {
   notes: string | null;
   files: { label: string; file: FleetVehicleFile }[];
   updatedAt: string | null;
+  source: Record<string, unknown>;
 };
 
 export type SharedFleetSnapshot = {
@@ -128,6 +129,7 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
     notes: text(payload, 'notes'),
     files: [...files, ...documents],
     updatedAt: text(payload, 'updatedAt', 'updated_at', 'createdAt', 'created_at'),
+    source: row.data && typeof row.data === 'object' ? row.data as VehicleRow : payload,
   };
 }
 
@@ -149,25 +151,107 @@ export function createFleetId() {
   });
 }
 
-export async function saveFleetRecord<T extends { id: string }>(collection: FleetCollection, record: T) {
+async function saveFleetRecords(records: { collection: FleetCollection; record: { id: string } }[]) {
   if (!supabase || !activeCompanyId) throw new Error('Company fleet is unavailable.');
-  const expectedVersion = versions[collection].get(record.id);
-  const change = {
-    collection,
-    event: expectedVersion === undefined ? 'insert' : 'update',
-    recordId: record.id,
-    data: record,
-    ...(expectedVersion === undefined ? {} : { expectedVersion }),
-  };
+  const changes = records.map(({ collection, record }) => {
+    const expectedVersion = versions[collection].get(record.id);
+    return {
+      collection,
+      event: expectedVersion === undefined ? 'insert' : 'update',
+      recordId: record.id,
+      data: record,
+      ...(expectedVersion === undefined ? {} : { expectedVersion }),
+    };
+  });
   const { error } = await supabase.rpc('apply_fleet_changes', {
     target_company_id: activeCompanyId,
-    changes: [change],
+    changes,
   });
   if (error) {
     if (error.code === '40001') throw new Error('Record changed elsewhere. Refresh and try again.');
     throw new Error(error.message);
   }
   await refreshFleet();
+}
+
+export async function saveFleetRecord<T extends { id: string }>(collection: FleetCollection, record: T) {
+  await saveFleetRecords([{ collection, record }]);
+}
+
+export async function saveFleetVehicleRecord(
+  record: { id: string; unit: string; [key: string]: unknown },
+  user: FireOpsUser,
+  editing: boolean,
+) {
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: editing ? `${record.unit} details updated` : `${record.unit} added to fleet`,
+    detail: editing ? 'Vehicle record changed' : 'Vehicle record created',
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: 'vehicle',
+    targetId: record.id,
+    tone: 'complete',
+  };
+  const records = [
+    { collection: 'vehicles' as const, record },
+    { collection: 'activities' as const, record: activityRecord },
+  ];
+  try {
+    await saveFleetRecords(records);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError = /fetch failed|network connection|network request failed/i.test(message);
+    const isDuplicate = /duplicate key|23505/i.test(message);
+    if ((!isNetworkError && !isDuplicate) || !supabase || !activeCompanyId) throw error;
+
+    // iOS can lose the RPC response after Supabase committed it. Confirm before
+    // reporting failure so retrying cannot create a second vehicle or activity.
+    const { data, error: verificationError } = await supabase
+      .from('fleet_vehicles')
+      .select('record_id')
+      .eq('company_id', activeCompanyId)
+      .eq('record_id', record.id)
+      .maybeSingle();
+    if (!verificationError && data) {
+      await refreshFleet();
+      return;
+    }
+    if (isNetworkError) throw new Error('Network connection was lost before the vehicle could be confirmed. Check your connection and try again.');
+    throw error;
+  }
+}
+
+export async function updateFleetVehicle(
+  vehicle: FleetVehicle,
+  patch: { status?: VehicleStatus; assignedTo?: string; clearAssignment?: boolean },
+  user: FireOpsUser,
+  activity: { action: string; detail: string; tone?: Activity['tone'] },
+) {
+  const record = {
+    ...vehicle.source,
+    id: vehicle.id,
+    unit: vehicle.name,
+    ...(patch.status ? { status: patch.status } : {}),
+    ...(patch.clearAssignment ? { assignedTo: undefined, assignedFire: undefined } : {}),
+    ...(patch.assignedTo ? { assignedTo: patch.assignedTo } : {}),
+  };
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: activity.action,
+    detail: activity.detail,
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: 'vehicle',
+    targetId: vehicle.id,
+    tone: activity.tone,
+  };
+  await saveFleetRecords([
+    { collection: 'vehicles', record },
+    { collection: 'activities', record: activityRecord },
+  ]);
 }
 
 export function refreshFleet() {

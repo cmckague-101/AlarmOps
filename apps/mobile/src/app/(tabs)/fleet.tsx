@@ -112,9 +112,17 @@ export default function FleetScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.command} />}
       >
-        <View style={styles.headingGroup}>
-          <Text style={styles.title}>Fleet</Text>
-          <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
+        <View style={styles.headingRow}>
+          <View style={styles.headingGroup}>
+            <Text style={styles.title}>Fleet</Text>
+            <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
+          </View>
+          {currentUser?.role === 'owner' ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Add vehicle" onPress={() => router.push('/vehicle/form')} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
+              <AppSymbol name="plus" color={theme.commandText} size={18} />
+              <Text style={styles.addButtonLabel}>Add</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {error ? (
@@ -130,7 +138,13 @@ export default function FleetScreen() {
         {!loading && !error && vehicles.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No vehicles yet</Text>
-            <Text style={styles.emptyText}>Vehicles added to your department will appear here automatically.</Text>
+            <Text style={styles.emptyText}>{currentUser?.role === 'owner' ? 'Add your first vehicle to begin tracking readiness and assignments.' : 'Vehicles added to your department will appear here automatically.'}</Text>
+            {currentUser?.role === 'owner' ? (
+              <Pressable accessibilityRole="button" onPress={() => router.push('/vehicle/form')} style={styles.emptyAddButton}>
+                <AppSymbol name="plus" color={theme.commandText} size={18} />
+                <Text style={styles.addButtonLabel}>Add first vehicle</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -224,9 +238,14 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.canvas },
   content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 26 },
-  headingGroup: { gap: 5 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  headingGroup: { flex: 1, gap: 5 },
   title: { color: theme.command, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },
+  addButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 16 },
+  addButtonPressed: { backgroundColor: theme.emberPressed },
+  addButtonLabel: { color: theme.commandText, fontSize: 15, fontWeight: '800' },
+  emptyAddButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 18, marginTop: 6 },
   controls: { gap: 12 },
   searchInput: { minHeight: 48, backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, paddingHorizontal: 15, color: theme.ink, fontSize: 16 },
   filters: { gap: 8, paddingRight: 20 },
