@@ -23,7 +23,7 @@ Source of truth for mobile fleet work. Check items only after implementation and
 - [x] 4. Add and edit vehicle records
   - Owner-only forms and validation
   - Preserve web vehicle schema and optimistic-concurrency behavior
-- [ ] 5. Vehicle document support
+- [x] 5. Vehicle document support
   - Upload vehicle photo and named documents
   - Open attachments with signed URLs
   - Remove abandoned/replaced uploads safely

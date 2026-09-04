@@ -1,12 +1,25 @@
-import { useEffect, useSyncExternalStore } from 'react';
-import type { Activity, CrewMember, FireOpsUser, FleetIssue, VehicleStatus } from '@fireops/domain';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useEffect, useSyncExternalStore } from "react";
+import type {
+  Activity,
+  CrewMember,
+  FireOpsUser,
+  FleetIssue,
+  VehicleStatus,
+} from "@fireops/domain";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 
 export type FleetVehicleFile = {
   name: string;
   type: string | null;
+  path: string | null;
+};
+
+export type FleetVehicleDocument = {
+  id: string;
+  name: string;
+  file: FleetVehicleFile;
 };
 
 export type FleetVehicle = {
@@ -23,6 +36,8 @@ export type FleetVehicle = {
   plate: string | null;
   assignedTo: string | null;
   notes: string | null;
+  photo: FleetVehicleFile | null;
+  documents: FleetVehicleDocument[];
   files: { label: string; file: FleetVehicleFile }[];
   updatedAt: string | null;
   source: Record<string, unknown>;
@@ -38,15 +53,20 @@ export type SharedFleetSnapshot = {
   error: string | null;
 };
 
-type FleetCollection = 'vehicles' | 'issues' | 'crew' | 'activities';
+type FleetCollection = "vehicles" | "issues" | "crew" | "activities";
 type VehicleRow = Record<string, unknown>;
-type FleetRecordRow = { record_id: string; data: unknown; version: number; updated_at: string };
+type FleetRecordRow = {
+  record_id: string;
+  data: unknown;
+  version: number;
+  updated_at: string;
+};
 
 const tables: Record<FleetCollection, string> = {
-  vehicles: 'fleet_vehicles',
-  issues: 'fleet_issues',
-  crew: 'fleet_crew',
-  activities: 'fleet_activities',
+  vehicles: "fleet_vehicles",
+  issues: "fleet_issues",
+  crew: "fleet_crew",
+  activities: "fleet_activities",
 };
 const versions: Record<FleetCollection, Map<string, number>> = {
   vehicles: new Map(),
@@ -75,67 +95,104 @@ const listeners = new Set<() => void>();
 function text(row: VehicleRow, ...keys: string[]) {
   for (const key of keys) {
     const value = row[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (typeof value === 'number') return String(value);
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number") return String(value);
   }
   return null;
 }
 
 function vehicleFile(value: unknown): FleetVehicleFile | null {
-  if (!value || typeof value !== 'object') return null;
+  if (!value || typeof value !== "object") return null;
   const row = value as VehicleRow;
-  const name = text(row, 'name');
+  const name = text(row, "name");
   if (!name) return null;
-  return { name, type: text(row, 'type') };
+  return { name, type: text(row, "type"), path: text(row, "path") };
 }
 
 function normalizeVehicle(row: VehicleRow): FleetVehicle {
-  const payload = row.data && typeof row.data === 'object'
-    ? { ...row, ...(row.data as VehicleRow) }
-    : row;
-  const makeModel = [text(payload, 'year'), text(payload, 'make'), text(payload, 'model')]
+  const payload =
+    row.data && typeof row.data === "object"
+      ? { ...row, ...(row.data as VehicleRow) }
+      : row;
+  const makeModel = [
+    text(payload, "year"),
+    text(payload, "make"),
+    text(payload, "model"),
+  ]
     .filter(Boolean)
-    .join(' ');
-  const name = text(payload, 'unit', 'name', 'label', 'vehicle_name', 'call_sign') ?? 'Unnamed vehicle';
-  const assignedTo = text(payload, 'assignedTo', 'assigned_to');
+    .join(" ");
+  const name =
+    text(payload, "unit", "name", "label", "vehicle_name", "call_sign") ??
+    "Unnamed vehicle";
+  const assignedTo = text(payload, "assignedTo", "assigned_to");
   const files = [
-    ['VIPR checklist', vehicleFile(payload.viprChecklist)],
-    ['DOT inspection', vehicleFile(payload.dotInspection)],
-    ['Registration', vehicleFile(payload.registration)],
-    ['Insurance', vehicleFile(payload.insurance)],
-    ['Contract', vehicleFile(payload.contract)],
-  ].flatMap(([label, file]) => file ? [{ label: label as string, file: file as FleetVehicleFile }] : []);
+    ["VIPR checklist", vehicleFile(payload.viprChecklist)],
+    ["DOT inspection", vehicleFile(payload.dotInspection)],
+    ["Registration", vehicleFile(payload.registration)],
+    ["Insurance", vehicleFile(payload.insurance)],
+    ["Contract", vehicleFile(payload.contract)],
+  ].flatMap(([label, file]) =>
+    file ? [{ label: label as string, file: file as FleetVehicleFile }] : [],
+  );
+  const photo = vehicleFile(payload.photo);
   const documents = Array.isArray(payload.documents)
     ? payload.documents.flatMap((document) => {
-        if (!document || typeof document !== 'object') return [];
+        if (!document || typeof document !== "object") return [];
         const value = document as VehicleRow;
         const file = vehicleFile(value.file);
-        return file ? [{ label: text(value, 'name') ?? 'Document', file }] : [];
+        return file
+          ? [
+              {
+                id: text(value, "id") ?? createFleetId(),
+                name: text(value, "name") ?? "Document",
+                file,
+              },
+            ]
+          : [];
       })
     : [];
 
   return {
-    id: text(payload, 'id', 'record_id') ?? `${name}-${makeModel}`,
+    id: text(payload, "id", "record_id") ?? `${name}-${makeModel}`,
     name,
-    type: text(payload, 'type', 'vehicle_type', 'category') ?? 'Vehicle',
-    status: text(payload, 'status', 'readiness') ?? 'Unknown',
-    location: text(payload, 'location', 'current_location', 'station_name'),
-    detail: makeModel || text(payload, 'description'),
-    year: text(payload, 'year'),
-    make: text(payload, 'make'),
-    model: text(payload, 'model'),
-    vin: text(payload, 'vin'),
-    plate: text(payload, 'plate'),
+    type: text(payload, "type", "vehicle_type", "category") ?? "Vehicle",
+    status: text(payload, "status", "readiness") ?? "Unknown",
+    location: text(payload, "location", "current_location", "station_name"),
+    detail: makeModel || text(payload, "description"),
+    year: text(payload, "year"),
+    make: text(payload, "make"),
+    model: text(payload, "model"),
+    vin: text(payload, "vin"),
+    plate: text(payload, "plate"),
     assignedTo,
-    notes: text(payload, 'notes'),
-    files: [...files, ...documents],
-    updatedAt: text(payload, 'updatedAt', 'updated_at', 'createdAt', 'created_at'),
-    source: row.data && typeof row.data === 'object' ? row.data as VehicleRow : payload,
+    notes: text(payload, "notes"),
+    photo,
+    documents,
+    files: [
+      ...files,
+      ...documents.map((document) => ({
+        label: document.name,
+        file: document.file,
+      })),
+    ],
+    updatedAt: text(
+      payload,
+      "updatedAt",
+      "updated_at",
+      "createdAt",
+      "created_at",
+    ),
+    source:
+      row.data && typeof row.data === "object"
+        ? (row.data as VehicleRow)
+        : payload,
   };
 }
 
 function records<T>(rows: FleetRecordRow[]): T[] {
-  return rows.flatMap((row) => row.data && typeof row.data === 'object' ? [row.data as T] : []);
+  return rows.flatMap((row) =>
+    row.data && typeof row.data === "object" ? [row.data as T] : [],
+  );
 }
 
 function emit(next: SharedFleetSnapshot) {
@@ -144,38 +201,46 @@ function emit(next: SharedFleetSnapshot) {
 }
 
 export function createFleetId() {
-  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+  if (typeof globalThis.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
     const random = Math.floor(Math.random() * 16);
-    const value = token === 'x' ? random : (random & 0x3) | 0x8;
+    const value = token === "x" ? random : (random & 0x3) | 0x8;
     return value.toString(16);
   });
 }
 
-async function saveFleetRecords(records: { collection: FleetCollection; record: { id: string } }[]) {
-  if (!supabase || !activeCompanyId) throw new Error('Company fleet is unavailable.');
+async function saveFleetRecords(
+  records: { collection: FleetCollection; record: { id: string } }[],
+) {
+  if (!supabase || !activeCompanyId)
+    throw new Error("Company fleet is unavailable.");
   const changes = records.map(({ collection, record }) => {
     const expectedVersion = versions[collection].get(record.id);
     return {
       collection,
-      event: expectedVersion === undefined ? 'insert' : 'update',
+      event: expectedVersion === undefined ? "insert" : "update",
       recordId: record.id,
       data: record,
       ...(expectedVersion === undefined ? {} : { expectedVersion }),
     };
   });
-  const { error } = await supabase.rpc('apply_fleet_changes', {
+  const { error } = await supabase.rpc("apply_fleet_changes", {
     target_company_id: activeCompanyId,
     changes,
   });
   if (error) {
-    if (error.code === '40001') throw new Error('Record changed elsewhere. Refresh and try again.');
+    if (error.code === "40001")
+      throw new Error("Record changed elsewhere. Refresh and try again.");
     throw new Error(error.message);
   }
   await refreshFleet();
 }
 
-export async function saveFleetRecord<T extends { id: string }>(collection: FleetCollection, record: T) {
+export async function saveFleetRecord<T extends { id: string }>(
+  collection: FleetCollection,
+  record: T,
+) {
   await saveFleetRecords([{ collection, record }]);
 }
 
@@ -186,56 +251,69 @@ export async function saveFleetVehicleRecord(
 ) {
   const activityRecord: Activity = {
     id: createFleetId(),
-    action: editing ? `${record.unit} details updated` : `${record.unit} added to fleet`,
-    detail: editing ? 'Vehicle record changed' : 'Vehicle record created',
+    action: editing
+      ? `${record.unit} details updated`
+      : `${record.unit} added to fleet`,
+    detail: editing ? "Vehicle record changed" : "Vehicle record created",
     createdBy: user.name,
     createdById: user.id,
     createdAt: new Date().toISOString(),
-    targetType: 'vehicle',
+    targetType: "vehicle",
     targetId: record.id,
-    tone: 'complete',
+    tone: "complete",
   };
   const records = [
-    { collection: 'vehicles' as const, record },
-    { collection: 'activities' as const, record: activityRecord },
+    { collection: "vehicles" as const, record },
+    { collection: "activities" as const, record: activityRecord },
   ];
   try {
     await saveFleetRecords(records);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const isNetworkError = /fetch failed|network connection|network request failed/i.test(message);
+    const isNetworkError =
+      /fetch failed|network connection|network request failed/i.test(message);
     const isDuplicate = /duplicate key|23505/i.test(message);
-    if ((!isNetworkError && !isDuplicate) || !supabase || !activeCompanyId) throw error;
+    if ((!isNetworkError && !isDuplicate) || !supabase || !activeCompanyId)
+      throw error;
 
     // iOS can lose the RPC response after Supabase committed it. Confirm before
     // reporting failure so retrying cannot create a second vehicle or activity.
     const { data, error: verificationError } = await supabase
-      .from('fleet_vehicles')
-      .select('record_id')
-      .eq('company_id', activeCompanyId)
-      .eq('record_id', record.id)
+      .from("fleet_vehicles")
+      .select("record_id")
+      .eq("company_id", activeCompanyId)
+      .eq("record_id", record.id)
       .maybeSingle();
     if (!verificationError && data) {
       await refreshFleet();
       return;
     }
-    if (isNetworkError) throw new Error('Network connection was lost before the vehicle could be confirmed. Check your connection and try again.');
+    if (isNetworkError)
+      throw new Error(
+        "Network connection was lost before the vehicle could be confirmed. Check your connection and try again.",
+      );
     throw error;
   }
 }
 
 export async function updateFleetVehicle(
   vehicle: FleetVehicle,
-  patch: { status?: VehicleStatus; assignedTo?: string; clearAssignment?: boolean },
+  patch: {
+    status?: VehicleStatus;
+    assignedTo?: string;
+    clearAssignment?: boolean;
+  },
   user: FireOpsUser,
-  activity: { action: string; detail: string; tone?: Activity['tone'] },
+  activity: { action: string; detail: string; tone?: Activity["tone"] },
 ) {
   const record = {
     ...vehicle.source,
     id: vehicle.id,
     unit: vehicle.name,
     ...(patch.status ? { status: patch.status } : {}),
-    ...(patch.clearAssignment ? { assignedTo: undefined, assignedFire: undefined } : {}),
+    ...(patch.clearAssignment
+      ? { assignedTo: undefined, assignedFire: undefined }
+      : {}),
     ...(patch.assignedTo ? { assignedTo: patch.assignedTo } : {}),
   };
   const activityRecord: Activity = {
@@ -245,13 +323,46 @@ export async function updateFleetVehicle(
     createdBy: user.name,
     createdById: user.id,
     createdAt: new Date().toISOString(),
-    targetType: 'vehicle',
+    targetType: "vehicle",
     targetId: vehicle.id,
     tone: activity.tone,
   };
   await saveFleetRecords([
-    { collection: 'vehicles', record },
-    { collection: 'activities', record: activityRecord },
+    { collection: "vehicles", record },
+    { collection: "activities", record: activityRecord },
+  ]);
+}
+
+export async function updateFleetVehicleFiles(
+  vehicle: FleetVehicle,
+  patch: {
+    photo?: FleetVehicleFile | null;
+    documents?: FleetVehicleDocument[];
+  },
+  user: FireOpsUser,
+  activity: { action: string; detail: string },
+) {
+  const record = {
+    ...vehicle.source,
+    id: vehicle.id,
+    unit: vehicle.name,
+    ...(patch.photo !== undefined ? { photo: patch.photo ?? undefined } : {}),
+    ...(patch.documents !== undefined ? { documents: patch.documents } : {}),
+  };
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: activity.action,
+    detail: activity.detail,
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: "vehicle",
+    targetId: vehicle.id,
+    tone: "complete",
+  };
+  await saveFleetRecords([
+    { collection: "vehicles", record },
+    { collection: "activities", record: activityRecord },
   ]);
 }
 
@@ -273,11 +384,18 @@ export function refreshFleet() {
 
   request = (async () => {
     if (!supabase) {
-      emit({ ...snapshot, loading: false, refreshing: false, error: 'Fleet could not load. Supabase is not configured for this build.' });
+      emit({
+        ...snapshot,
+        loading: false,
+        refreshing: false,
+        error:
+          "Fleet could not load. Supabase is not configured for this build.",
+      });
       return;
     }
     if (!companyId) {
-      if (version === companyVersion) emit({ ...snapshot, loading: false, refreshing: false, error: null });
+      if (version === companyVersion)
+        emit({ ...snapshot, loading: false, refreshing: false, error: null });
       return;
     }
 
@@ -286,16 +404,26 @@ export function refreshFleet() {
     let results;
     try {
       results = await Promise.all(
-        collections.map(([, table]) => client
-          .from(table)
-          .select('record_id, data, version, updated_at')
-          .eq('company_id', companyId)
-          .order('updated_at', { ascending: false })),
+        collections.map(([, table]) =>
+          client
+            .from(table)
+            .select("record_id, data, version, updated_at")
+            .eq("company_id", companyId)
+            .order("updated_at", { ascending: false }),
+        ),
       );
     } catch (loadError) {
       if (version === companyVersion) {
-        const message = loadError instanceof Error ? loadError.message : 'Network request failed.';
-        emit({ ...snapshot, loading: false, refreshing: false, error: `Fleet could not load. ${message}` });
+        const message =
+          loadError instanceof Error
+            ? loadError.message
+            : "Network request failed.";
+        emit({
+          ...snapshot,
+          loading: false,
+          refreshing: false,
+          error: `Fleet could not load. ${message}`,
+        });
       }
       return;
     }
@@ -303,21 +431,34 @@ export function refreshFleet() {
 
     const failed = results.find((result) => result.error);
     if (failed?.error) {
-      emit({ ...snapshot, loading: false, refreshing: false, error: `Fleet could not load. ${failed.error.message}` });
+      emit({
+        ...snapshot,
+        loading: false,
+        refreshing: false,
+        error: `Fleet could not load. ${failed.error.message}`,
+      });
       return;
     }
 
-    const loaded = Object.fromEntries(collections.map(([collection], index) => {
-      const rows = (results[index].data ?? []) as FleetRecordRow[];
-      versions[collection] = new Map(rows.map((row) => [row.record_id, row.version]));
-      return [collection, records(rows)];
-    })) as Record<FleetCollection, unknown[]>;
+    const loaded = Object.fromEntries(
+      collections.map(([collection], index) => {
+        const rows = (results[index].data ?? []) as FleetRecordRow[];
+        versions[collection] = new Map(
+          rows.map((row) => [row.record_id, row.version]),
+        );
+        return [collection, records(rows)];
+      }),
+    ) as Record<FleetCollection, unknown[]>;
 
     const vehicles = (results[0].data ?? [])
       .map((row) => normalizeVehicle(row as VehicleRow))
       .sort((a, b) => a.name.localeCompare(b.name));
     const issues = (loaded.issues as FleetIssue[])
-      .map((issue) => ({ ...issue, status: issue.status ?? 'Open', updates: issue.updates ?? [] }))
+      .map((issue) => ({
+        ...issue,
+        status: issue.status ?? "Open",
+        updates: issue.updates ?? [],
+      }))
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
     emit({
@@ -349,16 +490,30 @@ function selectCompany(companyId: string | null) {
 
   if (channel && supabase) void supabase.removeChannel(channel);
   channel = null;
-  emit({ vehicles: [], issues: [], crew: [], activities: [], loading: Boolean(companyId), refreshing: false, error: null });
+  emit({
+    vehicles: [],
+    issues: [],
+    crew: [],
+    activities: [],
+    loading: Boolean(companyId),
+    refreshing: false,
+    error: null,
+  });
   if (!companyId || !supabase) return;
 
   channel = supabase.channel(`mobile-fleet:${companyId}`);
   Object.values(tables).forEach((table) => {
-    channel = channel?.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table, filter: `company_id=eq.${companyId}` },
-      () => void refreshFleet(),
-    ) ?? null;
+    channel =
+      channel?.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table,
+          filter: `company_id=eq.${companyId}`,
+        },
+        () => void refreshFleet(),
+      ) ?? null;
   });
   channel?.subscribe();
   void refreshFleet();
@@ -371,5 +526,9 @@ function subscribe(listener: () => void) {
 
 export function useFleetVehicles(companyId: string | null) {
   useEffect(() => selectCompany(companyId), [companyId]);
-  return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
+  return useSyncExternalStore(
+    subscribe,
+    () => snapshot,
+    () => snapshot,
+  );
 }
