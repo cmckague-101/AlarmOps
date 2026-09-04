@@ -129,7 +129,7 @@ export default function FleetScreen() {
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Fleet data unavailable</Text>
             <Text style={styles.errorText}>{error}</Text>
-            <Pressable accessibilityRole="button" onPress={refreshFleet} style={styles.retryButton}>
+            <Pressable accessibilityRole="button" onPress={() => void refreshFleet()} style={styles.retryButton}>
               <Text style={styles.retryLabel}>Try again</Text>
             </Pressable>
           </View>

@@ -603,7 +603,7 @@ export default function VehicleDetailScreen() {
             </Text>
             <Pressable
               accessibilityRole="button"
-              onPress={refreshFleet}
+              onPress={() => void refreshFleet()}
               style={({ pressed }) => [
                 styles.retryButton,
                 pressed && styles.retryButtonPressed,

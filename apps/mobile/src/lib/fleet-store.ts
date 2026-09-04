@@ -94,6 +94,7 @@ let channel: RealtimeChannel | null = null;
 let request: Promise<void> | null = null;
 let requestVersion = -1;
 let refreshQueued = false;
+let queuedRefreshShowsIndicator = false;
 const listeners = new Set<() => void>();
 
 function text(row: VehicleRow, ...keys: string[]) {
@@ -246,7 +247,7 @@ async function saveFleetRecords(
       throw new Error("Record changed elsewhere. Refresh and try again.");
     throw new Error(error.message);
   }
-  await refreshFleet();
+  await refreshFleet({ showIndicator: false });
 }
 
 export async function saveFleetRecord<T extends { id: string }>(
@@ -265,7 +266,7 @@ export async function inviteCrewMember(
     body: { companyId, ...details },
   });
   if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
-  await refreshFleet();
+  await refreshFleet({ showIndicator: false });
 }
 
 export async function saveCrewMember(
@@ -296,7 +297,7 @@ export async function removeCrewMember(companyId: string, userId: string) {
     body: { companyId, userId },
   });
   if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
-  await refreshFleet();
+  await refreshFleet({ showIndicator: false });
   return data as { accountDeleted?: boolean; accountCleanupFailed?: boolean };
 }
 
@@ -366,7 +367,7 @@ export async function deleteFleetVehicle(
       throw new Error("Fleet changed elsewhere. Refresh and try again.");
     throw new Error(error.message);
   }
-  await refreshFleet();
+  await refreshFleet({ showIndicator: false });
 }
 
 export async function saveFleetVehicleRecord(
@@ -410,7 +411,7 @@ export async function saveFleetVehicleRecord(
       .eq("record_id", record.id)
       .maybeSingle();
     if (!verificationError && data) {
-      await refreshFleet();
+      await refreshFleet({ showIndicator: false });
       return;
     }
     if (isNetworkError)
@@ -498,19 +499,29 @@ export async function updateFleetVehicleFiles(
   ]);
 }
 
-export function refreshFleet() {
+export function refreshFleet(
+  { showIndicator = true }: { showIndicator?: boolean } = {},
+) {
+  // Background sync must not reveal an off-screen iOS RefreshControl; doing so
+  // can leave its expanded content inset behind when navigation returns.
+  const hasData = snapshot.vehicles.length > 0 || snapshot.issues.length > 0;
   if (request && requestVersion === companyVersion) {
     refreshQueued = true;
+    queuedRefreshShowsIndicator ||= showIndicator;
+    if (showIndicator && hasData && !snapshot.refreshing) {
+      emit({ ...snapshot, refreshing: true });
+    }
     return request;
   }
   refreshQueued = false;
+  queuedRefreshShowsIndicator = false;
   const version = companyVersion;
   const companyId = activeCompanyId;
 
   emit({
     ...snapshot,
-    loading: snapshot.vehicles.length === 0 && snapshot.issues.length === 0,
-    refreshing: snapshot.vehicles.length > 0 || snapshot.issues.length > 0,
+    loading: !hasData,
+    refreshing: showIndicator && hasData,
     error: null,
   });
 
@@ -606,8 +617,10 @@ export function refreshFleet() {
     if (requestVersion !== version) return;
     request = null;
     if (refreshQueued && version === companyVersion) {
+      const showIndicator = queuedRefreshShowsIndicator;
       refreshQueued = false;
-      void refreshFleet();
+      queuedRefreshShowsIndicator = false;
+      void refreshFleet({ showIndicator });
     }
   });
   requestVersion = version;
@@ -619,6 +632,7 @@ function selectCompany(companyId: string | null) {
   activeCompanyId = companyId;
   companyVersion += 1;
   refreshQueued = false;
+  queuedRefreshShowsIndicator = false;
 
   if (channel && supabase) void supabase.removeChannel(channel);
   channel = null;
@@ -644,11 +658,11 @@ function selectCompany(companyId: string | null) {
           table,
           filter: `company_id=eq.${companyId}`,
         },
-        () => void refreshFleet(),
+        () => void refreshFleet({ showIndicator: false }),
       ) ?? null;
   });
   channel?.subscribe();
-  void refreshFleet();
+  void refreshFleet({ showIndicator: false });
 }
 
 function subscribe(listener: () => void) {
