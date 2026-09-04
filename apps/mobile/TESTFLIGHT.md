@@ -78,14 +78,18 @@ fireops://reset-password
 
 Test forgot-password flow from installed build, including opening email link back into FireOps.
 
-### 7. Create or connect App Store Connect app
+### 7. App Store Connect app
 
-In App Store Connect → Apps:
+Registered app details:
 
-1. Create app named FireOps if no record exists.
-2. Select same bundle identifier from `app.json`.
-3. Set SKU, primary language, and user access.
-4. Record Apple app ID for troubleshooting/submission.
+```text
+App Store name: FireOps Fleet
+Bundle ID:      com.tinykings.fireops
+Apple app ID:   6808795667
+Expo project:   @ryan.inslee/fireops
+```
+
+Use this existing App Store Connect record for every update. Never create another app record for a new version.
 
 EAS can manage distribution certificates and provisioning profiles during first build. Select correct Apple team when prompted. Do not commit downloaded keys or profiles.
 
@@ -176,41 +180,145 @@ Processing in App Store Connect commonly takes several minutes. Open TestFlight 
 
 TestFlight builds expire after 90 days.
 
-## Future updates
+## Routine update: code to App Store Connect
 
-### Code-only or native update
+Every update requires a new signed iOS build. This project does not currently use EAS Update.
 
-Every TestFlight update follows same signed-build path; this project does not currently use EAS Update.
+### 1. Develop on a branch
 
-1. Pull clean release branch.
-2. Make changes and update tests.
-3. Run release checks above.
-4. For user-visible release, update `expo.version` in `app.json`, for example `1.0.0` → `1.1.0`.
-5. Commit changes.
-6. Build and submit:
+Start from current `main`:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch -c feat/short-description
+```
+
+Make code changes. If dependencies change, commit both `package.json` and root `package-lock.json`. Never commit `.env.local`, Apple credentials, provisioning profiles, or service-role keys.
+
+Run relevant simulator/device checks while developing:
+
+```bash
+# From repository root
+npm run ios
+```
+
+### 2. Verify and merge
+
+Run full release checks from repository root:
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run lint --workspace=@fireops/mobile
+cd apps/mobile && npx expo-doctor
+```
+
+Commit, push, open a pull request, and wait for CI:
+
+```bash
+git add <reviewed-files>
+git commit -m "describe update"
+git push -u origin HEAD
+```
+
+Merge pull request into `main`. Production builds should come from updated, clean `main`, not an uncommitted working tree:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git status --short
+```
+
+`git status --short` must produce no output.
+
+### 3. Choose version
+
+For another TestFlight iteration of same release, leave `expo.version` unchanged. EAS creates a higher build number automatically.
+
+For a new customer-visible release, update `expo.version` in `app.json` before merging:
+
+```json
+"version": "1.1.0"
+```
+
+Version meanings:
+
+- `expo.version`: customer-visible version, such as `1.1.0` (`CFBundleShortVersionString`).
+- EAS remote iOS build number: unique upload number (`CFBundleVersion`). `autoIncrement` manages it.
+- Bundle identifier: permanently `com.tinykings.fireops`; never change it for updates.
+- EAS project ID: permanent Expo project link; do not remove or replace it.
+
+Never manually re-add `ios.buildNumber` to `app.json`; remote EAS versioning owns it.
+
+### 4. Build and submit
+
+From clean `main`:
 
 ```bash
 cd apps/mobile
+npx eas-cli whoami
+npx eas-cli env:list --environment production
 npx eas-cli build --platform ios --profile production --auto-submit
 ```
 
-`autoIncrement` supplies a new iOS build number. Never reuse an uploaded build number for same marketing version.
+Expected account is `ryan.inslee`. Confirm production environment lists both Supabase variables. EAS reuses managed Apple distribution certificate and provisioning profile; Apple login is not normally required for each build.
 
-### Version rules
+Build and submission run in Expo cloud. Terminal can be closed after jobs are accepted. Track them with:
 
-- `expo.version`: customer-visible marketing version (`CFBundleShortVersionString`). Change for planned releases.
-- iOS build number: upload identifier (`CFBundleVersion`). Production EAS profile increments it automatically.
-- Bundle identifier: permanent. Never change for updates.
-- EAS project ID: permanent link to Expo project. Do not remove or replace casually.
+```bash
+npx eas-cli build:list --platform ios --limit 1
+npx eas-cli submit:list --platform ios --limit 1
+```
 
-### Rollback
+Expected sequence:
 
-TestFlight cannot replace an uploaded binary. To fix regression:
+```text
+Build:      IN_QUEUE → IN_PROGRESS → FINISHED
+Submission: IN_QUEUE → IN_PROGRESS → FINISHED
+```
 
-1. Stop assigning affected build to tester groups.
-2. Revert/fix code.
+Do not start another submission while current one is queued. A finished EAS submission means upload reached Apple; Apple processing happens afterward.
+
+### 5. Activate build in TestFlight
+
+In App Store Connect → FireOps Fleet → TestFlight:
+
+1. Wait for Apple processing to finish.
+2. Open new version/build.
+3. Resolve export compliance or missing metadata prompts.
+4. Add build to internal tester group.
+5. Install update through TestFlight and run physical-device smoke test.
+6. For external testers, add build to external group and submit for Beta App Review.
+
+TestFlight builds expire after 90 days. Uploading a build does not automatically release it publicly in App Store.
+
+### 6. Release publicly in App Store
+
+When tested build is ready for customers:
+
+1. Open App Store Connect → FireOps Fleet → App Store.
+2. Create/select iOS version matching `expo.version` exactly.
+3. Complete version description, screenshots, privacy details, support URL, and review notes.
+4. Select tested build from TestFlight/build picker.
+5. Choose manual, automatic, or phased release behavior.
+6. Submit version for App Review.
+7. After approval, release according to selected behavior.
+
+For later fixes to same App Store version, upload a higher build number and select replacement build before review. Once version is released, next public update needs a higher `expo.version`.
+
+### Rollback or failed build
+
+Uploaded binaries cannot be replaced or deleted from Apple's history. To fix regression:
+
+1. Remove affected build from tester groups or stop public rollout where possible.
+2. Revert/fix code on a new branch and merge it.
 3. Build again; EAS creates higher build number.
 4. Submit and assign replacement build.
+
+If EAS build fails, inspect build logs, fix cause, and run build command again. Failed builds do not need App Store Connect cleanup.
 
 ## Release checklist
 
