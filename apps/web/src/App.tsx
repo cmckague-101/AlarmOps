@@ -1,19 +1,31 @@
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
-import OperationsPage, {fetchIncidents, type NifcIncident} from './OperationsPage';
-import TrainingPage, {isTrainingUnread, trainingStage, type Training, type TrainingSignup} from './TrainingPage';
-import InventoryPage, {type InventoryItem} from './InventoryPage';
+import OperationsPage, {fetchIncidents} from './OperationsPage';
+import TrainingPage from './TrainingPage';
+import InventoryPage from './InventoryPage';
+import {
+  crewCredentials, dashboardNotifications, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, trainingStage,
+  type Activity, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
+  type CrewCredential, type CrewMember, type DashboardNotification, type FireOpsUser, type FleetIssue,
+  type FleetRemoteChange, type FleetSnapshot, type InventoryItem, type IssuePriority as Priority, type IssueStatus,
+  type MotiveConnection, type NamedDocument, type NifcIncident, type Training, type TrainingSignup,
+  type UserRole, type Vehicle, type VehicleFile, type VehicleStatus as Status,
+} from '@fireops/domain';
+export {dashboardNotifications,isDocumentUnread,isThreadUnread} from '@fireops/domain';
+export type {
+  Activity,CommunicationReply,CommunicationThread,CompanyDocument,CompanyInfo,CrewCredential,CrewMember,
+  DashboardNotification,FireOpsUser,FleetIssue,FleetRemoteChange,FleetSnapshot,MotiveConnection,NamedDocument,
+  UserRole,Vehicle,VehicleFile,
+} from '@fireops/domain';
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
   Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
-type Status = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'training' | 'inventory' | 'more' | 'settings';
 type NavigablePage = Exclude<Page,'more'>;
-export type UserRole = 'owner' | 'member';
 
 const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
@@ -34,52 +46,9 @@ export function navigationLayout(role:UserRole){
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
 }
-type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
-type IssueStatus = 'Open' | 'Resolved';
 type VehicleDocumentKey = 'contract' | 'viprChecklist' | 'registration' | 'insurance' | 'dotInspection';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type UndoAction = { vehicle: Vehicle; label: string };
-export type VehicleFile = {name: string; type: string; dataUrl: string; path?: string};
-export type NamedDocument = {id: string; name: string; file: VehicleFile};
-export type CrewCredential = NamedDocument;
-type CrewStatus = 'Active' | 'Invited';
-export type CrewMember = {
-  id: string; name: string; email: string; phone: string; role: UserRole; status: CrewStatus;
-  credentials?: CrewCredential[];
-  /** Legacy single-credential fields retained while existing records migrate. */
-  credential?: VehicleFile; credentialName?: string;
-  joinedAt?: string;
-};
-export type Vehicle = {
-  id: string; unit: string; type: string; year: number; make: string; model: string;
-  vin: string; plate: string; status: Status; photo?: VehicleFile; contract?: VehicleFile;
-  viprChecklist?: VehicleFile; registration?: VehicleFile; insurance?: VehicleFile;
-  dotInspection?: VehicleFile; documents?: NamedDocument[]; notes?: string; createdAt: string; assignedTo?: string;
-  assignedFire?: Pick<NifcIncident,'id'|'name'|'state'>;
-};
-type IssueUpdate = {id: string; text: string; createdBy: string; createdById?: string; createdAt: string};
-export type FleetIssue = {
-  id: string; vehicleId: string; title: string; description: string; priority: Priority;
-  status: IssueStatus; resolvedAt?: string; updates: IssueUpdate[]; createdBy: string; createdById?: string; createdAt: string;
-};
-export type Activity = {
-  id: string; action: string; detail: string; createdBy: string; createdById?: string; createdAt: string;
-  targetType?: 'vehicle' | 'issue' | 'crew'; targetId?: string; tone?: 'urgent' | 'complete';
-};
-export type CompanyDocument = {id:string;name:string;file:VehicleFile;createdAt:string;updatedAt:string;viewedAt?:string};
-export type CommunicationReply = {id:string;body:string;createdBy:string;createdById:string;createdAt:string};
-export type CommunicationThread = {
-  id:string;subject:string;description:string;createdBy:string;createdById:string;createdByRole:UserRole;createdAt:string;
-  replies:CommunicationReply[];seenAt?:string;
-};
-
-export function isThreadUnread(thread:CommunicationThread,user:FireOpsUser){
-  const seenAt=thread.seenAt?Date.parse(thread.seenAt):0;
-  const newThread=thread.createdById!==user.id&&Date.parse(thread.createdAt)>seenAt&&(user.role==='owner'||thread.createdByRole==='owner');
-  const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
-  const relevantReply=participates&&thread.replies.some(reply=>reply.createdById!==user.id&&Date.parse(reply.createdAt)>seenAt);
-  return newThread||relevantReply;
-}
 
 const seed: Vehicle[] = [
   {id:'v1',unit:'Engine 701',type:'Type 3 Engine',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',plate:'CA 8F701',status:'Ready',createdAt:'2025-02-04'},
@@ -96,20 +65,6 @@ const vehicleDocumentOptions: {key:VehicleDocumentKey;label:string}[] = [
   {key:'insurance',label:'Insurance'},
   {key:'dotInspection',label:'DOT inspection'}
 ];
-export type FireOpsUser = {id: string; name: string; role: UserRole};
-export type CompanyInfo = {name: string; code: string; industry: string; crewInviteLimit: number; crewInvitedCount: number};
-export type MotiveVehicleSnapshot = {vin:string; location:string; speed:string; updatedAt:string};
-export type MotiveConnection = {connected: boolean; lastFour?: string; connectedAt?: string; lastVerifiedAt?: string; mock?: boolean; vehicles?:MotiveVehicleSnapshot[]};
-export type FleetSnapshot = {vehicles: Vehicle[]; issues: FleetIssue[]; crew: CrewMember[]; activities: Activity[]};
-export type FleetRemoteChange =
-  | {collection:'vehicles';event:'upsert';record:Vehicle}
-  | {collection:'vehicles';event:'delete';id:string}
-  | {collection:'issues';event:'upsert';record:FleetIssue}
-  | {collection:'issues';event:'delete';id:string}
-  | {collection:'crew';event:'upsert';record:CrewMember}
-  | {collection:'crew';event:'delete';id:string}
-  | {collection:'activities';event:'upsert';record:Activity}
-  | {collection:'activities';event:'delete';id:string};
 const demoUser: FireOpsUser = {id: 'u1', name: 'Ryan Mitchell', role: 'owner'};
 const demoCompany: CompanyInfo = {name:'North Ridge Wildfire',code:'NRW-2048',industry:'Wildland fire contractor',crewInviteLimit:5,crewInvitedCount:2};
 const seedCrew: CrewMember[] = [
@@ -123,23 +78,8 @@ function saveLocal(key: string, value: unknown) {
   catch { return false; }
 }
 
-function normalizeVehicle(vehicle: Vehicle): Vehicle {
-  if (vehicle.status === 'Assigned') return vehicle.assignedTo ? vehicle : {...vehicle, status: 'Ready', assignedFire: undefined};
-  return vehicle.assignedTo ? {...vehicle, assignedTo: undefined, assignedFire: undefined} : vehicle;
-}
-
-function normalizeVehicles(vehicles: Vehicle[]) {
-  return vehicles.map(normalizeVehicle);
-}
-
 function issueBelongsToUser(issue:FleetIssue,user:FireOpsUser) {
   return issue.createdById ? issue.createdById===user.id : issue.createdBy===user.name;
-}
-
-function crewCredentials(member:CrewMember):CrewCredential[] {
-  if(member.credentials?.length)return member.credentials;
-  if(!member.credential)return [];
-  return [{id:`legacy-${member.credential.path??member.credential.name}`,name:member.credentialName?.trim()||member.credential.name,file:member.credential}];
 }
 
 function vehicleDocuments(vehicle:Vehicle):NamedDocument[] {
@@ -185,25 +125,6 @@ function loadTrainings() {
 function loadInventory() {
   try {const stored=localStorage.getItem('fireops-inventory');return stored?JSON.parse(stored) as InventoryItem[]:[]}
   catch{return []}
-}
-export function isDocumentUnread(document:CompanyDocument,user:FireOpsUser){
-  return user.role==='member'&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
-}
-export type DashboardNotification={id:string;source:'communications'|'documents'|'training';title:string;detail:string;createdAt:string;unread:boolean};
-export function dashboardNotifications(threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=10,trainings:Training[]=[]):DashboardNotification[]{
-  if(user.role!=='member')return [];
-  const communicationItems=threads.flatMap(thread=>{
-    const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
-    const candidates=[
-      ...(thread.createdByRole==='owner'&&thread.createdById!==user.id?[{createdAt:thread.createdAt,detail:`New communication from ${thread.createdBy}`}]:[]),
-      ...(participates?thread.replies.filter(reply=>reply.createdById!==user.id).map(reply=>({createdAt:reply.createdAt,detail:`${reply.createdBy} replied`})):[])
-    ].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt));
-    const latest=candidates[0];
-    return latest?[{id:`communication-${thread.id}`,source:'communications' as const,title:thread.subject,detail:latest.detail,createdAt:latest.createdAt,unread:isThreadUnread(thread,user)}]:[];
-  });
-  const documentItems=documents.map(document=>({id:`document-${document.id}`,source:'documents' as const,title:document.name,detail:'Company document added or updated',createdAt:document.updatedAt,unread:isDocumentUnread(document,user)}));
-  const trainingItems=trainings.filter(training=>trainingStage(training)==='scheduled').map(training=>({id:`training-${training.id}`,source:'training' as const,title:training.courseTitle,detail:`${training.courseCode} · ${new Date(training.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,createdAt:training.createdAt,unread:isTrainingUnread(training,user)}));
-  return [...communicationItems,...documentItems,...trainingItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
 }
 function loadIssues() {
   try {
@@ -542,7 +463,7 @@ export default function App({user=demoUser,company=demoCompany,initialData,remot
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
-        {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onNewIssue={() => {setIssueVehicleId('');setIssueFormOpen(true)}} onSelectIssue={setSelectedIssue}/>}
+        {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
@@ -601,7 +522,7 @@ function MorePage({user,unreadDocumentCount,unreadTrainingCount,setPage}:{user:F
   return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
 }
 
-function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onNewIssue,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onNewIssue:()=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
+function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
   const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page"><div className="page-heading"><div><h1 className="fleet-title">Fleet <span aria-hidden="true">-</span> <a href="#fleet-issues">{openIssues.length} {openIssues.length===1?'Issue':'Issues'}</a></h1></div><div className="fleet-heading-actions">{canManage&&<><button className="primary desktop-add" onClick={onAdd}><Plus size={19}/> Add vehicle</button><button className="primary mobile-add-vehicle" onClick={onAdd}><Plus size={18}/> Add vehicle</button></>}</div></div>
     <section className="stats-row fleet-stats">
@@ -614,12 +535,12 @@ function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFi
       <div className="vehicle-list">{filtered.map(v=><VehicleCard key={v.id} vehicle={v} assignedName={crew.find(member=>member.id===v.assignedTo)?.name} issueCount={issues.filter(issue=>issue.vehicleId===v.id&&issue.status==='Open').length} motiveMock={motiveMock} onClick={()=>onSelect(v)}/>)}
       {!filtered.length && <div className="empty">{vehicles.length?<Search/>:<Truck/>}<h3>{vehicles.length?'No vehicles found':'No vehicles yet'}</h3><p>{vehicles.length?'Try another search or clear current filter.':canManage?'Add first vehicle to start building company fleet.':'Company owner has not added any vehicles yet.'}</p>{vehicles.length?<button className="secondary" onClick={()=>{setQuery('');setFilter('All')}}>Clear filters</button>:canManage&&<button className="primary" onClick={onAdd}><Plus/> Add vehicle</button>}</div>}</div>
     </section>
-    <FleetIssues issues={openIssues} vehicles={vehicles} onNewIssue={onNewIssue} onSelect={onSelectIssue}/>
+    <FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue}/>
   </div>
 }
-function FleetIssues({issues,vehicles,onNewIssue,onSelect,title='Current issues',emptyMessage='Fleet has no current reported issues.',id='fleet-issues'}:{issues:FleetIssue[];vehicles:Vehicle[];onNewIssue?:()=>void;onSelect:(issue:FleetIssue)=>void;title?:string;emptyMessage?:string;id?:string}) {
+function FleetIssues({issues,vehicles,onSelect,title='Current issues',emptyMessage='Fleet has no current reported issues.',id='fleet-issues'}:{issues:FleetIssue[];vehicles:Vehicle[];onSelect:(issue:FleetIssue)=>void;title?:string;emptyMessage?:string;id?:string}) {
   const vehicleName=(vehicleId:string)=>vehicles.find(vehicle=>vehicle.id===vehicleId)?.unit??'Unknown vehicle';
-  return <section className="issues-panel fleet-issues" id={id}><div className="fleet-issues-heading"><div><div className="fleet-issues-title"><h2>{title}</h2>{onNewIssue&&<button className="primary" onClick={onNewIssue}><Plus size={17}/> New issue</button>}</div><p>{issues.length} open</p></div></div><div className="issue-list">{issues.map(issue=><button className="issue-card" onClick={()=>onSelect(issue)} key={issue.id}><div className={`priority-icon ${issue.priority.toLowerCase()}`}><AlertTriangle/></div><div className="issue-copy"><div className="issue-title"><h3>{issue.title}</h3><div className="issue-badges"><span className="issue-status">Open</span><span className={`priority ${issue.priority.toLowerCase()}`}>{issue.priority}</span></div></div><p>{issue.description}</p><div className="issue-meta"><b>{vehicleName(issue.vehicleId)}</b><span>Reported by {issue.createdBy}</span><span>{issue.updates.length} {issue.updates.length===1?'update':'updates'}</span><span>{new Date(issue.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></div><ChevronRight className="card-arrow"/></button>)}{!issues.length&&<div className="empty compact-empty"><Check/><h3>No open issues</h3><p>{emptyMessage}</p></div>}</div></section>
+  return <section className="issues-panel fleet-issues" id={id}><div className="fleet-issues-heading"><div><div className="fleet-issues-title"><h2>{title}</h2></div><p>{issues.length} open</p></div></div><div className="issue-list">{issues.map(issue=><button className="issue-card" onClick={()=>onSelect(issue)} key={issue.id}><div className={`priority-icon ${issue.priority.toLowerCase()}`}><AlertTriangle/></div><div className="issue-copy"><div className="issue-title"><h3>{issue.title}</h3><div className="issue-badges"><span className="issue-status">Open</span><span className={`priority ${issue.priority.toLowerCase()}`}>{issue.priority}</span></div></div><p>{issue.description}</p><div className="issue-meta"><b>{vehicleName(issue.vehicleId)}</b><span>Reported by {issue.createdBy}</span><span>{issue.updates.length} {issue.updates.length===1?'update':'updates'}</span><span>{new Date(issue.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></div><ChevronRight className="card-arrow"/></button>)}{!issues.length&&<div className="empty compact-empty"><Check/><h3>No open issues</h3><p>{emptyMessage}</p></div>}</div></section>
 }
 function Stat({label,value,icon,tone='dark'}:{label:string;value:number;icon?:React.ReactNode;tone?:string}) {return <div className={`stat ${icon?'':'no-icon'}`}>{icon&&<div className={`stat-icon ${tone}`}>{icon}</div>}<div><strong>{value}</strong><span>{label}</span></div></div>}
 function VehicleCard({vehicle,assignedName,issueCount,motiveMock,onClick}:{vehicle:Vehicle;assignedName?:string;issueCount:number;motiveMock?:boolean;onClick:()=>void}) {
