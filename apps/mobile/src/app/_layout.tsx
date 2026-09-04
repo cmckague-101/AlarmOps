@@ -9,12 +9,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 import {Stack} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {AppProviders} from '@/providers/app-providers';
-import {useFireOpsTheme} from '@/theme';
+import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
-export default function RootLayout(){
+export default function RootLayout(){return <AppProviders><RootNavigator/></AppProviders>}
+
+function RootNavigator(){
   const theme=useFireOpsTheme();
-  return <AppProviders>
-    <StatusBar style="auto"/>
+  const {colorScheme}=useFireOpsColorScheme();
+  return <>
+    <StatusBar style={colorScheme==='dark'?'light':'dark'}/>
     <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
       <Stack.Screen name="index" options={{headerShown:false}}/>
       <Stack.Screen name="sign-in" options={{headerShown:false}}/>
@@ -22,5 +25,5 @@ export default function RootLayout(){
       <Stack.Screen name="reset-password" options={{title:'Choose new password'}}/>
       <Stack.Screen name="(tabs)" options={{headerShown:false}}/>
     </Stack>
-  </AppProviders>;
+  </>;
 }

@@ -96,7 +96,9 @@ Complete and validate items in order unless product priority changes.
 - [x] 8. Owner issue editing
   - Edit title, description, and priority
   - Required-field validation and optimistic-concurrency conflict handling
-- [ ] 9. Manual light/dark theme control
+- [x] 9. Manual light/dark theme control
+  - Device-persisted Light and Dark selection in Settings
+  - App chrome and status bar update immediately
 
 ## Company documents
 

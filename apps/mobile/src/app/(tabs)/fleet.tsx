@@ -110,7 +110,7 @@ export default function FleetScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.command} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingRow}>
           <View style={styles.headingGroup}>
@@ -240,7 +240,7 @@ function createStyles(theme: FireOpsTheme) {
   content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 26 },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   headingGroup: { flex: 1, gap: 5 },
-  title: { color: theme.command, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
+  title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },
   addButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 16 },
   addButtonPressed: { backgroundColor: theme.emberPressed },
@@ -259,12 +259,12 @@ function createStyles(theme: FireOpsTheme) {
   vehicleRowPressed: { backgroundColor: theme.surfaceAlt },
   vehicleMain: { flex: 1, minWidth: 0, gap: 4 },
   vehicleHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  vehicleName: { flexShrink: 1, color: theme.command, fontSize: 18, lineHeight: 23, fontWeight: '700' },
+  vehicleName: { flexShrink: 1, color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '700' },
   vehicleMeta: { color: theme.secondary, fontSize: 14, lineHeight: 19 },
   location: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
   issueCount: { color: theme.danger, fontWeight: '600' },
   rowEnd: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  status: { maxWidth: 90, color: theme.command, fontSize: 13, lineHeight: 18, fontWeight: '600', textAlign: 'right' },
+  status: { maxWidth: 90, color: theme.commandForeground, fontSize: 13, lineHeight: 18, fontWeight: '600', textAlign: 'right' },
   icon: { color: theme.secondary },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   dotReady: { backgroundColor: '#23825E' },
@@ -272,7 +272,7 @@ function createStyles(theme: FireOpsTheme) {
   dotAttention: { backgroundColor: '#B74A3E' },
   emptyState: { flex: 1, justifyContent: 'center', paddingVertical: 72, gap: 8 },
   filteredEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
-  emptyTitle: { color: theme.command, fontSize: 21, lineHeight: 27, fontWeight: '700', textAlign: 'center' },
+  emptyTitle: { color: theme.commandForeground, fontSize: 21, lineHeight: 27, fontWeight: '700', textAlign: 'center' },
   emptyText: { color: theme.secondary, fontSize: 15, lineHeight: 22, textAlign: 'center', paddingHorizontal: 24 },
   clearButton: { marginTop: 8, minHeight: 42, justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: theme.divider, paddingHorizontal: 15, backgroundColor: theme.paper },
   clearLabel: { color: theme.ink, fontSize: 14, fontWeight: '700' },

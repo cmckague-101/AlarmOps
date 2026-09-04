@@ -189,7 +189,7 @@ export default function OperationsScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.command} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingGroup}>
           <Text style={styles.title}>Operations</Text>
@@ -208,7 +208,7 @@ export default function OperationsScreen() {
                   {showAll ? 'Browse active NIFC incidents by state or fire name.' : 'Showing fires assigned to your fleet.'}
                 </Text>
               </View>
-              {incidentLoading ? <ActivityIndicator color={theme.command} /> : null}
+              {incidentLoading ? <ActivityIndicator color={theme.commandForeground} /> : null}
             </View>
 
             <View accessibilityRole="tablist" style={styles.scopeControl}>
@@ -270,7 +270,7 @@ export default function OperationsScreen() {
                 {!incidentLoading && mapIncidents.length === 0 ? (
                   <View pointerEvents="none" style={styles.mapEmptyOverlay}>
                     <View style={styles.mapEmptyCard}>
-                      <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.command} />
+                      <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.commandForeground} />
                       <Text style={styles.mapEmptyTitle}>{showAll ? 'No active fires found' : 'No assigned fires to map'}</Text>
                       <Text style={styles.mapEmptyCopy}>{showAll ? 'Try refreshing NIFC data.' : 'Switch to All fires to browse incidents.'}</Text>
                     </View>
@@ -372,7 +372,7 @@ export default function OperationsScreen() {
                       onPress={() => setSelectedState(null)}
                       style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
                     >
-                      <AppSymbol name={{ ios: 'chevron.left', android: 'arrow_back' }} size={17} color={theme.command} />
+                      <AppSymbol name={{ ios: 'chevron.left', android: 'arrow_back' }} size={17} color={theme.commandForeground} />
                       <Text style={styles.backLabel}>States</Text>
                     </Pressable>
                   ) : null}
@@ -490,7 +490,7 @@ export default function OperationsScreen() {
                   onPress={() => setVehiclePickerOpen(false)}
                   style={styles.closeButton}
                 >
-                  <AppSymbol name={{ ios: 'chevron.left', android: 'arrow_back' }} size={18} color={theme.command} />
+                  <AppSymbol name={{ ios: 'chevron.left', android: 'arrow_back' }} size={18} color={theme.commandForeground} />
                 </Pressable>
                 <View style={styles.modalTitleCopy}>
                   <Text style={styles.modalTitle}>Select vehicle</Text>
@@ -530,7 +530,7 @@ export default function OperationsScreen() {
                   <Text style={styles.modalSubtitle}>{selected.state || 'Location not reported'} · Active wildfire</Text>
                 </View>
                 <Pressable accessibilityRole="button" accessibilityLabel="Close fire details" onPress={closeIncidentDetails} style={styles.closeButton}>
-                  <AppSymbol name={{ ios: 'xmark', android: 'close' }} size={18} color={theme.command} />
+                  <AppSymbol name={{ ios: 'xmark', android: 'close' }} size={18} color={theme.commandForeground} />
                 </Pressable>
               </View>
 
@@ -622,11 +622,11 @@ function createStyles(theme: FireOpsTheme) {
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 44, gap: 20 },
     headingGroup: { gap: 6, marginBottom: 8 },
-    title: { color: theme.command, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
+    title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
     subtitle: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 24 },
     sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 },
-    sectionTitle: { color: theme.command, fontSize: 19, lineHeight: 24, fontWeight: '800' },
+    sectionTitle: { color: theme.commandForeground, fontSize: 19, lineHeight: 24, fontWeight: '800' },
     count: { color: theme.secondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
     list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
     assignmentRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
@@ -649,7 +649,7 @@ function createStyles(theme: FireOpsTheme) {
     scopeButton: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 9 },
     scopeButtonSelected: { backgroundColor: theme.paper },
     scopeLabel: { color: theme.secondary, fontSize: 14, fontWeight: '800' },
-    scopeLabelSelected: { color: theme.command },
+    scopeLabelSelected: { color: theme.commandForeground },
     searchField: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, paddingLeft: 14 },
     searchInput: { flex: 1, minHeight: 50, color: theme.ink, fontSize: 16, lineHeight: 21, paddingVertical: 0 },
     searchClearButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
@@ -657,15 +657,15 @@ function createStyles(theme: FireOpsTheme) {
     map: { flex: 1 },
     mapEmptyOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     mapEmptyCard: { maxWidth: 250, alignItems: 'center', gap: 6, borderRadius: 14, backgroundColor: theme.paper, paddingHorizontal: 20, paddingVertical: 16 },
-    mapEmptyTitle: { color: theme.command, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },
+    mapEmptyTitle: { color: theme.commandForeground, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },
     mapEmptyCopy: { color: theme.secondary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
     discoverySection: { gap: 8 },
     fireListHeading: { gap: 2 },
     backButton: { alignSelf: 'flex-start', minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: -8, paddingHorizontal: 8 },
-    backLabel: { color: theme.command, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+    backLabel: { color: theme.commandForeground, fontSize: 15, lineHeight: 20, fontWeight: '700' },
     stateRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     stateCodeBadge: { width: 38, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: theme.surfaceAlt },
-    stateCode: { color: theme.command, fontSize: 12, fontWeight: '800' },
+    stateCode: { color: theme.commandForeground, fontSize: 12, fontWeight: '800' },
     stateName: { flex: 1, color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     stateCount: { color: theme.secondary, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
     fireRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
@@ -674,16 +674,16 @@ function createStyles(theme: FireOpsTheme) {
     modalContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40, gap: 28 },
     modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
     modalTitleCopy: { flex: 1, gap: 5 },
-    modalTitle: { color: theme.command, fontSize: 27, lineHeight: 33, fontWeight: '800', letterSpacing: -0.5 },
+    modalTitle: { color: theme.commandForeground, fontSize: 27, lineHeight: 33, fontWeight: '800', letterSpacing: -0.5 },
     modalSubtitle: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
     closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: theme.surfaceAlt },
     incidentMetrics: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: theme.greenSurface, borderRadius: 16, padding: 18 },
     incidentMetric: { flex: 1, gap: 5 },
-    metricValue: { color: theme.command, fontSize: 22, lineHeight: 27, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    metricValue: { color: theme.commandForeground, fontSize: 22, lineHeight: 27, fontWeight: '800', fontVariant: ['tabular-nums'] },
     metricLabel: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
     metricDivider: { width: StyleSheet.hairlineWidth, backgroundColor: theme.divider, marginHorizontal: 10 },
     detailSection: { gap: 12 },
-    controlLabel: { color: theme.command, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+    controlLabel: { color: theme.commandForeground, fontSize: 15, lineHeight: 20, fontWeight: '700' },
     vehicleDropdown: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, paddingHorizontal: 14 },
     vehicleDropdownText: { color: theme.ink, fontSize: 16 },
     readOnlyText: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
@@ -692,7 +692,7 @@ function createStyles(theme: FireOpsTheme) {
     vehicleOption: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, paddingVertical: 10 },
     currentVehicle: { opacity: 0.62 },
     vehicleOptionTitle: { color: theme.ink, fontSize: 15, lineHeight: 20, fontWeight: '700' },
-    assignLabel: { color: theme.command, fontSize: 14, fontWeight: '800' },
+    assignLabel: { color: theme.commandForeground, fontSize: 14, fontWeight: '800' },
     emptyText: { color: theme.secondary, fontSize: 15, lineHeight: 21, paddingVertical: 18 },
     errorBlock: { backgroundColor: theme.dangerSurface, borderRadius: 14, padding: 16, gap: 12 },
     errorText: { color: theme.danger, fontSize: 14, lineHeight: 20 },

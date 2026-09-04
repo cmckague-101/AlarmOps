@@ -73,7 +73,7 @@ export default function CompanyDocumentsScreen() {
       <Stack.Screen options={{ title: 'Documents' }} />
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshDocuments} tintColor={theme.command} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshDocuments} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>

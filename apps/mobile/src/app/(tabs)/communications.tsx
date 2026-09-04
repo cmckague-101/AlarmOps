@@ -32,7 +32,7 @@ export default function CommunicationsScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshCommunications} tintColor={theme.command} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshCommunications} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>

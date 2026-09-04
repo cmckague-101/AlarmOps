@@ -30,7 +30,7 @@ export default function TrainingScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <Stack.Screen options={{ title: 'Training' }} />
-      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshTrainings} tintColor={theme.command} />}>
+      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshTrainings} tintColor={theme.commandForeground} />}>
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
             <Text accessibilityRole="header" style={styles.title}>Training</Text>

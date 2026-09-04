@@ -82,7 +82,7 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing || communicationsRefreshing || documentsRefreshing || trainingsRefreshing} onRefresh={refreshDashboard} tintColor={theme.command} />}
+        refreshControl={<RefreshControl refreshing={refreshing || communicationsRefreshing || documentsRefreshing || trainingsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingGroup}>
           <Text style={styles.title}>Dashboard</Text>
@@ -279,16 +279,16 @@ function createStyles(theme: FireOpsTheme) {
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 28 },
     headingGroup: { gap: 6 },
-    title: { color: theme.command, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
+    title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
     subtitle: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 28 },
     readinessBlock: { backgroundColor: theme.greenSurface, borderRadius: 18, padding: 20, gap: 22 },
     readinessHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-    sectionTitle: { color: theme.command, fontSize: 18, lineHeight: 23, fontWeight: '700' },
+    sectionTitle: { color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '700' },
     total: { color: theme.secondary, fontSize: 14, fontVariant: ['tabular-nums'] },
     metrics: { flexDirection: 'row', alignItems: 'stretch' },
     metric: { flex: 1, gap: 5 },
-    metricValue: { color: theme.command, fontSize: 30, lineHeight: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    metricValue: { color: theme.commandForeground, fontSize: 30, lineHeight: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
     readyValue: { color: theme.green },
     attentionValue: { color: theme.warning },
     metricLabel: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
