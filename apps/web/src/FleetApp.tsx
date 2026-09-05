@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Building2, LogOut, ShieldCheck } from 'lucide-react';
-import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile } from './App';
+import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
 import { supabase, supabaseConfigured } from './supabase';
@@ -19,6 +19,7 @@ type TrainingRow = {id:string;course_code:string;course_title:string;starts_at:s
 type TrainingSignupRow = {training_id:string;user_id:string;user_name:string;signed_up_at:string};
 type TrainingReadRow = {training_id:string;viewed_at:string};
 type InventoryItemRow = {id:string;name:string;quantity:number;created_at:string;updated_at:string};
+type VehicleTypeRow = {id:string;name:string};
 type CompanyRow = { id: string; name: string; company_code: string; industry: string; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
 type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
@@ -242,6 +243,8 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [trainingError,setTrainingError]=useState('');
   const [inventoryItems,setInventoryItems]=useState<InventoryItem[]>([]);
   const [inventoryError,setInventoryError]=useState('');
+  const [vehicleTypes,setVehicleTypes]=useState<VehicleTypeOption[]>([]);
+  const [vehicleTypeError,setVehicleTypeError]=useState('');
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
@@ -305,6 +308,13 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     setInventoryItems(((data??[]) as InventoryItemRow[]).map(row=>({id:row.id,name:row.name,quantity:row.quantity,createdAt:row.created_at,updatedAt:row.updated_at})));setInventoryError('');
   },[companyId,role]);
 
+  const loadVehicleTypes=useCallback(async()=>{
+    const client=supabase;if(!client)return;
+    const {data,error:loadError}=await client.from('company_vehicle_types').select('id,name').eq('company_id',companyId).order('name');
+    if(loadError){setVehicleTypeError('Vehicle types could not be loaded. Apply latest database migration, then try again.');return}
+    setVehicleTypes((data??[]) as VehicleTypeRow[]);setVehicleTypeError('');
+  },[companyId]);
+
   const patchPersisted=useCallback((collection:FleetCollection,event:'upsert'|'delete',id:string,record?:unknown,version?:number)=>{
     const currentVersion=versions.current[collection].get(id)??0;
     if(version!==undefined&&version<currentVersion)return false;
@@ -360,6 +370,8 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     trainingChannel.subscribe();
     const inventoryChannel=client.channel(`company-inventory:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'company_inventory_items',filter:`company_id=eq.${companyId}`},()=>void loadInventory());
     inventoryChannel.subscribe();
+    const vehicleTypeChannel=client.channel(`company-vehicle-types:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'company_vehicle_types',filter:`company_id=eq.${companyId}`},()=>void loadVehicleTypes());
+    vehicleTypeChannel.subscribe();
     const load=async()=>{
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
       const [companyResult,inviteUsageResult,motiveResult,...recordResults]=await Promise.all([
@@ -390,8 +402,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     void loadDocuments();
     void loadTrainings();
     void loadInventory();
-    return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel);void client.removeChannel(documentChannel);void client.removeChannel(trainingChannel);void client.removeChannel(inventoryChannel)};
-  },[companyId,isAdmin,loadCommunications,loadDocuments,loadInventory,loadTrainings,patchPersisted,role,session.user.email,session.user.id,userName]);
+    void loadVehicleTypes();
+    return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel);void client.removeChannel(documentChannel);void client.removeChannel(trainingChannel);void client.removeChannel(inventoryChannel);void client.removeChannel(vehicleTypeChannel)};
+  },[companyId,isAdmin,loadCommunications,loadDocuments,loadInventory,loadTrainings,loadVehicleTypes,patchPersisted,role,session.user.email,session.user.id,userName]);
 
   const upload=useCallback(async(file:File)=>{
     if(!supabase)throw new Error('Company is unavailable');
@@ -626,6 +639,20 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     if(deleteError)throw new Error(deleteError.message);setInventoryItems(items=>items.filter(entry=>entry.id!==item.id));
   },[companyId]);
 
+  const createVehicleType=useCallback(async(name:string)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');
+    const {data,error:createError}=await client.from('company_vehicle_types').insert({company_id:companyId,name:name.trim()}).select('id,name').single<VehicleTypeRow>();
+    if(createError)throw new Error(createError.code==='23505'?'Vehicle type already exists.':createError.message);
+    const type:VehicleTypeOption={id:data.id,name:data.name};setVehicleTypes(items=>[...items.filter(item=>item.id!==type.id),type].sort((left,right)=>left.name.localeCompare(right.name)));return type;
+  },[companyId]);
+
+  const deleteVehicleType=useCallback(async(type:VehicleTypeOption)=>{
+    const client=supabase;if(!client)throw new Error('Company is unavailable.');
+    const {error:deleteError}=await client.from('company_vehicle_types').delete().eq('company_id',companyId).eq('id',type.id);
+    if(deleteError)throw new Error(deleteError.code==='23503'?'Vehicle type is used by an existing vehicle.':deleteError.message);
+    setVehicleTypes(items=>items.filter(item=>item.id!==type.id));
+  },[companyId]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
@@ -645,7 +672,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

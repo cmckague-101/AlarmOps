@@ -159,7 +159,7 @@ export default function VehicleFormScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Vehicle details</Text>
             <Field label="Unit name" required error={errors.unit} styles={styles}>
-              <TextInput value={form.unit} onChangeText={(value) => update('unit', value)} placeholder="Engine 702" placeholderTextColor={theme.secondary} maxLength={120} autoCapitalize="words" returnKeyType="next" />
+              <TextInput style={styles.textInput} value={form.unit} onChangeText={(value) => update('unit', value)} placeholder="Engine 702" placeholderTextColor={theme.secondary} maxLength={120} autoCapitalize="words" returnKeyType="next" />
             </Field>
             <Field label="Vehicle type" required error={errors.type} styles={styles}>
               <Pressable
@@ -175,10 +175,10 @@ export default function VehicleFormScreen() {
               </Pressable>
             </Field>
             <View style={styles.row}>
-              <View style={styles.rowField}><Field label="Year" required error={errors.year} styles={styles}><TextInput value={form.year} onChangeText={(value) => update('year', value)} placeholder={String(currentYear)} placeholderTextColor={theme.secondary} keyboardType="number-pad" maxLength={4} /></Field></View>
-              <View style={styles.rowField}><Field label="Make" required error={errors.make} styles={styles}><TextInput value={form.make} onChangeText={(value) => update('make', value)} placeholder="International" placeholderTextColor={theme.secondary} maxLength={80} autoCapitalize="words" /></Field></View>
+              <View style={styles.rowField}><Field label="Year" required error={errors.year} styles={styles}><TextInput style={styles.textInput} value={form.year} onChangeText={(value) => update('year', value)} placeholder={String(currentYear)} placeholderTextColor={theme.secondary} keyboardType="number-pad" maxLength={4} /></Field></View>
+              <View style={styles.rowField}><Field label="Make" required error={errors.make} styles={styles}><TextInput style={styles.textInput} value={form.make} onChangeText={(value) => update('make', value)} placeholder="International" placeholderTextColor={theme.secondary} maxLength={80} autoCapitalize="words" /></Field></View>
             </View>
-            <Field label="Model" required error={errors.model} styles={styles}><TextInput value={form.model} onChangeText={(value) => update('model', value)} placeholder="HV" placeholderTextColor={theme.secondary} maxLength={80} autoCapitalize="words" /></Field>
+            <Field label="Model" required error={errors.model} styles={styles}><TextInput style={styles.textInput} value={form.model} onChangeText={(value) => update('model', value)} placeholder="HV" placeholderTextColor={theme.secondary} maxLength={80} autoCapitalize="words" /></Field>
           </View>
 
           <View style={styles.section}>
@@ -190,9 +190,9 @@ export default function VehicleFormScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Registration & notes</Text>
-            <Field label="VIN" styles={styles}><TextInput value={form.vin} onChangeText={(value) => update('vin', value)} placeholder="17-character VIN" placeholderTextColor={theme.secondary} maxLength={17} autoCapitalize="characters" autoCorrect={false} /></Field>
-            <Field label="License plate" styles={styles}><TextInput value={form.plate} onChangeText={(value) => update('plate', value)} placeholder="Plate number" placeholderTextColor={theme.secondary} maxLength={20} autoCapitalize="characters" autoCorrect={false} /></Field>
-            <Field label="Notes" styles={styles}><TextInput style={styles.notesInput} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>
+            <Field label="VIN" styles={styles}><TextInput style={styles.textInput} value={form.vin} onChangeText={(value) => update('vin', value)} placeholder="17-character VIN" placeholderTextColor={theme.secondary} maxLength={17} autoCapitalize="characters" autoCorrect={false} /></Field>
+            <Field label="License plate" styles={styles}><TextInput style={styles.textInput} value={form.plate} onChangeText={(value) => update('plate', value)} placeholder="Plate number" placeholderTextColor={theme.secondary} maxLength={20} autoCapitalize="characters" autoCorrect={false} /></Field>
+            <Field label="Notes" styles={styles}><TextInput style={[styles.textInput, styles.notesInput]} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>
           </View>
         </ScrollView>
 
@@ -269,6 +269,7 @@ function createStyles(theme: FireOpsTheme) {
     label: { color: theme.ink, fontSize: 14, lineHeight: 19, fontWeight: '700' },
     required: { color: theme.ember },
     inputShell: { minHeight: 48, justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 11, paddingHorizontal: 13, backgroundColor: theme.canvas },
+    textInput: { color: theme.ink, fontSize: 16 },
     inputError: { borderColor: theme.danger, backgroundColor: theme.dangerSurface },
     errorText: { color: theme.danger, fontSize: 13, lineHeight: 18, fontWeight: '600' },
     selectButton: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },

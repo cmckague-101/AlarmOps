@@ -1,6 +1,5 @@
-import * as SecureStore from 'expo-secure-store';
-import {Appearance,useColorScheme} from 'react-native';
-import {createContext,createElement,useCallback,useContext,useEffect,useMemo,useState,type PropsWithChildren} from 'react';
+import {useColorScheme} from 'react-native';
+import {createContext,createElement,useContext,useMemo,type PropsWithChildren} from 'react';
 
 const light={
   canvas:'#F6F7F4',paper:'#FFFFFF',surfaceAlt:'#EEF1ED',ink:'#19201D',secondary:'#5F6963',divider:'#D9DED9',
@@ -13,30 +12,15 @@ const dark={
   greenSurface:'#193126',warning:'#F0A93B',warningSurface:'#3A2D1A',danger:'#E83426',dangerSurface:'#3B211F',
 };
 
-const storageKey='fireops-theme';
 export type FireOpsTheme=typeof light;
 export type FireOpsColorScheme='light'|'dark';
-type ThemeContextValue={theme:FireOpsTheme;colorScheme:FireOpsColorScheme;setColorScheme:(scheme:FireOpsColorScheme)=>void};
+type ThemeContextValue={theme:FireOpsTheme;colorScheme:FireOpsColorScheme};
 const ThemeContext=createContext<ThemeContextValue|undefined>(undefined);
 
 export function FireOpsThemeProvider({children}:PropsWithChildren){
   const systemScheme=useColorScheme();
-  const [colorScheme,setStoredScheme]=useState<FireOpsColorScheme>(systemScheme==='dark'?'dark':'light');
-  useEffect(()=>{
-    let active=true;
-    void SecureStore.getItemAsync(storageKey).then(value=>{
-      if(!active||(value!=='light'&&value!=='dark'))return;
-      setStoredScheme(value);
-      Appearance.setColorScheme(value);
-    }).catch(()=>{});
-    return()=>{active=false};
-  },[]);
-  const setColorScheme=useCallback((scheme:FireOpsColorScheme)=>{
-    setStoredScheme(scheme);
-    Appearance.setColorScheme(scheme);
-    void SecureStore.setItemAsync(storageKey,scheme).catch(()=>{});
-  },[]);
-  const value=useMemo<ThemeContextValue>(()=>({theme:colorScheme==='dark'?dark:light,colorScheme,setColorScheme}),[colorScheme,setColorScheme]);
+  const colorScheme:FireOpsColorScheme=systemScheme==='dark'?'dark':'light';
+  const value=useMemo<ThemeContextValue>(()=>({theme:colorScheme==='dark'?dark:light,colorScheme}),[colorScheme]);
   return createElement(ThemeContext.Provider,{value},children);
 }
 
@@ -47,4 +31,4 @@ function useThemeContext(){
 }
 
 export function useFireOpsTheme():FireOpsTheme{return useThemeContext().theme}
-export function useFireOpsColorScheme(){const {colorScheme,setColorScheme}=useThemeContext();return {colorScheme,setColorScheme}}
+export function useFireOpsColorScheme(){const {colorScheme}=useThemeContext();return {colorScheme}}
