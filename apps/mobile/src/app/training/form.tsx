@@ -86,8 +86,8 @@ export default function TrainingFormScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <Stack.Screen options={{ title: training ? 'Edit training' : 'Create training' }} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
           {loading && id ? <Text style={styles.stateText}>Loading course…</Text> : null}
           {missingTraining ? <View style={styles.message}><Text style={styles.messageTitle}>Course not found</Text><Text style={styles.messageText}>It may have been removed or you may no longer have access.</Text></View> : null}
           {!missingTraining && (!id || training) ? (

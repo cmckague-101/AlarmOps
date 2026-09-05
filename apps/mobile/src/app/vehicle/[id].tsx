@@ -8,8 +8,10 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -1282,7 +1284,8 @@ export default function VehicleDetailScreen() {
               <Text style={styles.cancelLabel}>Cancel</Text>
             </Pressable>
           </View>
-          <View style={styles.documentForm}>
+          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.documentForm} keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} keyboardShouldPersistTaps="handled">
             <Text style={styles.controlLabel}>Document name</Text>
             <TextInput
               accessibilityLabel="Document name"
@@ -1316,7 +1319,8 @@ export default function VehicleDetailScreen() {
                 {fileError}
               </Text>
             ) : null}
-          </View>
+          </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
 
@@ -1393,8 +1397,10 @@ export default function VehicleDetailScreen() {
             </View>
           ) : (
             <FlatList
+              automaticallyAdjustKeyboardInsets
               contentContainerStyle={styles.fireResults}
               data={visibleIncidents}
+              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
               keyboardShouldPersistTaps="handled"
               keyExtractor={(incident) => incident.id}
               ListEmptyComponent={
@@ -1501,8 +1507,10 @@ export default function VehicleDetailScreen() {
             ) : null}
           </Pressable>
           <FlatList
+            automaticallyAdjustKeyboardInsets
             contentContainerStyle={styles.crewResults}
             data={visibleCrew}
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             keyboardShouldPersistTaps="handled"
             keyExtractor={(member) => member.id}
             ListEmptyComponent={
@@ -1548,6 +1556,7 @@ export default function VehicleDetailScreen() {
 
 function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
+    flex: { flex: 1 },
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     headerEdit: {
       minHeight: 44,

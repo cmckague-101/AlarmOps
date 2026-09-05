@@ -1,7 +1,7 @@
 import type { InventoryItem } from '@fireops/domain';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
@@ -55,7 +55,8 @@ export default function InventoryScreen() {
 
   return <SafeAreaView style={styles.safe} edges={['bottom']}>
     <Stack.Screen options={{ title: 'Inventory' }} />
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInventory} tintColor={theme.commandForeground} />}>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInventory} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
         <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Inventory</Text><Text style={styles.subtitle}>Track company supplies and equipment counts.</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>
@@ -67,6 +68,7 @@ export default function InventoryScreen() {
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}
       {!loading && !error ? <View style={styles.list}>{filtered.map((item) => <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
     </ScrollView>
+    </KeyboardAvoidingView>
   </SafeAreaView>;
 }
 
@@ -89,6 +91,7 @@ function InventoryRow({ item, busy, onQuantity, onRename, onDelete, styles, them
 
 function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
+    flex: { flex: 1 },
     safe: { flex: 1, backgroundColor: theme.canvas }, content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 48, gap: 20 }, heading: { flexDirection: 'row', alignItems: 'center', gap: 14 }, headingCopy: { flex: 1, gap: 6 }, title: { color: theme.ink, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.7 }, subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21 }, add: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 11, backgroundColor: theme.ember, paddingHorizontal: 14 }, addText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
     summary: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.command, borderRadius: 14, paddingVertical: 17 }, summaryItem: { flex: 1, alignItems: 'center', gap: 2 }, summaryValue: { color: theme.commandText, fontSize: 25, fontWeight: '800', fontVariant: ['tabular-nums'] }, summaryLabel: { color: theme.commandText, opacity: 0.72, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }, summaryRule: { width: StyleSheet.hairlineWidth, height: 35, backgroundColor: theme.commandText, opacity: 0.25 },
     search: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, paddingHorizontal: 13 }, searchInput: { flex: 1, color: theme.ink, fontSize: 16, paddingVertical: 10 }, list: { overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, borderRadius: 14, backgroundColor: theme.paper }, row: { gap: 14, padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider }, rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 }, packageIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.surfaceAlt }, rowCopy: { flex: 1, gap: 3 }, rowTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' }, updated: { color: theme.secondary, fontSize: 11, lineHeight: 16 }, iconButton: { width: 34, height: 38, alignItems: 'center', justifyContent: 'center' }, quantity: { height: 44, flexDirection: 'row', alignSelf: 'stretch', overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, borderRadius: 10 }, quantityButton: { width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceAlt }, quantityInput: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, color: theme.ink, backgroundColor: theme.paper, textAlign: 'center', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },

@@ -52,8 +52,8 @@ export default function InventoryFormScreen() {
   const missingItem = Boolean(id && !loading && !item);
   return <SafeAreaView style={styles.safe} edges={['bottom']}>
     <Stack.Screen options={{ title: item ? 'Rename item' : 'Add item' }} />
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
         {loading && id ? <Text style={styles.state}>Loading item…</Text> : null}
         {missingItem ? <View style={styles.message}><Text style={styles.messageTitle}>Item not found</Text><Text style={styles.messageText}>It may have been removed or you may no longer have access.</Text></View> : null}
         {!missingItem && (!id || item) ? <>

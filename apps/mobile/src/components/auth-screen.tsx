@@ -7,8 +7,8 @@ import {useFireOpsTheme} from '@/theme';
 export function AuthScreen({children}:PropsWithChildren){
   const theme=useFireOpsTheme();
   return <SafeAreaView style={[styles.safe,{backgroundColor:theme.canvas}]}>
-    <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+    <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':'height'}>
+      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode={Platform.OS==='ios'?'interactive':'on-drag'} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
         <View style={styles.brand}><BrandWordmark/></View>
         <View style={[styles.panel,{backgroundColor:theme.paper,borderColor:theme.divider}]}>{children}</View>
       </ScrollView>
