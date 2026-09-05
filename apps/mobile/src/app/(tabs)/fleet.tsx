@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
 import { FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
+import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -26,6 +27,8 @@ type StatusFilter = 'All' | 'Ready' | 'Assigned' | 'Maintenance' | 'Out of servi
 const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Maintenance', 'Out of service'];
 
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void }) {
+  const photoUrl = useFleetFileUrl(vehicle.photo);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -34,6 +37,18 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
       onPress={onPress}
       style={({ pressed }) => [styles.vehicleRow, pressed && styles.vehicleRowPressed]}
     >
+      <View style={styles.vehicleThumbnail}>
+        {photoUrl ? (
+          <Image
+            accessibilityLabel={`${vehicle.name} vehicle photo`}
+            resizeMode="cover"
+            source={{ uri: photoUrl }}
+            style={styles.vehiclePhoto}
+          />
+        ) : (
+          <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} color={styles.icon.color} size={24} />
+        )}
+      </View>
       <View style={styles.vehicleMain}>
         <View style={styles.vehicleHeading}>
           <Text style={styles.vehicleName} numberOfLines={1}>{vehicle.name}</Text>
@@ -260,6 +275,8 @@ function createStyles(theme: FireOpsTheme) {
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 92, paddingVertical: 17, paddingHorizontal: 6, marginHorizontal: -6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 8 },
   vehicleRowPressed: { backgroundColor: theme.surfaceAlt },
+  vehicleThumbnail: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: theme.surfaceAlt },
+  vehiclePhoto: { width: '100%', height: '100%' },
   vehicleMain: { flex: 1, minWidth: 0, gap: 4 },
   vehicleHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   vehicleName: { flexShrink: 1, color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '700' },

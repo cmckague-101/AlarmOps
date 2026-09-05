@@ -39,6 +39,7 @@ import {
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
 import { fetchNifcIncidents } from "@/lib/nifc";
+import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
 import { useSession } from "@/providers/session-provider";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
@@ -125,6 +126,7 @@ export default function VehicleDetailScreen() {
   const { vehicles, issues, crew, loading, error } =
     useFleetVehicles(companyId);
   const vehicle = vehicles.find((item) => item.id === id);
+  const photoUrl = useFleetFileUrl(vehicle?.photo);
   const assignedName = crew.find(
     (member) => member.id === vehicle?.assignedTo,
   )?.name;
@@ -619,6 +621,14 @@ export default function VehicleDetailScreen() {
         {vehicle ? (
           <>
             <View style={styles.identity}>
+              {photoUrl ? (
+                <Image
+                  accessibilityLabel={`${vehicle.name} vehicle photo`}
+                  resizeMode="cover"
+                  source={{ uri: photoUrl }}
+                  style={styles.vehiclePhoto}
+                />
+              ) : null}
               <View style={styles.titleRow}>
                 <Text style={styles.title}>{vehicle.name}</Text>
                 <View
@@ -1576,6 +1586,13 @@ function createStyles(theme: FireOpsTheme) {
     },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 32 },
     identity: { gap: 8 },
+    vehiclePhoto: {
+      width: "100%",
+      aspectRatio: 16 / 9,
+      borderRadius: 16,
+      backgroundColor: theme.surfaceAlt,
+      marginBottom: 8,
+    },
     titleRow: {
       flexDirection: "row",
       alignItems: "flex-start",
