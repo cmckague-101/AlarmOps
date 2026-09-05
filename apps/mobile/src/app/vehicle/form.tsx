@@ -3,6 +3,7 @@ import type { VehicleStatus } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,9 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppSymbol } from '@/components/app-symbol';
 import { createFleetId, saveFleetVehicleRecord, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
+import { useVehicleTypes } from '@/lib/vehicle-type-store';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
-
-const vehicleTypes = ['Type 3 Engine', 'Type 6 Engine', 'Water Tender', 'Crew Transport', 'Command Vehicle', 'Support Vehicle'];
 const statuses: VehicleStatus[] = ['Ready', 'Assigned', 'Maintenance', 'Out of service'];
 const currentYear = new Date().getFullYear();
 
@@ -45,11 +45,12 @@ export default function VehicleFormScreen() {
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const { vehicles, loading } = useFleetVehicles(companyId);
+  const { types: vehicleTypes, loading: vehicleTypesLoading } = useVehicleTypes(companyId);
   const vehicle = id ? vehicles.find((item) => item.id === id) : undefined;
   const editing = Boolean(id);
   const [form, setForm] = useState<FormState>(() => ({
     unit: vehicle?.name ?? '',
-    type: vehicle?.type ?? vehicleTypes[0],
+    type: vehicle?.type ?? '',
     year: vehicle?.year ?? String(currentYear),
     make: vehicle?.make ?? '',
     model: vehicle?.model ?? '',
@@ -63,6 +64,16 @@ export default function VehicleFormScreen() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const configuredType = vehicleTypes.find((type) => type.name.toLocaleLowerCase() === form.type.toLocaleLowerCase());
+  const isExistingLegacyType = Boolean(editing && vehicle && form.type && vehicle.type.toLocaleLowerCase() === form.type.toLocaleLowerCase());
+  const selectedType = configuredType?.name ?? (isExistingLegacyType ? form.type : vehicleTypes[0]?.name ?? '');
+  const typeOptions = useMemo(() => {
+    const names = vehicleTypes.map((type) => type.name);
+    return isExistingLegacyType && form.type && !names.some((name) => name.toLocaleLowerCase() === form.type.toLocaleLowerCase())
+      ? [form.type, ...names]
+      : names;
+  }, [form.type, isExistingLegacyType, vehicleTypes]);
 
   useEffect(() => {
     if (!vehicle || hydratedIdRef.current === vehicle.id) return;
@@ -93,6 +104,7 @@ export default function VehicleFormScreen() {
     const nextErrors: FormErrors = {};
     const year = Number(form.year);
     if (!form.unit.trim()) nextErrors.unit = 'Unit name is required.';
+    if (!selectedType) nextErrors.type = 'Select a vehicle type.';
     if (!form.make.trim()) nextErrors.make = 'Make is required.';
     if (!form.model.trim()) nextErrors.model = 'Model is required.';
     if (!Number.isInteger(year) || year < 1950 || year > currentYear + 1) nextErrors.year = `Enter a year from 1950 to ${currentYear + 1}.`;
@@ -108,7 +120,7 @@ export default function VehicleFormScreen() {
         ...(vehicle?.source ?? {}),
         id: recordId,
         unit: form.unit.trim(),
-        type: form.type,
+        type: selectedType,
         year,
         make: form.make.trim(),
         model: form.model.trim(),
@@ -149,8 +161,18 @@ export default function VehicleFormScreen() {
             <Field label="Unit name" required error={errors.unit} styles={styles}>
               <TextInput value={form.unit} onChangeText={(value) => update('unit', value)} placeholder="Engine 702" placeholderTextColor={theme.secondary} maxLength={120} autoCapitalize="words" returnKeyType="next" />
             </Field>
-            <Field label="Vehicle type" required styles={styles}>
-              <View style={styles.choiceGrid}>{vehicleTypes.map((type) => <Choice key={type} label={type} selected={form.type === type} onPress={() => update('type', type)} styles={styles} />)}</View>
+            <Field label="Vehicle type" required error={errors.type} styles={styles}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Vehicle type"
+                accessibilityHint="Opens vehicle type choices"
+                disabled={vehicleTypesLoading}
+                onPress={() => setTypePickerOpen(true)}
+                style={({ pressed }) => [styles.selectButton, pressed && styles.pressed]}
+              >
+                <Text style={[styles.selectValue, !selectedType && styles.selectPlaceholder]}>{selectedType || (vehicleTypesLoading ? 'Loading vehicle types…' : 'Select vehicle type')}</Text>
+                <AppSymbol name="chevron.down" color={theme.secondary} size={17} />
+              </Pressable>
             </Field>
             <View style={styles.row}>
               <View style={styles.rowField}><Field label="Year" required error={errors.year} styles={styles}><TextInput value={form.year} onChangeText={(value) => update('year', value)} placeholder={String(currentYear)} placeholderTextColor={theme.secondary} keyboardType="number-pad" maxLength={4} /></Field></View>
@@ -182,6 +204,44 @@ export default function VehicleFormScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={typePickerOpen} transparent animationType="fade" onRequestClose={() => setTypePickerOpen(false)}>
+        <View style={styles.modalRoot}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close vehicle type choices" style={styles.modalBackdrop} onPress={() => setTypePickerOpen(false)} />
+          <View accessibilityViewIsModal style={styles.typeMenu}>
+            <View style={styles.typeMenuHeader}>
+              <Text style={styles.typeMenuTitle}>Vehicle type</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setTypePickerOpen(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+                <AppSymbol name="xmark" color={theme.ink} size={17} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.typeMenuScroll} contentContainerStyle={styles.typeMenuContent}>
+              {typeOptions.map((type) => (
+                <Pressable
+                  key={type}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selectedType === type }}
+                  onPress={() => { update('type', type); setTypePickerOpen(false); }}
+                  style={({ pressed }) => [styles.typeOption, selectedType === type && styles.typeOptionSelected, pressed && styles.pressed]}
+                >
+                  <Text style={[styles.typeOptionLabel, selectedType === type && styles.typeOptionLabelSelected]}>{type}</Text>
+                  {selectedType === type ? <AppSymbol name="checkmark" color={theme.commandText} size={17} /> : null}
+                </Pressable>
+              ))}
+              {!vehicleTypesLoading && !typeOptions.length ? <Text style={styles.noTypes}>No vehicle types. Add one below.</Text> : null}
+            </ScrollView>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => { setTypePickerOpen(false); router.push('/vehicle/types'); }}
+              style={({ pressed }) => [styles.manageTypesButton, pressed && styles.pressed]}
+            >
+              <AppSymbol name="pencil" color={theme.ember} size={17} />
+              <Text style={styles.manageTypesLabel}>Edit vehicle types</Text>
+              <AppSymbol name="chevron.right" color={theme.ember} size={15} />
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -211,6 +271,9 @@ function createStyles(theme: FireOpsTheme) {
     inputShell: { minHeight: 48, justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 11, paddingHorizontal: 13, backgroundColor: theme.canvas },
     inputError: { borderColor: theme.danger, backgroundColor: theme.dangerSurface },
     errorText: { color: theme.danger, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+    selectButton: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    selectValue: { flex: 1, color: theme.ink, fontSize: 16 },
+    selectPlaceholder: { color: theme.secondary },
     row: { flexDirection: 'row', gap: 12 },
     rowField: { flex: 1 },
     choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
@@ -222,6 +285,21 @@ function createStyles(theme: FireOpsTheme) {
     errorBanner: { backgroundColor: theme.dangerSurface, borderRadius: 12, padding: 14, gap: 3 },
     errorBannerTitle: { color: theme.danger, fontSize: 15, fontWeight: '800' },
     errorBannerText: { color: theme.danger, fontSize: 14, lineHeight: 20 },
+    modalRoot: { flex: 1, justifyContent: 'flex-end' },
+    modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.48)' },
+    typeMenu: { maxHeight: '72%', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: theme.paper, paddingBottom: Platform.OS === 'ios' ? 24 : 12 },
+    typeMenuHeader: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.divider },
+    typeMenuTitle: { color: theme.ink, fontSize: 19, fontWeight: '800' },
+    closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: theme.canvas },
+    typeMenuScroll: { flexGrow: 0 },
+    typeMenuContent: { padding: 10, gap: 6 },
+    typeOption: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderRadius: 11, paddingHorizontal: 13 },
+    typeOptionSelected: { backgroundColor: theme.command },
+    typeOptionLabel: { flex: 1, color: theme.ink, fontSize: 15, fontWeight: '700' },
+    typeOptionLabelSelected: { color: theme.commandText },
+    noTypes: { color: theme.secondary, fontSize: 14, lineHeight: 20, padding: 12 },
+    manageTypesButton: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, paddingHorizontal: 13, borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.divider },
+    manageTypesLabel: { flex: 1, color: theme.ember, fontSize: 15, fontWeight: '800' },
     footer: { flexDirection: 'row', gap: 10, paddingHorizontal: 18, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 8 : 16, borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, backgroundColor: theme.paper },
     cancelButton: { minHeight: 48, minWidth: 96, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 12 },
     cancelLabel: { color: theme.ink, fontSize: 15, fontWeight: '800' },
