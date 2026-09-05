@@ -37,7 +37,7 @@ export default function CommunicationsScreen() {
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
             <Text style={styles.company}>{member?.company.name}</Text>
-            <Text accessibilityRole="header" style={styles.title}>Communications</Text>
+            <Text accessibilityRole="header" adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.title}>Communications</Text>
             <Text style={styles.subtitle}>Company threads and crew replies.</Text>
           </View>
           <Pressable
