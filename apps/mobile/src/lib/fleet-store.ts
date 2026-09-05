@@ -65,6 +65,12 @@ type FleetRecordRow = {
   version: number;
   updated_at: string;
 };
+type FleetChangeResult = {
+  collection: FleetCollection;
+  event: "insert" | "update" | "delete";
+  recordId: string;
+  version: number;
+};
 
 const tables: Record<FleetCollection, string> = {
   vehicles: "fleet_vehicles",
@@ -213,6 +219,50 @@ function emit(next: SharedFleetSnapshot) {
   listeners.forEach((listener) => listener());
 }
 
+function patchFleetRecord(
+  collection: FleetCollection,
+  event: "upsert" | "delete",
+  recordId: string,
+  data?: unknown,
+  version?: number,
+) {
+  const currentVersion = versions[collection].get(recordId) ?? 0;
+  if (version !== undefined && version < currentVersion) return;
+
+  if (event === "delete") {
+    versions[collection].delete(recordId);
+    emit({
+      ...snapshot,
+      [collection]: snapshot[collection].filter((record) => record.id !== recordId),
+    });
+    return;
+  }
+  if (!data || typeof data !== "object") return;
+  if (version !== undefined) versions[collection].set(recordId, version);
+
+  const value =
+    collection === "vehicles"
+      ? normalizeVehicle({ data } as VehicleRow)
+      : collection === "issues"
+        ? {
+            ...(data as FleetIssue),
+            status: (data as FleetIssue).status ?? "Open",
+            updates: (data as FleetIssue).updates ?? [],
+          }
+        : data;
+  const records = [
+    value,
+    ...snapshot[collection].filter((record) => record.id !== recordId),
+  ];
+  if (collection === "vehicles")
+    (records as FleetVehicle[]).sort((a, b) => a.name.localeCompare(b.name));
+  if (collection === "issues")
+    (records as FleetIssue[]).sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    );
+  emit({ ...snapshot, [collection]: records });
+}
+
 export function createFleetId() {
   if (typeof globalThis.crypto?.randomUUID === "function")
     return globalThis.crypto.randomUUID();
@@ -238,16 +288,31 @@ async function saveFleetRecords(
       ...(expectedVersion === undefined ? {} : { expectedVersion }),
     };
   });
-  const { error } = await supabase.rpc("apply_fleet_changes", {
-    target_company_id: activeCompanyId,
+  const companyId = activeCompanyId;
+  const { data, error } = await supabase.rpc("apply_fleet_changes", {
+    target_company_id: companyId,
     changes,
   });
   if (error) {
-    if (error.code === "40001")
-      throw new Error("Record changed elsewhere. Refresh and try again.");
+    if (error.code === "40001" || error.code === "PT409") {
+      await refreshFleet({ showIndicator: false });
+      throw new Error("Record changed elsewhere. Latest fleet data was loaded; try again.");
+    }
     throw new Error(error.message);
   }
-  await refreshFleet({ showIndicator: false });
+  if (activeCompanyId !== companyId) return;
+  const savedRecords = new Map(
+    records.map(({ collection, record }) => [`${collection}:${record.id}`, record]),
+  );
+  ((data ?? []) as FleetChangeResult[]).forEach((result) => {
+    patchFleetRecord(
+      result.collection,
+      result.event === "delete" ? "delete" : "upsert",
+      result.recordId,
+      savedRecords.get(`${result.collection}:${result.recordId}`),
+      result.version,
+    );
+  });
 }
 
 export async function saveFleetRecord<T extends { id: string }>(
@@ -358,16 +423,28 @@ export async function deleteFleetVehicle(
       data: activityRecord,
     },
   ];
-  const { error } = await supabase.rpc("apply_fleet_changes", {
-    target_company_id: activeCompanyId,
+  const companyId = activeCompanyId;
+  const { data, error } = await supabase.rpc("apply_fleet_changes", {
+    target_company_id: companyId,
     changes,
   });
   if (error) {
-    if (error.code === "40001")
-      throw new Error("Fleet changed elsewhere. Refresh and try again.");
+    if (error.code === "40001" || error.code === "PT409") {
+      await refreshFleet({ showIndicator: false });
+      throw new Error("Fleet changed elsewhere. Latest fleet data was loaded; try again.");
+    }
     throw new Error(error.message);
   }
-  await refreshFleet({ showIndicator: false });
+  if (activeCompanyId !== companyId) return;
+  ((data ?? []) as FleetChangeResult[]).forEach((result) => {
+    patchFleetRecord(
+      result.collection,
+      result.event === "delete" ? "delete" : "upsert",
+      result.recordId,
+      result.collection === "activities" ? activityRecord : undefined,
+      result.version,
+    );
+  });
 }
 
 export async function saveFleetVehicleRecord(
@@ -648,19 +725,34 @@ function selectCompany(companyId: string | null) {
   if (!companyId || !supabase) return;
 
   channel = supabase.channel(`mobile-fleet:${companyId}`);
-  Object.values(tables).forEach((table) => {
-    channel =
-      channel?.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table,
-          filter: `company_id=eq.${companyId}`,
-        },
-        () => void refreshFleet({ showIndicator: false }),
-      ) ?? null;
-  });
+  (Object.entries(tables) as [FleetCollection, string][]).forEach(
+    ([collection, table]) => {
+      channel =
+        channel?.on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table,
+            filter: `company_id=eq.${companyId}`,
+          },
+          (payload) => {
+            if (activeCompanyId !== companyId) return;
+            const row = (payload.eventType === "DELETE"
+              ? payload.old
+              : payload.new) as Partial<FleetRecordRow>;
+            if (!row.record_id) return;
+            patchFleetRecord(
+              collection,
+              payload.eventType === "DELETE" ? "delete" : "upsert",
+              row.record_id,
+              row.data,
+              row.version,
+            );
+          },
+        ) ?? null;
+    },
+  );
   channel?.subscribe();
   void refreshFleet({ showIndicator: false });
 }

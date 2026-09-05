@@ -329,7 +329,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const client=supabase;
     if(!client)return;
     let active=true;
+    let fleetEventSequence=0;
     const handleChange=async(collection:FleetCollection,payload:{eventType:string;new:Record<string,unknown>;old:Record<string,unknown>})=>{
+      fleetEventSequence+=1;
       const row=(payload.eventType==='DELETE'?payload.old:payload.new) as unknown as Partial<FleetRecordRow>;
       const id=row.record_id;
       if(!id)return;
@@ -373,6 +375,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const vehicleTypeChannel=client.channel(`company-vehicle-types:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'company_vehicle_types',filter:`company_id=eq.${companyId}`},()=>void loadVehicleTypes());
     vehicleTypeChannel.subscribe();
     const load=async()=>{
+      const fleetSequenceAtStart=fleetEventSequence;
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
       const [companyResult,inviteUsageResult,motiveResult,...recordResults]=await Promise.all([
         client.from('companies').select('id,name,company_code,industry,crew_invite_limit').eq('id',companyId).single<CompanyRow>(),
@@ -382,6 +385,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       ]);
       if(!active)return;
       if(companyResult.error||inviteUsageResult.error||recordResults.some(result=>result.error)){setError('Fleet data could not be loaded. Apply latest database migrations, then try again.');setLoaded(true);return}
+      // Re-query when Realtime delivered a row while this snapshot was loading.
+      // Otherwise an older SELECT response can replace its newer version token.
+      if(fleetSequenceAtStart!==fleetEventSequence){void load();return}
       const snapshot=emptySnapshot();
       collections.forEach(([collection],index)=>{
         const rows=(recordResults[index].data??[]) as FleetRecordRow[];
@@ -392,6 +398,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       persisted.current=snapshot;
       const hydrated=await hydrateFileUrls(snapshot);
       if(!active)return;
+      if(fleetSequenceAtStart!==fleetEventSequence){void load();return}
       setInitialData(hydrated);
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
       if(!motiveResult.error&&motiveResult.data)setMotiveConnection(motiveResult.data);
@@ -466,7 +473,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     let results:FleetChangeResult[]=[];
     if(changes.length){
       const {data:changed,error:changeError}=await client.rpc('apply_fleet_changes',{target_company_id:companyId,changes});
-      if(changeError)throw new Error(changeError.code==='40001'?'Record changed by another user. Refresh before retrying.':changeError.message);
+      if(changeError)throw new Error(changeError.code==='40001'||changeError.code==='PT409'?'Record changed elsewhere. Latest changes are syncing; retry once they appear.':changeError.message);
       results=(changed??[]) as FleetChangeResult[];
       results.forEach(result=>{
         const saved=records.get(`${result.collection}:${result.recordId}`);
