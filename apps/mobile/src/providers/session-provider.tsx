@@ -2,6 +2,7 @@ import {createContext,useCallback,useContext,useEffect,useMemo,useState,type Pro
 import type {Session} from '@supabase/supabase-js';
 import type {FireOpsUser,UserRole} from '@fireops/domain';
 import {supabase,supabaseConfigured} from '@/lib/supabase';
+import {unregisterFromPushNotifications} from '@/lib/notifications';
 
 export type CompanyAccess={
   kind:'member';
@@ -73,7 +74,11 @@ export function SessionProvider({children}:PropsWithChildren){
   },[sessionUserId,sessionUserEmail,attempt]);
 
   const retryAccess=useCallback(()=>setAttempt(value=>value+1),[]);
-  const signOut=useCallback(async()=>{if(supabase)await supabase.auth.signOut()},[]);
+  const signOut=useCallback(async()=>{
+    if(!supabase)return;
+    try{await unregisterFromPushNotifications()}catch(error){console.warn('Push notification cleanup failed:',error)}
+    await supabase.auth.signOut();
+  },[]);
   const selectCompany=useCallback(async(company:AdminCompany)=>{
     if(!supabase||access.value?.kind!=='admin')throw new Error('Administrator access is unavailable.');
     const {error}=await supabase.rpc('admin_access_company',{target_company_id:company.id});

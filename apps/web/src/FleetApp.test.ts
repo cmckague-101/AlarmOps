@@ -24,14 +24,14 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows inventory to owners and hides owner tools from members',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','training','inventory','settings']);
-    expect(navigationLayout('member').desktop).toEqual(['overview','operations','communications','vehicles','documents','training','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','receipts','training','inventory','settings']);
+    expect(navigationLayout('member').desktop).toEqual(['overview','operations','communications','vehicles','documents','receipts','training','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','training','inventory','settings']);
-    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','training','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','receipts','training','inventory','settings']);
+    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','receipts','training','settings']);
   });
 });
 
