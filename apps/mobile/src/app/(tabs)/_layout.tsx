@@ -17,7 +17,8 @@ export default function TabLayout(){
   const unreadCommunications=member?threads.filter(thread=>isThreadUnread(thread,member.user)).length:0;
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
-  if(!session||access.status!=='ready'||access.value?.kind!=='member')return <Redirect href="/"/>;
+  if(!session)return <Redirect href="/sign-in"/>;
+  if(access.status!=='ready'||access.value?.kind!=='member')return <Redirect href="/"/>;
   const icon=(ios:string,android:string)=>function TabIcon(props:{color:ColorValue}){return <AppSymbol name={{ios:ios as never,android:android as never}} color={props.color}/>};
   return <Tabs screenOptions={{headerShown:false,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}}}>
     <Tabs.Screen name="index" options={{title:'Dashboard',tabBarIcon:icon('rectangle.grid.1x2.fill','dashboard')}}/>
