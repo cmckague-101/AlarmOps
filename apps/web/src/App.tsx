@@ -23,7 +23,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
-  Ellipsis, Moon, ReceiptText, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  CircleDollarSign, Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'training' | 'inventory' | 'more' | 'settings';
@@ -36,7 +36,7 @@ const navigationMeta = {
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
-  receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:ReceiptText},
+  receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:CircleDollarSign},
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
   inventory:{label:'Inventory',description:'Company supplies and equipment counts',Icon:Package},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
