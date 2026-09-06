@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Redirect, Stack, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
 import type { LocalFleetFile } from '@/lib/fleet-files';
-import { createReceipt, useReceipts } from '@/lib/receipts-store';
+import { createReceipt, updateReceipt, useReceipts } from '@/lib/receipts-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -21,20 +21,27 @@ function amountToCents(value: string) {
 
 export default function ReceiptFormScreen() {
   const router = useRouter();
+  const { receiptId } = useLocalSearchParams<{ receiptId?: string }>();
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  useReceipts(member?.company.id ?? null);
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
+  const { receipts, loading } = useReceipts(member?.company.id ?? null);
+  const receipt = receiptId ? receipts.find((item) => item.id === receiptId) : undefined;
+  const editing = Boolean(receiptId);
+  const [name, setName] = useState<string | null>(null);
+  const [amount, setAmount] = useState<string | null>(null);
   const [file, setFile] = useState<LocalFleetFile | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const amountCents = amountToCents(amount);
+  const resolvedName = name ?? receipt?.name ?? '';
+  const resolvedAmount = amount ?? (receipt ? (receipt.amountCents / 100).toFixed(2) : '');
+  const amountCents = amountToCents(resolvedAmount);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
+  if (editing && member && member.user.role !== 'owner') return <Redirect href="/receipts" />;
+  if (editing && !loading && !receipt) return <Redirect href="/receipts" />;
 
   const chooseFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true, multiple: false });
@@ -56,33 +63,34 @@ export default function ReceiptFormScreen() {
 
   const submit = async () => {
     setAttempted(true);
-    if (!member || !name.trim() || amountCents === null || !file || saving) return;
+    if (!member || !resolvedName.trim() || amountCents === null || (!editing && !file) || (editing && !receipt) || saving) return;
     setSaving(true);
     setSaveError('');
     try {
-      await createReceipt(member.company.id, member.user.id, member.user.name, name, amountCents, file);
+      if (editing && receipt) await updateReceipt(member.company.id, receipt.id, resolvedName, amountCents);
+      else if (file) await createReceipt(member.company.id, member.user.id, member.user.name, resolvedName, amountCents, file);
       router.back();
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Receipt could not be uploaded. Check connection and try again.');
+      setSaveError(error instanceof Error ? error.message : `Receipt could not be ${editing ? 'updated' : 'uploaded'}. Check connection and try again.`);
     } finally {
       setSaving(false);
     }
   };
 
   return <SafeAreaView style={styles.safe} edges={['bottom']}>
-    <Stack.Screen options={{ title: 'Add receipt' }} />
+    <Stack.Screen options={{ title: editing ? 'Edit receipt' : 'Add receipt' }} />
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
-        <View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>Upload expense receipt</Text><Text style={styles.subtitle}>Add name, amount, and receipt image or PDF. Upload date is recorded automatically.</Text></View>
+        <View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>{editing ? 'Edit expense receipt' : 'Upload expense receipt'}</Text><Text style={styles.subtitle}>{editing ? 'Correct receipt name or amount. Uploaded file and date stay unchanged.' : 'Add name, amount, and receipt image or PDF. Upload date is recorded automatically.'}</Text></View>
 
-        <View style={styles.field}><Text style={styles.label}>Name</Text><TextInput accessibilityLabel="Receipt name" autoFocus maxLength={160} onChangeText={setName} placeholder="Fuel at Station 12" placeholderTextColor={theme.secondary} style={[styles.input, attempted && !name.trim() && styles.inputError]} value={name} />{attempted && !name.trim() ? <Text style={styles.fieldError}>Enter receipt name.</Text> : null}</View>
-        <View style={styles.field}><Text style={styles.label}>Amount</Text><View style={[styles.moneyInput, attempted && amountCents === null && styles.inputError]}><Text style={styles.currency}>$</Text><TextInput accessibilityLabel="Receipt amount" inputMode="decimal" keyboardType="decimal-pad" onChangeText={setAmount} placeholder="0.00" placeholderTextColor={theme.secondary} style={styles.moneyText} value={amount} /></View>{attempted && amountCents === null ? <Text style={styles.fieldError}>Enter valid amount.</Text> : null}</View>
+        <View style={styles.field}><Text style={styles.label}>Name</Text><TextInput accessibilityLabel="Receipt name" autoFocus maxLength={160} onChangeText={setName} placeholder="Fuel at Station 12" placeholderTextColor={theme.secondary} style={[styles.input, attempted && !resolvedName.trim() && styles.inputError]} value={resolvedName} />{attempted && !resolvedName.trim() ? <Text style={styles.fieldError}>Enter receipt name.</Text> : null}</View>
+        <View style={styles.field}><Text style={styles.label}>Amount</Text><View style={[styles.moneyInput, attempted && amountCents === null && styles.inputError]}><Text style={styles.currency}>$</Text><TextInput accessibilityLabel="Receipt amount" inputMode="decimal" keyboardType="decimal-pad" onChangeText={setAmount} placeholder="0.00" placeholderTextColor={theme.secondary} style={styles.moneyText} value={resolvedAmount} /></View>{attempted && amountCents === null ? <Text style={styles.fieldError}>Enter valid amount.</Text> : null}</View>
 
-        <View style={styles.field}><Text style={styles.label}>Receipt file</Text><View style={[styles.fileCard, attempted && !file && styles.inputError]}><View style={styles.fileIcon}><AppSymbol name={{ ios: file ? 'doc.fill' : 'doc.badge.plus', android: file ? 'description' : 'note_add' } as never} color={file ? theme.green : theme.secondary} size={25} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileTitle}>{file?.name ?? 'No receipt selected'}</Text><Text style={styles.fileHelp}>{file ? 'Ready to upload' : 'Image or PDF · maximum 10 MB'}</Text></View></View>{attempted && !file ? <Text style={styles.fieldError}>Photograph or choose receipt file.</Text> : null}<View style={styles.fileActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => void takePhoto()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'camera', android: 'photo_camera' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Camera</Text></Pressable><Pressable accessibilityRole="button" disabled={saving} onPress={() => void chooseFile()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'folder', android: 'folder' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Choose file</Text></Pressable></View>{file ? <Pressable accessibilityRole="button" onPress={() => setFile(null)} style={styles.remove}><Text style={styles.removeText}>Remove selected file</Text></Pressable> : null}</View>
+        {!editing ? <View style={styles.field}><Text style={styles.label}>Receipt file</Text><View style={[styles.fileCard, attempted && !file && styles.inputError]}><View style={styles.fileIcon}><AppSymbol name={{ ios: file ? 'doc.fill' : 'doc.badge.plus', android: file ? 'description' : 'note_add' } as never} color={file ? theme.green : theme.secondary} size={25} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileTitle}>{file?.name ?? 'No receipt selected'}</Text><Text style={styles.fileHelp}>{file ? 'Ready to upload' : 'Image or PDF · maximum 10 MB'}</Text></View></View>{attempted && !file ? <Text style={styles.fieldError}>Photograph or choose receipt file.</Text> : null}<View style={styles.fileActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => void takePhoto()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'camera', android: 'photo_camera' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Camera</Text></Pressable><Pressable accessibilityRole="button" disabled={saving} onPress={() => void chooseFile()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'folder', android: 'folder' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Choose file</Text></Pressable></View>{file ? <Pressable accessibilityRole="button" onPress={() => setFile(null)} style={styles.remove}><Text style={styles.removeText}>Remove selected file</Text></Pressable> : null}</View> : receipt ? <View style={styles.field}><Text style={styles.label}>Receipt file</Text><View style={styles.fileCard}><View style={styles.fileIcon}><AppSymbol name={{ ios: 'doc.fill', android: 'description' } as never} color={theme.green} size={25} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileTitle}>{receipt.fileName}</Text><Text style={styles.fileHelp}>Uploaded file stays unchanged</Text></View></View></View> : null}
 
-        <View style={styles.dateNote}><AppSymbol name={{ ios: 'calendar', android: 'calendar_today' } as never} color={theme.secondary} size={18} /><Text style={styles.dateText}>Upload date: {new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())}</Text></View>
+        <View style={styles.dateNote}><AppSymbol name={{ ios: 'calendar', android: 'calendar_today' } as never} color={theme.secondary} size={18} /><Text style={styles.dateText}>{editing && receipt ? `Uploaded ${new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(receipt.createdAt))}` : `Upload date: ${new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())}`}</Text></View>
         {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
-        <Pressable accessibilityRole="button" disabled={saving} onPress={() => void submit()} style={({ pressed }) => [styles.submit, saving && styles.disabled, pressed && !saving && styles.pressed]}><Text style={styles.submitText}>{saving ? 'Uploading…' : 'Upload receipt'}</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={saving || (editing && !receipt)} onPress={() => void submit()} style={({ pressed }) => [styles.submit, (saving || (editing && !receipt)) && styles.disabled, pressed && !saving && styles.pressed]}><Text style={styles.submitText}>{saving ? (editing ? 'Saving…' : 'Uploading…') : (editing ? 'Save changes' : 'Upload receipt')}</Text></Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   </SafeAreaView>;

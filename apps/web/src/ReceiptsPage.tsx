@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ExternalLink, FileText, ReceiptText, Upload } from 'lucide-react';
+import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
 import type { CrewMember, FireOpsUser } from '@fireops/domain';
 import { supabase } from './supabase';
 
@@ -98,6 +98,10 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const [attempted, setAttempted] = useState(false);
   const [timespan, setTimespan] = useState<Timespan>('this-year');
   const [crewId, setCrewId] = useState('all');
+  const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [actionId, setActionId] = useState('');
   const isOwner = user.role === 'owner';
 
   const load = useCallback(async () => {
@@ -189,6 +193,58 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const beginEdit = (receipt: Receipt) => {
+    setEditingReceipt(receipt);
+    setEditName(receipt.name);
+    setEditAmount((receipt.amountCents / 100).toFixed(2));
+    setError('');
+  };
+
+  const saveEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    const amountCents = amountToCents(editAmount);
+    if (!isOwner || !companyId || !supabase || !editingReceipt || !editName.trim() || amountCents === null || actionId) return;
+    setActionId(editingReceipt.id);
+    setError('');
+    try {
+      const { data, error: updateError } = await supabase.from('company_receipts')
+        .update({ name: editName.trim(), amount_cents: amountCents })
+        .eq('company_id', companyId)
+        .eq('id', editingReceipt.id)
+        .select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at')
+        .single<ReceiptRow>();
+      if (updateError) setError(`Receipt could not be updated. ${updateError.message}`);
+      else {
+        const updated = fromRow(data);
+        setReceipts((current) => current.map((receipt) => receipt.id === updated.id ? updated : receipt));
+        setEditingReceipt(null);
+      }
+    } catch (updateError) {
+      setError(`Receipt could not be updated. ${updateError instanceof Error ? updateError.message : 'Network request failed.'}`);
+    } finally {
+      setActionId('');
+    }
+  };
+
+  const removeReceipt = async (receipt: Receipt) => {
+    if (!isOwner || !companyId || !supabase || actionId || !window.confirm(`Delete “${receipt.name}”? This action cannot be undone.`)) return;
+    setActionId(receipt.id);
+    setError('');
+    try {
+      const { error: deleteError } = await supabase.from('company_receipts').delete().eq('company_id', companyId).eq('id', receipt.id);
+      if (deleteError) setError(`Receipt could not be deleted. ${deleteError.message}`);
+      else {
+        setReceipts((current) => current.filter((item) => item.id !== receipt.id));
+        const { error: storageError } = await supabase.storage.from(BUCKET).remove([receipt.storagePath]);
+        if (storageError) setError(`Receipt was deleted, but its file could not be removed. ${storageError.message}`);
+      }
+    } catch (deleteError) {
+      setError(`Receipt could not be deleted. ${deleteError instanceof Error ? deleteError.message : 'Network request failed.'}`);
+    } finally {
+      setActionId('');
+    }
+  };
+
   const amountCents = amountToCents(amount);
   const filterCrew = crew.filter((member) => member.status === 'Active' || receipts.some((receipt) => receipt.uploadedBy === member.id));
 
@@ -216,7 +272,9 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
       </div>
       {loading && <p className="receipt-state">Loading receipts…</p>}
       {!loading && !error && !visible.length && <div className="receipt-empty"><FileText/><h3>No receipts found</h3><p>{receipts.length ? 'Change filters to see more receipts.' : 'Uploaded receipts will appear here.'}</p></div>}
-      {!!visible.length && <div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Name</th>{isOwner && <th>Crew member</th>}<th>Date</th><th className="receipt-amount">Amount</th><th><span className="sr-only">File</span></th></tr></thead><tbody>{visible.map((receipt) => <tr key={receipt.id}><td><b>{receipt.name}</b><small>{receipt.fileName}</small></td>{isOwner && <td>{receipt.uploadedByName}</td>}<td>{formatDate(receipt.createdAt)}</td><td className="receipt-amount"><b>{formatMoney(receipt.amountCents)}</b></td><td><button className="receipt-open" onClick={() => void openReceipt(receipt)} aria-label={`Open ${receipt.name}`}><ExternalLink/>View</button></td></tr>)}</tbody></table></div>}
+      {!!visible.length && <div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Name</th>{isOwner && <th>Crew member</th>}<th>Date</th><th className="receipt-amount">Amount</th><th><span className="sr-only">File</span></th>{isOwner && <th><span className="sr-only">Actions</span></th>}</tr></thead><tbody>{visible.map((receipt) => <tr key={receipt.id}><td><b>{receipt.name}</b><small>{receipt.fileName}</small></td>{isOwner && <td>{receipt.uploadedByName}</td>}<td>{formatDate(receipt.createdAt)}</td><td className="receipt-amount"><b>{formatMoney(receipt.amountCents)}</b></td><td><button className="receipt-open" onClick={() => void openReceipt(receipt)} aria-label={`Open ${receipt.name}`}><ExternalLink/>View</button></td>{isOwner && <td><div className="receipt-actions"><button type="button" disabled={Boolean(actionId)} onClick={() => beginEdit(receipt)} aria-label={`Edit ${receipt.name}`}><Pencil/></button><button className="delete" type="button" disabled={Boolean(actionId)} onClick={() => void removeReceipt(receipt)} aria-label={`Delete ${receipt.name}`}><Trash2/></button></div></td>}</tr>)}</tbody></table></div>}
     </section>
+
+    {editingReceipt && <div className="receipt-edit-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !actionId) setEditingReceipt(null); }}><section className="receipt-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-receipt-heading"><header><div><h2 id="edit-receipt-heading">Edit receipt</h2><p>{editingReceipt.fileName}</p></div><button type="button" disabled={Boolean(actionId)} onClick={() => setEditingReceipt(null)} aria-label="Close edit receipt"><X/></button></header><form onSubmit={(event) => void saveEdit(event)}><label><span>Name</span><input autoFocus maxLength={160} value={editName} onChange={(event) => setEditName(event.target.value)}/></label><label><span>Amount</span><div className="receipt-money-input"><b>$</b><input inputMode="decimal" value={editAmount} onChange={(event) => setEditAmount(event.target.value)}/></div></label>{error && <p className="receipt-error" role="alert">{error}</p>}<footer><button className="secondary" type="button" disabled={Boolean(actionId)} onClick={() => setEditingReceipt(null)}>Cancel</button><button className="primary" type="submit" disabled={Boolean(actionId) || !editName.trim() || amountToCents(editAmount) === null}><Pencil/>{actionId ? 'Saving…' : 'Save changes'}</button></footer></form></section></div>}
   </div>;
 }

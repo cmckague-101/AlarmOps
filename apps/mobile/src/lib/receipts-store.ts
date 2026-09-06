@@ -143,6 +143,29 @@ export async function createReceipt(companyId: string, userId: string, userName:
   return receipt;
 }
 
+export async function updateReceipt(companyId: string, receiptId: string, name: string, amountCents: number) {
+  if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
+  const { data, error } = await supabase.from('company_receipts')
+    .update({ name: name.trim(), amount_cents: amountCents })
+    .eq('company_id', companyId)
+    .eq('id', receiptId)
+    .select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at')
+    .single<ReceiptRow>();
+  if (error) throw new Error(error.message);
+  const receipt = fromRow(data);
+  emit({ ...snapshot, receipts: snapshot.receipts.map((item) => item.id === receipt.id ? receipt : item) });
+  return receipt;
+}
+
+export async function deleteReceipt(companyId: string, receipt: CompanyReceipt) {
+  if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
+  const { error } = await supabase.from('company_receipts').delete().eq('company_id', companyId).eq('id', receipt.id);
+  if (error) throw new Error(error.message);
+  emit({ ...snapshot, receipts: snapshot.receipts.filter((item) => item.id !== receipt.id) });
+  const { error: storageError } = await supabase.storage.from(bucket).remove([receipt.storagePath]);
+  if (storageError) throw new Error(`Receipt was deleted, but its file could not be removed. ${storageError.message}`);
+}
+
 export async function openReceipt(receipt: CompanyReceipt) {
   if (!supabase) throw new Error('Receipt storage is unavailable.');
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(receipt.storagePath, 60 * 60);
