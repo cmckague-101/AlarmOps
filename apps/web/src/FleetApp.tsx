@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Building2, LogOut, ShieldCheck } from 'lucide-react';
+import { ArrowDown, Boxes, Building2, ClipboardCheck, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, ShieldCheck, Truck } from 'lucide-react';
 import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
@@ -108,6 +108,8 @@ export default function FleetApp() {
     return()=>listener.subscription.unsubscribe();
   },[]);
 
+  const loginPreview=import.meta.env.DEV&&typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('login-preview')==='1';
+  if(loginPreview)return <FleetLogin/>;
   if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'
     ? <App/>
     : <FleetConfigurationError/>;
@@ -138,7 +140,61 @@ function FleetLogin(){
     setSentMethod(method);setBusy(false);
   };
   if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><img className="admin-login-logo" src="/fireops-icon.png" width="512" height="512" alt="FireOps"/><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
-  return <div className="admin-auth"><form onSubmit={submit} aria-label="Sign in"><picture className="admin-login-brand"><img className="theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><input type="password" autoComplete="current-password" aria-label="Password" placeholder="Password" required value={password} onChange={event=>setPassword(event.target.value)}/><button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Signing in...':'Sign in'}</button></form></div>;
+  return <div className="admin-auth admin-login-page">
+    <main>
+      <section className="login-hero" aria-labelledby="login-title">
+        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps"/></div>
+        <div className="login-intro">
+          <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
+          <p className="login-lede">FireOps brings people, equipment, training, and field intelligence into one clear operational picture.</p>
+          <a className="login-discover" href="#features">Explore FireOps <ArrowDown aria-hidden="true"/></a>
+        </div>
+
+        <form className="login-form" onSubmit={submit} aria-label="Sign in" aria-busy={busy}>
+          <div className="login-form-heading">
+            <h2>Sign In</h2>
+            <p>Protected workspace for authorized personnel</p>
+          </div>
+          <div className="login-field">
+            <input id="login-email" aria-label="Email" type="email" autoComplete="email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/>
+          </div>
+          <div className="login-field">
+            <input id="login-password" aria-label="Password" type="password" autoComplete="current-password" placeholder="Password" required value={password} onChange={event=>setPassword(event.target.value)}/>
+            <div className="login-forgot-row"><button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button></div>
+          </div>
+          {error&&<div className="admin-error" role="alert">{error}</div>}
+          <button className="login-submit" disabled={busy}>{busy?'Signing in...':'Sign in to FireOps'}</button>
+        </form>
+      </section>
+
+      <section className="login-features" id="features" aria-labelledby="features-title">
+        <div className="login-section-heading">
+          <h2 id="features-title">Everything your team needs, ready when it matters.</h2>
+          <p>Replace scattered tools and disconnected updates with one shared source of truth.</p>
+        </div>
+        <div className="login-feature-list">
+          <article className="login-feature-row"><span><MapPinned aria-hidden="true"/></span><p>Operations</p><div><h3>See the full incident picture</h3><p>Track active incidents, assignments, and operational details without losing context between office and field.</p></div></article>
+          <article className="login-feature-row"><span><Truck aria-hidden="true"/></span><p>Fleet</p><div><h3>Keep every vehicle mission-ready</h3><p>Monitor fleet status, surface issues early, and keep critical records attached to each unit.</p></div></article>
+          <article className="login-feature-row"><span><GraduationCap aria-hidden="true"/></span><p>Training</p><div><h3>Build a qualified, ready crew</h3><p>Coordinate courses, registrations, and crew credentials from one dependable workspace.</p></div></article>
+          <article className="login-feature-row"><span><Boxes aria-hidden="true"/></span><p>Inventory</p><div><h3>Know what is ready to deploy</h3><p>Organize essential equipment and supplies so teams spend less time searching and more time moving.</p></div></article>
+          <article className="login-feature-row"><span><MessageSquareText aria-hidden="true"/></span><p>Communication</p><div><h3>Keep decisions connected</h3><p>Give crews and administrators a shared channel for updates, questions, and important documents.</p></div></article>
+          <article className="login-feature-row"><span><ClipboardCheck aria-hidden="true"/></span><p>Accountability</p><div><h3>Turn activity into clarity</h3><p>Maintain reliable records across your operation with access tailored to each team member.</p></div></article>
+        </div>
+      </section>
+
+      <section className="login-mission">
+        <h2>Less time managing systems. More time supporting crews.</h2>
+        <p>FireOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</p>
+      </section>
+
+      <section className="login-contact" aria-labelledby="contact-title">
+        <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
+        <a href="mailto:thetinykings@icloud.com"><Mail aria-hidden="true"/> Contact us</a>
+      </section>
+    </main>
+
+    <footer className="login-footer"><span>© {new Date().getFullYear()} FireOps</span><span>Built for teams who answer the call.</span></footer>
+  </div>;
 }
 
 function AuthenticatedFleet({session}:{session:Session}){
