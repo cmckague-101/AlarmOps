@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { type Activity, type FleetIssue } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
-import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
+import { type FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
+import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -38,7 +39,7 @@ export default function DashboardScreen() {
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, activities, loading, refreshing, error } = useFleetVehicles(companyId);
-  const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing, loading: notificationsLoading } = useNotificationInbox(companyId, user?.id ?? null);
+  const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null);
 
   const ready = vehicles.filter((vehicle) => READY_STATUSES.includes(normalized(vehicle.status))).length;
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
@@ -116,74 +117,54 @@ export default function DashboardScreen() {
               </View>
             </View>
 
-            <View style={styles.summaryRow}>
-              <Text style={styles.sectionTitle}>Current picture</Text>
-              <Text style={styles.summaryText}>
-                {vehicles.length === 0
-                  ? 'No vehicles have been added yet.'
-                  : attention > 0
-                    ? `${attention} ${attention === 1 ? 'vehicle needs' : 'vehicles need'} attention.`
-                    : 'All reported vehicles are operational.'}
-              </Text>
-            </View>
+            {attention > 0 ? (
+              <View style={styles.summaryRow}>
+                <Text style={styles.sectionTitle}>Current picture</Text>
+                <Text style={styles.summaryText}>
+                  {attention} {attention === 1 ? 'vehicle needs' : 'vehicles need'} attention.
+                </Text>
+              </View>
+            ) : null}
 
-            <DashboardSection title="Open-issue blockers" count={openIssues.length} styles={styles}>
-              {openIssues.length === 0 ? (
-                <Text style={styles.emptyText}>No open issues blocking fleet work.</Text>
-              ) : (
-                openIssues.slice(0, 5).map((issue) => (
-                  <Pressable
-                    key={issue.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open issue ${issue.title}`}
-                    onPress={() => openIssue(issue)}
-                    style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
-                  >
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>{issue.title}</Text>
-                      <Text style={styles.rowMeta} numberOfLines={1}>
-                        {vehicleById.get(issue.vehicleId)?.name ?? 'Unknown vehicle'} · {issue.priority}
-                      </Text>
-                    </View>
-                    <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
-                  </Pressable>
-                ))
-              )}
-            </DashboardSection>
-
-            <DashboardSection title="Assigned to me" count={assignedVehicles.length} styles={styles}>
-              {assignedVehicles.length === 0 ? (
-                <Text style={styles.emptyText}>No vehicles are assigned to you.</Text>
-              ) : (
-                assignedVehicles.slice(0, 5).map((vehicle) => {
-                  const vehicleIssues = openIssues.filter((issue) => issue.vehicleId === vehicle.id).length;
-                  return (
+            {openIssues.length > 0 ? (
+              <DashboardSection title="Open-issue blockers" count={openIssues.length} styles={styles}>
+                {openIssues.slice(0, 5).map((issue) => (
                     <Pressable
-                      key={vehicle.id}
+                      key={issue.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Open ${vehicle.name}`}
-                      onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}`)}
+                      accessibilityLabel={`Open issue ${issue.title}`}
+                      onPress={() => openIssue(issue)}
                       style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
                     >
                       <View style={styles.rowCopy}>
-                        <Text style={styles.rowTitle} numberOfLines={1}>{vehicle.name}</Text>
+                        <Text style={styles.rowTitle} numberOfLines={1}>{issue.title}</Text>
                         <Text style={styles.rowMeta} numberOfLines={1}>
-                          {vehicle.status}{vehicleIssues > 0 ? ` · ${vehicleIssues} open ${vehicleIssues === 1 ? 'issue' : 'issues'}` : ''}
+                          {vehicleById.get(issue.vehicleId)?.name ?? 'Unknown vehicle'} · {issue.priority}
                         </Text>
                       </View>
                       <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
                     </Pressable>
-                  );
-                })
-              )}
-            </DashboardSection>
+                ))}
+              </DashboardSection>
+            ) : null}
 
-            <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
-              {notificationsLoading && notifications.length === 0 ? (
-                <Text style={styles.emptyText}>Loading company updates…</Text>
-              ) : notifications.length === 0 ? (
-                <Text style={styles.emptyText}>No company notifications yet.</Text>
-              ) : (
+            {assignedVehicles.length > 0 ? (
+              <DashboardSection title="Assigned to me" count={assignedVehicles.length} styles={styles}>
+                {assignedVehicles.slice(0, 5).map((vehicle) => (
+                  <AssignedVehicleRow
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    issueCount={openIssues.filter((issue) => issue.vehicleId === vehicle.id).length}
+                    onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}`)}
+                    styles={styles}
+                    iconColor={theme.secondary}
+                  />
+                ))}
+              </DashboardSection>
+            ) : null}
+
+            {notifications.length > 0 ? (
+              <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
                 <>
                   {notifications.map((notification) => (
                     <Pressable
@@ -224,14 +205,12 @@ export default function DashboardScreen() {
                     <AppSymbol name={{ios: 'chevron.right', android: 'chevron_right'} as never} size={16} color={theme.ember} />
                   </Pressable>
                 </>
-              )}
-            </DashboardSection>
+              </DashboardSection>
+            ) : null}
 
-            <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
-              {recentActivities.length === 0 ? (
-                <Text style={styles.emptyText}>Fleet changes will appear here.</Text>
-              ) : (
-                recentActivities.map((activity) => {
+            {recentActivities.length > 0 ? (
+              <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
+                {recentActivities.map((activity) => {
                   const canOpen = activity.targetType === 'issue' || activity.targetType === 'vehicle';
                   return (
                     <Pressable
@@ -250,13 +229,46 @@ export default function DashboardScreen() {
                       {canOpen ? <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} /> : null}
                     </Pressable>
                   );
-                })
-              )}
-            </DashboardSection>
+                })}
+              </DashboardSection>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function AssignedVehicleRow({ vehicle, issueCount, onPress, styles, iconColor }: { vehicle: FleetVehicle; issueCount: number; onPress: () => void; styles: ReturnType<typeof createStyles>; iconColor: string }) {
+  const photoUrl = useFleetFileUrl(vehicle.photo);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${vehicle.name}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+    >
+      <View style={styles.vehicleThumbnail}>
+        {photoUrl ? (
+          <Image
+            accessibilityLabel={`${vehicle.name} vehicle photo`}
+            resizeMode="cover"
+            source={{ uri: photoUrl }}
+            style={styles.vehiclePhoto}
+          />
+        ) : (
+          <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={20} color={iconColor} />
+        )}
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={styles.rowTitle} numberOfLines={1}>{vehicle.name}</Text>
+        <Text style={styles.rowMeta} numberOfLines={1}>
+          {vehicle.status}{issueCount > 0 ? ` · ${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : ''}
+        </Text>
+      </View>
+      <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={iconColor} />
+    </Pressable>
   );
 }
 
@@ -309,6 +321,8 @@ function createStyles(theme: FireOpsTheme) {
     allNotifications: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     allNotificationsLabel: { color: theme.ember, fontSize: 14, fontWeight: '700' },
     rowCopy: { flex: 1, gap: 4 },
+    vehicleThumbnail: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 10, backgroundColor: theme.surfaceAlt },
+    vehiclePhoto: { width: '100%', height: '100%' },
     rowTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     rowMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
     activityDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.green },
