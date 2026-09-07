@@ -27,9 +27,10 @@ export default function IssueDetailScreen() {
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const { vehicles, issues, loading, error } = useFleetVehicles(companyId);
   const candidate = issues.find((item) => item.id === id);
-  const canView = candidate && user && (user.role === 'owner' || (candidate.createdById ? candidate.createdById === user.id : candidate.createdBy === user.name));
+  const candidateVehicle = vehicles.find((item) => item.id === candidate?.vehicleId);
+  const canView = candidate && user && (user.role === 'owner' || candidateVehicle?.assignedTo === user.id || (candidate.createdById ? candidate.createdById === user.id : candidate.createdBy === user.name));
   const issue = canView ? candidate : undefined;
-  const vehicle = vehicles.find((item) => item.id === issue?.vehicleId);
+  const vehicle = issue ? candidateVehicle : undefined;
   const [updateText, setUpdateText] = useState('');
   const [editingDetails, setEditingDetails] = useState(false);
   const [details, setDetails] = useState<{ title: string; description: string; priority: IssuePriority }>({ title: '', description: '', priority: 'Medium' });

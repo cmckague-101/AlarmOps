@@ -3,12 +3,10 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { dashboardNotifications, type Activity, type DashboardNotification, type FleetIssue } from '@fireops/domain';
+import { type Activity, type FleetIssue } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
-import { refreshCommunications, useCommunications } from '@/lib/communications-store';
-import { refreshDocuments, useCompanyDocuments } from '@/lib/documents-store';
 import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
-import { refreshTrainings, useTrainings } from '@/lib/training-store';
+import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -40,9 +38,7 @@ export default function DashboardScreen() {
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, activities, loading, refreshing, error } = useFleetVehicles(companyId);
-  const { threads, refreshing: communicationsRefreshing, loading: communicationsLoading } = useCommunications(companyId, user?.id ?? null);
-  const { documents, refreshing: documentsRefreshing, loading: documentsLoading } = useCompanyDocuments(companyId, user?.id ?? null);
-  const { trainings, refreshing: trainingsRefreshing, loading: trainingsLoading } = useTrainings(companyId, user?.id ?? null);
+  const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing, loading: notificationsLoading } = useNotificationInbox(companyId, user?.id ?? null);
 
   const ready = vehicles.filter((vehicle) => READY_STATUSES.includes(normalized(vehicle.status))).length;
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
@@ -55,9 +51,7 @@ export default function DashboardScreen() {
   const recentActivities = [...activities]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, 5);
-  const notifications = user ? dashboardNotifications(threads, documents, user, 10, trainings) : [];
-  const unreadNotifications = notifications.filter((notification) => notification.unread).length;
-  const notificationsLoading = communicationsLoading || documentsLoading || trainingsLoading;
+  const notifications = inboxNotifications.slice(0, 10);
 
   const openIssue = (issue: FleetIssue) => router.push(`/issue/${encodeURIComponent(issue.id)}`);
   const openActivity = (activity: Activity) => {
@@ -65,24 +59,20 @@ export default function DashboardScreen() {
     if (activity.targetType === 'issue') router.push(`/issue/${encodeURIComponent(activity.targetId)}`);
     if (activity.targetType === 'vehicle') router.push(`/vehicle/${encodeURIComponent(activity.targetId)}`);
   };
-  const openNotification = (notification: DashboardNotification) => {
-    const id = notification.id.slice(notification.id.indexOf('-') + 1);
-    if (notification.source === 'communications') router.push(`/communication/${encodeURIComponent(id)}`);
-    if (notification.source === 'documents') router.push('/documents');
-    if (notification.source === 'training') router.push(`/training/${encodeURIComponent(id)}`);
+  const openNotification = (notification: InboxNotification) => {
+    if (!notification.readAt) void markInboxNotificationRead(notification.id).catch(() => undefined);
+    router.push(notification.path as never);
   };
   const refreshDashboard = () => {
     void refreshFleet();
-    void refreshCommunications();
-    void refreshDocuments();
-    void refreshTrainings();
+    void refreshNotificationInbox();
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing || communicationsRefreshing || documentsRefreshing || trainingsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
+        refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingGroup}>
           <Text style={styles.title}>Dashboard</Text>
@@ -188,46 +178,54 @@ export default function DashboardScreen() {
               )}
             </DashboardSection>
 
-            {user?.role === 'member' ? (
-              <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
-                {notificationsLoading && notifications.length === 0 ? (
-                  <Text style={styles.emptyText}>Loading company updates…</Text>
-                ) : notifications.length === 0 ? (
-                  <Text style={styles.emptyText}>No company notifications yet.</Text>
-                ) : (
-                  notifications.map((notification) => (
+            <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
+              {notificationsLoading && notifications.length === 0 ? (
+                <Text style={styles.emptyText}>Loading company updates…</Text>
+              ) : notifications.length === 0 ? (
+                <Text style={styles.emptyText}>No company notifications yet.</Text>
+              ) : (
+                <>
+                  {notifications.map((notification) => (
                     <Pressable
                       key={notification.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Open ${notification.source} notification ${notification.title}${notification.unread ? ', unread' : ''}`}
-                      onPress={() => openNotification(notification)}
-                      style={({ pressed }) => [styles.notificationRow, notification.unread && styles.unreadRow, pressed && styles.pressed]}
+                      accessibilityLabel={`Open notification ${notification.title}${notification.readAt ? '' : ', unread'}`}
+                      onPress={() => void openNotification(notification)}
+                      style={({ pressed }) => [styles.notificationRow, !notification.readAt && styles.unreadRow, pressed && styles.pressed]}
                     >
-                      <View style={[styles.notificationIcon, notification.unread && styles.notificationIconUnread]}>
+                      <View style={[styles.notificationIcon, !notification.readAt && styles.notificationIconUnread]}>
                         <AppSymbol
-                          name={notification.source === 'communications'
+                          name={notification.entityType === 'communication'
                             ? ({ ios: 'message.fill', android: 'chat_bubble' } as never)
-                            : notification.source === 'training'
+                            : notification.entityType === 'training'
                               ? ({ ios: 'graduationcap.fill', android: 'school' } as never)
-                              : ({ ios: 'doc.fill', android: 'description' } as never)}
+                              : notification.entityType === 'vehicle'
+                                ? ({ ios: 'truck.box.fill', android: 'local_shipping' } as never)
+                                : notification.entityType === 'issue'
+                                  ? ({ ios: 'wrench.and.screwdriver.fill', android: 'build' } as never)
+                                  : ({ ios: 'doc.fill', android: 'description' } as never)}
                           size={17}
-                          color={notification.unread ? theme.ember : theme.secondary}
+                          color={!notification.readAt ? theme.ember : theme.secondary}
                         />
                       </View>
                       <View style={styles.rowCopy}>
                         <View style={styles.notificationTitleLine}>
                           <Text style={styles.rowTitle} numberOfLines={1}>{notification.title}</Text>
-                          {notification.unread ? <View accessibilityLabel="Unread" style={styles.unreadDot} /> : null}
+                          {!notification.readAt ? <View accessibilityLabel="Unread" style={styles.unreadDot} /> : null}
                         </View>
-                        <Text style={styles.rowMeta} numberOfLines={1}>{notification.detail}</Text>
+                        <Text style={styles.rowMeta} numberOfLines={1}>{notification.body}</Text>
                         <Text style={styles.notificationMeta}>{formatNotificationDate(notification.createdAt)}</Text>
                       </View>
                       <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
                     </Pressable>
-                  ))
-                )}
-              </DashboardSection>
-            ) : null}
+                  ))}
+                  <Pressable accessibilityRole="button" onPress={() => router.push('/notifications' as never)} style={({pressed}) => [styles.allNotifications, pressed && styles.pressed]}>
+                    <Text style={styles.allNotificationsLabel}>View all notifications</Text>
+                    <AppSymbol name={{ios: 'chevron.right', android: 'chevron_right'} as never} size={16} color={theme.ember} />
+                  </Pressable>
+                </>
+              )}
+            </DashboardSection>
 
             <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
               {recentActivities.length === 0 ? (
@@ -308,6 +306,8 @@ function createStyles(theme: FireOpsTheme) {
     notificationTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
     unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.ember },
     notificationMeta: { color: theme.secondary, fontSize: 11, lineHeight: 15 },
+    allNotifications: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    allNotificationsLabel: { color: theme.ember, fontSize: 14, fontWeight: '700' },
     rowCopy: { flex: 1, gap: 4 },
     rowTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     rowMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },

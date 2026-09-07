@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 const DEFAULT_CHANNEL_ID = 'default';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 declare global {
   // Prevent duplicate listeners during development fast refreshes.
@@ -16,6 +17,15 @@ declare global {
 function getProjectId(): string | undefined {
   return Constants.easConfig?.projectId ??
     Constants.expoConfig?.extra?.eas?.projectId;
+}
+
+async function syncUnreadBadge() {
+  if (Platform.OS === 'web' || !supabase) return;
+  const { count, error } = await supabase
+    .from('user_notifications')
+    .select('id', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (!error) await Notifications.setBadgeCountAsync(count ?? 0);
 }
 
 async function configureAndroidChannel() {
@@ -66,6 +76,7 @@ export async function registerForPushNotifications(userId?: string) {
   });
 
   if (error) throw error;
+  await syncUnreadBadge();
   return token;
 }
 
@@ -83,10 +94,19 @@ export async function unregisterFromPushNotifications() {
   });
 
   if (error) throw error;
+  await Notifications.setBadgeCountAsync(0);
 }
 
 function openNotification(response: Notifications.NotificationResponse) {
-  const path = response.notification.request.content.data?.path;
+  const data = response.notification.request.content.data;
+  const path = data?.path;
+  const notificationId = data?.notificationId;
+  if (typeof notificationId === 'string' && UUID_PATTERN.test(notificationId) && supabase) {
+    void (async () => {
+      await supabase.from('user_notifications').update({ read_at: new Date().toISOString() }).eq('id', notificationId);
+      await syncUnreadBadge();
+    })().catch(() => undefined);
+  }
   if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) {
     return;
   }
@@ -109,6 +129,9 @@ function startNotifications() {
   });
 
   Notifications.addNotificationResponseReceivedListener(openNotification);
+  Notifications.addNotificationReceivedListener(() => {
+    void syncUnreadBadge().catch(() => undefined);
+  });
 
   void Notifications.getLastNotificationResponseAsync().then((response) => {
     if (!response) return;
