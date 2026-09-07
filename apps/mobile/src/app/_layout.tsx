@@ -6,7 +6,7 @@ FIRST VIEWPORT: Native auth form leads; authenticated users enter Dashboard with
 FORM: Direct adaptation of approved web information architecture; user-pinned parity.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
-import {Stack} from 'expo-router';
+import {DarkTheme,DefaultTheme,Stack,ThemeProvider} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {AppProviders} from '@/providers/app-providers';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
@@ -16,7 +16,7 @@ export default function RootLayout(){return <AppProviders><RootNavigator/></AppP
 function RootNavigator(){
   const theme=useFireOpsTheme();
   const {colorScheme}=useFireOpsColorScheme();
-  return <>
+  return <ThemeProvider value={colorScheme==='dark'?DarkTheme:DefaultTheme}>
     <StatusBar style={colorScheme==='dark'?'light':'dark'}/>
     <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
       <Stack.Screen name="index" options={{headerShown:false}}/>
@@ -25,5 +25,5 @@ function RootNavigator(){
       <Stack.Screen name="reset-password" options={{title:'Choose new password'}}/>
       <Stack.Screen name="(tabs)" options={{headerShown:false}}/>
     </Stack>
-  </>;
+  </ThemeProvider>;
 }
