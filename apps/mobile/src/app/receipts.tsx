@@ -4,11 +4,19 @@ import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
+import { FilterSelect, type FilterSelectOption } from '@/components/filter-select';
 import { deleteReceipt, openReceipt, refreshReceipts, useReceipts, type CompanyReceipt } from '@/lib/receipts-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 type Timespan = '30-days' | 'this-year' | 'last-year' | 'all';
+
+const timespanOptions: readonly FilterSelectOption<Timespan>[] = [
+  { value: '30-days', label: '30 days' },
+  { value: 'this-year', label: 'This year' },
+  { value: 'last-year', label: 'Last year' },
+  { value: 'all', label: 'All time' },
+];
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -98,7 +106,7 @@ export default function ReceiptsScreen() {
       <View style={styles.summary}><View style={styles.summaryItem}><Text style={styles.summaryValue}>{visible.length}</Text><Text style={styles.summaryLabel}>receipts</Text></View><View style={styles.summaryRule} /><View style={styles.summaryItem}><Text style={styles.summaryValue}>{formatMoney(total)}</Text><Text style={styles.summaryLabel}>total</Text></View></View>
 
       {isOwner ? <View style={styles.filterGroup}><Text style={styles.filterLabel}>Crew member</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><FilterChip label="All crew" selected={crewId === 'all'} onPress={() => setCrewId('all')} styles={styles} />{crew.map((person) => <FilterChip key={person.id} label={person.name} selected={crewId === person.id} onPress={() => setCrewId(person.id)} styles={styles} />)}</ScrollView></View> : null}
-      <View style={styles.filterGroup}><Text style={styles.filterLabel}>Timespan</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{([['30-days', '30 days'], ['this-year', 'This year'], ['last-year', 'Last year'], ['all', 'All time']] as [Timespan, string][]).map(([value, label]) => <FilterChip key={value} label={label} selected={timespan === value} onPress={() => setTimespan(value)} styles={styles} />)}</ScrollView></View>
+      <View style={styles.filterGroup}><Text style={styles.filterLabel}>Timespan</Text><FilterSelect accessibilityLabel="Receipt timespan" onChange={setTimespan} options={timespanOptions} value={timespan} /></View>
 
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Receipts unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshReceipts} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}

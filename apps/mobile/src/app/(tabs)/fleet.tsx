@@ -5,6 +5,7 @@ import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
+import { FilterSelect } from '@/components/filter-select';
 import { FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
@@ -181,22 +182,12 @@ export default function FleetScreen() {
                 style={styles.searchInput}
                 value={query}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-                {statusFilters.map((status) => {
-                  const selected = filter === status;
-                  return (
-                    <Pressable
-                      key={status}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() => setFilter(status)}
-                      style={({ pressed }) => [styles.filterButton, selected && styles.filterButtonSelected, pressed && styles.filterButtonPressed]}
-                    >
-                      <Text style={[styles.filterLabel, selected && styles.filterLabelSelected]}>{status}</Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <FilterSelect
+                accessibilityLabel="Fleet status filter"
+                onChange={setFilter}
+                options={statusFilters.map((status) => ({ label: status, value: status }))}
+                value={filter}
+              />
             </View>
 
             {filteredVehicles.length ? (
@@ -266,12 +257,6 @@ function createStyles(theme: FireOpsTheme) {
   emptyAddButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 18, marginTop: 6 },
   controls: { gap: 12 },
   searchInput: { minHeight: 48, backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, paddingHorizontal: 15, color: theme.ink, fontSize: 16 },
-  filters: { gap: 8, paddingRight: 20 },
-  filterButton: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 999, paddingHorizontal: 14, backgroundColor: theme.paper },
-  filterButtonSelected: { backgroundColor: theme.command, borderColor: theme.command },
-  filterButtonPressed: { opacity: 0.78 },
-  filterLabel: { color: theme.secondary, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  filterLabelSelected: { color: theme.commandText },
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 92, paddingVertical: 17, paddingHorizontal: 6, marginHorizontal: -6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 8 },
   vehicleRowPressed: { backgroundColor: theme.surfaceAlt },
