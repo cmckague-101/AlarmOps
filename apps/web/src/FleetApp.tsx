@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ArrowDown, Boxes, Building2, ClipboardCheck, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, ShieldCheck, Truck } from 'lucide-react';
+import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, ReceiptText, ShieldCheck, Smartphone, Truck } from 'lucide-react';
 import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
@@ -139,46 +139,103 @@ function FleetLogin(){
     }
     setSentMethod(method);setBusy(false);
   };
-  if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><img className="admin-login-logo" src="/fireops-icon.png" width="512" height="512" alt="FireOps"/><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
+  if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
         <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps"/></div>
         <div className="login-intro">
+          <p className="login-eyebrow">Wildland operations, connected</p>
           <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
           <p className="login-lede">FireOps brings people, equipment, training, and field intelligence into one clear operational picture.</p>
-          <a className="login-discover" href="#features">Explore FireOps <ArrowDown aria-hidden="true"/></a>
+          <a className="login-discover" href="#features">See what FireOps covers <ArrowDown aria-hidden="true"/></a>
         </div>
 
-        <form className="login-form" onSubmit={submit} aria-label="Sign in" aria-busy={busy}>
+        <form className="login-form" onSubmit={submit} aria-labelledby="login-form-title" aria-busy={busy}>
           <div className="login-form-heading">
-            <h2>Sign In</h2>
-            <p>Protected workspace for authorized personnel</p>
+            <span>Secure workspace</span>
+            <h2 id="login-form-title">Welcome back</h2>
+            <p>Sign in to your FireOps account.</p>
           </div>
           <div className="login-field">
-            <input id="login-email" aria-label="Email" type="email" autoComplete="email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/>
+            <label htmlFor="login-email">Work email</label>
+            <input id="login-email" type="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={event=>setEmail(event.target.value)}/>
           </div>
           <div className="login-field">
-            <input id="login-password" aria-label="Password" type="password" autoComplete="current-password" placeholder="Password" required value={password} onChange={event=>setPassword(event.target.value)}/>
-            <div className="login-forgot-row"><button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button></div>
+            <label htmlFor="login-password">Password</label>
+            <input id="login-password" type="password" autoComplete="current-password" placeholder="Enter your password" required value={password} onChange={event=>setPassword(event.target.value)}/>
+            <button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button>
           </div>
           {error&&<div className="admin-error" role="alert">{error}</div>}
           <button className="login-submit" disabled={busy}>{busy?'Signing in...':'Sign in to FireOps'}</button>
+          <p className="login-access-note"><ShieldCheck aria-hidden="true"/> Authorized personnel only</p>
         </form>
       </section>
 
       <section className="login-features" id="features" aria-labelledby="features-title">
         <div className="login-section-heading">
-          <h2 id="features-title">Everything your team needs, ready when it matters.</h2>
-          <p>Replace scattered tools and disconnected updates with one shared source of truth.</p>
+          <p className="login-section-kicker">Inside FireOps</p>
+          <h2 id="features-title">One view of your whole operation.</h2>
+          <p>Fleet status, incidents, crew updates, and field records stay in one company workspace.</p>
         </div>
         <div className="login-feature-list">
-          <article className="login-feature-row"><span><MapPinned aria-hidden="true"/></span><p>Operations</p><div><h3>See the full incident picture</h3><p>Track active incidents, assignments, and operational details without losing context between office and field.</p></div></article>
-          <article className="login-feature-row"><span><Truck aria-hidden="true"/></span><p>Fleet</p><div><h3>Keep every vehicle mission-ready</h3><p>Monitor fleet status, surface issues early, and keep critical records attached to each unit.</p></div></article>
-          <article className="login-feature-row"><span><GraduationCap aria-hidden="true"/></span><p>Training</p><div><h3>Build a qualified, ready crew</h3><p>Coordinate courses, registrations, and crew credentials from one dependable workspace.</p></div></article>
-          <article className="login-feature-row"><span><Boxes aria-hidden="true"/></span><p>Inventory</p><div><h3>Know what is ready to deploy</h3><p>Organize essential equipment and supplies so teams spend less time searching and more time moving.</p></div></article>
-          <article className="login-feature-row"><span><MessageSquareText aria-hidden="true"/></span><p>Communication</p><div><h3>Keep decisions connected</h3><p>Give crews and administrators a shared channel for updates, questions, and important documents.</p></div></article>
-          <article className="login-feature-row"><span><ClipboardCheck aria-hidden="true"/></span><p>Accountability</p><div><h3>Turn activity into clarity</h3><p>Maintain reliable records across your operation with access tailored to each team member.</p></div></article>
+          <article className="login-feature-card login-feature-card--dashboard">
+            <div className="login-feature-copy"><span><Gauge aria-hidden="true"/> Dashboard</span><h3>Readiness at a glance</h3><p>See fleet blockers and recent company activity as soon as you sign in.</p></div>
+            <figure><img src="/landing/dashboard.webp" width="1305" height="1205" loading="lazy" decoding="async" alt="FireOps dashboard showing fleet readiness, issues, and recent actions"/></figure>
+          </article>
+          <article className="login-feature-card login-feature-card--operations">
+            <div className="login-feature-copy"><span><MapPinned aria-hidden="true"/> Operations</span><h3>Active fires on one map</h3><p>Review NIFC incidents by location, then connect crews and vehicles to assignments.</p></div>
+            <figure><img src="/landing/operations.webp" width="1600" height="996" loading="lazy" decoding="async" alt="FireOps operations map showing active wildfire incidents across the United States"/></figure>
+          </article>
+          <article className="login-feature-card login-feature-card--fleet">
+            <div className="login-feature-copy"><span><Truck aria-hidden="true"/> Fleet</span><h3>Know what can roll</h3><p>Track unit status, assignments, issues, photos, and records from one fleet list.</p></div>
+            <figure><img src="/landing/fleet.webp" width="874" height="1183" loading="lazy" decoding="async" alt="FireOps fleet screen showing ready vehicles and current issues"/></figure>
+          </article>
+          <article className="login-feature-card login-feature-card--training">
+            <div className="login-feature-copy"><span><GraduationCap aria-hidden="true"/> Training</span><h3>Keep qualifications moving</h3><p>Publish courses, monitor capacity, and manage crew registration.</p></div>
+            <figure><img src="/landing/training.webp" width="1448" height="1086" loading="lazy" decoding="async" alt="FireOps training screen showing scheduled courses and registration counts"/></figure>
+          </article>
+          <article className="login-feature-card">
+            <div className="login-feature-copy"><span><Boxes aria-hidden="true"/> Inventory</span><h3>Count field supplies</h3><p>Update equipment quantities as stock moves in or out.</p></div>
+            <figure><img src="/landing/inventory.webp" width="1522" height="1033" loading="lazy" decoding="async" alt="FireOps inventory screen showing equipment and supply counts"/></figure>
+          </article>
+          <article className="login-feature-card">
+            <div className="login-feature-copy"><span><MessageSquareText aria-hidden="true"/> Communications</span><h3>Keep updates with your crew</h3><p>Post company threads and keep replies tied to each operational update.</p></div>
+            <figure><img src="/landing/communications.webp" width="1387" height="1134" loading="lazy" decoding="async" alt="FireOps communications screen showing company threads and crew replies"/></figure>
+          </article>
+          <article className="login-feature-card login-feature-card--receipts">
+            <div className="login-feature-copy"><span><ReceiptText aria-hidden="true"/> Receipts</span><h3>Review field expenses</h3><p>Crew can upload receipts while owners filter, review, and maintain expense records.</p></div>
+            <figure><img src="/landing/receipts.webp" width="1540" height="1021" loading="lazy" decoding="async" alt="FireOps receipts screen showing uploaded crew expenses"/></figure>
+          </article>
+        </div>
+      </section>
+
+      <section className="login-mobile" aria-labelledby="mobile-title">
+        <div className="login-mobile-copy">
+          <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> FireOps mobile</p>
+          <h2 id="mobile-title">Your operation goes with you.</h2>
+          <p>FireOps is available for iPhone and iPad. Sign in with your existing account to work from the same live company records used on the web.</p>
+          <ul>
+            <li><Check aria-hidden="true"/> Check fleet status and report issues</li>
+            <li><Check aria-hidden="true"/> Review assigned resources and active fires</li>
+            <li><Check aria-hidden="true"/> Open company documents and training</li>
+            <li><BellRing aria-hidden="true"/> Get notified when your crew has an update</li>
+          </ul>
+          <a href="https://apps.apple.com/app/id6808795667" target="_blank" rel="noreferrer" aria-label="Download FireOps Fleet on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
+        </div>
+        <div className="login-mobile-device" aria-hidden="true">
+          <div className="login-mobile-phone">
+            <div className="login-mobile-speaker"/>
+            <div className="login-mobile-screen">
+              <div className="login-mobile-appbar"><img src="/fireops-icon.png" alt=""/><span>FireOps</span><i>3</i></div>
+              <p>Good morning</p>
+              <h3>Ready for assignment</h3>
+              <div className="login-mobile-stats"><span><b>6</b>Vehicles</span><span><b>1</b>Open issue</span></div>
+              <div className="login-mobile-card"><span><Truck/></span><div><b>Engine 702</b><small>Ready · Assigned to you</small></div><i/></div>
+              <div className="login-mobile-card"><span><MapPinned/></span><div><b>Operations</b><small>2 assigned incidents</small></div><i/></div>
+              <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><MapPinned/>Operations</span><span className="active"><Truck/>Fleet</span></div>
+            </div>
+          </div>
         </div>
       </section>
 
