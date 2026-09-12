@@ -19,6 +19,14 @@ export type NifcIncident = {
   discovered:number|null;updated:number|null;latitude:number;longitude:number;
 };
 
+export type NationalFireActivityRow = {
+  gacc:string;preparednessLevel:number|null;incidents:number;cumulativeAcres:number;
+  crews:number;engines:number;helicopters:number;totalPersonnel:number;
+};
+export type NationalFireActivity = {
+  reportDate:string;fetchedAt:string;sourceUrl:string;areas:NationalFireActivityRow[];total:NationalFireActivityRow;
+};
+
 export type Vehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;
   vin:string;plate:string;status:VehicleStatus;photo?:VehicleFile;contract?:VehicleFile;

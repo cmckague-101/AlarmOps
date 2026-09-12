@@ -1,4 +1,5 @@
 import {QuickActions} from '@/components/quick-actions';
+import {NationalFireActivitySection} from '@/components/national-fire-activity';
 import {OwnerDashboard} from '@/components/owner-dashboard';
 import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -80,6 +81,7 @@ export default function DashboardScreen() {
           <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
         </View>
         <QuickActions/>
+        <NationalFireActivitySection/>
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
         {error ? (

@@ -8,6 +8,7 @@ import OperationsPage, {fetchIncidents} from './OperationsPage';
 import TrainingPage from './TrainingPage';
 import InventoryPage from './InventoryPage';
 import ReceiptsPage from './ReceiptsPage';
+import NationalFireActivitySection from './NationalFireActivitySection';
 import {
   crewCredentials, dashboardNotifications, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, trainingStage,
   type Activity, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
@@ -591,10 +592,11 @@ function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:
 }
 
 function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,user,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void;onSelectIncident:(id:string)=>void}) {
-  if(user.role==='owner')return <OwnerDashboard quickActions={quickActions} name={user.name} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>;
+  if(user.role==='owner')return <OwnerDashboard quickActions={quickActions} nationalFireActivity={<NationalFireActivitySection/>} name={user.name} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>;
   const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
     {quickActions}
+    <NationalFireActivitySection/>
     {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" id="my-issues"/>}
     <MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>
   </div>
