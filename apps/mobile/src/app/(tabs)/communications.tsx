@@ -37,7 +37,6 @@ export default function CommunicationsScreen() {
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
             <Text style={styles.company}>{member?.company.name}</Text>
-            <Text accessibilityRole="header" adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.title}>Communications</Text>
             <Text style={styles.subtitle}>Company threads and crew replies.</Text>
           </View>
           <Pressable
@@ -126,7 +125,6 @@ function createStyles(theme: FireOpsTheme) {
     headingRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 16 },
     headingCopy: { flex: 1, gap: 5 },
     company: { color: theme.secondary, fontSize: 13, lineHeight: 18, fontWeight: '700' },
-    title: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: '800', letterSpacing: -0.7 },
     subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21 },
     addButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 11, backgroundColor: theme.ember, paddingHorizontal: 14 },
     addButtonLabel: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '800' },

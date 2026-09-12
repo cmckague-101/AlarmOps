@@ -2,17 +2,17 @@ import {ScrollView,StyleSheet,Text,View} from 'react-native';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
-type Props={title:string;description:string;children?:React.ReactNode};
-export function SectionScreen({title,description,children}:Props){
+type Props={title:string;description:string;showTitle?:boolean;children?:React.ReactNode};
+export function SectionScreen({title,description,showTitle=true,children}:Props){
   const theme=useFireOpsTheme();
   const {access}=useSession();
   const company=access.value?.kind==='member'?access.value.company:null;
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
     <Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>
-    <Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>
-    <Text style={[styles.description,{color:theme.secondary}]}>{description}</Text>
+    {showTitle?<Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>:null}
+    <Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>
     <View style={[styles.rule,{backgroundColor:theme.divider}]}/>
     {children??<Text style={[styles.pending,{color:theme.secondary}]}>Backend data connection comes in next feature pass.</Text>}
   </ScrollView>;
 }
-const styles=StyleSheet.create({content:{paddingHorizontal:20,paddingTop:20,paddingBottom:40},company:{fontSize:13,fontWeight:'700',marginBottom:6},title:{fontSize:30,lineHeight:35,fontWeight:'800',letterSpacing:-0.7},description:{fontSize:16,lineHeight:23,marginTop:8,maxWidth:560},rule:{height:1,marginTop:24,marginBottom:20},pending:{fontSize:15,lineHeight:22}});
+const styles=StyleSheet.create({content:{paddingHorizontal:20,paddingTop:20,paddingBottom:40},company:{fontSize:13,fontWeight:'700',marginBottom:6},title:{fontSize:30,lineHeight:35,fontWeight:'800',letterSpacing:-0.7},description:{fontSize:16,lineHeight:23,marginTop:8,maxWidth:560},descriptionWithoutTitle:{marginTop:0},rule:{height:1,marginTop:24,marginBottom:20},pending:{fontSize:15,lineHeight:22}});

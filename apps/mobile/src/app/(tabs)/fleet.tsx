@@ -133,7 +133,6 @@ export default function FleetScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingGroup}>
-            <Text style={styles.title}>Fleet</Text>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
           {currentUser?.role === 'owner' ? (
@@ -249,7 +248,6 @@ function createStyles(theme: FireOpsTheme) {
   content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 26 },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   headingGroup: { flex: 1, gap: 5 },
-  title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },
   addButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 16 },
   addButtonPressed: { backgroundColor: theme.emberPressed },

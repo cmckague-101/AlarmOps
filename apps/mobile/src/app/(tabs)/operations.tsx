@@ -212,10 +212,6 @@ export default function OperationsScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={incidentLoading} onRefresh={refreshIncidents} tintColor={theme.commandForeground} />}
       >
-        <View style={styles.headingGroup}>
-          <Text style={styles.title}>Operations</Text>
-        </View>
-
         <View style={styles.fireHeading}>
           <View style={styles.fireHeadingCopy}>
             <Text style={styles.sectionTitle}>Incident Map</Text>
@@ -385,8 +381,6 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 44, gap: 20 },
-    headingGroup: { gap: 6, marginBottom: 8 },
-    title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
     subtitle: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
     sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 },
     sectionTitle: { color: theme.commandForeground, fontSize: 19, lineHeight: 24, fontWeight: '800' },
