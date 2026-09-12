@@ -13,7 +13,6 @@ import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
-const READY_STATUSES = ['ready', 'available', 'in service', 'active'];
 const ATTENTION_STATUSES = ['maintenance', 'inspection', 'out of service', 'offline'];
 const PRIORITY_ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 } as const;
 
@@ -43,10 +42,8 @@ export default function DashboardScreen() {
   const { vehicles, issues, crew, activities, loading, refreshing, error } = useFleetVehicles(companyId);
   const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null);
 
-  const ready = vehicles.filter((vehicle) => READY_STATUSES.includes(normalized(vehicle.status))).length;
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
   const assignedVehicles = user ? vehicles.filter((vehicle) => vehicle.assignedTo === user.id) : [];
-  const assigned = Math.max(vehicles.length - ready - attention, 0);
   const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
   const openIssues = issues
     .filter((issue) => issue.status === 'Open')
@@ -71,7 +68,7 @@ export default function DashboardScreen() {
     void refreshNotificationInbox();
   };
 
-  if(user?.role==='owner')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} loading={loading} refreshing={refreshing} error={error}/>;
+  if(user?.role==='owner')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || notificationsRefreshing} error={error}/>;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -79,11 +76,10 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
-        <View style={styles.headingGroup}>
-          <Text style={styles.title}>Dashboard</Text>
-          <Text style={styles.subtitle}>Live fleet readiness across your department.</Text>
+        <View style={styles.greeting}>
+          <Text style={styles.hello}>Hello,</Text>
+          <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
         </View>
-
         <QuickActions/>
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
@@ -99,29 +95,6 @@ export default function DashboardScreen() {
 
         {!loading && !error ? (
           <>
-            <View style={styles.readinessBlock}>
-              <View style={styles.readinessHeading}>
-                <Text style={styles.sectionTitle}>Fleet readiness</Text>
-                <Text style={styles.total}>{vehicles.length} total</Text>
-              </View>
-              <View style={styles.metrics}>
-                <View style={styles.metric}>
-                  <Text style={[styles.metricValue, styles.readyValue]}>{ready}</Text>
-                  <Text style={styles.metricLabel}>Ready</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.metric}>
-                  <Text style={styles.metricValue}>{assigned}</Text>
-                  <Text style={styles.metricLabel}>Other</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.metric}>
-                  <Text style={[styles.metricValue, attention > 0 && styles.attentionValue]}>{attention}</Text>
-                  <Text style={styles.metricLabel}>Attention</Text>
-                </View>
-              </View>
-            </View>
-
             {attention > 0 ? (
               <View style={styles.summaryRow}>
                 <Text style={styles.sectionTitle}>Current picture</Text>
@@ -293,21 +266,11 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 28 },
-    headingGroup: { gap: 6 },
-    title: { color: theme.commandForeground, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -1 },
-    subtitle: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
+    greeting: { backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, borderLeftWidth: 6, borderLeftColor: theme.ember, borderRadius: 24, padding: 22, gap: 4 },
+    hello: { color: theme.secondary, fontSize: 20, fontWeight: '700' },
+    name: { color: theme.ink, fontSize: 38, fontWeight: '800' },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 28 },
-    readinessBlock: { backgroundColor: theme.greenSurface, borderRadius: 18, padding: 20, gap: 22 },
-    readinessHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     sectionTitle: { color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '700' },
-    total: { color: theme.secondary, fontSize: 14, fontVariant: ['tabular-nums'] },
-    metrics: { flexDirection: 'row', alignItems: 'stretch' },
-    metric: { flex: 1, gap: 5 },
-    metricValue: { color: theme.commandForeground, fontSize: 30, lineHeight: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
-    readyValue: { color: theme.green },
-    attentionValue: { color: theme.warning },
-    metricLabel: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
-    divider: { width: StyleSheet.hairlineWidth, backgroundColor: theme.divider, marginHorizontal: 14 },
     summaryRow: { gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, paddingTop: 20 },
     summaryText: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
     section: { gap: 12 },
