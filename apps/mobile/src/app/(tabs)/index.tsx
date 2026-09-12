@@ -1,16 +1,15 @@
 import {QuickActions} from '@/components/quick-actions';
 import {OwnerDashboard} from '@/components/owner-dashboard';
 import { useMemo } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { type Activity, type FleetIssue } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
-import { type FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
+import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
 import { getTimeOfDayGreeting } from '@/lib/time-of-day-greeting';
-import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -44,7 +43,6 @@ export default function DashboardScreen() {
   const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null);
 
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
-  const assignedVehicles = user ? vehicles.filter((vehicle) => vehicle.assignedTo === user.id) : [];
   const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
   const openIssues = issues
     .filter((issue) => issue.status === 'Open')
@@ -127,21 +125,6 @@ export default function DashboardScreen() {
               </DashboardSection>
             ) : null}
 
-            {assignedVehicles.length > 0 ? (
-              <DashboardSection title="Assigned to me" count={assignedVehicles.length} styles={styles}>
-                {assignedVehicles.slice(0, 5).map((vehicle) => (
-                  <AssignedVehicleRow
-                    key={vehicle.id}
-                    vehicle={vehicle}
-                    issueCount={openIssues.filter((issue) => issue.vehicleId === vehicle.id).length}
-                    onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}`)}
-                    styles={styles}
-                    iconColor={theme.secondary}
-                  />
-                ))}
-              </DashboardSection>
-            ) : null}
-
             {notifications.length > 0 ? (
               <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
                 <>
@@ -218,39 +201,6 @@ export default function DashboardScreen() {
   );
 }
 
-function AssignedVehicleRow({ vehicle, issueCount, onPress, styles, iconColor }: { vehicle: FleetVehicle; issueCount: number; onPress: () => void; styles: ReturnType<typeof createStyles>; iconColor: string }) {
-  const photoUrl = useFleetFileUrl(vehicle.photo);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${vehicle.name}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
-    >
-      <View style={styles.vehicleThumbnail}>
-        {photoUrl ? (
-          <Image
-            accessibilityLabel={`${vehicle.name} vehicle photo`}
-            resizeMode="cover"
-            source={{ uri: photoUrl }}
-            style={styles.vehiclePhoto}
-          />
-        ) : (
-          <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={20} color={iconColor} />
-        )}
-      </View>
-      <View style={styles.rowCopy}>
-        <Text style={styles.rowTitle} numberOfLines={1}>{vehicle.name}</Text>
-        <Text style={styles.rowMeta} numberOfLines={1}>
-          {vehicle.status}{issueCount > 0 ? ` · ${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : ''}
-        </Text>
-      </View>
-      <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={iconColor} />
-    </Pressable>
-  );
-}
-
 function DashboardSection({ title, count, children, styles }: { title: string; count: number; children: React.ReactNode; styles: ReturnType<typeof createStyles> }) {
   return (
     <View style={styles.section}>
@@ -290,8 +240,6 @@ function createStyles(theme: FireOpsTheme) {
     allNotifications: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     allNotificationsLabel: { color: theme.ember, fontSize: 14, fontWeight: '700' },
     rowCopy: { flex: 1, gap: 4 },
-    vehicleThumbnail: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 10, backgroundColor: theme.surfaceAlt },
-    vehiclePhoto: { width: '100%', height: '100%' },
     rowTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     rowMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
     activityDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.green },

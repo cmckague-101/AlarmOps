@@ -283,7 +283,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   const filtered = useMemo(() => vehicles.filter(v => {
     const text = `${v.unit} ${v.type} ${v.make} ${v.model} ${v.year} ${v.plate} ${v.assignedFire?.name??''}`.toLowerCase();
     return text.includes(query.toLowerCase()) && (filter === 'All' || v.status === filter);
-  }), [vehicles, query, filter]);
+  }).sort((a,b)=>Number(b.assignedTo===currentUser.id)-Number(a.assignedTo===currentUser.id)), [vehicles, query, filter, currentUser.id]);
   const visibleIssues=useMemo(()=>canManageFleet?issues:issues.filter(issue=>issueBelongsToUser(issue,currentUser)),[canManageFleet,currentUser.id,currentUser.name,issues]);
   const operationsVehicles=useMemo(()=>canManageFleet?vehicles:vehicles.filter(vehicle=>vehicle.assignedTo===currentUser.id),[canManageFleet,currentUser.id,vehicles]);
   const addVehicle = (vehicle: Vehicle) => {
@@ -493,7 +493,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {page === 'overview' && <Dashboard quickActions={<QuickActions companyId={companyId} user={currentUser} onOpen={setPage}/>} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
+        {page === 'overview' && <Dashboard quickActions={<QuickActions companyId={companyId} user={currentUser} onOpen={setPage}/>} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
@@ -581,12 +581,6 @@ function VehicleCard({vehicle,assignedName,issueCount,motiveMock,onClick}:{vehic
 }
 function StatusBadge({status}:{status:Status}) {return <span className={`status ${status.toLowerCase().replace(/ /g,'-')}`}><i/>{status}</span>}
 
-function AssignedToMe({vehicles,issues,motiveMock,onSelectVehicle}:{vehicles:Vehicle[];issues:FleetIssue[];motiveMock:boolean;onSelectVehicle:(vehicle:Vehicle)=>void}) {
-  return <section className="action-section assigned-to-me" aria-labelledby="assigned-to-me-title"><div className="action-heading"><div><h2 id="assigned-to-me-title">Assigned to me</h2><p>Vehicles currently assigned to you</p></div><span className="assignment-count" aria-label={`${vehicles.length} ${vehicles.length===1?'vehicle':'vehicles'} assigned to you`}>{vehicles.length}</span></div>
-    {vehicles.length?<div className="vehicle-list assigned-vehicle-list">{vehicles.map(vehicle=><VehicleCard key={vehicle.id} vehicle={vehicle} issueCount={issues.filter(issue=>issue.vehicleId===vehicle.id&&issue.status==='Open').length} motiveMock={motiveMock} onClick={()=>onSelectVehicle(vehicle)}/>)}</div>:<div className="action-empty"><span><Truck/></span><div><b>No vehicles assigned</b><p>Vehicles assigned to you will appear here.</p></div></div>}
-  </section>;
-}
-
 function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onOpen:(page:'communications'|'documents'|'training')=>void}){
   const notifications=dashboardNotifications(threads,documents,user,10,trainings);
   const unreadCount=notifications.filter(notification=>notification.unread).length;
@@ -596,13 +590,11 @@ function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:
   </section>;
 }
 
-function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,user,motiveMock,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;motiveMock:boolean;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void;onSelectIncident:(id:string)=>void}) {
+function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,user,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void;onSelectIncident:(id:string)=>void}) {
   if(user.role==='owner')return <OwnerDashboard quickActions={quickActions} name={user.name} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>;
-  const assignedToMe=vehicles.filter(vehicle=>vehicle.assignedTo===user.id);
   const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
     {quickActions}
-    <AssignedToMe vehicles={assignedToMe} issues={issues} motiveMock={motiveMock} onSelectVehicle={onSelectVehicle}/>
     {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" id="my-issues"/>}
     <MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>
   </div>

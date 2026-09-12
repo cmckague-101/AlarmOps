@@ -114,7 +114,7 @@ export default function FleetScreen() {
     const matchesQuery = !normalizedQuery || [vehicle.name, vehicle.type, vehicle.detail, vehicle.vin, vehicle.plate]
       .some((value) => value?.toLowerCase().includes(normalizedQuery));
     return matchesStatus && matchesQuery;
-  });
+  }).sort((a, b) => Number(b.assignedTo === currentUser?.id) - Number(a.assignedTo === currentUser?.id));
   const visibleIssues = issues.filter((issue) => {
     if (currentUser?.role === 'owner') return true;
     if (!currentUser) return false;
