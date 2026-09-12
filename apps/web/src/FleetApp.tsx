@@ -415,7 +415,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   },[companyId,session.user.id]);
 
   const loadInventory=useCallback(async()=>{
-    const client=supabase;if(!client||role!=='owner')return;
+    const client=supabase;if(!client)return;
     const {data,error:loadError}=await client.from('company_inventory_items').select('id,name,quantity,created_at,updated_at').eq('company_id',companyId).order('name');
     if(loadError){setInventoryError('Inventory could not be loaded. Apply latest database migration, then try again.');return}
     setInventoryItems(((data??[]) as InventoryItemRow[]).map(row=>({id:row.id,name:row.name,quantity:row.quantity,createdAt:row.created_at,updatedAt:row.updated_at})));setInventoryError('');

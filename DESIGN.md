@@ -269,3 +269,7 @@ Controls use compact 8–9px corners. Work panels use 12–14px corners. Statuse
 - **Don't** use shadows on every card.
 - **Don't** introduce new literal colors when a semantic token exists.
 - **Don't** use animation without state, feedback, or spatial meaning.
+
+## Owner Command Center
+
+The owner dashboard on web and mobile uses the supplied command-center reference: a personalized greeting, Command Center heading with the local date, and four large disclosure cards in red, green, blue, and amber. Cards use two columns, with native mobile falling back to one column for narrow screens or enlarged text. Existing light and dark themes remain supported. Detail views show incident resource groups, personnel with all their vehicle assignments, vehicle fire assignments, and unresolved reported issues ordered by priority. Record titles open existing crew, vehicle, or issue details. Empty and mobile loading/error states use explicit text. Crew dashboards retain their existing behavior.

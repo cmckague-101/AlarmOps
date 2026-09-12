@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -66,6 +66,7 @@ export default function OperationsScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
+  const {incidentId}=useLocalSearchParams<{incidentId?:string}>();
   const { access } = useSession();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
@@ -94,6 +95,19 @@ export default function OperationsScreen() {
       .finally(() => setIncidentLoading(false));
     return () => controller.abort();
   }, [request]);
+
+  useEffect(() => {
+    if (!incidentId || incidentLoading || incidentError) return;
+    const incident = incidents.find(item => item.id === incidentId);
+    if (incident) {
+      setVehiclePickerOpen(false);
+      setSaveError('');
+      setSelected(incident);
+    } else {
+      setIncidentError('This assigned fire is no longer available in the current NIFC feed.');
+    }
+    router.setParams({incidentId: undefined});
+  }, [incidentId, incidentLoading, incidentError, incidents, router]);
 
   const assignedVehicles = vehicles.filter((vehicle) => vehicle.assignedFire);
   const telemetryVehicles = vehicles.filter((vehicle) => vehicle.motive);

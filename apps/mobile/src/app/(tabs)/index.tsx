@@ -1,3 +1,5 @@
+import {QuickActions} from '@/components/quick-actions';
+import {OwnerDashboard} from '@/components/owner-dashboard';
 import { useMemo } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -38,7 +40,7 @@ export default function DashboardScreen() {
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { vehicles, issues, activities, loading, refreshing, error } = useFleetVehicles(companyId);
+  const { vehicles, issues, crew, activities, loading, refreshing, error } = useFleetVehicles(companyId);
   const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null);
 
   const ready = vehicles.filter((vehicle) => READY_STATUSES.includes(normalized(vehicle.status))).length;
@@ -69,6 +71,8 @@ export default function DashboardScreen() {
     void refreshNotificationInbox();
   };
 
+  if(user?.role==='owner')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} loading={loading} refreshing={refreshing} error={error}/>;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
@@ -80,6 +84,7 @@ export default function DashboardScreen() {
           <Text style={styles.subtitle}>Live fleet readiness across your department.</Text>
         </View>
 
+        <QuickActions/>
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
         {error ? (

@@ -1,3 +1,6 @@
+import StoredDocumentsPage from './StoredDocumentsPage';
+import {QuickActions, AvailabilityPage} from './QuickActions';
+import {OwnerDashboard} from './OwnerDashboard';
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
@@ -26,7 +29,7 @@ import {
   CircleDollarSign, Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'training' | 'inventory' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'more' | 'settings';
 type NavigablePage = Exclude<Page,'more'>;
 
 const navigationMeta = {
@@ -36,16 +39,19 @@ const navigationMeta = {
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
+  invoices:{label:'Invoices',description:'Upload and review invoices',Icon:FileText},
+  payroll:{label:'Payroll',description:'Upload and review payroll documents',Icon:CircleDollarSign},
+  availability:{label:'Availability',description:'Crew assignment availability',Icon:CircleUserRound},
   receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:CircleDollarSign},
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
   inventory:{label:'Inventory',description:'Company supplies and equipment counts',Icon:Package},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','receipts','training','inventory','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','receipts','invoices','payroll','availability','training','inventory','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
-  const desktop=navigationOrder.filter(page=>!['crew','inventory'].includes(page)||role==='owner');
+  const desktop=navigationOrder.filter(page=>!['crew'].includes(page)||role==='owner');
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
 }
@@ -169,6 +175,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??loadCrew());
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
   const [page, setPage] = useState<Page>('overview');
+  const [requestedIncidentId,setRequestedIncidentId]=useState<string|null>(null);
   const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??loadCommunicationThreads());
   useEffect(()=>{if(communicationThreads)setThreads(communicationThreads)},[communicationThreads]);
   const unreadThreadCount=threads.filter(thread=>isThreadUnread(thread,currentUser)).length;
@@ -486,15 +493,17 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {page === 'overview' && <Dashboard vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage}/>}
+        {page === 'overview' && <Dashboard quickActions={<QuickActions companyId={companyId} user={currentUser} onOpen={setPage}/>} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} motiveMock={Boolean(activeMotiveConnection.connected&&activeMotiveConnection.mock)} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={company.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
+        {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
+        {(page === 'invoices' || page === 'payroll') && <StoredDocumentsPage key={page} kind={page} companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
-        {page === 'inventory' && canManageFleet && <InventoryPage items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem}/>}
+        {page === 'inventory' && <InventoryPage canManage={canManageFleet} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem}/>}
 
-        {page === 'operations' && <OperationsPage assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
+        {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.filter(vehicle=>vehicle.assignedFire).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={canManageFleet?vehicles.filter(vehicle=>vehicle.assignedTo).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})):[]} onAssignVehicle={canManageFleet?(vehicleId,fire)=>updateFireAssignment(vehicleId,fire):undefined} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} setPage={setPage}/>}
 
         {page === 'settings' && <SettingsPage company={company} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onSaveMotive={onSaveMotive??saveDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
@@ -587,43 +596,18 @@ function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:
   </section>;
 }
 
-function Dashboard({vehicles,issues,crew,activities,threads,documents,trainings,user,motiveMock,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;motiveMock:boolean;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void}) {
-  const isOwner=user.role==='owner';
+function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,user,motiveMock,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;motiveMock:boolean;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void;onSelectIncident:(id:string)=>void}) {
+  if(user.role==='owner')return <OwnerDashboard quickActions={quickActions} name={user.name} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>;
   const assignedToMe=vehicles.filter(vehicle=>vehicle.assignedTo===user.id);
-  const openIssues = issues.filter(issue => issue.status === 'Open');
-  const priorityRank:Record<Priority,number>={Critical:0,High:1,Medium:2,Low:3};
-  const blockedStatuses:Status[]=['Maintenance','Out of service'];
-  const actionGroups:{key:string;vehicle?:Vehicle;issues:FleetIssue[];severity:Priority;oldest:number}[]=[];
-  vehicles.forEach(vehicle=>{
-    const vehicleIssues=openIssues.filter(issue=>issue.vehicleId===vehicle.id).sort((a,b)=>priorityRank[a.priority]-priorityRank[b.priority]||Date.parse(a.createdAt)-Date.parse(b.createdAt));
-    if(!vehicleIssues.length&&!blockedStatuses.includes(vehicle.status))return;
-    const statusSeverity:Priority=vehicle.status==='Out of service'?'High':vehicle.status==='Maintenance'?'Medium':'Low';
-    const severity=vehicleIssues.length&&priorityRank[vehicleIssues[0].priority]<priorityRank[statusSeverity]?vehicleIssues[0].priority:statusSeverity;
-    actionGroups.push({key:vehicle.id,vehicle,issues:vehicleIssues,severity,oldest:vehicleIssues.length?Math.min(...vehicleIssues.map(issue=>Date.parse(issue.createdAt))):Date.parse(vehicle.createdAt)});
-  });
-  openIssues.filter(issue=>!vehicles.some(vehicle=>vehicle.id===issue.vehicleId)).forEach(issue=>actionGroups.push({key:`issue-${issue.id}`,issues:[issue],severity:issue.priority,oldest:Date.parse(issue.createdAt)}));
-  actionGroups.sort((a,b)=>priorityRank[a.severity]-priorityRank[b.severity]||a.oldest-b.oldest);
-  const readyCount=vehicles.filter(vehicle=>vehicle.status==='Ready').length;
-  const assignedCount=vehicles.filter(vehicle=>vehicle.status==='Assigned').length;
-  const maintenanceCount=vehicles.filter(vehicle=>vehicle.status==='Maintenance').length;
-  const outOfServiceCount=vehicles.filter(vehicle=>vehicle.status==='Out of service').length;
-  const openActivity=(activity:Activity)=>{if(activity.targetType==='vehicle'){const vehicle=vehicles.find(item=>item.id===activity.targetId);if(vehicle)onSelectVehicle(vehicle)}if(activity.targetType==='issue'){const issue=issues.find(item=>item.id===activity.targetId);if(issue)onSelectIssue(issue)}if(activity.targetType==='crew'){const member=crew.find(item=>item.id===activity.targetId);if(member)onSelectCrew(member)}};
-  const formatDate = (date:string) => new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
-    {isOwner&&<section className="readiness-strip" aria-labelledby="fleet-readiness-title"><div className="readiness-summary"><span className={`readiness-icon ${actionGroups.length?'attention':'ready'}`}>{actionGroups.length?<AlertTriangle/>:<ShieldCheck/>}</span><h2 id="fleet-readiness-title">Fleet readiness</h2></div><dl className="readiness-counts"><div><dt>Ready</dt><dd>{readyCount}</dd></div><div><dt>Assigned</dt><dd>{assignedCount}</dd></div><div><dt>Maintenance</dt><dd>{maintenanceCount}</dd></div><div><dt>Out of service</dt><dd>{outOfServiceCount}</dd></div></dl></section>}
-    {(!isOwner||assignedToMe.length>0)&&<AssignedToMe vehicles={assignedToMe} issues={issues} motiveMock={motiveMock} onSelectVehicle={onSelectVehicle}/>}
-    {!isOwner&&openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" id="my-issues"/>}
-    {!isOwner&&<MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>}
-
-    {isOwner&&<section className="action-section"><div className="action-heading"><div><h2>Issues</h2><p>Grouped by vehicle, highest severity first</p></div><span className="action-count" aria-label={`${actionGroups.length} ${actionGroups.length===1?'vehicle needs':'vehicles need'} attention`}>{actionGroups.length}</span></div>
-      <div className="action-list">{actionGroups.map(group=>{const leadIssue=group.issues[0];const unit=group.vehicle?.unit??'Unknown vehicle';const issueCopy=leadIssue?`${leadIssue.title}${group.issues.length>1?` + ${group.issues.length-1} more`:''}`:'Status requires review';const context=group.vehicle?.status??'Vehicle record unavailable';const statusSeverity:Priority=group.vehicle?.status==='Out of service'?'High':group.vehicle?.status==='Maintenance'?'Medium':'Low';const badge=leadIssue&&priorityRank[leadIssue.priority]<=priorityRank[statusSeverity]?`${leadIssue.priority} priority`:context;return <button className={`action-row blocker-row ${group.severity.toLowerCase()}`} key={group.key} onClick={()=>group.vehicle?onSelectVehicle(group.vehicle):onSelectIssue(leadIssue)}><span className={`action-icon urgent ${group.severity.toLowerCase()}`}><AlertTriangle/></span><span className="action-copy"><b>{unit}</b><small>{issueCopy} · {context}</small></span><span className={`triage-severity ${group.severity.toLowerCase()}`}>{badge}</span><ChevronRight/></button>})}
-      {!actionGroups.length&&<div className="action-empty"><span><Check/></span><div><b>Ready to deploy</b><p>No fleet blockers need attention.</p></div></div>}</div>
-    </section>}
-    {isOwner&&<section className="action-section recent-actions"><div className="action-heading"><div><h2>Recent actions</h2><p>Activity from everyone in your company</p></div></div>
-      <div className="action-list">{activities.slice(0,10).map(activity=><button className="action-row" key={activity.id} onClick={()=>openActivity(activity)}><span className={`action-icon ${activity.tone??'complete'}`}>{activity.tone==='urgent'?<AlertTriangle/>:<Check/>}</span><span className="action-copy"><b>{activity.action}</b><small>{activity.createdBy} · {activity.detail}</small></span><span className="action-time"><Clock3/>{formatDate(activity.createdAt)}</span><ChevronRight/></button>)}{!activities.length&&<div className="action-empty"><span><Clock3/></span><div><b>No recent actions</b><p>Company activity will appear here.</p></div></div>}</div>
-    </section>}
+    {quickActions}
+    <AssignedToMe vehicles={assignedToMe} issues={issues} motiveMock={motiveMock} onSelectVehicle={onSelectVehicle}/>
+    {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" id="my-issues"/>}
+    <MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>
   </div>
 }
+
 function CommunicationsPage({threads,user,error,onCreate,onReply,onSeen}:{threads:CommunicationThread[];user:FireOpsUser;error?:string;onCreate:(subject:string,description:string)=>Promise<CommunicationThread>;onReply:(threadId:string,body:string)=>Promise<CommunicationReply>;onSeen:(threadId:string)=>Promise<void>}) {
   const [newThreadOpen,setNewThreadOpen]=useState(false);
   const [selectedId,setSelectedId]=useState<string|null>(null);

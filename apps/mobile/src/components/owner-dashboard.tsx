@@ -1,0 +1,31 @@
+import {QuickActions} from './quick-actions';
+import {useRef, useState} from 'react';
+import {AccessibilityInfo, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {useRouter} from 'expo-router';
+import {commandCenter, type CrewMember, type FleetIssue} from '@fireops/domain';
+import {type FleetVehicle, refreshFleet} from '@/lib/fleet-store';
+import {useFireOpsTheme} from '@/theme';
+import {AppSymbol} from './app-symbol';
+
+export function OwnerDashboard({name,vehicles,crew,issues,loading,refreshing,error}:{name:string;vehicles:FleetVehicle[];crew:CrewMember[];issues:FleetIssue[];loading:boolean;refreshing:boolean;error:string|null}) {
+  const theme=useFireOpsTheme();
+  const router=useRouter();
+  const scroll=useRef<ScrollView>(null);
+  const {width,fontScale}=useWindowDimensions();
+  const [selected,setSelected]=useState<string|null>(null);
+  const cards=commandCenter(vehicles.map(v=>({...v,unit:v.name})),crew,issues);
+  const detail=cards.find(card=>card.id===selected);
+  const colors=[theme.ember,theme.green,'#3577c7',theme.warning];
+  const symbols=[{ios:'flame.fill',android:'local_fire_department'},{ios:'person.2.fill',android:'group'},{ios:'truck.box.fill',android:'local_shipping'},{ios:'exclamationmark.triangle.fill',android:'warning'}];
+  function navigate(id:string|null){setSelected(id);scroll.current?.scrollTo({y:0,animated:false});AccessibilityInfo.announceForAccessibility(cards.find(card=>card.id===id)?.title??'Command Center')}
+  const styles=StyleSheet.create({
+    safe:{flex:1,backgroundColor:theme.canvas},content:{padding:20,paddingBottom:40,gap:24},greeting:{backgroundColor:theme.paper,borderWidth:1,borderColor:theme.divider,borderLeftWidth:6,borderLeftColor:theme.ember,borderRadius:24,padding:22,gap:4},hello:{color:theme.secondary,fontSize:20,fontWeight:'700'},name:{color:theme.ink,fontSize:38,fontWeight:'800'},title:{color:theme.ink,fontSize:32,fontWeight:'800',letterSpacing:-.8},subtitle:{color:theme.secondary,fontSize:16,lineHeight:24,marginTop:8},grid:{flexDirection:'row',flexWrap:'wrap',gap:12},card:{width:width<360||fontScale>1.3?'100%':'48%',flexGrow:1,backgroundColor:theme.paper,borderWidth:1,borderColor:theme.divider,borderRadius:22,padding:18,minHeight:220,gap:12},top:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},number:{fontSize:34,fontWeight:'800',fontVariant:['tabular-nums']},cardTitle:{color:theme.ink,fontSize:20,fontWeight:'800'},meta:{color:theme.secondary,fontSize:15,lineHeight:22},link:{fontSize:16,fontWeight:'700'},back:{minHeight:48,flexDirection:'row',alignItems:'center',gap:8},record:{backgroundColor:theme.paper,borderWidth:1,borderColor:theme.divider,borderRadius:22,padding:22,gap:14},recordTop:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:12},recordTitle:{color:theme.ink,fontSize:22,fontWeight:'800',flexShrink:1},badge:{color:theme.green,backgroundColor:theme.greenSurface,paddingHorizontal:12,paddingVertical:7,borderRadius:12,fontWeight:'700'},line:{color:theme.ink,fontSize:16,lineHeight:24,fontWeight:'600'},pressed:{opacity:.65},retry:{minHeight:48,justifyContent:'center'},error:{color:theme.danger,fontSize:16,lineHeight:24},
+  });
+  return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView ref={scroll} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>void refreshFleet()} tintColor={theme.ink}/>}>
+    {detail?<Pressable accessibilityRole="button" style={styles.back} onPress={()=>navigate(null)}><AppSymbol name={{ios:'chevron.left',android:'chevron_left'}} size={20} color={theme.ink}/><Text style={styles.line}>Command Center</Text></Pressable>:<View style={styles.greeting}><Text style={styles.hello}>Hello,</Text><Text style={styles.name}>{name.trim().split(/\s+/)[0]||'there'}!</Text></View>}
+    <View><Text accessibilityRole="header" style={styles.title}>{detail?.title??'Command Center'}</Text><Text style={styles.subtitle}>{detail?.description??`${new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})} · Current Operational Status`}</Text></View>
+    {loading?<Text style={styles.meta}>Loading operational status…</Text>:error?<View><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" style={styles.retry} onPress={()=>void refreshFleet()}><Text style={styles.line}>Try again</Text></Pressable></View>:detail?<View style={{gap:16}}>{detail.rows.map(row=><Pressable key={row.id} accessibilityRole={row.target?'button':undefined} disabled={!row.target} onPress={()=>{if(row.target?.type==='incident')router.push({pathname:'/(tabs)/operations',params:{incidentId:row.target.id}});else if(row.target)router.push(`/${row.target.type}/${encodeURIComponent(row.target.id)}` as never)}} style={({pressed})=>[styles.record,pressed&&styles.pressed]}><View style={styles.recordTop}><Text style={styles.recordTitle}>{row.title}</Text><Text style={[styles.badge,row.urgent&&{color:theme.danger,backgroundColor:theme.dangerSurface}]}>{row.badge}</Text></View>{row.detail?<Text style={styles.meta}>{row.detail}</Text>:null}{row.lines.map((line,index)=><Text key={index} style={styles.line}>{line}</Text>)}</Pressable>)}{!detail.rows.length&&<Text style={styles.meta}>{detail.id==='attention'?'No open issues need attention.':`No ${detail.title.toLowerCase()} yet.`}</Text>}</View>:<View style={styles.grid}>{cards.map((card,index)=><Pressable key={card.id} accessibilityRole="button" accessibilityLabel={`${card.title}, ${card.rows.length}. View details`} onPress={()=>navigate(card.id)} style={({pressed})=>[styles.card,pressed&&styles.pressed]}><View style={styles.top}><AppSymbol name={symbols[index] as never} size={28} color={colors[index]}/><Text style={[styles.number,{color:colors[index]}]}>{card.rows.length}</Text></View><Text style={styles.cardTitle}>{card.title}</Text><Text style={styles.meta}>{card.summary}</Text><Text style={[styles.link,{color:colors[index]}]}>View Details ›</Text></Pressable>)}</View>}
+    {!detail && <QuickActions/>}
+  </ScrollView></SafeAreaView>;
+}

@@ -15,7 +15,7 @@ export default function InventoryScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { items, loading, refreshing, error } = useInventory(member?.user.role === 'owner' ? member.company.id : null);
+  const { items, loading, refreshing, error } = useInventory(member?.company.id ?? null);
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
   const [actionError, setActionError] = useState('');
@@ -23,7 +23,7 @@ export default function InventoryScreen() {
   const total = items.reduce((sum, item) => sum + item.quantity, 0);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (member && member.user.role !== 'owner') return <Redirect href="/(tabs)/more" />;
+  const canManage = member?.user.role === 'owner';
 
   const updateQuantity = async (item: InventoryItem, quantity: number) => {
     if (!Number.isInteger(quantity) || quantity < 0 || quantity > 999999 || quantity === item.quantity || busyId) return;
@@ -59,14 +59,14 @@ export default function InventoryScreen() {
     <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInventory} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
         <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Inventory</Text><Text style={styles.subtitle}>Track company supplies and equipment counts.</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>
+        {canManage && <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>}
       </View>
       <View accessibilityLabel={`${items.length} inventory items, ${total} total units`} style={styles.summary}><Summary value={items.length.toLocaleString()} label={items.length === 1 ? 'item' : 'items'} styles={styles} /><View style={styles.summaryRule} /><Summary value={total.toLocaleString()} label="total units" styles={styles} /></View>
       <View style={styles.search}><AppSymbol name={{ ios: 'magnifyingglass', android: 'search' } as never} color={theme.secondary} size={18} /><TextInput accessibilityLabel="Search inventory" autoCapitalize="none" onChangeText={setQuery} placeholder="Search items" placeholderTextColor={theme.secondary} returnKeyType="search" style={styles.searchInput} value={query} />{query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear inventory search" onPress={() => setQuery('')}><AppSymbol name={{ ios: 'xmark.circle.fill', android: 'cancel' } as never} color={theme.secondary} size={18} /></Pressable> : null}</View>
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Inventory unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshInventory} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}
-      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
+      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => canManage ? <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} styles={styles} theme={theme} /> : <View key={item.id} style={styles.row}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.updated}>{item.quantity} units</Text></View>)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
     </ScrollView>
     </KeyboardAvoidingView>
   </SafeAreaView>;

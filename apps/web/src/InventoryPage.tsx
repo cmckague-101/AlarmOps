@@ -6,6 +6,7 @@ import type {InventoryItem} from '@fireops/domain';
 export type {InventoryItem} from '@fireops/domain';
 
 type Props={
+  canManage?:boolean;
   items:InventoryItem[];
   error?:string;
   onCreate:(name:string,quantity:number)=>Promise<InventoryItem>;
@@ -13,7 +14,7 @@ type Props={
   onDelete:(item:InventoryItem)=>Promise<void>;
 };
 
-export default function InventoryPage({items,error,onCreate,onUpdate,onDelete}:Props){
+export default function InventoryPage({canManage=true,items,error,onCreate,onUpdate,onDelete}:Props){
   const [query,setQuery]=useState('');
   const [formOpen,setFormOpen]=useState(false);
   const [deleting,setDeleting]=useState<InventoryItem>();
@@ -26,12 +27,12 @@ export default function InventoryPage({items,error,onCreate,onUpdate,onDelete}:P
     setBusyId(item.id);setRowError('');
     try{await onUpdate(item,quantity)}catch(updateError){setRowError(updateError instanceof Error?updateError.message:'Quantity could not be updated. Check connection and try again.')}finally{setBusyId('')}
   };
-  return <div className="page stock-page"><div className="page-heading stock-heading"><div><h1>Inventory</h1><p>Track company supplies and equipment counts.</p></div><button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button></div>
+  return <div className="page stock-page"><div className="page-heading stock-heading"><div><h1>Inventory</h1><p>Track company supplies and equipment counts.</p></div>{canManage&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button>}</div>
     {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
     {rowError&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{rowError}</span></div>}
     <section className="stock-summary" aria-label="Inventory summary"><div><strong>{items.length}</strong><span>{items.length===1?'item':'items'}</span></div><div><strong>{total.toLocaleString()}</strong><span>total units</span></div></section>
-    <section className="stock-panel" aria-labelledby="stock-list-heading"><header><div><h2 id="stock-list-heading">Item list</h2><p>Adjust counts as stock moves in or out.</p></div><label className="stock-search"><Search/><span className="sr-only">Search inventory</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search items"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Clear inventory search"><X/></button>}</label></header>
-      <div className="stock-list">{filtered.map(item=><article className="stock-row" key={item.id}><span className="stock-item-icon"><Package/></span><div className="stock-item-copy"><h3>{item.name}</h3><small>Updated {new Date(item.updatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</small></div><QuantityControl item={item} busy={busyId===item.id} onUpdate={quantity=>updateQuantity(item,quantity)}/><button className="stock-delete" disabled={busyId===item.id} onClick={()=>setDeleting(item)} aria-label={`Delete ${item.name}`}><Trash2/></button></article>)}
+    <section className="stock-panel" aria-labelledby="stock-list-heading"><header><div><h2 id="stock-list-heading">Item list</h2><p>View company supplies and equipment.</p></div><label className="stock-search"><Search/><span className="sr-only">Search inventory</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search items"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Clear inventory search"><X/></button>}</label></header>
+      <div className="stock-list">{filtered.map(item=><article className="stock-row" key={item.id}><span className="stock-item-icon"><Package/></span><div className="stock-item-copy"><h3>{item.name}</h3><small>Updated {new Date(item.updatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</small></div>{canManage?<><QuantityControl item={item} busy={busyId===item.id} onUpdate={quantity=>updateQuantity(item,quantity)}/><button className="stock-delete" disabled={busyId===item.id} onClick={()=>setDeleting(item)} aria-label={`Delete ${item.name}`}><Trash2/></button></>:<strong>{item.quantity} units</strong>}</article>)}
         {!filtered.length&&<div className="empty stock-empty"><Package/><h3>{items.length?'No items found':'No inventory items'}</h3><p>{items.length?'Try another search.':'Add first item to begin tracking company stock.'}</p>{items.length&&<button className="secondary" onClick={()=>setQuery('')}>Clear search</button>}</div>}
       </div>
     </section>

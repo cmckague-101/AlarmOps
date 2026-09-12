@@ -105,7 +105,7 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({assignedIncidentIds=[],resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({requestedIncidentId,onIncidentOpened,assignedIncidentIds=[],resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [showAll,setShowAll]=useState(false);
   const [selectedState,setSelectedState]=useState('');
@@ -128,6 +128,14 @@ export default function OperationsPage({assignedIncidentIds=[],resources=[],moti
     });
     return()=>controller.abort();
   },[request]);
+
+  useEffect(()=>{
+    if(!requestedIncidentId||loading||error)return;
+    const incident=incidents.find(item=>item.id===requestedIncidentId);
+    if(incident)setSelected(incident);
+    else setError('This assigned fire is no longer available in the current NIFC feed.');
+    onIncidentOpened?.();
+  },[requestedIncidentId,loading,error,incidents,onIncidentOpened]);
 
   const scopedIncidents=showAll?incidents:incidents.filter(incident=>assignedSet.has(incident.id));
   const visible=showAll&&selectedState?scopedIncidents.filter(incident=>incident.state===selectedState):scopedIncidents;
