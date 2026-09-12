@@ -15,9 +15,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import type { NifcIncident } from '@fireops/domain';
+import type { MotiveVehicleSnapshot, NifcIncident } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
+import { useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
+import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 const US_STATE_NAMES: Record<string, string> = {
@@ -43,10 +45,26 @@ function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
 }
 
+type MotiveWithCoordinates = MotiveVehicleSnapshot & { latitude?: number; longitude?: number; lat?: number; lon?: number };
+function vehicleCoordinates(vehicle: FleetVehicle) {
+  const motive = vehicle.motive as MotiveWithCoordinates | undefined;
+  const latitude = Number(motive?.latitude ?? motive?.lat);
+  const longitude = Number(motive?.longitude ?? motive?.lon);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) return { latitude, longitude };
+  const location = motive?.location.toLocaleLowerCase() ?? '';
+  if (location.includes('redding')) return { latitude: 40.5865, longitude: -122.3917 };
+  if (location.includes('shasta lake')) return { latitude: 40.6804, longitude: -122.3708 };
+  if (location.includes('anderson')) return { latitude: 40.4482, longitude: -122.2978 };
+  return null;
+}
+
 export default function OperationsScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
+  const { access } = useSession();
+  const member = access.value?.kind === 'member' ? access.value : null;
+  const { vehicles } = useFleetVehicles(member?.company.id ?? null);
   const { incidentId } = useLocalSearchParams<{ incidentId?: string }>();
   const [incidents, setIncidents] = useState<NifcIncident[]>([]);
   const [incidentLoading, setIncidentLoading] = useState(true);
@@ -90,9 +108,11 @@ export default function OperationsScreen() {
     [normalizedFireQuery, sortedFires],
   );
 
+  const motiveVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.motive), [vehicles]);
   const refreshIncidents = () => setRequest((value) => value + 1);
   const openIncidentDetails = (incident: NifcIncident) => setSelected(incident);
   const closeIncidentDetails = () => setSelected(null);
+  const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
   const showMapPins = mapLongitudeDelta < 12;
 
   return (
@@ -158,6 +178,23 @@ export default function OperationsScreen() {
                   <View style={styles.fireMarkerDot} />
                 </Marker>
               ))}
+              {motiveVehicles.map((vehicle, index) => {
+                const coords = vehicleCoordinates(vehicle);
+                if (!coords) return null;
+                return (
+                  <Marker
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    coordinate={coords}
+                    description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
+                    key={`${vehicle.id}-${index}-vehicle`}
+                    onCalloutPress={() => openVehicleDetails(vehicle.id)}
+                    title={vehicle.name}
+                    tracksViewChanges={false}
+                  >
+                    <View style={styles.vehicleMarkerDot} />
+                  </Marker>
+                );
+              })}
             </MapView>
             {!incidentLoading && incidents.length === 0 ? (
               <View pointerEvents="none" style={styles.mapEmptyOverlay}>
@@ -196,6 +233,33 @@ export default function OperationsScreen() {
                 <AppSymbol name={{ ios: 'xmark.circle.fill', android: 'cancel' }} size={19} color={theme.secondary} />
               </Pressable>
             ) : null}
+          </View>
+        ) : null}
+
+        {!incidentError && motiveVehicles.length > 0 ? (
+          <View style={styles.fleetSection}>
+            <SectionHeading title="Fleet locations" count={motiveVehicles.length} styles={styles} />
+            <View style={styles.list}>
+              {motiveVehicles.map((vehicle) => (
+                <Pressable
+                  key={vehicle.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open details for ${vehicle.name}`}
+                  onPress={() => openVehicleDetails(vehicle.id)}
+                  style={({ pressed }) => [styles.vehicleRow, pressed && styles.pressed]}
+                >
+                  <View style={styles.vehicleIcon}>
+                    <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={18} color={theme.green} />
+                  </View>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{vehicle.name}</Text>
+                    <Text style={styles.rowMeta}>{vehicle.motive?.location ?? 'Location unavailable'}</Text>
+                    <Text style={styles.rowMeta}>{vehicle.motive?.speed ?? 'Speed unavailable'} · {vehicle.motive?.updatedAt ?? 'Update unavailable'}</Text>
+                  </View>
+                  <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
+                </Pressable>
+              ))}
+            </View>
           </View>
         ) : null}
 
@@ -312,9 +376,13 @@ function createStyles(theme: FireOpsTheme) {
     mapEmptyTitle: { color: theme.commandForeground, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },
     mapEmptyCopy: { color: theme.secondary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
     discoverySection: { gap: 8 },
+    fleetSection: { gap: 8 },
     fireRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    vehicleRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     fireIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.dangerSurface },
+    vehicleIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.greenSurface },
     fireMarkerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.danger, borderWidth: 1, borderColor: theme.paper },
+    vehicleMarkerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.green, borderWidth: 2, borderColor: theme.paper },
     modalSafeArea: { flex: 1, backgroundColor: theme.canvas },
     modalContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40, gap: 28 },
     modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },

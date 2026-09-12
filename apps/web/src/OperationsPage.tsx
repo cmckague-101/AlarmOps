@@ -5,7 +5,7 @@ import type {FeatureCollection} from 'geojson';
 import {feature} from 'topojson-client';
 import type {Topology} from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
-import {ArrowLeft, CalendarDays, ChevronRight, Flame, MapPin, RefreshCw, Search, Users, X} from 'lucide-react';
+import {ArrowLeft, CalendarDays, ChevronRight, Flame, Gauge, MapPin, RefreshCw, Search, Truck, Users, X} from 'lucide-react';
 import {useDialogA11y} from './useDialogA11y';
 import type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
 export type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
@@ -71,6 +71,18 @@ const projection=geoAlbersUsa().fitExtent([[20,20],[880,540]],states);
 const path=geoPath(projection);
 const MAP_FRAME=[0,0,900,560] as const;
 
+function vehicleCoordinates(vehicle:FireResourceVehicle){
+  const motive=vehicle.motive as (FireResourceVehicle['motive']&{latitude?:number;longitude?:number;lat?:number;lon?:number})|undefined;
+  const latitude=Number(motive?.latitude??motive?.lat);
+  const longitude=Number(motive?.longitude??motive?.lon);
+  if(Number.isFinite(latitude)&&Number.isFinite(longitude))return {latitude,longitude};
+  const location=motive?.location.toLocaleLowerCase()??'';
+  if(location.includes('redding'))return {latitude:40.5865,longitude:-122.3917};
+  if(location.includes('shasta lake'))return {latitude:40.6804,longitude:-122.3708};
+  if(location.includes('anderson'))return {latitude:40.4482,longitude:-122.2978};
+  return null;
+}
+
 function frameBounds(bounds:[[number,number],[number,number]]){
   const [[x0,y0],[x1,y1]]=bounds;
   const centerX=(x0+x1)/2;
@@ -105,7 +117,7 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({requestedIncidentId,onIncidentOpened}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({requestedIncidentId,onIncidentOpened,resources=[],motiveEnabled=false,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [selected,setSelected]=useState<NifcIncident|null>(null);
   const [fireQuery,setFireQuery]=useState('');
@@ -137,6 +149,7 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened}:{r
   const normalizedFireQuery=fireQuery.trim().toLocaleLowerCase();
   const sortedVisible=[...visible].sort((a,b)=>(b.acres??-1)-(a.acres??-1)||a.name.localeCompare(b.name));
   const searchResults=normalizedFireQuery?sortedVisible.filter(incident=>incident.name.toLocaleLowerCase().includes(normalizedFireQuery)):[];
+  const motiveVehicles=motiveEnabled?resources.filter(resource=>resource.motive):[];
   const targetViewBox=useMemo(()=>{
     if(selected){
       const point=projection([selected.longitude,selected.latitude]);
@@ -182,18 +195,28 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened}:{r
                 <circle className="fire-marker-hit" cx={point[0]} cy={point[1]} r={Math.max(14*markerScale,radius+5*markerScale)}/><circle className="fire-marker" cx={point[0]} cy={point[1]} r={radius}/>
               </g>;
             })}</g>
+            {motiveVehicles.length?<g className="vehicle-markers" aria-label="Motive fleet locations">{motiveVehicles.map((vehicle,index)=>{
+              const coords=vehicleCoordinates(vehicle);
+              const point=coords?projection([coords.longitude,coords.latitude]):null;
+              if(!point)return null;
+              const open=()=>onVehicleSelect?.(vehicle.id);
+              return <g key={`${vehicle.id}-${index}`} role={onVehicleSelect?'button':undefined} tabIndex={onVehicleSelect?0:undefined} aria-label={`${vehicle.unit} Motive location ${vehicle.motive?.location??''}`} onClick={open} onKeyDown={event=>{if(onVehicleSelect&&(event.key==='Enter'||event.key===' ')){event.preventDefault();open()}}}>
+                <circle className="vehicle-marker-hit" cx={point[0]} cy={point[1]} r={16*markerScale}/><circle className="vehicle-marker" cx={point[0]} cy={point[1]} r={7*markerScale}/>
+              </g>;
+            })}</g>:null}
           </svg>
           {hovered&&tip&&<div className={`fire-tooltip${tip.flipX?' flip-x':''}${tip.flipY?' flip-y':''}`} style={{left:tip.x,top:tip.y}} role="tooltip"><b>{hovered.name}</b><dl><div><dt>Acres</dt><dd>{formatAcres(hovered.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(hovered.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(hovered.personnel)}</dd></div></dl></div>}
           {loading&&<MapState icon={<RefreshCw className="spin"/>} title="Loading current fires" copy="Requesting active incident data from NIFC."/>}
           {!loading&&error&&<MapState icon={<Flame/>} title="NIFC data unavailable" copy={error} action={<button className="secondary" onClick={()=>setRequest(value=>value+1)}><RefreshCw/> Try again</button>}/>} 
           {!loading&&!error&&!visible.length&&<MapState icon={<MapPin/>} title="No active fires reported" copy="NIFC is not reporting any active wildfire incidents."/>}
         </div>
-        <footer><span><i/> Active wildfire</span><a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
+        <footer><span><i/> Active wildfire</span>{motiveVehicles.length?<span className="vehicle-legend"><i/> Motive fleet</span>:null}<a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
       </div>
       <aside className="fire-list-panel" aria-label="Fire search">
         <header><h2>Fire search</h2>{normalizedFireQuery&&<span>{searchResults.length}</span>}</header>
         <div className="operations-fire-search search"><Search/><input value={fireQuery} onChange={event=>setFireQuery(event.target.value)} placeholder="Search fires by name" aria-label="Search fires by name"/>{fireQuery&&<button type="button" onClick={()=>setFireQuery('')} aria-label="Clear fire search"><X/></button>}</div>
         {normalizedFireQuery?<div className="fire-list">{searchResults.length?searchResults.map((incident,index)=><FireRow key={`${incident.id}-${index}`} incident={incident} onSelect={()=>setSelected(incident)}/>):<div className="empty compact-empty"><Flame/><h3>No fires found</h3><p>No fire names match “{fireQuery.trim()}”.</p></div>}</div>:<div className="empty compact-empty"><Search/><h3>Search active fires</h3><p>Enter a fire name to find and open incident details.</p></div>}
+        {motiveVehicles.length?<section className="motive-operations-section"><header><h2>Fleet locations</h2><span>{motiveVehicles.length}</span></header><div className="motive-vehicle-list">{motiveVehicles.map(vehicle=><button key={vehicle.id} type="button" className="motive-vehicle-row" onClick={()=>onVehicleSelect?.(vehicle.id)} disabled={!onVehicleSelect}><span><Truck/></span><span><b>{vehicle.unit}</b><small><MapPin/>{vehicle.motive?.location}</small><small><Gauge/>{vehicle.motive?.speed} · {vehicle.motive?.updatedAt}</small></span><ChevronRight/></button>)}</div></section>:null}
       </aside>
     </section>
     {selected&&createPortal(<IncidentDetail incident={selected} onClose={()=>setSelected(null)}/>,document.body)}
