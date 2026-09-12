@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type { NifcIncident, VehicleStatus } from "@fireops/domain";
-import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -22,20 +20,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppSymbol } from "@/components/app-symbol";
+import { openFleetFile, removeFleetFiles } from "@/lib/fleet-files";
 import {
-  openFleetFile,
-  removeFleetFiles,
-  uploadFleetFile,
-  type LocalFleetFile,
-} from "@/lib/fleet-files";
-import {
-  createFleetId,
   deleteFleetVehicle,
   refreshFleet,
   updateFleetVehicle,
-  updateFleetVehicleFiles,
   useFleetVehicles,
-  type FleetVehicleDocument,
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
 import { fetchNifcIncidents } from "@/lib/nifc";
@@ -105,6 +95,7 @@ function DetailRow({
 
 type DetailStyles = ReturnType<typeof createStyles>;
 const vehicleStatuses: VehicleStatus[] = ["Ready", "Out of service"];
+const binderDocuments = ["Contract", "VIPR Checklist", "Registration", "Insurance", "DOT Inspection"];
 
 export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -140,14 +131,7 @@ export default function VehicleDetailScreen() {
   const [deleteError, setDeleteError] = useState("");
   const [crewPickerOpen, setCrewPickerOpen] = useState(false);
   const [crewQuery, setCrewQuery] = useState("");
-  const [fileBusy, setFileBusy] = useState<
-    "photo" | "document" | string | null
-  >(null);
   const [fileError, setFileError] = useState("");
-  const [pendingDocument, setPendingDocument] = useState<LocalFleetFile | null>(
-    null,
-  );
-  const [documentName, setDocumentName] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [cameraCapture, setCameraCapture] = useState<string | null>(null);
   const [firePickerOpen, setFirePickerOpen] = useState(false);
@@ -238,176 +222,6 @@ export default function VehicleDetailScreen() {
           : "Attachment could not be opened.",
       );
     }
-  };
-
-  const saveUploadedFile = async (
-    localFile: LocalFleetFile,
-    patchFor: (file: FleetVehicleFile) => {
-      photo?: FleetVehicleFile;
-      documents?: FleetVehicleDocument[];
-    },
-    activity: { action: string; detail: string },
-  ) => {
-    if (!vehicle || !user || !companyId) return null;
-    let uploaded: FleetVehicleFile | null = null;
-    try {
-      uploaded = await uploadFleetFile(companyId, user.id, localFile);
-      await updateFleetVehicleFiles(
-        vehicle,
-        patchFor(uploaded),
-        user,
-        activity,
-      );
-      return uploaded;
-    } catch (uploadError) {
-      if (uploaded?.path) {
-        try {
-          await removeFleetFiles([uploaded.path]);
-        } catch {
-          /* Orphan is safer than deleting a committed file. */
-        }
-      }
-      throw uploadError;
-    }
-  };
-
-  const choosePhoto = async () => {
-    if (!vehicle || !canManage || fileBusy) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.85,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    const localFile = {
-      uri: asset.uri,
-      name: asset.fileName ?? `${vehicle.name}-photo.jpg`,
-      type: asset.mimeType ?? "image/jpeg",
-    };
-    setFileBusy("photo");
-    setFileError("");
-    try {
-      await saveUploadedFile(localFile, (photo) => ({ photo }), {
-        action: `${vehicle.name} photo updated`,
-        detail: vehicle.photo
-          ? "Vehicle photo replaced"
-          : "Vehicle photo added",
-      });
-      if (vehicle.photo?.path) {
-        try {
-          await removeFleetFiles([vehicle.photo.path]);
-        } catch {
-          setFileError("Photo saved. Previous upload could not be cleaned up.");
-        }
-      }
-    } catch (uploadError) {
-      setFileError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Photo could not be uploaded.",
-      );
-    } finally {
-      setFileBusy(null);
-    }
-  };
-
-  const chooseDocument = async () => {
-    if (!canManage || fileBusy) return;
-    const result = await DocumentPicker.getDocumentAsync({
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    setPendingDocument({
-      uri: asset.uri,
-      name: asset.name,
-      type: asset.mimeType ?? null,
-    });
-    setDocumentName(asset.name.replace(/\.[^.]+$/, ""));
-    setFileError("");
-  };
-
-  const addDocument = async () => {
-    if (!vehicle || !pendingDocument || !documentName.trim() || fileBusy)
-      return;
-    const namedDocument = documentName.trim();
-    setFileBusy("document");
-    setFileError("");
-    try {
-      await saveUploadedFile(
-        pendingDocument,
-        (file) => ({
-          documents: [
-            ...vehicle.documents,
-            { id: createFleetId(), name: namedDocument, file },
-          ],
-        }),
-        {
-          action: `${namedDocument} added to ${vehicle.name}`,
-          detail: "Vehicle document uploaded",
-        },
-      );
-      setPendingDocument(null);
-      setDocumentName("");
-    } catch (uploadError) {
-      setFileError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Document could not be uploaded.",
-      );
-    } finally {
-      setFileBusy(null);
-    }
-  };
-
-  const confirmRemoveDocument = (document: FleetVehicleDocument) => {
-    if (!vehicle || !user || fileBusy) return;
-    Alert.alert(
-      "Remove document?",
-      `${document.name} will no longer be attached to ${vehicle.name}.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: () => {
-            setFileBusy(document.id);
-            setFileError("");
-            void updateFleetVehicleFiles(
-              vehicle,
-              {
-                documents: vehicle.documents.filter(
-                  (item) => item.id !== document.id,
-                ),
-              },
-              user,
-              {
-                action: `${document.name} removed from ${vehicle.name}`,
-                detail: "Vehicle document removed",
-              },
-            )
-              .then(async () => {
-                try {
-                  await removeFleetFiles([document.file.path]);
-                } catch {
-                  setFileError(
-                    "Document removed. Stored upload could not be cleaned up.",
-                  );
-                }
-              })
-              .catch((removeError) => {
-                setFileError(
-                  removeError instanceof Error
-                    ? removeError.message
-                    : "Document could not be removed.",
-                );
-              })
-              .finally(() => setFileBusy(null));
-          },
-        },
-      ],
-    );
   };
 
   const confirmDeleteVehicle = () => {
@@ -957,176 +771,48 @@ export default function VehicleDetailScreen() {
             ) : null}
 
             <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Digital Equipment Binder</Text>
+              <View style={styles.documents}>
+                {binderDocuments.map((label) => {
+                  const file = vehicle.files.find(
+                    (entry) => entry.label.toLocaleLowerCase() === label.toLocaleLowerCase(),
+                  )?.file;
+                  return (
+                    <Pressable
+                      key={label}
+                      accessibilityRole="button"
+                      accessibilityLabel={file ? `Open ${label}` : `${label} not attached`}
+                      accessibilityState={{ disabled: !file?.path }}
+                      disabled={!file?.path}
+                      onPress={() => file && void openAttachment(file)}
+                      style={({ pressed }) => [styles.documentRow, !file && styles.disabledDocument, pressed && styles.buttonPressed]}
+                    >
+                      <View style={styles.fileIcon}>
+                        <AppSymbol name={{ ios: "doc.fill", android: "description" } as never} color={theme.ember} size={19} />
+                      </View>
+                      <View style={styles.documentMain}>
+                        <Text style={styles.documentLabel}>{label}</Text>
+                        <Text style={styles.documentName} numberOfLines={1}>{file?.name ?? "No document attached"}</Text>
+                      </View>
+                      {file?.path ? <AppSymbol name={{ ios: "chevron.right", android: "chevron_right" } as never} color={theme.secondary} size={17} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {fileError ? <Text accessibilityRole="alert" style={styles.saveError}>{fileError}</Text> : null}
+            </View>
+
+            <View style={styles.section}>
               <Text style={styles.sectionTitle}>Vehicle information</Text>
               <View style={styles.details}>
                 <DetailRow label="Unit" value={vehicle.name} styles={styles} />
                 <DetailRow label="Type" value={vehicle.type} styles={styles} />
                 <DetailRow label="Year" value={vehicle.year} styles={styles} />
                 <DetailRow label="Make" value={vehicle.make} styles={styles} />
-                <DetailRow
-                  label="Model"
-                  value={vehicle.model}
-                  styles={styles}
-                />
+                <DetailRow label="Model" value={vehicle.model} styles={styles} />
                 <DetailRow label="VIN" value={vehicle.vin} styles={styles} />
-                <DetailRow
-                  label="Plate"
-                  value={vehicle.plate}
-                  styles={styles}
-                />
+                <DetailRow label="Plate" value={vehicle.plate} styles={styles} />
               </View>
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeading}>
-                <Text style={styles.sectionTitle}>Photo &amp; documents</Text>
-                {canManage ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={Boolean(fileBusy)}
-                    onPress={() => void chooseDocument()}
-                    style={({ pressed }) => [
-                      styles.addFileButton,
-                      fileBusy && styles.disabled,
-                      pressed && styles.buttonPressed,
-                    ]}
-                  >
-                    <AppSymbol
-                      name={{ ios: "plus", android: "add" } as never}
-                      color={theme.ember}
-                      size={16}
-                    />
-                    <Text style={styles.addFileLabel}>Document</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              <View style={styles.photoRow}>
-                <View style={styles.fileIcon}>
-                  <AppSymbol
-                    name={{ ios: "photo", android: "image" } as never}
-                    color={theme.ember}
-                    size={19}
-                  />
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    vehicle.photo
-                      ? `Open photo ${vehicle.photo.name}`
-                      : "Vehicle photo not attached"
-                  }
-                  disabled={!vehicle.photo?.path || Boolean(fileBusy)}
-                  onPress={() =>
-                    vehicle.photo && void openAttachment(vehicle.photo)
-                  }
-                  style={({ pressed }) => [
-                    styles.documentMain,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Text style={styles.documentLabel}>Vehicle photo</Text>
-                  <Text style={styles.documentName} numberOfLines={1}>
-                    {vehicle.photo?.name ?? "No photo attached"}
-                  </Text>
-                </Pressable>
-                {canManage ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      vehicle.photo
-                        ? "Replace vehicle photo"
-                        : "Add vehicle photo"
-                    }
-                    disabled={Boolean(fileBusy)}
-                    onPress={() => void choosePhoto()}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.fileAction,
-                      pressed && styles.buttonPressed,
-                    ]}
-                  >
-                    <Text style={styles.fileActionLabel}>
-                      {fileBusy === "photo"
-                        ? "Uploading…"
-                        : vehicle.photo
-                          ? "Replace"
-                          : "Add"}
-                    </Text>
-                  </Pressable>
-                ) : vehicle.photo?.path ? (
-                  <AppSymbol
-                    name={
-                      { ios: "arrow.up.right", android: "open_in_new" } as never
-                    }
-                    color={theme.secondary}
-                    size={17}
-                  />
-                ) : null}
-              </View>
-              {vehicle.files.length ? (
-                <View style={styles.documents}>
-                  {vehicle.files.map(({ label, file }, index) => (
-                    <View
-                      key={`${label}-${file.name}-${index}`}
-                      style={styles.documentRow}
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${label}`}
-                        disabled={!file.path || Boolean(fileBusy)}
-                        onPress={() => void openAttachment(file)}
-                        style={({ pressed }) => [
-                          styles.documentMain,
-                          pressed && styles.buttonPressed,
-                        ]}
-                      >
-                        <Text style={styles.documentLabel}>{label}</Text>
-                        <Text style={styles.documentName} numberOfLines={1}>
-                          {file.name}
-                        </Text>
-                      </Pressable>
-                      {(() => {
-                        const document = vehicle.documents.find(
-                          (item) => item.file === file,
-                        );
-                        return document && canManage ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove ${document.name}`}
-                            disabled={Boolean(fileBusy)}
-                            onPress={() => confirmRemoveDocument(document)}
-                            hitSlop={8}
-                            style={({ pressed }) => [
-                              styles.removeFileButton,
-                              pressed && styles.buttonPressed,
-                            ]}
-                          >
-                            <AppSymbol
-                              name={
-                                { ios: "trash", android: "delete" } as never
-                              }
-                              color={theme.danger}
-                              size={17}
-                            />
-                          </Pressable>
-                        ) : file.type ? (
-                          <Text style={styles.documentType}>
-                            {file.type.split("/").pop()?.toUpperCase()}
-                          </Text>
-                        ) : null;
-                      })()}
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.emptyText}>No documents attached.</Text>
-              )}
-              {fileError ? (
-                <Text accessibilityRole="alert" style={styles.saveError}>
-                  {fileError}
-                </Text>
-              ) : null}
             </View>
 
             {resolvedIssues.length ? (
@@ -1256,71 +942,6 @@ export default function VehicleDetailScreen() {
             source={vehicle?.motive?.camera?.imageUrl ? { uri: vehicle.motive.camera.imageUrl } : require("../../../assets/images/motive-camera-demo.png")}
             style={styles.cameraImage}
           />
-        </SafeAreaView>
-      </Modal>
-
-      <Modal
-        animationType="slide"
-        onRequestClose={() => {
-          if (!fileBusy) setPendingDocument(null);
-        }}
-        presentationStyle="pageSheet"
-        visible={Boolean(pendingDocument)}
-      >
-        <SafeAreaView style={styles.modalSafeArea} edges={["top", "bottom"]}>
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>Name document</Text>
-              <Text style={styles.modalSubtitle} numberOfLines={1}>
-                {pendingDocument?.name}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              disabled={Boolean(fileBusy)}
-              onPress={() => setPendingDocument(null)}
-              hitSlop={10}
-            >
-              <Text style={styles.cancelLabel}>Cancel</Text>
-            </Pressable>
-          </View>
-          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-          <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.documentForm} keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} keyboardShouldPersistTaps="handled">
-            <Text style={styles.controlLabel}>Document name</Text>
-            <TextInput
-              accessibilityLabel="Document name"
-              autoCapitalize="words"
-              autoFocus
-              editable={!fileBusy}
-              maxLength={80}
-              onChangeText={setDocumentName}
-              placeholder="Registration, inspection, insurance…"
-              placeholderTextColor={theme.secondary}
-              selectTextOnFocus
-              style={styles.crewSearch}
-              value={documentName}
-            />
-            <Pressable
-              accessibilityRole="button"
-              disabled={!documentName.trim() || Boolean(fileBusy)}
-              onPress={() => void addDocument()}
-              style={({ pressed }) => [
-                styles.assignmentButton,
-                (!documentName.trim() || fileBusy) && styles.disabled,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.assignmentButtonLabel}>
-                {fileBusy === "document" ? "Uploading…" : "Upload document"}
-              </Text>
-            </Pressable>
-            {fileError ? (
-              <Text accessibilityRole="alert" style={styles.saveError}>
-                {fileError}
-              </Text>
-            ) : null}
-          </ScrollView>
-          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
 
@@ -1879,6 +1500,7 @@ function createStyles(theme: FireOpsTheme) {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.divider,
     },
+    disabledDocument: { opacity: 0.58 },
     documentMain: { flex: 1, gap: 3 },
     documentLabel: {
       color: theme.ink,

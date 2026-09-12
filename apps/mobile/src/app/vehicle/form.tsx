@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { VehicleStatus } from '@fireops/domain';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   KeyboardAvoidingView,
@@ -15,13 +17,30 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
-import { createFleetId, saveFleetVehicleRecord, useFleetVehicles } from '@/lib/fleet-store';
+import { removeFleetFiles, uploadFleetFile, type LocalFleetFile } from '@/lib/fleet-files';
+import { createFleetId, saveFleetVehicleRecord, useFleetVehicles, type FleetVehicle, type FleetVehicleFile } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { useVehicleTypes } from '@/lib/vehicle-type-store';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 const statuses: VehicleStatus[] = ['Ready', 'Out of service'];
 const statusLabel = (status: VehicleStatus) => status === 'Out of service' ? 'Out of Service' : status;
 const currentYear = new Date().getFullYear();
+const binderDocuments = [
+  { key: 'contract', label: 'Contract' },
+  { key: 'viprChecklist', label: 'VIPR Checklist' },
+  { key: 'registration', label: 'Registration' },
+  { key: 'insurance', label: 'Insurance' },
+  { key: 'dotInspection', label: 'DOT Inspection' },
+] as const;
+type BinderDocumentKey = typeof binderDocuments[number]['key'];
+
+function attachedBinderFile(vehicle: FleetVehicle | undefined, label: string) {
+  return vehicle?.files.find((entry) => entry.label.toLocaleLowerCase() === label.toLocaleLowerCase())?.file;
+}
+
+function binderDocumentId(vehicle: FleetVehicle | undefined, key: BinderDocumentKey, label: string) {
+  return vehicle?.documents.find((document) => document.id === key || document.name.toLocaleLowerCase() === label.toLocaleLowerCase())?.id ?? key;
+}
 
 type FormState = {
   unit: string;
@@ -65,6 +84,8 @@ export default function VehicleFormScreen() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photo, setPhoto] = useState<LocalFleetFile | null>(null);
+  const [binderFiles, setBinderFiles] = useState<Partial<Record<BinderDocumentKey, LocalFleetFile>>>({});
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const configuredType = vehicleTypes.find((type) => type.name.toLocaleLowerCase() === form.type.toLocaleLowerCase());
   const isExistingLegacyType = Boolean(editing && vehicle && form.type && vehicle.type.toLocaleLowerCase() === form.type.toLocaleLowerCase());
@@ -101,6 +122,20 @@ export default function VehicleFormScreen() {
     if (errors[key]) setErrors((current) => ({ ...current, [key]: undefined }));
   };
 
+  const choosePhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    setPhoto({ uri: asset.uri, name: asset.fileName ?? `${form.unit.trim() || 'vehicle'}-photo.jpg`, type: asset.mimeType ?? 'image/jpeg' });
+  };
+
+  const chooseBinderDocument = async (key: BinderDocumentKey) => {
+    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    setBinderFiles((current) => ({ ...current, [key]: { uri: asset.uri, name: asset.name, type: asset.mimeType ?? null } }));
+  };
+
   const submit = async () => {
     const nextErrors: FormErrors = {};
     const year = Number(form.year);
@@ -115,7 +150,30 @@ export default function VehicleFormScreen() {
     setSaving(true);
     setSaveError('');
     const recordId = vehicle?.id ?? newVehicleId;
+    const uploaded: FleetVehicleFile[] = [];
+    const replacedPaths: (string | null)[] = [];
     try {
+      let uploadedPhoto: FleetVehicleFile | undefined;
+      if (!editing && photo) {
+        uploadedPhoto = await uploadFleetFile(companyId!, user.id, photo);
+        uploaded.push(uploadedPhoto);
+      }
+      const documents = editing
+        ? await Promise.all(binderDocuments.flatMap(({ key, label }) => {
+            const pending = binderFiles[key];
+            const existing = attachedBinderFile(vehicle, label);
+            if (!pending && !existing) return [];
+            return [(async () => {
+              let file = existing!;
+              if (pending) {
+                file = await uploadFleetFile(companyId!, user.id, pending);
+                uploaded.push(file);
+                if (existing?.path) replacedPaths.push(existing.path);
+              }
+              return { id: binderDocumentId(vehicle, key, label), name: label, file };
+            })()];
+          }))
+        : vehicle?.documents;
       await saveFleetVehicleRecord({
         ...(vehicle?.source ?? {}),
         id: recordId,
@@ -130,11 +188,15 @@ export default function VehicleFormScreen() {
         assignedTo: form.status === 'Assigned' ? vehicle?.assignedTo : undefined,
         assignedFire: form.status === 'Assigned' ? vehicle?.assignedFire : undefined,
         notes: form.notes.trim(),
+        ...(!editing && uploadedPhoto ? { photo: uploadedPhoto } : {}),
+        ...(editing ? { documents, contract: null, viprChecklist: null, registration: null, insurance: null, dotInspection: null } : {}),
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),
       }, user, editing);
+      if (replacedPaths.length) void removeFleetFiles(replacedPaths).catch(() => undefined);
       if (editing) router.back();
       else router.replace(`/vehicle/${recordId}`);
     } catch (error) {
+      if (uploaded.length) void removeFleetFiles(uploaded.map((file) => file.path)).catch(() => undefined);
       setSaveError(error instanceof Error ? error.message : 'Vehicle could not be saved. Try again.');
     } finally {
       setSaving(false);
@@ -191,11 +253,14 @@ export default function VehicleFormScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Registration & notes</Text>
+            <Text style={styles.sectionTitle}>Registration &amp; notes</Text>
             <Field label="VIN" styles={styles}><TextInput style={styles.textInput} value={form.vin} onChangeText={(value) => update('vin', value)} placeholder="17-character VIN" placeholderTextColor={theme.secondary} maxLength={17} autoCapitalize="characters" autoCorrect={false} /></Field>
             <Field label="License plate" styles={styles}><TextInput style={styles.textInput} value={form.plate} onChangeText={(value) => update('plate', value)} placeholder="Plate number" placeholderTextColor={theme.secondary} maxLength={20} autoCapitalize="characters" autoCorrect={false} /></Field>
+            {!editing ? <View style={styles.uploadGroup}><Text style={styles.label}>Vehicle photo</Text><Pressable accessibilityRole="button" onPress={() => void choosePhoto()} style={({ pressed }) => [styles.uploadButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'photo', android: 'image' } as never} color={theme.ember} size={18} /><View style={styles.uploadCopy}><Text style={styles.uploadLabel}>{photo ? 'Replace photo' : 'Choose photo'}</Text><Text style={styles.uploadName} numberOfLines={1}>{photo?.name ?? 'No photo selected'}</Text></View></Pressable></View> : null}
             <Field label="Notes" styles={styles}><TextInput style={[styles.textInput, styles.notesInput]} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>
           </View>
+
+          {editing ? <View style={styles.section}><Text style={styles.sectionTitle}>Digital Equipment Binder</Text><Text style={styles.sectionHelp}>Upload image or PDF for each document.</Text><View style={styles.binderList}>{binderDocuments.map(({ key, label }) => { const pending = binderFiles[key]; const existing = attachedBinderFile(vehicle, label); return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`${pending || existing ? 'Replace' : 'Upload'} ${label}`} onPress={() => void chooseBinderDocument(key)} style={({ pressed }) => [styles.binderRow, pressed && styles.pressed]}><View style={styles.binderIcon}><AppSymbol name={{ ios: 'doc.fill', android: 'description' } as never} color={theme.ember} size={18} /></View><View style={styles.uploadCopy}><Text style={styles.binderLabel}>{label}</Text><Text style={styles.uploadName} numberOfLines={1}>{pending?.name ?? existing?.name ?? 'No document attached'}</Text></View><Text style={styles.binderAction}>{pending || existing ? 'Replace' : 'Upload'}</Text></Pressable>; })}</View></View> : null}
         </ScrollView>
 
         <View style={styles.footer}>
@@ -267,6 +332,7 @@ function createStyles(theme: FireOpsTheme) {
     subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 22 },
     section: { backgroundColor: theme.paper, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 16, padding: 16, gap: 16 },
     sectionTitle: { color: theme.ink, fontSize: 18, lineHeight: 23, fontWeight: '800' },
+    sectionHelp: { color: theme.secondary, fontSize: 13, lineHeight: 18, marginTop: -9 },
     field: { gap: 7 },
     label: { color: theme.ink, fontSize: 14, lineHeight: 19, fontWeight: '700' },
     required: { color: theme.ember },
@@ -285,6 +351,16 @@ function createStyles(theme: FireOpsTheme) {
     choiceLabel: { color: theme.ink, fontSize: 14, fontWeight: '700' },
     choiceLabelSelected: { color: theme.commandText },
     notesInput: { minHeight: 112, paddingTop: 12 },
+    uploadGroup: { gap: 7 },
+    uploadButton: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.divider, borderRadius: 11, backgroundColor: theme.canvas },
+    uploadCopy: { flex: 1, minWidth: 0, gap: 2 },
+    uploadLabel: { color: theme.ember, fontSize: 14, fontWeight: '800' },
+    uploadName: { color: theme.secondary, fontSize: 12, lineHeight: 17 },
+    binderList: { gap: 8 },
+    binderRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 11, backgroundColor: theme.canvas },
+    binderIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: theme.paper },
+    binderLabel: { color: theme.ink, fontSize: 14, fontWeight: '800' },
+    binderAction: { color: theme.ember, fontSize: 13, fontWeight: '800' },
     errorBanner: { backgroundColor: theme.dangerSurface, borderRadius: 12, padding: 14, gap: 3 },
     errorBannerTitle: { color: theme.danger, fontSize: 15, fontWeight: '800' },
     errorBannerText: { color: theme.danger, fontSize: 14, lineHeight: 20 },
