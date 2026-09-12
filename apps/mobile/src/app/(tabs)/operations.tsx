@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MotiveVehicleSnapshot, NifcIncident } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
-import { useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
+import { updateFleetVehicle, useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -68,6 +68,7 @@ export default function OperationsScreen() {
   const isLandscape = width > height;
   const { access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
+  const user = member?.user ?? null;
   const { vehicles } = useFleetVehicles(member?.company.id ?? null);
   const { incidentId } = useLocalSearchParams<{ incidentId?: string }>();
   const [incidents, setIncidents] = useState<NifcIncident[]>([]);
@@ -76,6 +77,8 @@ export default function OperationsScreen() {
   const [request, setRequest] = useState(0);
   const [fireQuery, setFireQuery] = useState('');
   const [selected, setSelected] = useState<NifcIncident | null>(null);
+  const [assigningVehicleId, setAssigningVehicleId] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState('');
   const [mapLongitudeDelta, setMapLongitudeDelta] = useState(US_REGION.longitudeDelta);
 
   useEffect(() => {
@@ -113,9 +116,30 @@ export default function OperationsScreen() {
   );
 
   const motiveVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.motive), [vehicles]);
+  const assignableVehicles = useMemo(
+    () => vehicles.filter((vehicle) => vehicle.assignedTo && (user?.role === 'owner' || vehicle.assignedTo === user?.id)),
+    [user?.id, user?.role, vehicles],
+  );
+  const assignVehicleToFire = async (vehicle: FleetVehicle, incident: NifcIncident) => {
+    if (!user || assigningVehicleId) return;
+    setAssigningVehicleId(vehicle.id);
+    setAssignmentError('');
+    try {
+      await updateFleetVehicle(
+        vehicle,
+        { status: 'Assigned', assignedFire: { id: incident.id, name: incident.name, state: incident.state } },
+        user,
+        { action: `${vehicle.name} fire assignment updated`, detail: `Assigned to ${incident.name}`, tone: 'complete' },
+      );
+    } catch (error) {
+      setAssignmentError(error instanceof Error ? error.message : 'Fire assignment could not be changed.');
+    } finally {
+      setAssigningVehicleId(null);
+    }
+  };
   const refreshIncidents = () => setRequest((value) => value + 1);
   const openIncidentDetails = (incident: NifcIncident) => setSelected(incident);
-  const closeIncidentDetails = () => setSelected(null);
+  const closeIncidentDetails = () => { setSelected(null); setAssignmentError(''); };
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
   const showMapPins = mapLongitudeDelta < 12;
   const incidentMap = (
@@ -359,6 +383,34 @@ export default function OperationsScreen() {
                 </View>
               </View>
 
+              {assignableVehicles.length > 0 ? (
+                <View style={styles.assignmentSection}>
+                  <Text style={styles.assignmentTitle}>Assign to this fire</Text>
+                  <Text style={styles.assignmentHelp}>Choose your assigned vehicle to join this incident.</Text>
+                  {assignableVehicles.map((vehicle) => {
+                    const assignedHere = vehicle.assignedFire?.id === selected.id;
+                    const busy = assigningVehicleId === vehicle.id;
+                    return (
+                      <Pressable
+                        key={vehicle.id}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: assignedHere || Boolean(assigningVehicleId) }}
+                        disabled={assignedHere || Boolean(assigningVehicleId)}
+                        onPress={() => void assignVehicleToFire(vehicle, selected)}
+                        style={({ pressed }) => [styles.assignmentRow, (assignedHere || Boolean(assigningVehicleId)) && styles.assignmentDisabled, pressed && styles.pressed]}
+                      >
+                        <View style={styles.rowCopy}>
+                          <Text style={styles.rowTitle}>{vehicle.name}</Text>
+                          <Text style={styles.rowMeta}>{vehicle.assignedFire ? `Currently ${vehicle.assignedFire.name}` : 'No fire assigned'}</Text>
+                        </View>
+                        <Text style={styles.assignmentAction}>{busy ? 'Assigning…' : assignedHere ? 'Assigned' : 'Assign'}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  {assignmentError ? <Text accessibilityRole="alert" style={styles.errorText}>{assignmentError}</Text> : null}
+                </View>
+              ) : null}
+
               <Text style={styles.sourceText}>Incident values come from NIFC WFIGS and may change as agencies report updates.</Text>
             </ScrollView>
           ) : null}
@@ -421,6 +473,12 @@ function createStyles(theme: FireOpsTheme) {
     modalSubtitle: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
     closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: theme.surfaceAlt },
     incidentMetrics: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: theme.greenSurface, borderRadius: 16, padding: 18 },
+    assignmentSection: { gap: 10 },
+    assignmentTitle: { color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '800' },
+    assignmentHelp: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
+    assignmentRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, paddingHorizontal: 14, paddingVertical: 10 },
+    assignmentAction: { color: theme.ember, fontSize: 14, fontWeight: '800' },
+    assignmentDisabled: { opacity: 0.55 },
     incidentMetric: { flex: 1, gap: 5 },
     metricValue: { color: theme.commandForeground, fontSize: 22, lineHeight: 27, fontWeight: '800', fontVariant: ['tabular-nums'] },
     metricLabel: { color: theme.secondary, fontSize: 12, lineHeight: 17 },

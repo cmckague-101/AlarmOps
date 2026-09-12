@@ -477,8 +477,13 @@ export default function VehicleDetailScreen() {
   };
 
   const changeFireAssignment = async (incident?: NifcIncident) => {
-    if (!vehicle || !user || !canManage || saving || !vehicle.assignedTo)
-      return;
+    if (
+      !vehicle ||
+      !user ||
+      saving ||
+      !vehicle.assignedTo ||
+      (!canManage && vehicle.assignedTo !== user.id)
+    ) return;
     if (incident?.id === vehicle.assignedFire?.id) {
       setFirePickerOpen(false);
       return;
@@ -844,7 +849,7 @@ export default function VehicleDetailScreen() {
               ) : null}
             </View>
 
-            {canManage ? (
+            {user && (canManage || vehicle.assignedTo === user.id) ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Fire assignment</Text>
                 {vehicle.assignedTo ? (

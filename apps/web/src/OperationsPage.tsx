@@ -117,7 +117,7 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({requestedIncidentId,onIncidentOpened,resources=[],motiveEnabled=false,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({requestedIncidentId,onIncidentOpened,resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [selected,setSelected]=useState<NifcIncident|null>(null);
   const [fireQuery,setFireQuery]=useState('');
@@ -219,7 +219,7 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
         {motiveVehicles.length?<section className="motive-operations-section"><header><h2>Fleet locations</h2><span>{motiveVehicles.length}</span></header><div className="motive-vehicle-list">{motiveVehicles.map(vehicle=><button key={vehicle.id} type="button" className="motive-vehicle-row" onClick={()=>onVehicleSelect?.(vehicle.id)} disabled={!onVehicleSelect}><span><Truck/></span><span><b>{vehicle.unit}</b><small><MapPin/>{vehicle.motive?.location}</small><small><Gauge/>{vehicle.motive?.speed} · {vehicle.motive?.updatedAt}</small></span><ChevronRight/></button>)}</div></section>:null}
       </aside>
     </section>
-    {selected&&createPortal(<IncidentDetail incident={selected} onClose={()=>setSelected(null)}/>,document.body)}
+    {selected&&createPortal(<IncidentDetail incident={selected} assignableVehicles={assignableVehicles} onAssignVehicle={onAssignVehicle} onClose={()=>setSelected(null)}/>,document.body)}
   </div>;
 }
 
@@ -231,13 +231,17 @@ function MapState({icon,title,copy,action}:{icon:React.ReactNode;title:string;co
   return <div className="fire-map-state"><span>{icon}</span><b>{title}</b><p>{copy}</p>{action}</div>;
 }
 
-function IncidentDetail({incident,onClose}:{incident:NifcIncident;onClose:()=>void}){
+function IncidentDetail({incident,assignableVehicles,onAssignVehicle,onClose}:{incident:NifcIncident;assignableVehicles:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onClose:()=>void}){
   const dialog=useDialogA11y(onClose);
+  const [vehicleId,setVehicleId]=useState('');
+  const selectedVehicle=assignableVehicles.find(vehicle=>vehicle.id===vehicleId);
+  const assign=()=>{if(!vehicleId||!onAssignVehicle)return;onAssignVehicle(vehicleId,{id:incident.id,name:incident.name,state:incident.state});setVehicleId('')};
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer incident-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}>
     <header><button className="back-mobile" onClick={onClose} aria-label="Back to operations"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{incident.name}</h2><p>{incident.state?`${incident.state} wildfire`:'Wildfire incident'}</p></div><button className="close" onClick={onClose} aria-label="Close incident details"><X/></button></header>
     <div className="incident-summary"><span className="incident-flame"><Flame/></span><div><span>Active wildfire</span><h3>{incident.name}</h3><p><MapPin/>{incident.state?US_STATE_NAMES[incident.state]??incident.state:'Location not reported'}</p></div></div>
     <IncidentLocationMap incident={incident}/>
     <dl className="incident-metrics"><div><dt>Acres</dt><dd>{formatAcres(incident.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(incident.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(incident.personnel)}</dd></div></dl>
+    {assignableVehicles.length>0&&onAssignVehicle?<div className="detail-section"><h4>Assign to this fire</h4><div className="assign-vehicle-control"><select aria-label="Fleet vehicle" value={vehicleId} onChange={event=>setVehicleId(event.target.value)}><option value="">Select vehicle</option>{assignableVehicles.map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.unit}{vehicle.assignedFire?` · currently ${vehicle.assignedFire.name}`:''}</option>)}</select><button className="add" disabled={!vehicleId||selectedVehicle?.assignedFire?.id===incident.id} onClick={assign}><Truck/> {selectedVehicle?.assignedFire?.id===incident.id?'Assigned':'Assign'}</button></div>{selectedVehicle&&selectedVehicle.assignedFire?.id!==incident.id&&<small className="assign-vehicle-preview">Assigns {selectedVehicle.assignedCrew?.name??'assigned crew'} and {selectedVehicle.unit} to {incident.name}.</small>}</div>:null}
     <div className="detail-section"><h4>Incident information</h4><dl className="details"><DetailLine icon={<CalendarDays/>} label="Discovered" value={formatDate(incident.discovered)}/><DetailLine icon={<RefreshCw/>} label="NIFC updated" value={formatDateTime(incident.updated)}/><DetailLine icon={<Users/>} label="Personnel" value={formatNumber(incident.personnel)}/></dl></div>
     <div className="incident-source"><p>Incident values come from NIFC WFIGS and may change as agencies update reports.</p><a href={NIFC_ITEM} target="_blank" rel="noreferrer">Open NIFC source</a></div>
   </section></div>;
