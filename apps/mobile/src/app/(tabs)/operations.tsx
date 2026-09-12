@@ -10,8 +10,10 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -62,6 +64,8 @@ export default function OperationsScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
   const { access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
   const { vehicles } = useFleetVehicles(member?.company.id ?? null);
@@ -114,9 +118,93 @@ export default function OperationsScreen() {
   const closeIncidentDetails = () => setSelected(null);
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
   const showMapPins = mapLongitudeDelta < 12;
+  const incidentMap = (
+    <>
+      <MapView
+        accessibilityLabel="Map of all active fires"
+        initialRegion={US_REGION}
+        onRegionChangeComplete={(region) => setMapLongitudeDelta(region.longitudeDelta)}
+        rotateEnabled={false}
+        style={styles.map}
+      >
+        {incidents.map((incident, index) => showMapPins ? (
+          <Marker
+            coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+            description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
+            key={`${incident.id}-${index}-pin`}
+            onCalloutPress={() => openIncidentDetails(incident)}
+            pinColor={theme.danger}
+            title={incident.name}
+            tracksViewChanges={false}
+          />
+        ) : (
+          <Marker
+            anchor={{ x: 0.5, y: 0.5 }}
+            coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+            description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
+            key={`${incident.id}-${index}-dot`}
+            onCalloutPress={() => openIncidentDetails(incident)}
+            title={incident.name}
+            tracksViewChanges={false}
+          >
+            <View style={styles.fireMarkerDot} />
+          </Marker>
+        ))}
+        {motiveVehicles.map((vehicle, index) => {
+          const coords = vehicleCoordinates(vehicle);
+          if (!coords) return null;
+          return (
+            <Marker
+              anchor={{ x: 0.5, y: 0.5 }}
+              coordinate={coords}
+              description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
+              key={`${vehicle.id}-${index}-vehicle`}
+              onCalloutPress={() => openVehicleDetails(vehicle.id)}
+              title={vehicle.name}
+              tracksViewChanges={false}
+            >
+              <View style={styles.vehicleMarkerDot} />
+            </Marker>
+          );
+        })}
+      </MapView>
+      {!incidentLoading && incidents.length === 0 && !incidentError ? (
+        <View pointerEvents="none" style={styles.mapEmptyOverlay}>
+          <View style={styles.mapEmptyCard}>
+            <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.commandForeground} />
+            <Text style={styles.mapEmptyTitle}>No active fires found</Text>
+            <Text style={styles.mapEmptyCopy}>Try refreshing NIFC data.</Text>
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
+      <StatusBar hidden={isLandscape} />
+      {isLandscape ? (
+        <View style={styles.landscapeMap}>
+          {incidentMap}
+          {incidentLoading ? (
+            <View pointerEvents="none" style={styles.landscapeStatusOverlay}>
+              <View style={styles.landscapeStatusCard}>
+                <ActivityIndicator color={theme.commandForeground} />
+              </View>
+            </View>
+          ) : null}
+          {incidentError ? (
+            <View style={styles.landscapeStatusOverlay}>
+              <View style={styles.landscapeErrorCard}>
+                <Text accessibilityRole="alert" style={styles.errorText}>{incidentError}</Text>
+                <Pressable accessibilityRole="button" onPress={refreshIncidents} style={styles.retryButton}>
+                  <Text style={styles.retryLabel}>Try again</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      ) : (
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}
@@ -126,12 +214,11 @@ export default function OperationsScreen() {
       >
         <View style={styles.headingGroup}>
           <Text style={styles.title}>Operations</Text>
-          <Text style={styles.subtitle}>Active wildfire incidents reported by NIFC.</Text>
         </View>
 
         <View style={styles.fireHeading}>
           <View style={styles.fireHeadingCopy}>
-            <Text style={styles.sectionTitle}>All active fires</Text>
+            <Text style={styles.sectionTitle}>Incident Map</Text>
             <Text style={styles.sectionCopy}>Browse current NIFC incidents by map or fire name.</Text>
           </View>
           {incidentLoading ? <ActivityIndicator color={theme.commandForeground} /> : null}
@@ -148,63 +235,7 @@ export default function OperationsScreen() {
 
         {!incidentError ? (
           <View style={styles.mapCard}>
-            <MapView
-              accessibilityLabel="Map of all active fires"
-              initialRegion={US_REGION}
-              onRegionChangeComplete={(region) => setMapLongitudeDelta(region.longitudeDelta)}
-              rotateEnabled={false}
-              style={styles.map}
-            >
-              {incidents.map((incident, index) => showMapPins ? (
-                <Marker
-                  coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                  description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-                  key={`${incident.id}-${index}-pin`}
-                  onCalloutPress={() => openIncidentDetails(incident)}
-                  pinColor={theme.danger}
-                  title={incident.name}
-                  tracksViewChanges={false}
-                />
-              ) : (
-                <Marker
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-                  description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-                  key={`${incident.id}-${index}-dot`}
-                  onCalloutPress={() => openIncidentDetails(incident)}
-                  title={incident.name}
-                  tracksViewChanges={false}
-                >
-                  <View style={styles.fireMarkerDot} />
-                </Marker>
-              ))}
-              {motiveVehicles.map((vehicle, index) => {
-                const coords = vehicleCoordinates(vehicle);
-                if (!coords) return null;
-                return (
-                  <Marker
-                    anchor={{ x: 0.5, y: 0.5 }}
-                    coordinate={coords}
-                    description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
-                    key={`${vehicle.id}-${index}-vehicle`}
-                    onCalloutPress={() => openVehicleDetails(vehicle.id)}
-                    title={vehicle.name}
-                    tracksViewChanges={false}
-                  >
-                    <View style={styles.vehicleMarkerDot} />
-                  </Marker>
-                );
-              })}
-            </MapView>
-            {!incidentLoading && incidents.length === 0 ? (
-              <View pointerEvents="none" style={styles.mapEmptyOverlay}>
-                <View style={styles.mapEmptyCard}>
-                  <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.commandForeground} />
-                  <Text style={styles.mapEmptyTitle}>No active fires found</Text>
-                  <Text style={styles.mapEmptyCopy}>Try refreshing NIFC data.</Text>
-                </View>
-              </View>
-            ) : null}
+            {incidentMap}
           </View>
         ) : null}
 
@@ -294,6 +325,7 @@ export default function OperationsScreen() {
 
         <Text style={styles.sourceText}>Source: NIFC WFIGS · Active wildfire incidents</Text>
       </ScrollView>
+      )}
 
       <Modal
         animationType="slide"
@@ -371,6 +403,10 @@ function createStyles(theme: FireOpsTheme) {
     searchClearButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     mapCard: { height: 290, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 16, backgroundColor: theme.surfaceAlt },
     map: { flex: 1 },
+    landscapeMap: { flex: 1, backgroundColor: theme.surfaceAlt },
+    landscapeStatusOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
+    landscapeStatusCard: { borderRadius: 14, backgroundColor: theme.paper, padding: 18 },
+    landscapeErrorCard: { width: '100%', maxWidth: 380, borderRadius: 14, backgroundColor: theme.dangerSurface, padding: 16, gap: 12 },
     mapEmptyOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     mapEmptyCard: { maxWidth: 250, alignItems: 'center', gap: 6, borderRadius: 14, backgroundColor: theme.paper, paddingHorizontal: 20, paddingVertical: 16 },
     mapEmptyTitle: { color: theme.commandForeground, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },

@@ -1,6 +1,6 @@
-import {Redirect,Tabs} from 'expo-router';
+import {Redirect,Tabs,usePathname} from 'expo-router';
 import {isDocumentUnread,isThreadUnread,isTrainingUnread} from '@fireops/domain';
-import type {ColorValue} from 'react-native';
+import {useWindowDimensions,type ColorValue} from 'react-native';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppSymbol} from '@/components/app-symbol';
 import {useCommunications} from '@/lib/communications-store';
@@ -12,6 +12,8 @@ import {useFireOpsTheme} from '@/theme';
 
 export default function TabLayout(){
   const theme=useFireOpsTheme();const {session,access}=useSession();
+  const {width,height}=useWindowDimensions();const pathname=usePathname();
+  const isOperationsLandscape=pathname==='/operations'&&width>height;
   const member=access.value?.kind==='member'?access.value:null;
   const {threads}=useCommunications(member?.company.id??null,member?.user.id??null);
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
@@ -23,7 +25,7 @@ export default function TabLayout(){
   if(!session)return <Redirect href="/sign-in"/>;
   if(access.status!=='ready'||access.value?.kind!=='member')return <Redirect href="/"/>;
   const icon=(ios:string,android:string)=>function TabIcon(props:{color:ColorValue}){return <AppSymbol name={{ios:ios as never,android:android as never}} color={props.color}/>};
-  return <Tabs screenOptions={{headerShown:true,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}}}>
+  return <Tabs screenOptions={{headerShown:!isOperationsLandscape,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:isOperationsLandscape?{display:'none'}:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}}}>
     <Tabs.Screen name="index" options={{title:'Dashboard',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('rectangle.grid.1x2.fill','dashboard')}}/>
     <Tabs.Screen name="operations" options={{title:'Operations',tabBarIcon:icon('flame.fill','local_fire_department')}}/>
     <Tabs.Screen name="fleet" options={{title:'Fleet',tabBarIcon:icon('truck.box.fill','local_shipping')}}/>

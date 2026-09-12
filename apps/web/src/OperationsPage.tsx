@@ -177,10 +177,10 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
   const hideFireTip=()=>{setHovered(null);setTip(null)};
 
   return <div className="page operations-page">
-    <div className="page-heading operations-heading"><div><h1>Operations</h1><p>Active wildfire incidents reported by NIFC.</p></div></div>
+    <div className="page-heading operations-heading"><div><h1>Operations</h1></div></div>
     <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
       <div className="fire-map-panel">
-        <header><div><b>All active fires</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
+        <header><div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
         <div className="fire-map" ref={mapRef} onMouseLeave={hideFireTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
           <svg viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc">
             <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
