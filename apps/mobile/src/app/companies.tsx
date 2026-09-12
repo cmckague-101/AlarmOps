@@ -1,4 +1,4 @@
-import {Redirect,Stack} from 'expo-router';
+import {Redirect} from 'expo-router';
 import {useEffect,useMemo,useState} from 'react';
 import {Pressable,RefreshControl,ScrollView,StyleSheet,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ export default function CompaniesScreen(){
   if(access.value?.kind==='member')return <Redirect href="/(tabs)"/>;
   if(access.status==='error')return <Redirect href="/"/>;
   const open=async(company:AdminCompany)=>{if(busyId)return;setBusyId(company.id);setError('');try{await selectCompany(company)}catch(openError){setError(openError instanceof Error?openError.message:'Company could not be opened.');setBusyId('')} };
-  return <SafeAreaView style={styles.safe}><Stack.Screen options={{headerShown:false}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={()=>{setLoading(true);setError('');setAttempt(value=>value+1)}} tintColor={theme.commandForeground}/>}>
+  return <SafeAreaView style={styles.safe} edges={['bottom']}><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={()=>{setLoading(true);setError('');setAttempt(value=>value+1)}} tintColor={theme.commandForeground}/>}>
     <View style={styles.mark}><AppSymbol name={{ios:'building.2.fill',android:'business'} as never} color={theme.commandText} size={28}/></View><Text accessibilityRole="header" style={styles.title}>Administrator access</Text><Text style={styles.subtitle}>Choose company to troubleshoot with owner permissions. Access is recorded.</Text>
     {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
     <View style={styles.list}>{companies.map(company=><Pressable key={company.id} accessibilityRole="button" disabled={Boolean(busyId)} onPress={()=>void open(company)} style={({pressed})=>[styles.row,pressed&&styles.pressed]}><View style={styles.rowCopy}><Text style={styles.name}>{company.name}</Text><Text style={styles.code}>{company.code} · {company.industry||'Industry not specified'}</Text></View><Text style={styles.open}>{busyId===company.id?'Opening…':'Open'}</Text><AppSymbol name="chevron.right" color={theme.secondary} size={16}/></Pressable>)}{!loading&&!companies.length&&!error?<Text style={styles.empty}>No companies found.</Text>:null}</View>

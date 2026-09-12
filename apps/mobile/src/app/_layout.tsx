@@ -8,6 +8,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 */
 import {DarkTheme,DefaultTheme,Stack,ThemeProvider} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
+import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppProviders} from '@/providers/app-providers';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
@@ -18,9 +19,9 @@ function RootNavigator(){
   const {colorScheme}=useFireOpsColorScheme();
   return <ThemeProvider value={colorScheme==='dark'?DarkTheme:DefaultTheme}>
     <StatusBar style={colorScheme==='dark'?'light':'dark'}/>
-    <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
-      <Stack.Screen name="index" options={{headerShown:false}}/>
-      <Stack.Screen name="sign-in" options={{headerShown:false}}/>
+    <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
+      <Stack.Screen name="index"/>
+      <Stack.Screen name="sign-in"/>
       <Stack.Screen name="forgot-password" options={{title:'Reset password'}}/>
       <Stack.Screen name="reset-password" options={{title:'Choose new password'}}/>
       <Stack.Screen name="(tabs)" options={{headerShown:false}}/>

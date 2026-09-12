@@ -123,7 +123,7 @@ export default function FleetScreen() {
   const openIssues = visibleIssues.filter((issue) => issue.status === 'Open');
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}

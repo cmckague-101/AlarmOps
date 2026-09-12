@@ -200,7 +200,7 @@ export default function OperationsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}

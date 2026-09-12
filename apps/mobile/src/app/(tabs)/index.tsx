@@ -71,7 +71,7 @@ export default function DashboardScreen() {
   if(user?.role==='owner')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || notificationsRefreshing} error={error}/>;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}

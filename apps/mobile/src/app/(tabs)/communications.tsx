@@ -29,7 +29,7 @@ export default function CommunicationsScreen() {
   const unreadCount = member ? threads.filter((thread) => isThreadUnread(thread, member.user)).length : 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshCommunications} tintColor={theme.commandForeground} />}
