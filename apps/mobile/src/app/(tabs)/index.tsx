@@ -9,6 +9,7 @@ import { type Activity, type FleetIssue } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
 import { type FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
+import { getTimeOfDayGreeting } from '@/lib/time-of-day-greeting';
 import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -77,7 +78,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
         <View style={styles.greeting}>
-          <Text style={styles.hello}>Hello,</Text>
+          <Text style={styles.hello}>{getTimeOfDayGreeting()},</Text>
           <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
         </View>
         <QuickActions/>
