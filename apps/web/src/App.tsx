@@ -10,7 +10,7 @@ import InventoryPage from './InventoryPage';
 import ReceiptsPage from './ReceiptsPage';
 import NationalFireActivitySection from './NationalFireActivitySection';
 import {
-  crewCredentials, dashboardNotifications, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, trainingStage,
+  crewCredentials, dashboardNotifications, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, trainingStage, visibleVehicleIssues,
   type Activity, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
   type CrewCredential, type CrewMember, type DashboardNotification, type FireOpsUser, type FleetIssue,
   type FleetRemoteChange, type FleetSnapshot, type InventoryItem, type IssuePriority as Priority, type IssueStatus,
@@ -89,10 +89,6 @@ const seedCrew: CrewMember[] = [
 function saveLocal(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); return true; }
   catch { return false; }
-}
-
-function issueBelongsToUser(issue:FleetIssue,user:FireOpsUser) {
-  return issue.createdById ? issue.createdById===user.id : issue.createdBy===user.name;
 }
 
 function vehicleDocuments(vehicle:Vehicle):NamedDocument[] {
@@ -287,7 +283,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
     const text = `${v.unit} ${v.type} ${v.make} ${v.model} ${v.year} ${v.plate} ${v.assignedFire?.name??''}`.toLowerCase();
     return text.includes(query.toLowerCase()) && (filter === 'All' || v.status === filter);
   }).sort((a,b)=>Number(b.assignedTo===currentUser.id)-Number(a.assignedTo===currentUser.id)), [vehicles, query, filter, currentUser.id]);
-  const visibleIssues=useMemo(()=>canManageFleet?issues:issues.filter(issue=>issueBelongsToUser(issue,currentUser)),[canManageFleet,currentUser.id,currentUser.name,issues]);
+  const visibleIssues=useMemo(()=>visibleVehicleIssues(issues,currentUser),[currentUser,issues]);
   const operationsVehicles=useMemo(()=>canManageFleet?vehicles:vehicles.filter(vehicle=>vehicle.assignedTo===currentUser.id),[canManageFleet,currentUser.id,vehicles]);
   const addVehicle = (vehicle: Vehicle) => {
     if (!canManageFleet) return;
@@ -606,7 +602,7 @@ function Dashboard({quickActions,vehicles,issues,crew,threads,documents,training
   return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
     {quickActions}
     <NationalFireActivitySection/>
-    {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="My issues" id="my-issues"/>}
+    {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="Current issues" id="current-issues"/>}
     <MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>
   </div>
 }

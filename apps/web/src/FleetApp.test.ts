@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {navigationLayout} from './App';
 import {
-  dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,
-  type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetSnapshot,type Training,type VehicleFile,
+  dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
+  type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
 } from '@fireops/domain';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
 
@@ -32,6 +32,23 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
     expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
     expect(navigationLayout('member').mobileOverflow).toEqual(['documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+  });
+});
+
+describe('vehicle issue visibility',()=>{
+  const issues:FleetIssue[]=[
+    {id:'open-other',vehicleId:'vehicle-1',title:'Open issue',description:'Needs repair',priority:'High',status:'Open',updates:[],createdBy:'Other Crew',createdById:'crew-2',createdAt:'2025-08-30T10:00:00Z'},
+    {id:'resolved-other',vehicleId:'vehicle-1',title:'Resolved issue',description:'Repaired',priority:'Low',status:'Resolved',resolvedAt:'2025-08-30T12:00:00Z',updates:[],createdBy:'Other Crew',createdById:'crew-2',createdAt:'2025-08-29T10:00:00Z'},
+  ];
+
+  it('shows every open issue to crew, regardless of reporter',()=>{
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    expect(visibleVehicleIssues(issues,crew).map(issue=>issue.id)).toEqual(['open-other']);
+  });
+
+  it('shows open and resolved issue history to owners',()=>{
+    const owner:FireOpsUser={id:'owner-1',name:'Owner',role:'owner'};
+    expect(visibleVehicleIssues(issues,owner)).toEqual(issues);
   });
 });
 

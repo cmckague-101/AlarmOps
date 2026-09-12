@@ -1,5 +1,5 @@
 import type {
-  CommunicationThread, CompanyDocument, CrewCredential, CrewMember, DashboardNotification, FireOpsUser,
+  CommunicationThread, CompanyDocument, CrewCredential, CrewMember, DashboardNotification, FireOpsUser, FleetIssue,
   Training, TrainingStage, Vehicle,
 } from './models';
 
@@ -12,6 +12,10 @@ export function normalizeVehicle(vehicle:Vehicle):Vehicle {
 
 export function normalizeVehicles(vehicles:Vehicle[]):Vehicle[]{
   return vehicles.map(normalizeVehicle);
+}
+
+export function visibleVehicleIssues(issues:FleetIssue[],user:FireOpsUser):FleetIssue[]{
+  return user.role==='owner'?issues:issues.filter(issue=>issue.status==='Open');
 }
 
 export function crewCredentials(member:CrewMember):CrewCredential[]{

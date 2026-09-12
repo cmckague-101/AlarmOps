@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { FleetIssue } from '@fireops/domain';
+import { visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -116,11 +116,7 @@ export default function FleetScreen() {
       .some((value) => value?.toLowerCase().includes(normalizedQuery));
     return matchesStatus && matchesQuery;
   }).sort((a, b) => Number(b.assignedTo === currentUser?.id) - Number(a.assignedTo === currentUser?.id));
-  const visibleIssues = issues.filter((issue) => {
-    if (currentUser?.role === 'owner') return true;
-    if (!currentUser) return false;
-    return issue.createdById ? issue.createdById === currentUser.id : issue.createdBy === currentUser.name;
-  });
+  const visibleIssues = currentUser ? visibleVehicleIssues(issues, currentUser) : [];
   const openIssues = visibleIssues.filter((issue) => issue.status === 'Open');
 
   return (

@@ -126,7 +126,7 @@ export default function VehicleDetailScreen() {
     (issue) => issue.vehicleId === id && issue.status === "Open",
   );
   const resolvedIssues = issues
-    .filter((issue) => issue.vehicleId === id && issue.status === "Resolved")
+    .filter((issue) => user?.role === "owner" && issue.vehicleId === id && issue.status === "Resolved")
     .sort(
       (a, b) =>
         Date.parse(b.resolvedAt ?? b.createdAt) -

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { IssuePriority, IssueStatus } from '@fireops/domain';
+import { visibleVehicleIssues, type IssuePriority, type IssueStatus } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,7 +28,7 @@ export default function IssueDetailScreen() {
   const { vehicles, issues, loading, error } = useFleetVehicles(companyId);
   const candidate = issues.find((item) => item.id === id);
   const candidateVehicle = vehicles.find((item) => item.id === candidate?.vehicleId);
-  const canView = candidate && user && (user.role === 'owner' || candidateVehicle?.assignedTo === user.id || (candidate.createdById ? candidate.createdById === user.id : candidate.createdBy === user.name));
+  const canView = candidate && user && visibleVehicleIssues([candidate], user).length > 0;
   const issue = canView ? candidate : undefined;
   const vehicle = issue ? candidateVehicle : undefined;
   const [updateText, setUpdateText] = useState('');
