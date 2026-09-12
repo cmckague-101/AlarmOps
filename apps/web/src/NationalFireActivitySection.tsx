@@ -13,6 +13,19 @@ const totalStats = [
   {key:'totalPersonnel',label:'Total Personnel'},
 ] as const;
 
+const gaccNames: Record<string,string> = {
+  AICC:'Alaska Interagency Coordination Center',
+  NWCC:'Northwest Area Coordination Center',
+  ONCC:'Northern California Coordination Center',
+  OSCC:'Southern California Coordination Center',
+  NRCC:'Northern Rockies Coordination Center',
+  GBCC:'Great Basin Coordination Center',
+  SWCC:'Southwest Area Coordination Center',
+  RMCC:'Rocky Mountain Area Coordination Center',
+  EACC:'Eastern Area Coordination Center',
+  SACC:'Southern Area Coordination Center',
+};
+
 export default function NationalFireActivitySection() {
   const [activity,setActivity] = useState<NationalFireActivity|null>(null);
   const [loading,setLoading] = useState(true);
@@ -41,7 +54,7 @@ export default function NationalFireActivitySection() {
       <div className="national-fire-totals">{totalStats.map(({key,label})=><div className={`national-fire-total national-fire-total-${key}`} key={key}><span>{label}</span><strong>{number.format(activity.total[key])}</strong></div>)}</div>
       <div className="national-fire-areas" aria-label="Incidents by GACC">
         <h3>Incidents by GACC</h3>
-        <ul>{activity.areas.map(area=><li key={area.gacc}><span>{area.gacc}</span><strong>{number.format(area.incidents)}</strong></li>)}</ul>
+        <ul>{activity.areas.map(area=><li key={area.gacc}><span className="national-fire-area-name"><b>{area.gacc}</b><small>{gaccNames[area.gacc]}</small></span><strong>{number.format(area.incidents)}</strong></li>)}</ul>
       </div>
       <footer>Data extracted from current National Interagency Coordination Center situation report.</footer>
     </>}

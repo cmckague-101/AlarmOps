@@ -5,7 +5,7 @@ import type {FeatureCollection} from 'geojson';
 import {feature} from 'topojson-client';
 import type {Topology} from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
-import {ArrowDownAZ, ArrowLeft, CalendarDays, ChevronRight, CircleUserRound, Flame, Gauge, MapPin, Plus, RefreshCw, Truck, Users, X} from 'lucide-react';
+import {ArrowLeft, CalendarDays, ChevronRight, Flame, MapPin, RefreshCw, Search, Users, X} from 'lucide-react';
 import {useDialogA11y} from './useDialogA11y';
 import type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
 export type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
@@ -105,20 +105,16 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({requestedIncidentId,onIncidentOpened,assignedIncidentIds=[],resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({requestedIncidentId,onIncidentOpened}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
-  const [showAll,setShowAll]=useState(false);
-  const [selectedState,setSelectedState]=useState('');
-  const [stateSort,setStateSort]=useState<'count'|'name'>('count');
   const [selected,setSelected]=useState<NifcIncident|null>(null);
+  const [fireQuery,setFireQuery]=useState('');
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [request,setRequest]=useState(0);
   const mapRef=useRef<HTMLDivElement|null>(null);
   const [hovered,setHovered]=useState<NifcIncident|null>(null);
   const [tip,setTip]=useState<{x:number;y:number;flipX:boolean;flipY:boolean}|null>(null);
-  const assignedSet=useMemo(()=>new Set(assignedIncidentIds),[assignedIncidentIds]);
-
   useEffect(()=>{
     const controller=new AbortController();
     setLoading(true);setError('');
@@ -137,31 +133,20 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,ass
     onIncidentOpened?.();
   },[requestedIncidentId,loading,error,incidents,onIncidentOpened]);
 
-  const scopedIncidents=showAll?incidents:incidents.filter(incident=>assignedSet.has(incident.id));
-  const visible=showAll&&selectedState?scopedIncidents.filter(incident=>incident.state===selectedState):scopedIncidents;
+  const visible=incidents;
+  const normalizedFireQuery=fireQuery.trim().toLocaleLowerCase();
   const sortedVisible=[...visible].sort((a,b)=>(b.acres??-1)-(a.acres??-1)||a.name.localeCompare(b.name));
-  const statesByCount=useMemo(()=>{
-    const counts=new Map<string,number>();
-    incidents.forEach(incident=>{if(US_STATE_NAMES[incident.state])counts.set(incident.state,(counts.get(incident.state)??0)+1)});
-    return [...counts].map(([code,count])=>({code,name:US_STATE_NAMES[code],count})).sort((a,b)=>stateSort==='name'?a.name.localeCompare(b.name):b.count-a.count||a.name.localeCompare(b.name));
-  },[incidents,stateSort]);
+  const searchResults=normalizedFireQuery?sortedVisible.filter(incident=>incident.name.toLocaleLowerCase().includes(normalizedFireQuery)):[];
   const targetViewBox=useMemo(()=>{
     if(selected){
       const point=projection([selected.longitude,selected.latitude]);
       if(point)return frameBounds([[point[0]-25,point[1]-25],[point[0]+25,point[1]+25]]);
     }
-    if(selectedState){
-      const stateFeature=states.features.find(state=>state.properties?.name===US_STATE_NAMES[selectedState]);
-      if(stateFeature)return frameBounds(path.bounds(stateFeature));
-    }
     return [...MAP_FRAME];
-  },[selected,selectedState]);
+  },[selected]);
   const viewBox=useAnimatedViewBox(targetViewBox);
   const markerScale=viewBox[2]/MAP_FRAME[2];
   const latestUpdate=incidents.reduce<number|null>((latest,incident)=>incident.updated&&(!latest||incident.updated>latest)?incident.updated:latest,null);
-  const incidentResources=(incidentId:string)=>resources.filter(resource=>resource.assignedFire?.id===incidentId);
-  const assignableForIncident=()=>assignableVehicles;
-  const openVehicle=(vehicleId:string)=>{setSelected(null);onVehicleSelect?.(vehicleId)};
   const showFireTip=(incident:NifcIncident)=>{
     const map=mapRef.current;
     const svg=map?.querySelector('svg');
@@ -179,21 +164,21 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,ass
   const hideFireTip=()=>{setHovered(null);setTip(null)};
 
   return <div className="page operations-page">
-    <div className="page-heading operations-heading"><div><h1>Operations</h1><p>Active wildfire incidents reported by NIFC.</p></div><label className="fire-scope-toggle"><span>Show all fires</span><input type="checkbox" checked={showAll} onChange={event=>{setShowAll(event.target.checked);setSelectedState('');setSelected(null)}}/><i aria-hidden="true"/></label></div>
+    <div className="page-heading operations-heading"><div><h1>Operations</h1><p>Active wildfire incidents reported by NIFC.</p></div></div>
     <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
       <div className="fire-map-panel">
-        <header><div><b>{showAll?(selectedState?`${US_STATE_NAMES[selectedState]} fires`:'All active fires'):'Assigned fires'}</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
+        <header><div><b>All active fires</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
         <div className="fire-map" ref={mapRef} onMouseLeave={hideFireTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
           <svg viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc">
             <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
             <g className="us-states">{states.features.map((state,index)=><path key={String(state.id??index)} d={path(state)??undefined}/>)}</g>
-            <g className="fire-markers">{visible.map(incident=>{
+            <g className="fire-markers">{visible.map((incident,index)=>{
               const point=projection([incident.longitude,incident.latitude]);
               if(!point)return null;
               const active=selected?.id===incident.id;
               const radius=Math.max(5,Math.min(11,5+Math.log10(Math.max(1,incident.acres??1))*1.5))*markerScale;
               const select=()=>setSelected(incident);
-              return <g key={incident.id} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}} onMouseEnter={()=>showFireTip(incident)} onFocus={()=>showFireTip(incident)} onBlur={hideFireTip}>
+              return <g key={`${incident.id}-${index}`} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}} onMouseEnter={()=>showFireTip(incident)} onFocus={()=>showFireTip(incident)} onBlur={hideFireTip}>
                 <circle className="fire-marker-hit" cx={point[0]} cy={point[1]} r={Math.max(14*markerScale,radius+5*markerScale)}/><circle className="fire-marker" cx={point[0]} cy={point[1]} r={radius}/>
               </g>;
             })}</g>
@@ -201,25 +186,18 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,ass
           {hovered&&tip&&<div className={`fire-tooltip${tip.flipX?' flip-x':''}${tip.flipY?' flip-y':''}`} style={{left:tip.x,top:tip.y}} role="tooltip"><b>{hovered.name}</b><dl><div><dt>Acres</dt><dd>{formatAcres(hovered.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(hovered.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(hovered.personnel)}</dd></div></dl></div>}
           {loading&&<MapState icon={<RefreshCw className="spin"/>} title="Loading current fires" copy="Requesting active incident data from NIFC."/>}
           {!loading&&error&&<MapState icon={<Flame/>} title="NIFC data unavailable" copy={error} action={<button className="secondary" onClick={()=>setRequest(value=>value+1)}><RefreshCw/> Try again</button>}/>} 
-          {!loading&&!error&&!visible.length&&<MapState icon={<MapPin/>} title={showAll?'No active fires reported':'No fires assigned yet'} copy={showAll?'NIFC is not reporting any active wildfire incidents.':'Assign a vehicle to an active fire from vehicle details. Use Show all fires to review current incidents.'}/>}
+          {!loading&&!error&&!visible.length&&<MapState icon={<MapPin/>} title="No active fires reported" copy="NIFC is not reporting any active wildfire incidents."/>}
         </div>
         <footer><span><i/> Active wildfire</span><a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
       </div>
-      <aside className="fire-list-panel" aria-label={showAll?'State fire counts':'Assigned incident list'}>
-        {showAll?(selectedState?<><header className="selected-state-heading"><div><button type="button" onClick={()=>{setSelectedState('');setSelected(null)}}><ArrowLeft/> States</button><h2>{US_STATE_NAMES[selectedState]} fires</h2></div><span>{visible.length}</span></header><div className="fire-list">{sortedVisible.map(incident=><FireRow key={incident.id} incident={incident} onSelect={()=>setSelected(incident)}/>)}</div></>:<><header className="state-list-heading"><h2>States</h2><button className={stateSort==='name'?'active':''} type="button" aria-pressed={stateSort==='name'} onClick={()=>setStateSort(sort=>sort==='count'?'name':'count')} title={stateSort==='name'?'Sort by fire count':'Sort states A to Z'}><ArrowDownAZ/> A–Z</button></header><div className="fire-list state-list"><button className="state-row" onClick={()=>{setSelectedState('');setSelected(null)}}><span>All states</span><b>{incidents.length}</b><ChevronRight/></button>{statesByCount.map(state=><button key={state.code} className="state-row" onClick={()=>{setSelectedState(state.code);setSelected(null)}}><span><b>{state.name}</b><small>{state.code}</small></span><strong aria-label={`${state.count} ${state.count===1?'fire':'fires'}`}>{state.count}</strong><ChevronRight/></button>)}</div></>):<><header><h2>Assigned fires</h2><span>{visible.length}</span></header><div className="fire-list assigned-fire-list">{sortedVisible.map(incident=><AssignedFireGroup key={incident.id} incident={incident} resources={incidentResources(incident.id)} motiveEnabled={motiveEnabled} onSelect={()=>setSelected(incident)} onVehicleSelect={onVehicleSelect?openVehicle:undefined}/>)}</div></>}
+      <aside className="fire-list-panel" aria-label="Fire search">
+        <header><h2>Fire search</h2>{normalizedFireQuery&&<span>{searchResults.length}</span>}</header>
+        <div className="operations-fire-search search"><Search/><input value={fireQuery} onChange={event=>setFireQuery(event.target.value)} placeholder="Search fires by name" aria-label="Search fires by name"/>{fireQuery&&<button type="button" onClick={()=>setFireQuery('')} aria-label="Clear fire search"><X/></button>}</div>
+        {normalizedFireQuery?<div className="fire-list">{searchResults.length?searchResults.map((incident,index)=><FireRow key={`${incident.id}-${index}`} incident={incident} onSelect={()=>setSelected(incident)}/>):<div className="empty compact-empty"><Flame/><h3>No fires found</h3><p>No fire names match “{fireQuery.trim()}”.</p></div>}</div>:<div className="empty compact-empty"><Search/><h3>Search active fires</h3><p>Enter a fire name to find and open incident details.</p></div>}
       </aside>
     </section>
-    {selected&&createPortal(<IncidentDetail incident={selected} resources={incidentResources(selected.id)} assignable={assignableForIncident()} motiveEnabled={motiveEnabled} onAssignVehicle={onAssignVehicle?((vehicleId)=>onAssignVehicle(vehicleId,{id:selected.id,name:selected.name,state:selected.state})):undefined} onVehicleSelect={onVehicleSelect?openVehicle:undefined} onClose={()=>setSelected(null)}/>,document.body)}
+    {selected&&createPortal(<IncidentDetail incident={selected} onClose={()=>setSelected(null)}/>,document.body)}
   </div>;
-}
-
-function AssignedFireGroup({incident,resources,motiveEnabled,onSelect,onVehicleSelect}:{incident:NifcIncident;resources:FireResourceVehicle[];motiveEnabled:boolean;onSelect:()=>void;onVehicleSelect?:(vehicleId:string)=>void}){
-  return <section className="assigned-fire-group" aria-label={`${incident.name} assigned resources`}><FireRow incident={incident} onSelect={onSelect}/><div className="assigned-resource-ledger"><div className="resource-ledger-heading"><span>{resources.length} assigned {resources.length===1?'vehicle':'vehicles'}</span></div>{resources.map(resource=><ResourceVehicleRow key={resource.id} resource={resource} motiveEnabled={motiveEnabled} onSelect={onVehicleSelect?()=>onVehicleSelect(resource.id):undefined}/>)}</div></section>;
-}
-
-function ResourceVehicleRow({resource,motiveEnabled,onSelect}:{resource:FireResourceVehicle;motiveEnabled:boolean;onSelect?:()=>void}){
-  const content=<><span className="resource-vehicle-icon"><Truck/></span><span className="resource-vehicle-copy"><b>{resource.unit}</b><small>{resource.type} · {resource.year} {resource.make} {resource.model}{resource.plate?` · ${resource.plate}`:''}</small>{resource.assignedCrew&&<small><CircleUserRound/> {resource.assignedCrew.name}</small>}{motiveEnabled&&(resource.motive?<small className="resource-location"><i>Motive</i><MapPin/> {resource.motive.location}<span><Gauge/> {resource.motive.speed}</span><em>{resource.motive.updatedAt}</em></small>:<small className="resource-location unavailable"><MapPin/> Motive location unavailable</small>)}</span>{onSelect&&<ChevronRight/>}</>;
-  return onSelect?<button type="button" className="resource-vehicle-row" onClick={onSelect}>{content}</button>:<div className="resource-vehicle-row">{content}</div>;
 }
 
 function FireRow({incident,onSelect}:{incident:NifcIncident;onSelect:()=>void}){
@@ -230,25 +208,16 @@ function MapState({icon,title,copy,action}:{icon:React.ReactNode;title:string;co
   return <div className="fire-map-state"><span>{icon}</span><b>{title}</b><p>{copy}</p>{action}</div>;
 }
 
-function IncidentDetail({incident,resources,assignable,motiveEnabled,onVehicleSelect,onAssignVehicle,onClose}:{incident:NifcIncident;resources:FireResourceVehicle[];assignable:FireResourceVehicle[];motiveEnabled:boolean;onVehicleSelect?:(vehicleId:string)=>void;onAssignVehicle?:(vehicleId:string)=>void;onClose:()=>void}){
+function IncidentDetail({incident,onClose}:{incident:NifcIncident;onClose:()=>void}){
   const dialog=useDialogA11y(onClose);
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer incident-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}>
     <header><button className="back-mobile" onClick={onClose} aria-label="Back to operations"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{incident.name}</h2><p>{incident.state?`${incident.state} wildfire`:'Wildfire incident'}</p></div><button className="close" onClick={onClose} aria-label="Close incident details"><X/></button></header>
     <div className="incident-summary"><span className="incident-flame"><Flame/></span><div><span>Active wildfire</span><h3>{incident.name}</h3><p><MapPin/>{incident.state?US_STATE_NAMES[incident.state]??incident.state:'Location not reported'}</p></div></div>
     <IncidentLocationMap incident={incident}/>
     <dl className="incident-metrics"><div><dt>Acres</dt><dd>{formatAcres(incident.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(incident.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(incident.personnel)}</dd></div></dl>
-    <AssignedResources resources={resources} assignable={assignable} motiveEnabled={motiveEnabled} onAssignVehicle={onAssignVehicle} onVehicleSelect={onVehicleSelect}/>
     <div className="detail-section"><h4>Incident information</h4><dl className="details"><DetailLine icon={<CalendarDays/>} label="Discovered" value={formatDate(incident.discovered)}/><DetailLine icon={<RefreshCw/>} label="NIFC updated" value={formatDateTime(incident.updated)}/><DetailLine icon={<Users/>} label="Personnel" value={formatNumber(incident.personnel)}/></dl></div>
     <div className="incident-source"><p>Incident values come from NIFC WFIGS and may change as agencies update reports.</p><a href={NIFC_ITEM} target="_blank" rel="noreferrer">Open NIFC source</a></div>
   </section></div>;
-}
-
-function AssignedResources({resources,assignable,motiveEnabled,onAssignVehicle,onVehicleSelect}:{resources:FireResourceVehicle[];assignable:FireResourceVehicle[];motiveEnabled:boolean;onAssignVehicle?:(vehicleId:string)=>void;onVehicleSelect?:(vehicleId:string)=>void}){
-  const crew=[...new Map(resources.flatMap(resource=>resource.assignedCrew?[resource.assignedCrew]:[]).map(member=>[member.id,member])).values()];
-  const [selectedId,setSelectedId]=useState('');
-  const selected=assignable.find(vehicle=>vehicle.id===selectedId);
-  const assign=()=>{if(onAssignVehicle&&selected){onAssignVehicle(selected.id);setSelectedId('')}};
-  return <div className="detail-section incident-resources"><div className="incident-resource-heading"><h4>Assigned resources</h4><span>{resources.length} {resources.length===1?'vehicle':'vehicles'} · {crew.length} crew</span></div>{resources.length?<><div className="incident-vehicle-list">{resources.map(resource=><ResourceVehicleRow key={resource.id} resource={resource} motiveEnabled={motiveEnabled} onSelect={onVehicleSelect?()=>onVehicleSelect(resource.id):undefined}/>)}</div>{crew.length>0&&<div className="incident-crew"><b>Crew on incident</b><div>{crew.map(member=><span key={member.id}><CircleUserRound/>{member.name}</span>)}</div></div>}</>:<p className="no-updates">No company vehicles or crew assigned.</p>}{onAssignVehicle&&<div className="assign-vehicle-section"><div className="incident-resource-heading"><h4>Add a vehicle</h4><span>{assignable.length} available</span></div><div className="assign-vehicle-control"><select value={selectedId} onChange={event=>setSelectedId(event.target.value)} aria-label="Select a vehicle to add"><option value="">Select vehicle</option>{assignable.map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.unit} — {vehicle.make} {vehicle.model}{vehicle.assignedFire?(vehicle.assignedFire.id===resources[0]?.assignedFire?.id?` · on this fire`:` · on ${vehicle.assignedFire.name}`):''}</option>)}</select><button type="button" className="add" disabled={!selected} onClick={assign}><Plus/> Add</button></div>{selected&&<small className="assign-vehicle-preview">{selected.type} · {selected.year} {selected.make} {selected.model}{selected.assignedFire?`${selected.assignedFire.id===resources[0]?.assignedFire?.id?' · Already on this fire':` · Currently on ${selected.assignedFire.name}`}`:''}</small>}</div>}</div>;
 }
 
 function IncidentLocationMap({incident}:{incident:NifcIncident}){
