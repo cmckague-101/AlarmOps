@@ -4,7 +4,7 @@ import {useFireOpsTheme} from '@/theme';
 export function AppHeaderBrand(){
   const theme=useFireOpsTheme();
   return <View accessible accessibilityRole="header" accessibilityLabel="FireOps" style={styles.brand}>
-    <Image accessible={false} source={require('../../assets/images/fireops-ios-icon.png')} style={styles.logo}/>
+    <Image accessible={false} resizeMode="contain" source={require('../../assets/images/header.png')} style={styles.logo}/>
     <Text style={[styles.name,{color:theme.ink}]}>FireOps</Text>
   </View>;
 }
