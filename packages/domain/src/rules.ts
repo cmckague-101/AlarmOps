@@ -4,8 +4,10 @@ import type {
 } from './models';
 
 export function normalizeVehicle(vehicle:Vehicle):Vehicle {
-  if(vehicle.status==='Assigned')return vehicle.assignedTo?vehicle:{...vehicle,status:'Ready',assignedFire:undefined};
-  return vehicle.assignedTo?{...vehicle,assignedTo:undefined,assignedFire:undefined}:vehicle;
+  const normalizedStatus=(vehicle.status as string)==='Maintenance'?'Out of service':vehicle.status;
+  const normalized={...vehicle,status:normalizedStatus} as Vehicle;
+  if(normalized.status==='Assigned')return normalized.assignedTo?normalized:{...normalized,status:'Ready',assignedFire:undefined};
+  return normalized.assignedTo?{...normalized,assignedTo:undefined,assignedFire:undefined}:normalized;
 }
 
 export function normalizeVehicles(vehicles:Vehicle[]):Vehicle[]{

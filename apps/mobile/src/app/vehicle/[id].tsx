@@ -44,14 +44,11 @@ import { useSession } from "@/providers/session-provider";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
 function displayStatus(status: string) {
-  return status
-    .trim()
-    .replaceAll("_", " ")
-    .replaceAll("-", " ")
+  const value = status.trim().replaceAll("_", " ").replaceAll("-", " ").toLowerCase();
+  if (value === "out of service") return "Out of Service";
+  return value
     .split(" ")
-    .map((word) =>
-      word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : "",
-    )
+    .map((word) => word ? word[0].toUpperCase() + word.slice(1) : "")
     .join(" ");
 }
 
@@ -107,12 +104,7 @@ function DetailRow({
 }
 
 type DetailStyles = ReturnType<typeof createStyles>;
-const vehicleStatuses: VehicleStatus[] = [
-  "Ready",
-  "Assigned",
-  "Maintenance",
-  "Out of service",
-];
+const vehicleStatuses: VehicleStatus[] = ["Ready", "Out of service"];
 
 export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -210,23 +202,17 @@ export default function VehicleDetailScreen() {
 
   const changeStatus = async (status: VehicleStatus) => {
     if (!vehicle || !user || !canManage || vehicle.status === status) return;
-    if (status === "Assigned" && !vehicle.assignedTo) {
-      setSaveError("Assign crew member before setting status to Assigned.");
-      return;
-    }
     setSaving(true);
     setSaveError("");
     try {
       await updateFleetVehicle(
         vehicle,
-        status === "Assigned" ? { status } : { status, clearAssignment: true },
+        { status, clearAssignment: true },
         user,
         {
           action: `${vehicle.name} status changed to ${status}`,
           detail: `Previous status: ${vehicle.status}`,
-          tone: ["Maintenance", "Out of service"].includes(status)
-            ? "urgent"
-            : "complete",
+          tone: status === "Out of service" ? "urgent" : "complete",
         },
       );
     } catch (mutationError) {
@@ -730,8 +716,7 @@ export default function VehicleDetailScreen() {
                 <View style={styles.choiceList}>
                   {vehicleStatuses.map((status) => {
                     const selected = vehicle.status === status;
-                    const disabled =
-                      saving || (status === "Assigned" && !vehicle.assignedTo);
+                    const disabled = saving;
                     return (
                       <Pressable
                         key={status}
@@ -752,7 +737,7 @@ export default function VehicleDetailScreen() {
                             selected && styles.choiceLabelSelected,
                           ]}
                         >
-                          {status}
+                          {displayStatus(status)}
                         </Text>
                       </Pressable>
                     );

@@ -19,7 +19,8 @@ import { createFleetId, saveFleetVehicleRecord, useFleetVehicles } from '@/lib/f
 import { useSession } from '@/providers/session-provider';
 import { useVehicleTypes } from '@/lib/vehicle-type-store';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
-const statuses: VehicleStatus[] = ['Ready', 'Assigned', 'Maintenance', 'Out of service'];
+const statuses: VehicleStatus[] = ['Ready', 'Out of service'];
+const statusLabel = (status: VehicleStatus) => status === 'Out of service' ? 'Out of Service' : status;
 const currentYear = new Date().getFullYear();
 
 type FormState = {
@@ -108,7 +109,6 @@ export default function VehicleFormScreen() {
     if (!form.make.trim()) nextErrors.make = 'Make is required.';
     if (!form.model.trim()) nextErrors.model = 'Model is required.';
     if (!Number.isInteger(year) || year < 1950 || year > currentYear + 1) nextErrors.year = `Enter a year from 1950 to ${currentYear + 1}.`;
-    if (form.status === 'Assigned' && !vehicle?.assignedTo) nextErrors.status = 'Assign crew from vehicle details before using Assigned status.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -127,6 +127,8 @@ export default function VehicleFormScreen() {
         vin: form.vin.trim().toUpperCase(),
         plate: form.plate.trim().toUpperCase(),
         status: form.status,
+        assignedTo: form.status === 'Assigned' ? vehicle?.assignedTo : undefined,
+        assignedFire: form.status === 'Assigned' ? vehicle?.assignedFire : undefined,
         notes: form.notes.trim(),
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),
       }, user, editing);
@@ -184,7 +186,7 @@ export default function VehicleFormScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Readiness</Text>
             <Field label="Status" error={errors.status} styles={styles}>
-              <View style={styles.choiceGrid}>{statuses.map((status) => <Choice key={status} label={status} selected={form.status === status} disabled={status === 'Assigned' && !vehicle?.assignedTo} onPress={() => update('status', status)} styles={styles} />)}</View>
+              <View style={styles.choiceGrid}>{statuses.map((status) => <Choice key={status} label={statusLabel(status)} selected={form.status === status} onPress={() => update('status', status)} styles={styles} />)}</View>
             </Field>
           </View>
 

@@ -1,5 +1,5 @@
 export type UserRole = 'owner' | 'member';
-export type VehicleStatus = 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
+export type VehicleStatus = 'Ready' | 'Assigned' | 'Out of service';
 export type IssuePriority = 'Low' | 'Medium' | 'High' | 'Critical';
 export type IssueStatus = 'Open' | 'Resolved';
 

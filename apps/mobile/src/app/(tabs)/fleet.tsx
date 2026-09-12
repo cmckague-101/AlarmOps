@@ -12,8 +12,9 @@ import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 function displayStatus(status: string) {
-  const words = status.trim().replaceAll('_', ' ').replaceAll('-', ' ').split(' ');
-  return words.map((word) => word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : '').join(' ');
+  const value = status.trim().replaceAll('_', ' ').replaceAll('-', ' ').toLowerCase();
+  if (value === 'out of service') return 'Out of Service';
+  return value.split(' ').map((word) => word ? word[0].toUpperCase() + word.slice(1) : '').join(' ');
 }
 
 function statusTone(status: string): 'dotReady' | 'dotAttention' | 'dotAssigned' {
@@ -24,8 +25,8 @@ function statusTone(status: string): 'dotReady' | 'dotAttention' | 'dotAssigned'
 }
 
 type FleetStyles = ReturnType<typeof createStyles>;
-type StatusFilter = 'All' | 'Ready' | 'Assigned' | 'Maintenance' | 'Out of service';
-const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Maintenance', 'Out of service'];
+type StatusFilter = 'All' | 'Ready' | 'Assigned' | 'Out of service';
+const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Out of service'];
 
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
@@ -184,7 +185,7 @@ export default function FleetScreen() {
               <FilterSelect
                 accessibilityLabel="Fleet status filter"
                 onChange={setFilter}
-                options={statusFilters.map((status) => ({ label: status, value: status }))}
+                options={statusFilters.map((status) => ({ label: status === 'All' ? status : displayStatus(status), value: status }))}
                 value={filter}
               />
             </View>

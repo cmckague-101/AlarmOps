@@ -167,7 +167,9 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
     id: text(payload, "id", "record_id") ?? `${name}-${makeModel}`,
     name,
     type: text(payload, "type", "vehicle_type", "category") ?? "Vehicle",
-    status: text(payload, "status", "readiness") ?? "Unknown",
+    status: text(payload, "status", "readiness") === "Maintenance"
+      ? "Out of service"
+      : text(payload, "status", "readiness") ?? "Unknown",
     location: text(payload, "location", "current_location", "station_name"),
     detail: makeModel || text(payload, "description"),
     year: text(payload, "year"),
