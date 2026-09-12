@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { supabase } from '@/lib/supabase';
 
 type InventoryRow = { id: string; name: string; quantity: number; created_at: string; updated_at: string };
+type CheckoutRow = { item_id: string; user_id: string; user_name: string; quantity: number; checked_out_at: string; updated_at: string };
 type InventorySnapshot = { items: InventoryItem[]; loading: boolean; refreshing: boolean; error: string | null };
 
 let snapshot: InventorySnapshot = { items: [], loading: true, refreshing: false, error: null };
@@ -21,8 +22,8 @@ function emit(next: InventorySnapshot) {
   listeners.forEach((listener) => listener());
 }
 
-function fromRow(row: InventoryRow): InventoryItem {
-  return { id: row.id, name: row.name, quantity: row.quantity, createdAt: row.created_at, updatedAt: row.updated_at };
+function fromRow(row: InventoryRow, checkouts: CheckoutRow[] = []): InventoryItem {
+  return { id: row.id, name: row.name, quantity: row.quantity, createdAt: row.created_at, updatedAt: row.updated_at, checkouts: checkouts.filter((checkout) => checkout.item_id === row.id).map((checkout) => ({ userId: checkout.user_id, userName: checkout.user_name, quantity: checkout.quantity, checkedOutAt: checkout.checked_out_at, updatedAt: checkout.updated_at })) };
 }
 
 function orderItems(items: InventoryItem[]) {
@@ -53,17 +54,17 @@ export function refreshInventory() {
       return;
     }
     try {
-      const { data, error } = await supabase
-        .from('company_inventory_items')
-        .select('id,name,quantity,created_at,updated_at')
-        .eq('company_id', companyId)
-        .order('name', { ascending: true });
+      const [itemResult, checkoutResult] = await Promise.all([
+        supabase.from('company_inventory_items').select('id,name,quantity,created_at,updated_at').eq('company_id', companyId).order('name', { ascending: true }),
+        supabase.from('company_inventory_checkouts').select('item_id,user_id,user_name,quantity,checked_out_at,updated_at').eq('company_id', companyId),
+      ]);
       if (version !== selectionVersion) return;
-      if (error) {
-        emit({ ...snapshot, loading: false, refreshing: false, error: `Inventory could not load. ${error.message}` });
+      if (itemResult.error || checkoutResult.error) {
+        emit({ ...snapshot, loading: false, refreshing: false, error: `Inventory could not load. ${(itemResult.error ?? checkoutResult.error)?.message}` });
         return;
       }
-      emit({ items: orderItems(((data ?? []) as InventoryRow[]).map(fromRow)), loading: false, refreshing: false, error: null });
+      const checkouts = (checkoutResult.data ?? []) as CheckoutRow[];
+      emit({ items: orderItems(((itemResult.data ?? []) as InventoryRow[]).map((row) => fromRow(row, checkouts))), loading: false, refreshing: false, error: null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';
@@ -104,7 +105,7 @@ export async function updateInventoryItem(item: InventoryItem, values: { name?: 
     .select('id,name,quantity,created_at,updated_at')
     .single<InventoryRow>();
   if (error) throw mutationError(error, 'Item could not be updated.');
-  const updated = fromRow(data);
+  const updated = { ...fromRow(data), checkouts: item.checkouts };
   emit({ ...snapshot, items: orderItems(snapshot.items.map((entry) => entry.id === updated.id ? updated : entry)) });
   return updated;
 }
@@ -114,6 +115,20 @@ export async function deleteInventoryItem(item: InventoryItem) {
   const { error } = await supabase.from('company_inventory_items').delete().eq('company_id', activeCompanyId).eq('id', item.id);
   if (error) throw new Error(error.message);
   emit({ ...snapshot, items: snapshot.items.filter((entry) => entry.id !== item.id) });
+}
+
+export async function checkoutInventoryItem(item: InventoryItem, quantity: number) {
+  if (!supabase || !activeCompanyId) throw new Error('Company inventory is unavailable.');
+  const { error } = await supabase.rpc('checkout_inventory_item', { target_item_id: item.id, checkout_quantity: quantity });
+  if (error) throw new Error(error.message);
+  await refreshInventory();
+}
+
+export async function checkinInventoryItem(item: InventoryItem, userId: string, quantity: number) {
+  if (!supabase || !activeCompanyId) throw new Error('Company inventory is unavailable.');
+  const { error } = await supabase.rpc('checkin_inventory_item', { target_item_id: item.id, borrower_user_id: userId, checkin_quantity: quantity });
+  if (error) throw new Error(error.message);
+  await refreshInventory();
 }
 
 function selectCompany(companyId: string | null) {
@@ -127,7 +142,8 @@ function selectCompany(companyId: string | null) {
   if (!companyId || !supabase) return;
   channel = supabase
     .channel(`mobile-inventory:${companyId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'company_inventory_items', filter: `company_id=eq.${companyId}` }, () => void refreshInventory());
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'company_inventory_items', filter: `company_id=eq.${companyId}` }, () => void refreshInventory())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'company_inventory_checkouts', filter: `company_id=eq.${companyId}` }, () => void refreshInventory());
   channel.subscribe();
   void refreshInventory();
 }

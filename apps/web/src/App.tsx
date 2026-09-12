@@ -134,7 +134,7 @@ function loadTrainings() {
   catch{return []}
 }
 function loadInventory() {
-  try {const stored=localStorage.getItem('fireops-inventory');return stored?JSON.parse(stored) as InventoryItem[]:[]}
+  try {const stored=localStorage.getItem('fireops-inventory');return stored?(JSON.parse(stored) as InventoryItem[]).map(item=>({...item,checkouts:item.checkouts??[]})):[]}
   catch{return []}
 }
 function loadVehicleTypes() {
@@ -160,12 +160,12 @@ type AppProps={
   onSaveMotive?:(apiKey:string)=>Promise<MotiveConnection>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;
   onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;
   onCreateTraining?:(training:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onUpdateTraining?:(trainingId:string,values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;onDeleteTraining?:(trainingId:string)=>Promise<void>;onSignupTraining?:(trainingId:string)=>Promise<TrainingSignup>;onCancelTrainingSignup?:(trainingId:string)=>Promise<void>;onMarkTrainingViewed?:(trainingId:string)=>Promise<string>;
-  onCreateInventoryItem?:(name:string,quantity:number)=>Promise<InventoryItem>;onUpdateInventoryItem?:(item:InventoryItem,quantity:number)=>Promise<InventoryItem>;onDeleteInventoryItem?:(item:InventoryItem)=>Promise<void>;
+  onCreateInventoryItem?:(name:string,quantity:number)=>Promise<InventoryItem>;onUpdateInventoryItem?:(item:InventoryItem,quantity:number)=>Promise<InventoryItem>;onDeleteInventoryItem?:(item:InventoryItem)=>Promise<void>;onCheckoutInventoryItem?:(item:InventoryItem,quantity:number)=>Promise<void>;onCheckinInventoryItem?:(item:InventoryItem,userId:string,quantity:number)=>Promise<void>;
   onCreateVehicleType?:(name:string)=>Promise<VehicleTypeOption>;onDeleteVehicleType?:(type:VehicleTypeOption)=>Promise<void>;
   onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;
 };
 
-export default function App({user=demoUser,company=demoCompany,companyId,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,vehicleTypeOptions:vehicleTypeData,vehicleTypeError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onCreateVehicleType,onDeleteVehicleType,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:AppProps) {
+export default function App({user=demoUser,company=demoCompany,companyId,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,vehicleTypeOptions:vehicleTypeData,vehicleTypeError,onDataChange,onInviteCrew,onDeleteCrew,onSaveMotive,onDisconnectMotive,onCreateThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onCheckoutInventoryItem,onCheckinInventoryItem,onCreateVehicleType,onDeleteVehicleType,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:AppProps) {
   const currentUser = user;
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
@@ -461,7 +461,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   const createInventoryItem=async(name:string,quantity:number)=>{
     if(!canManageFleet)throw new Error('Company owner access required.');
     const now=new Date().toISOString();
-    const item=onCreateInventoryItem?await onCreateInventoryItem(name,quantity):{id:crypto.randomUUID(),name,quantity,createdAt:now,updatedAt:now};
+    const item=onCreateInventoryItem?await onCreateInventoryItem(name,quantity):{id:crypto.randomUUID(),name,quantity,createdAt:now,updatedAt:now,checkouts:[]};
     setInventoryItems(items=>{const next=[item,...items.filter(entry=>entry.id!==item.id)];if(!onCreateInventoryItem)saveLocal('fireops-inventory',next);return next});showNotice(`${item.name} added`);return item;
   };
   const updateInventoryItem=async(item:InventoryItem,quantity:number)=>{
@@ -473,6 +473,14 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
     if(!canManageFleet)throw new Error('Company owner access required.');
     if(onDeleteInventoryItem)await onDeleteInventoryItem(item);
     setInventoryItems(items=>{const next=items.filter(entry=>entry.id!==item.id);if(!onDeleteInventoryItem)saveLocal('fireops-inventory',next);return next});showNotice(`${item.name} deleted`);
+  };
+  const checkoutInventoryItem=async(item:InventoryItem,quantity:number)=>{
+    if(onCheckoutInventoryItem){await onCheckoutInventoryItem(item,quantity);return}
+    setInventoryItems(items=>{const next=items.map(entry=>entry.id!==item.id?entry:{...entry,checkouts:[...entry.checkouts.filter(checkout=>checkout.userId!==currentUser.id),{userId:currentUser.id,userName:currentUser.name,quantity:(entry.checkouts.find(checkout=>checkout.userId===currentUser.id)?.quantity??0)+quantity,checkedOutAt:new Date().toISOString(),updatedAt:new Date().toISOString()}]});saveLocal('fireops-inventory',next);return next});
+  };
+  const checkinInventoryItem=async(item:InventoryItem,userId:string,quantity:number)=>{
+    if(onCheckinInventoryItem){await onCheckinInventoryItem(item,userId,quantity);return}
+    setInventoryItems(items=>{const next=items.map(entry=>entry.id!==item.id?entry:{...entry,checkouts:entry.checkouts.flatMap(checkout=>checkout.userId!==userId?[checkout]:checkout.quantity===quantity?[]:[{...checkout,quantity:checkout.quantity-quantity,updatedAt:new Date().toISOString()}])});saveLocal('fireops-inventory',next);return next});
   };
   const createVehicleType=async(name:string)=>{
     if(!canManageFleet)throw new Error('Company owner access required.');
@@ -502,7 +510,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {(page === 'invoices' || page === 'payroll') && <StoredDocumentsPage key={page} kind={page} companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
-        {page === 'inventory' && <InventoryPage canManage={canManageFleet} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem}/>}
+        {page === 'inventory' && <InventoryPage canManage={canManageFleet} currentUserId={currentUser.id} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem} onCheckout={checkoutInventoryItem} onCheckin={checkinInventoryItem}/>}
 
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined}))} onAssignVehicle={(vehicleId,fire)=>updateFireAssignment(vehicleId,fire)} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} setPage={setPage}/>}

@@ -76,7 +76,8 @@ export type Training = {
   information:string;createdAt:string;updatedAt:string;viewedAt?:string;signups:TrainingSignup[];
 };
 export type TrainingStage = 'scheduled'|'expired'|'removed';
-export type InventoryItem = {id:string;name:string;quantity:number;createdAt:string;updatedAt:string};
+export type InventoryCheckout = {userId:string;userName:string;quantity:number;checkedOutAt:string;updatedAt:string};
+export type InventoryItem = {id:string;name:string;quantity:number;createdAt:string;updatedAt:string;checkouts:InventoryCheckout[]};
 
 export type FireResourceVehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;plate?:string;
