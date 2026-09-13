@@ -55,6 +55,7 @@ async function hydrateFileUrls(snapshot:FleetSnapshot){
   await Promise.all(next.crew.map(async member=>{
     member.credential=await refreshFileUrl(member.credential);
     if(member.credentials)member.credentials=await Promise.all(member.credentials.map(async credential=>credential.file?{...credential,file:(await refreshFileUrl(credential.file))!}:credential));
+    if(member.experiences)member.experiences=await Promise.all(member.experiences.map(async experience=>experience.file?{...experience,file:(await refreshFileUrl(experience.file))!}:experience));
   }));
   return next;
 }
@@ -69,6 +70,7 @@ export function stripSignedFileUrls(snapshot:FleetSnapshot){
   next.crew.forEach(member=>{
     if(member.credential?.path)member.credential.dataUrl='';
     member.credentials?.forEach(credential=>{if(credential.file?.path)credential.file.dataUrl=''});
+    member.experiences?.forEach(experience=>{if(experience.file?.path)experience.file.dataUrl=''});
   });
   return next;
 }
@@ -98,6 +100,7 @@ export function snapshotFilePaths(snapshot:FleetSnapshot){
   snapshot.crew.forEach(member=>{
     if(member.credential?.path)paths.add(member.credential.path);
     member.credentials?.forEach(credential=>{if(credential.file?.path)paths.add(credential.file.path)});
+    member.experiences?.forEach(experience=>{if(experience.file?.path)paths.add(experience.file.path)});
   });
   return paths;
 }
