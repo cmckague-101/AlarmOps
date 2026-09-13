@@ -1,6 +1,6 @@
 import {isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
-import {Pressable,StyleSheet,Text,View} from 'react-native';
+import {Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
@@ -9,18 +9,64 @@ import {useNotificationInbox} from '@/lib/notification-inbox-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
-const sections=['Notifications','Documents','Receipts','Invoices','Payroll','Availability','Training','Crew','Inventory','Inspections','Settings'];
+const sections=[
+  {label:'Notifications',path:'/notifications',ios:'bell.fill',android:'notifications',color:'#C94321'},
+  {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
+  {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#A95616'},
+  {label:'Invoices',path:'/invoices',ios:'doc.plaintext.fill',android:'request_quote',color:'#981D5C'},
+  {label:'Payroll',path:'/payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#26765A'},
+  {label:'Availability',path:'/availability',ios:'person.crop.circle.badge.checkmark',android:'event_available',color:'#34745C'},
+  {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
+  {label:'Crew',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
+  {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
+  {label:'Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
+  {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
+] as const;
+
 export default function More(){
-  const router=useRouter();const theme=useFireOpsTheme();const {access,signOut}=useSession();const member=access.value?.kind==='member'?access.value:null;
+  const router=useRouter();
+  const theme=useFireOpsTheme();
+  const {width,fontScale}=useWindowDimensions();
+  const {access,signOut}=useSession();
+  const member=access.value?.kind==='member'?access.value:null;
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
   const {unreadCount:unreadNotifications}=useNotificationInbox(member?.company.id??null,member?.user.id??null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
-  const visible=sections.filter(item=>member?.user.role==='owner'||!['Crew','Inspections'].includes(item));
+  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Notifications:unreadNotifications,Documents:unreadDocuments,Training:unreadTrainings};
+  const visible=sections.filter(section=>!('ownerOnly' in section)||member?.user.role==='owner');
+  const singleColumn=width<360||fontScale>1.3;
+
   return <SectionScreen title="More" description="Notifications, documents, training, and account settings" showTitle={false}>
-    <View style={[styles.list,{backgroundColor:theme.paper,borderColor:theme.divider}]}>{visible.map((item,index)=>['Notifications','Documents','Receipts','Invoices','Payroll','Availability','Training','Crew','Inventory','Inspections','Settings'].includes(item)?<Pressable accessibilityRole="button" key={item} onPress={()=>router.push((item==='Notifications'?'/notifications':item==='Documents'?'/documents':item==='Receipts'?'/receipts':item==='Invoices'?'/invoices':item==='Payroll'?'/payroll':item==='Availability'?'/availability':item==='Training'?'/training':item==='Crew'?'/crew':item==='Inventory'?'/inventory':item==='Inspections'?'/inspections':'/settings') as never)} style={({pressed})=>[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider},pressed&&styles.pressed]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text>{['Notifications','Documents','Training'].includes(item)&&(item==='Notifications'?unreadNotifications:item==='Documents'?unreadDocuments:unreadTrainings)>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{item==='Notifications'?unreadNotifications:item==='Documents'?unreadDocuments:unreadTrainings} new</Text>}<AppSymbol name={{ios:'chevron.right',android:'chevron_right'} as never} color={theme.secondary} size={17}/></Pressable>:<View key={item} style={[styles.row,index>0&&{borderTopWidth:1,borderTopColor:theme.divider}]}><Text style={[styles.rowLabel,{color:theme.ink}]}>{item}</Text><Text style={[styles.pending,{color:theme.secondary}]}>Coming next</Text></View>)}</View>
+    <View style={styles.grid}>{visible.map(section=>{
+      const unread=unreadBySection[section.label]??0;
+      return <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${section.label}${unread>0?`, ${unread} new`:''}`}
+        key={section.path}
+        onPress={()=>router.push(section.path as never)}
+        style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
+      >
+        <View style={[styles.icon,{backgroundColor:section.color}]}>
+          <AppSymbol name={{ios:section.ios,android:section.android} as never} size={27} color="#FFFFFF"/>
+        </View>
+        <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
+        {unread>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unread} new</Text>}
+      </Pressable>;
+    })}</View>
     <Pressable accessibilityRole="button" onPress={()=>void signOut()} style={[styles.signOut,{borderColor:theme.divider}]}><Text style={[styles.signOutLabel,{color:theme.danger}]}>Sign out</Text></Pressable>
   </SectionScreen>;
 }
-const styles=StyleSheet.create({list:{borderWidth:1,borderRadius:12,overflow:'hidden'},row:{minHeight:54,paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:10},rowLabel:{fontSize:16,fontWeight:'600',flex:1},pending:{fontSize:13},badge:{overflow:'hidden',borderRadius:999,paddingHorizontal:8,paddingVertical:4,fontSize:11,fontWeight:'800'},signOut:{minHeight:50,borderWidth:1,borderRadius:9,alignItems:'center',justifyContent:'center',marginTop:24},signOutLabel:{fontSize:16,fontWeight:'700'},pressed:{opacity:0.65}});
+
+const styles=StyleSheet.create({
+  grid:{flexDirection:'row',flexWrap:'wrap',gap:12},
+  card:{width:'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:10,padding:18,minHeight:150,borderRadius:16,borderWidth:1},
+  fullCard:{width:'100%'},
+  icon:{width:52,height:52,alignItems:'center',justifyContent:'center',borderRadius:14},
+  label:{fontSize:16,fontWeight:'800',textAlign:'center'},
+  badge:{overflow:'hidden',borderRadius:999,paddingHorizontal:8,paddingVertical:4,fontSize:11,fontWeight:'800'},
+  signOut:{minHeight:50,borderWidth:1,borderRadius:9,alignItems:'center',justifyContent:'center',marginTop:24},
+  signOutLabel:{fontSize:16,fontWeight:'700'},
+  pressed:{opacity:0.65},
+});
