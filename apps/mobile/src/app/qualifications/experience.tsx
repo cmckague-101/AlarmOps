@@ -1,3 +1,32 @@
-import {QualificationPlaceholder} from '@/components/qualification-placeholder';
+import type {CrewExperience} from '@fireops/domain';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import {Redirect,Stack,useRouter} from 'expo-router';
+import {useMemo,useState} from 'react';
+import {Alert,KeyboardAvoidingView,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {AppSymbol} from '@/components/app-symbol';
+import {uploadFleetFile,type LocalFleetFile} from '@/lib/fleet-files';
+import {addMyCrewExperience,createFleetId} from '@/lib/fleet-store';
+import {useSession} from '@/providers/session-provider';
+import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
-export default function ExperienceScreen(){return <QualificationPlaceholder title="Add experience"/>}
+export default function ExperienceScreen(){
+  const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const account=access.value?.kind==='member'?access.value:null;
+  const [incident,setIncident]=useState('');const [position,setPosition]=useState('');const [days,setDays]=useState('');const [file,setFile]=useState<LocalFleetFile|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  if(!session||access.status==='error')return <Redirect href="/"/>;
+  const chooseFile=async()=>{const result=await DocumentPicker.getDocumentAsync({type:['application/pdf','image/*'],copyToCacheDirectory:true,multiple:false});if(!result.canceled){const asset=result.assets[0];setFile({uri:asset.uri,name:asset.name,type:asset.mimeType??null})}};
+  const choosePhoto=async()=>{const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted){Alert.alert('Photo access required','Allow photo access to attach an experience image.');return}const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],quality:.85});if(!result.canceled){const asset=result.assets[0];setFile({uri:asset.uri,name:asset.fileName??`experience-${Date.now()}.jpg`,type:asset.mimeType??'image/jpeg'})}};
+  const valid=incident.trim()&&position.trim()&&days.trim();
+  const submit=async()=>{if(!account||!valid)return;setBusy(true);setError('');try{const uploaded=file?await uploadFleetFile(account.company.id,account.user.id,file):null;const experience:CrewExperience={id:createFleetId(),incident:incident.trim(),position:position.trim(),days:days.trim(),...(uploaded?{file:{name:uploaded.name,type:uploaded.type??'',dataUrl:'',...(uploaded.path?{path:uploaded.path}:{})}}:{})};await addMyCrewExperience(account.company.id,experience);router.replace('/qualifications' as never)}catch(saveError){setError(saveError instanceof Error?saveError.message:'Incident experience could not be saved.')}finally{setBusy(false)}};
+  return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Incident experience'}}/><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <Text accessibilityRole="header" style={styles.title}>Incident experience</Text>
+    <Field label="Incident" styles={styles} required><TextInput value={incident} onChangeText={setIncident} maxLength={160} placeholder="Incident name" placeholderTextColor={theme.secondary} style={styles.input}/></Field>
+    <Field label="Position" styles={styles} required><TextInput value={position} onChangeText={setPosition} maxLength={120} placeholder="Position" placeholderTextColor={theme.secondary} style={styles.input}/></Field>
+    <Field label="Days" styles={styles} required><TextInput value={days} onChangeText={setDays} maxLength={40} placeholder="Days" placeholderTextColor={theme.secondary} style={styles.input}/></Field>
+    <Field label="Photo or file" styles={styles} hint="Optional"><View style={styles.fileActions}><Pressable onPress={()=>void choosePhoto()} style={styles.fileButton}><AppSymbol name="photo" color={theme.commandForeground} size={18}/><Text style={styles.fileText}>Choose photo</Text></Pressable><Pressable onPress={()=>void chooseFile()} style={styles.fileButton}><AppSymbol name="doc" color={theme.commandForeground} size={18}/><Text style={styles.fileText}>Choose file</Text></Pressable></View>{file?<View style={styles.file}><Text numberOfLines={1} style={styles.fileName}>{file.name}</Text><Pressable accessibilityLabel="Remove attachment" onPress={()=>setFile(null)}><AppSymbol name="xmark.circle.fill" color={theme.danger} size={21}/></Pressable></View>:null}</Field>
+    {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}<Pressable disabled={busy||!valid} onPress={()=>void submit()} style={[styles.save,(busy||!valid)&&styles.disabled]}><Text style={styles.saveText}>{busy?'Saving…':'Save experience'}</Text></Pressable>
+  </ScrollView></KeyboardAvoidingView></SafeAreaView>;
+}
+function Field({label,required,hint,children,styles}:{label:string;required?:boolean;hint?:string;children:React.ReactNode;styles:ReturnType<typeof createStyles>}){return <View style={styles.field}><View style={styles.labelLine}><Text style={styles.label}>{label}{required?<Text style={styles.required}> *</Text>:null}</Text>{hint?<Text style={styles.hint}>{hint}</Text>:null}</View>{children}</View>}
+function createStyles(theme:FireOpsTheme){return StyleSheet.create({flex:{flex:1},safe:{flex:1,backgroundColor:theme.canvas},content:{padding:20,paddingBottom:54,gap:19},title:{color:theme.ink,fontSize:28,fontWeight:'800'},field:{gap:8},labelLine:{flexDirection:'row',justifyContent:'space-between'},label:{color:theme.ink,fontSize:13,fontWeight:'800'},required:{color:theme.ember},hint:{color:theme.secondary,fontSize:12},input:{minHeight:49,borderWidth:1,borderColor:theme.divider,borderRadius:10,backgroundColor:theme.paper,color:theme.ink,paddingHorizontal:13,fontSize:16},fileActions:{flexDirection:'row',gap:9},fileButton:{flex:1,minHeight:48,borderWidth:1,borderColor:theme.divider,borderRadius:10,backgroundColor:theme.paper,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7},fileText:{color:theme.commandForeground,fontSize:13,fontWeight:'700'},file:{minHeight:45,backgroundColor:theme.surfaceAlt,borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:8},fileName:{flex:1,color:theme.ink,fontSize:13,fontWeight:'700'},error:{color:theme.danger,backgroundColor:theme.dangerSurface,padding:13,borderRadius:10,lineHeight:19},save:{minHeight:51,borderRadius:11,backgroundColor:theme.ember,alignItems:'center',justifyContent:'center'},saveText:{color:'#fff',fontSize:16,fontWeight:'800'},disabled:{opacity:.48}})}

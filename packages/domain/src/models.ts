@@ -17,9 +17,17 @@ export type CrewCredential = {
   provider?:string;
   file?:VehicleFile;
 };
+export type CrewExperience = {
+  id:string;
+  incident:string;
+  position:string;
+  days:string;
+  file?:VehicleFile;
+};
 export type CrewMember = {
   id:string;name:string;email:string;phone:string;role:UserRole;status:'Active'|'Invited';
   credentials?:CrewCredential[];
+  experiences?:CrewExperience[];
   /** Legacy single-credential fields retained while existing records migrate. */
   credential?:VehicleFile;credentialName?:string;
   joinedAt?:string;
