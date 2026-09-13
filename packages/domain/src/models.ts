@@ -27,11 +27,32 @@ export type NationalFireActivity = {
   reportDate:string;fetchedAt:string;sourceUrl:string;areas:NationalFireActivityRow[];total:NationalFireActivityRow;
 };
 
+export const DEFAULT_VEHICLE_INSPECTION_ITEMS = [
+  'Brakes, steering, horn, lights, mirrors',
+  'Tires, wheels, lug nuts, suspension',
+  'Leaks, belts, hoses, oil, coolant',
+  'Pump operation, primer, gauges, plumbing',
+  'Tank, foam system, hose reels, drafting equipment',
+  'Hose, fittings, nozzles, tools, chainsaws',
+  'Radios, chargers, mobile data, GPS',
+  'Cab, compartments, undercarriage, biohazards',
+  'Damage photos, missing equipment, fuel and DEF',
+] as const;
+export type VehicleInspectionTemplateItem = {id:string;label:string;position:number};
+export type InspectionResult = 'Pass' | 'Fail';
+export type VehicleInspectionItem = {
+  id:string;label:string;result:InspectionResult;defectNotes?:string;photo?:VehicleFile;
+};
+export type VehicleInspection = {
+  id:string;assignmentIncident:string;inspectorId:string;inspectorName:string;createdAt:string;items:VehicleInspectionItem[];
+};
+
 export type Vehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;
   vin:string;plate:string;status:VehicleStatus;photo?:VehicleFile;contract?:VehicleFile;
   viprChecklist?:VehicleFile;registration?:VehicleFile;insurance?:VehicleFile;
   dotInspection?:VehicleFile;documents?:NamedDocument[];notes?:string;createdAt:string;assignedTo?:string;
+  inspections?:VehicleInspection[];
   assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;
 };
 

@@ -468,21 +468,30 @@ export default function VehicleDetailScreen() {
                     : ""}
                 </Text>
               ) : null}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() =>
-                  router.push({
-                    pathname: "/issue/new" as never,
-                    params: { vehicleId: vehicle.id },
-                  })
-                }
-                style={({ pressed }) => [
-                  styles.openIssueButton,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={styles.openIssueLabel}>Open issue</Text>
-              </Pressable>
+              <View style={styles.topActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: "/inspection/new" as never, params: { vehicleId: vehicle.id } })}
+                  style={({ pressed }) => [styles.inspectButton, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.inspectLabel}>Inspect</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/issue/new" as never,
+                      params: { vehicleId: vehicle.id },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.openIssueButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.openIssueLabel}>Open issue</Text>
+                </Pressable>
+              </View>
             </View>
 
             {vehicle.motive ? (
@@ -1243,17 +1252,27 @@ function createStyles(theme: FireOpsTheme) {
       lineHeight: 20,
       fontWeight: "700",
     },
+    topActions: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 8 },
+    inspectButton: {
+      minHeight: 44,
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.green,
+      backgroundColor: theme.greenSurface,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+    },
+    inspectLabel: { color: theme.green, fontSize: 14, fontWeight: "700" },
     openIssueButton: {
       alignSelf: "flex-start",
       minHeight: 44,
       justifyContent: "center",
-      backgroundColor: theme.command,
+      backgroundColor: theme.danger,
       borderRadius: 10,
       paddingHorizontal: 16,
-      marginTop: 8,
     },
     openIssueLabel: {
-      color: theme.commandText,
+      color: "#FFFFFF",
       fontSize: 14,
       fontWeight: "700",
     },

@@ -6,6 +6,7 @@ import type {
   FleetIssue,
   MotiveVehicleSnapshot,
   NifcIncident,
+  VehicleInspection,
   VehicleStatus,
 } from "@fireops/domain";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -40,6 +41,7 @@ export type FleetVehicle = {
   assignedFire?: Pick<NifcIncident, "id" | "name" | "state">;
   motive?: MotiveVehicleSnapshot;
   notes: string | null;
+  inspections: VehicleInspection[];
   photo: FleetVehicleFile | null;
   documents: FleetVehicleDocument[];
   files: { label: string; file: FleetVehicleFile }[];
@@ -187,6 +189,7 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
         ? (payload.motive as MotiveVehicleSnapshot)
         : undefined,
     notes: text(payload, "notes"),
+    inspections: Array.isArray(payload.inspections) ? payload.inspections as VehicleInspection[] : [],
     photo,
     documents,
     files: [
@@ -538,6 +541,35 @@ export async function updateFleetVehicle(
     targetType: "vehicle",
     targetId: vehicle.id,
     tone: activity.tone,
+  };
+  await saveFleetRecords([
+    { collection: "vehicles", record },
+    { collection: "activities", record: activityRecord },
+  ]);
+}
+
+export async function saveFleetInspection(
+  vehicle: FleetVehicle,
+  inspection: VehicleInspection,
+  user: FireOpsUser,
+) {
+  const failed = inspection.items.filter((item) => item.result === "Fail").length;
+  const record = {
+    ...vehicle.source,
+    id: vehicle.id,
+    unit: vehicle.name,
+    inspections: [inspection, ...vehicle.inspections],
+  };
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: `${vehicle.name} inspection completed`,
+    detail: `${failed} failed checks · ${inspection.assignmentIncident || "No assignment / incident"}`,
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: "vehicle",
+    targetId: vehicle.id,
+    tone: failed ? "urgent" : "complete",
   };
   await saveFleetRecords([
     { collection: "vehicles", record },

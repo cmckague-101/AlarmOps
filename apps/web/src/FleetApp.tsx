@@ -48,7 +48,8 @@ async function hydrateFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
   await Promise.all(next.vehicles.flatMap(vehicle=>[
     ...vehicleFileKeys.map(async key=>{vehicle[key]=await refreshFileUrl(vehicle[key])}),
-    ...(vehicle.documents??[]).map(async document=>{document.file=(await refreshFileUrl(document.file))!})
+    ...(vehicle.documents??[]).map(async document=>{document.file=(await refreshFileUrl(document.file))!}),
+    ...(vehicle.inspections??[]).flatMap(inspection=>inspection.items.map(async item=>{if(item.photo)item.photo=(await refreshFileUrl(item.photo))!}))
   ]));
   await Promise.all(next.crew.map(async member=>{
     member.credential=await refreshFileUrl(member.credential);
@@ -62,6 +63,7 @@ export function stripSignedFileUrls(snapshot:FleetSnapshot){
   next.vehicles.forEach(vehicle=>{
     vehicleFileKeys.forEach(key=>{if(vehicle[key]?.path)vehicle[key]!.dataUrl=''});
     vehicle.documents?.forEach(document=>{if(document.file.path)document.file.dataUrl=''});
+    vehicle.inspections?.forEach(inspection=>inspection.items.forEach(item=>{if(item.photo?.path)item.photo.dataUrl=''}));
   });
   next.crew.forEach(member=>{
     if(member.credential?.path)member.credential.dataUrl='';
@@ -90,6 +92,7 @@ export function snapshotFilePaths(snapshot:FleetSnapshot){
   snapshot.vehicles.forEach(vehicle=>{
     vehicleFileKeys.forEach(key=>{const path=vehicle[key]?.path;if(path)paths.add(path)});
     vehicle.documents?.forEach(document=>{if(document.file.path)paths.add(document.file.path)});
+    vehicle.inspections?.forEach(inspection=>inspection.items.forEach(item=>{if(item.photo?.path)paths.add(item.photo.path)}));
   });
   snapshot.crew.forEach(member=>{
     if(member.credential?.path)paths.add(member.credential.path);
