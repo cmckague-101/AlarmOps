@@ -64,7 +64,7 @@ export default function SettingsScreen(){
       {notificationsLoading?<Text style={styles.help}>Loading notification preferences…</Text>:<View style={styles.preferenceList}>
         <PreferenceToggle label="Push notifications" description="Receive enabled alerts on signed-in devices." value={preferences.pushEnabled} disabled={savingPreferences} onChange={value=>void saveNotificationPreferences({pushEnabled:value})} styles={styles} theme={theme}/>
         <View style={styles.preferenceDivider}/>
-        <PreferenceToggle label="Communication replies" value={preferences.communicationReplies} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({communicationReplies:value})} styles={styles} theme={theme}/>
+        <PreferenceToggle label="Crew Chat activity" value={preferences.communicationReplies} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({communicationReplies:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="New documents" value={preferences.documentAdded} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({documentAdded:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="New training" value={preferences.trainingCreated} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({trainingCreated:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="Vehicle assignments" value={preferences.vehicleAssigned} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({vehicleAssigned:value})} styles={styles} theme={theme}/>

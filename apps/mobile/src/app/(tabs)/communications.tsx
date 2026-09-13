@@ -52,7 +52,7 @@ export default function CommunicationsScreen() {
 
         <View style={styles.sectionHeading}>
           <View>
-            <Text style={styles.sectionTitle}>Threads</Text>
+            <Text style={styles.sectionTitle}>Crew Chat</Text>
             <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
           </View>
           {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}

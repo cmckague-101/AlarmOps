@@ -18,5 +18,5 @@ const styles=StyleSheet.create({
   brand:{flexDirection:'row',alignItems:'center',gap:8},
   logo:{width:28,height:28},
   name:{fontSize:18,fontWeight:'800',letterSpacing:-.35},
-  sectionTitle:{fontSize:17,fontWeight:'700',letterSpacing:-.25},
+  sectionTitle:{fontSize:17,fontWeight:'700',letterSpacing:-.25,marginRight:8},
 });
