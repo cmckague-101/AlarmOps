@@ -17,7 +17,7 @@ const sections=[
   {label:'Payroll',path:'/payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#26765A'},
   {label:'Availability',path:'/availability',ios:'person.crop.circle.badge.checkmark',android:'event_available',color:'#34745C'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
-  {label:'Crew',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
+  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},

@@ -39,7 +39,7 @@ const navigationMeta = {
   operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
-  crew:{label:'Crew',description:'Manage access, assignments, and credentials',Icon:Users},
+  crew:{label:'Roster',description:'Manage access, assignments, and credentials',Icon:Users},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   invoices:{label:'Invoices',description:'Upload and review invoices',Icon:FileText},
   payroll:{label:'Payroll',description:'Upload and review payroll documents',Icon:CircleDollarSign},
@@ -717,8 +717,7 @@ function SettingsPage({company,owner,invitedCrewCount,canManage,motiveConnection
 }
 
 function CrewPage({crew,vehicles,inviteLimit,invitesAvailable,onInvite,onSelect}:{crew:CrewMember[];vehicles:Vehicle[];inviteLimit:number;invitesAvailable:number;onInvite:()=>void;onSelect:(member:CrewMember)=>void}) {
-  return <div className="page crew-page"><div className="page-heading"><div><h1>Crew</h1>{invitesAvailable===0&&<p className="crew-limit-note">{inviteLimit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</p>}</div>{invitesAvailable>0&&<div className="fleet-heading-actions"><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button><button className="primary mobile-add-vehicle" onClick={onInvite}><UserPlus/> Invite user</button></div>}</div>
-    <section className="stats-row crew-stats"><Stat label="Total crew" value={crew.length}/><Stat label="Active" value={crew.filter(member=>member.status==='Active').length}/><Stat label="Invitations" value={crew.filter(member=>member.status==='Invited').length}/></section>
+  return <div className="page crew-page"><div className="page-heading"><div><h1>Roster</h1>{invitesAvailable===0&&<p className="crew-limit-note">{inviteLimit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</p>}</div>{invitesAvailable>0&&<div className="fleet-heading-actions"><button className="primary desktop-add" onClick={onInvite}><UserPlus/> Invite user</button><button className="primary mobile-add-vehicle" onClick={onInvite}><UserPlus/> Invite user</button></div>}</div>
     <section className="crew-panel"><div className="list-label"><b>Company crew</b><span>{crew.length} people</span></div><div className="crew-list">{crew.map(member=>{const assigned=vehicles.find(vehicle=>vehicle.assignedTo===member.id);return <button className="crew-row" key={member.id} onClick={()=>onSelect(member)}><span className="crew-copy"><span className="crew-name"><b>{member.name}</b>{member.role==='owner'&&<em>Owner</em>}<i className={member.status.toLowerCase()}>{member.status}</i></span><small><Mail/> {member.email}</small><small><Phone/> {member.phone||'No phone added'}</small>{assigned&&<small className="crew-assignment"><Truck/> {assigned.unit}</small>}{assigned?.assignedFire&&<small className="crew-assignment"><Flame/> {assigned.assignedFire.name}</small>}</span><span className={crewCredentials(member).length?'credential-state complete':'credential-state'}><ShieldCheck/>{crewCredentials(member).length?`${crewCredentials(member).length} ${crewCredentials(member).length===1?'credential':'credentials'}`:'No credentials'}</span><ChevronRight className="card-arrow"/></button>})}</div></section>
   </div>;
 }
