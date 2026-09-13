@@ -28,7 +28,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
-  CircleDollarSign, Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  BriefcaseBusiness, CircleDollarSign, Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'more' | 'settings';
@@ -581,7 +581,12 @@ function InspectionsPage({vehicles,template}:{vehicles:Vehicle[];template:{items
 
 function MorePage({user,unreadDocumentCount,unreadTrainingCount,setPage}:{user:FireOpsUser;unreadDocumentCount:number;unreadTrainingCount:number;setPage:(page:Page)=>void}) {
   const overflow=navigationLayout(user.role).mobileOverflow;
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.map(target=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}</div></section></div>;
+  const comingSoon=[
+    {label:'Workforce',description:'Workforce management tools',Icon:BriefcaseBusiness},
+    {label:'Marketplace',description:'Tools and services for your operation',Icon:Store},
+  ];
+  const settings=navigationMeta.settings;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{overflow.filter(target=>target!=='settings').map(target=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} new</i>}</b><small>{description}</small></span><ChevronRight/></button>})}{comingSoon.map(({label,description,Icon})=><button key={label} onClick={()=>window.alert('Coming Soon')}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight/></button>)}<button onClick={()=>setPage('settings')}><span className="more-icon"><settings.Icon/></span><span><b>{settings.label}</b><small>{settings.description}</small></span><ChevronRight/></button></div></section></div>;
 }
 
 function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveMock,onAdd,onSelect,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveMock:boolean;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void}) {

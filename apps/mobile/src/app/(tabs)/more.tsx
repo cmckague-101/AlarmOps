@@ -1,6 +1,6 @@
 import {isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
-import {Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
+import {Alert,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
@@ -20,6 +20,8 @@ const sections=[
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
+  {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
+  {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
 ] as const;
 
@@ -44,8 +46,8 @@ export default function More(){
       return <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${section.label}${unread>0?`, ${unread} new`:''}`}
-        key={section.path}
-        onPress={()=>router.push(section.path as never)}
+        key={section.label}
+        onPress={()=>{'comingSoon' in section?Alert.alert('Coming Soon'):router.push(section.path as never)}}
         style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
       >
         <View style={[styles.icon,{backgroundColor:section.color}]}>
