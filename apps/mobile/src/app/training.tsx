@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { isTrainingUnread, trainingStage, type Training } from '@fireops/domain';
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
@@ -35,6 +35,10 @@ export default function TrainingScreen() {
           <View style={styles.headingCopy}>
             <Text accessibilityRole="header" style={styles.title}>Training</Text>
             <Text style={styles.subtitle}>Upcoming courses and crew registration.</Text>
+            <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.wildlandfirelearningportal.net/login/index.php')} style={({ pressed }) => [styles.portalLink, pressed && styles.pressed]}>
+              <Text style={styles.portalLinkText}>Wildland Training Portal</Text>
+              <AppSymbol name={{ ios: 'arrow.up.right.square', android: 'open_in_new' } as never} color={theme.ember} size={15} />
+            </Pressable>
           </View>
           {member?.user.role === 'owner' ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Create training" onPress={() => router.push('/training/form' as never)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
@@ -103,6 +107,8 @@ function createStyles(theme: FireOpsTheme) {
     headingCopy: { flex: 1, gap: 6 },
     title: { color: theme.ink, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.7 },
     subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21 },
+    portalLink: { alignSelf: 'flex-start', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    portalLinkText: { color: theme.ember, fontSize: 14, lineHeight: 20, fontWeight: '700' },
     addButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 11, backgroundColor: theme.ember, paddingHorizontal: 14 },
     addLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
     section: { gap: 12 },
