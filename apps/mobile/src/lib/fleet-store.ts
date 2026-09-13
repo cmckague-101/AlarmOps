@@ -354,6 +354,13 @@ export async function addMyCrewCredential(
   await refreshFleet({ showIndicator: false });
 }
 
+export async function updateMyCrewCredential(companyId:string,credential:CrewCredential) {
+  if(!supabase)throw new Error('Qualifications are unavailable.');
+  const {error}=await supabase.rpc('update_my_crew_credential',{target_company_id:companyId,credential});
+  if(error)throw new Error(error.message);
+  await refreshFleet({showIndicator:false});
+}
+
 export async function addMyCrewExperience(
   companyId: string,
   experience: CrewExperience,
@@ -365,6 +372,13 @@ export async function addMyCrewExperience(
   });
   if (error) throw new Error(error.message);
   await refreshFleet({ showIndicator: false });
+}
+
+export async function updateMyCrewExperience(companyId:string,experience:CrewExperience) {
+  if(!supabase)throw new Error('Qualifications are unavailable.');
+  const {error}=await supabase.rpc('update_my_crew_experience',{target_company_id:companyId,experience});
+  if(error)throw new Error(error.message);
+  await refreshFleet({showIndicator:false});
 }
 
 export async function saveCrewMember(

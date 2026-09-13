@@ -809,11 +809,29 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     return {...member,credentials:crewCredentials(member).map(item=>item.id===credential.id?credential:item)};
   },[companyId]);
 
+  const updateCredential=useCallback(async(credential:CrewCredential)=>{
+    const client=supabase;if(!client)throw new Error('Qualifications are unavailable.');
+    const persistedCredential=credential.file?{...credential,file:{...credential.file,dataUrl:''}}:credential;
+    const {data,error:updateError}=await client.rpc('update_my_crew_credential',{target_company_id:companyId,credential:persistedCredential});
+    if(updateError)throw new Error(updateError.message);
+    const member=data as CrewMember;
+    return {...member,credentials:crewCredentials(member).map(item=>item.id===credential.id?credential:item)};
+  },[companyId]);
+
   const createExperience=useCallback(async(experience:CrewExperience)=>{
     const client=supabase;if(!client)throw new Error('Qualifications are unavailable.');
     const persistedExperience=experience.file?{...experience,file:{...experience.file,dataUrl:''}}:experience;
     const {data,error:createError}=await client.rpc('add_my_crew_experience',{target_company_id:companyId,experience:persistedExperience});
     if(createError)throw new Error(createError.message);
+    const member=data as CrewMember;
+    return {...member,experiences:(member.experiences??[]).map(item=>item.id===experience.id?experience:item)};
+  },[companyId]);
+
+  const updateExperience=useCallback(async(experience:CrewExperience)=>{
+    const client=supabase;if(!client)throw new Error('Qualifications are unavailable.');
+    const persistedExperience=experience.file?{...experience,file:{...experience.file,dataUrl:''}}:experience;
+    const {data,error:updateError}=await client.rpc('update_my_crew_experience',{target_company_id:companyId,experience:persistedExperience});
+    if(updateError)throw new Error(updateError.message);
     const member=data as CrewMember;
     return {...member,experiences:(member.experiences??[]).map(item=>item.id===experience.id?experience:item)};
   },[companyId]);
@@ -837,7 +855,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onCreateExperience={createExperience} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onUpdateCredential={updateCredential} onCreateExperience={createExperience} onUpdateExperience={updateExperience} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}
