@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import {crewCredentials} from '@fireops/domain';
 import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, ReceiptText, ShieldCheck, Smartphone, Truck } from 'lucide-react';
-import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile, type VehicleTypeOption } from './App';
+import App, { type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewCredential, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveConnection, type UserRole, type VehicleFile, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
 import { supabase, supabaseConfigured } from './supabase';
@@ -53,7 +54,7 @@ async function hydrateFileUrls(snapshot:FleetSnapshot){
   ]));
   await Promise.all(next.crew.map(async member=>{
     member.credential=await refreshFileUrl(member.credential);
-    if(member.credentials)member.credentials=await Promise.all(member.credentials.map(async credential=>({...credential,file:(await refreshFileUrl(credential.file))!})));
+    if(member.credentials)member.credentials=await Promise.all(member.credentials.map(async credential=>credential.file?{...credential,file:(await refreshFileUrl(credential.file))!}:credential));
   }));
   return next;
 }
@@ -67,7 +68,7 @@ export function stripSignedFileUrls(snapshot:FleetSnapshot){
   });
   next.crew.forEach(member=>{
     if(member.credential?.path)member.credential.dataUrl='';
-    member.credentials?.forEach(credential=>{if(credential.file.path)credential.file.dataUrl=''});
+    member.credentials?.forEach(credential=>{if(credential.file?.path)credential.file.dataUrl=''});
   });
   return next;
 }
@@ -96,7 +97,7 @@ export function snapshotFilePaths(snapshot:FleetSnapshot){
   });
   snapshot.crew.forEach(member=>{
     if(member.credential?.path)paths.add(member.credential.path);
-    member.credentials?.forEach(credential=>{if(credential.file.path)paths.add(credential.file.path)});
+    member.credentials?.forEach(credential=>{if(credential.file?.path)paths.add(credential.file.path)});
   });
   return paths;
 }
@@ -796,6 +797,15 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     setVehicleTypes(items=>items.filter(item=>item.id!==type.id));
   },[companyId]);
 
+  const createCredential=useCallback(async(credential:CrewCredential)=>{
+    const client=supabase;if(!client)throw new Error('Qualifications are unavailable.');
+    const persistedCredential=credential.file?{...credential,file:{...credential.file,dataUrl:''}}:credential;
+    const {data,error:createError}=await client.rpc('add_my_crew_credential',{target_company_id:companyId,credential:persistedCredential});
+    if(createError)throw new Error(createError.message);
+    const member=data as CrewMember;
+    return {...member,credentials:crewCredentials(member).map(item=>item.id===credential.id?credential:item)};
+  },[companyId]);
+
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
@@ -815,7 +825,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onSaveMotive={saveMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

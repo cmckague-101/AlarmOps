@@ -24,6 +24,15 @@ export function crewCredentials(member:CrewMember):CrewCredential[]{
   return [{id:`legacy-${member.credential.path??member.credential.name}`,name:member.credentialName?.trim()||member.credential.name,file:member.credential}];
 }
 
+export function credentialExpiresWithinMonth(credential:CrewCredential,now=new Date()):boolean{
+  if(!credential.expirationDate)return false;
+  const expiration=new Date(`${credential.expirationDate}T23:59:59`);
+  if(Number.isNaN(expiration.getTime())||expiration<now)return false;
+  const monthFromNow=new Date(now);
+  monthFromNow.setMonth(monthFromNow.getMonth()+1);
+  return expiration<=monthFromNow;
+}
+
 export function isThreadUnread(thread:CommunicationThread,user:FireOpsUser):boolean {
   const seenAt=thread.seenAt?Date.parse(thread.seenAt):0;
   const newThread=thread.createdById!==user.id&&Date.parse(thread.createdAt)>seenAt&&(user.role==='owner'||thread.createdByRole==='owner');

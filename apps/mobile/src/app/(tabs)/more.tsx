@@ -12,6 +12,7 @@ import {useFireOpsTheme} from '@/theme';
 const sections=[
   {label:'Notifications',path:'/notifications',ios:'bell.fill',android:'notifications',color:'#C94321'},
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
+  {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
   {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#A95616'},
   {label:'Invoices',path:'/invoices',ios:'doc.plaintext.fill',android:'request_quote',color:'#981D5C'},
   {label:'Payroll',path:'/payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#26765A'},
@@ -47,7 +48,7 @@ export default function More(){
         accessibilityRole="button"
         accessibilityLabel={`${section.label}${unread>0?`, ${unread} new`:''}`}
         key={section.label}
-        onPress={()=>{'comingSoon' in section?Alert.alert('Coming Soon'):router.push(section.path as never)}}
+        onPress={()=>{if('comingSoon' in section)Alert.alert('Coming Soon');else router.push(section.path as never)}}
         style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
       >
         <View style={[styles.icon,{backgroundColor:section.color}]}>

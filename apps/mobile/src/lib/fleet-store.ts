@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type {
   Activity,
+  CrewCredential,
   CrewMember,
   FireOpsUser,
   FleetIssue,
@@ -336,6 +337,19 @@ export async function inviteCrewMember(
     body: { companyId, ...details },
   });
   if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
+  await refreshFleet({ showIndicator: false });
+}
+
+export async function addMyCrewCredential(
+  companyId: string,
+  credential: CrewCredential,
+) {
+  if (!supabase) throw new Error("Qualifications are unavailable.");
+  const { error } = await supabase.rpc("add_my_crew_credential", {
+    target_company_id: companyId,
+    credential,
+  });
+  if (error) throw new Error(error.message);
   await refreshFleet({ showIndicator: false });
 }
 

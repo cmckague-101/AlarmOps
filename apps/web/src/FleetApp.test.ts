@@ -171,9 +171,9 @@ describe('fleet file persistence',()=>{
     expect(persisted.vehicles[0].insurance?.dataUrl).toBe('');
     expect(persisted.vehicles[0].documents?.every(document=>document.file.dataUrl==='')).toBe(true);
     expect(persisted.crew[0].credential?.dataUrl).toBe('');
-    expect(persisted.crew[0].credentials?.every(credential=>credential.file.dataUrl==='')).toBe(true);
+    expect(persisted.crew[0].credentials?.every(credential=>credential.file?.dataUrl==='')).toBe(true);
     expect(current.vehicles[0].photo?.dataUrl).toContain('signed.example');
-    expect(current.crew[0].credentials?.[0].file.dataUrl).toContain('signed.example');
+    expect(current.crew[0].credentials?.[0].file?.dataUrl).toContain('signed.example');
   });
 
   it('collects every referenced storage path for orphan cleanup',()=>{

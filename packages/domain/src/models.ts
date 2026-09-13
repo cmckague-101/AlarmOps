@@ -5,7 +5,18 @@ export type IssueStatus = 'Open' | 'Resolved';
 
 export type VehicleFile = {name:string;type:string;dataUrl:string;path?:string};
 export type NamedDocument = {id:string;name:string;file:VehicleFile};
-export type CrewCredential = NamedDocument;
+export type CredentialRecordType = 'Training'|'Qualification'|'License'|'Task Book'|'Medical';
+export type CrewCredential = {
+  id:string;
+  /** Display title. Legacy credentials only contain id, name, and file. */
+  name:string;
+  recordType?:CredentialRecordType;
+  courseCode?:string;
+  completionDate?:string;
+  expirationDate?:string;
+  provider?:string;
+  file?:VehicleFile;
+};
 export type CrewMember = {
   id:string;name:string;email:string;phone:string;role:UserRole;status:'Active'|'Invited';
   credentials?:CrewCredential[];
