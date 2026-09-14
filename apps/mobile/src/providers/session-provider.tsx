@@ -32,7 +32,19 @@ export function SessionProvider({children}:PropsWithChildren){
   useEffect(()=>{
     if(!supabase)return;
     let active=true;
-    void supabase.auth.getSession().then(({data})=>{if(active){setSession(data.session);setLoading(false)}});
+    void supabase.auth.getSession()
+      .then(({data,error})=>{
+        if(!active)return;
+        if(error)console.error('Session restoration failed',error);
+        setSession(data.session);
+        setLoading(false);
+      })
+      .catch(error=>{
+        if(!active)return;
+        console.error('Session restoration failed',error);
+        setSession(null);
+        setLoading(false);
+      });
     const {data}=supabase.auth.onAuthStateChange((_event,nextSession)=>{setSession(nextSession);setLoading(false);if(!nextSession)setAccess({status:'idle',value:null,error:''})});
     return()=>{active=false;data.subscription.unsubscribe()};
   },[]);
