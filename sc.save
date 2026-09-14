@@ -1,0 +1,20 @@
+Screenshot requirements                                                         
+                                                                                 
+ Because ios.supportsTablet is currently true, prepare:                          
+                                                                                 
+ - Large iPhone screenshot set                                                   
+ - Large iPad screenshot set                                                     
+                                                                                 
+ Recommended scenes:                                                             
+                                                                                 
+ 1. Dashboard/readiness summary                                                  
+ 2. Fleet and current issues                                                     
+ 3. Vehicle detail and assignments                                               
+ 4. Active wildfire operations                                                   
+ 5. Crew communications                                                          
+ 6. Documents, training, and qualifications                                      
+                                                                                 
+ Avoid customer names, real credentials, private documents, VINs, API keys, and  
+ sensitive crew data.                                                            
+
+

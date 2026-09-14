@@ -611,7 +611,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     pendingUploads.current.forEach(path=>{if(!nextPaths.has(path))cleanupQueue.current.add(path)});
     nextPaths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path)});
     const cleanup=[...cleanupQueue.current];
-    if(cleanup.length)await deleteFiles(cleanup);
+    // Fleet changes already committed. Upload cleanup is best-effort and stays
+    // queued for a later save; it must not report committed data as failed.
+    if(cleanup.length){try{await deleteFiles(cleanup)}catch{/* Retry queued cleanup on next save. */}}
   },[companyId,deleteFiles,patchPersisted]);
 
   const inviteCrew=useCallback(async(member:CrewMember)=>{

@@ -106,6 +106,7 @@ let request: Promise<void> | null = null;
 let requestVersion = -1;
 let refreshQueued = false;
 let queuedRefreshShowsIndicator = false;
+let fleetChangeSequence = 0;
 const listeners = new Set<() => void>();
 
 function text(row: VehicleRow, ...keys: string[]) {
@@ -719,6 +720,7 @@ export function refreshFleet(
 
     const client = supabase;
     const collections = Object.entries(tables) as [FleetCollection, string][];
+    const changeSequenceAtStart = fleetChangeSequence;
     let results;
     try {
       results = await Promise.all(
@@ -746,6 +748,12 @@ export function refreshFleet(
       return;
     }
     if (version !== companyVersion) return;
+    // Realtime may deliver a newer row while SELECT is in flight. Never let
+    // that older response replace latest data or its optimistic-lock token.
+    if (changeSequenceAtStart !== fleetChangeSequence) {
+      refreshQueued = true;
+      return;
+    }
 
     const failed = results.find((result) => result.error);
     if (failed?.error) {
@@ -836,6 +844,7 @@ function selectCompany(companyId: string | null) {
           },
           (payload) => {
             if (activeCompanyId !== companyId) return;
+            fleetChangeSequence += 1;
             const row = (payload.eventType === "DELETE"
               ? payload.old
               : payload.new) as Partial<FleetRecordRow>;
