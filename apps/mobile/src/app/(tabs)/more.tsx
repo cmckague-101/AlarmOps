@@ -6,6 +6,7 @@ import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
 import {useNotificationInbox} from '@/lib/notification-inbox-store';
+import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -35,18 +36,19 @@ export default function More(){
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
   const {unreadCount:unreadNotifications}=useNotificationInbox(member?.company.id??null,member?.user.id??null);
+  const pendingQualificationCards=usePendingQualificationCardCount(member?.user.role==='owner'?member.company.id:null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
-  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Notifications:unreadNotifications,Documents:unreadDocuments,Training:unreadTrainings};
+  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Notifications:unreadNotifications,Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
   const visible=sections.filter(section=>!('ownerOnly' in section)||member?.user.role==='owner');
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="More" description="Notifications, documents, training, and account settings" showTitle={false}>
     <View style={styles.grid}>{visible.map(section=>{
-      const unread=unreadBySection[section.label]??0;
+      const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       return <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${section.label}${unread>0?`, ${unread} new`:''}`}
+        accessibilityLabel={`${section.label}${unread>0?`, ${unread} ${indicatorLabel}`:''}`}
         key={section.label}
         onPress={()=>{if('comingSoon' in section)Alert.alert('Coming Soon');else router.push(section.path as never)}}
         style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
@@ -55,7 +57,7 @@ export default function More(){
           <AppSymbol name={{ios:section.ios,android:section.android} as never} size={27} color="#FFFFFF"/>
         </View>
         <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
-        {unread>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unread} new</Text>}
+        {unread>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unread} {indicatorLabel}</Text>}
       </Pressable>;
     })}</View>
     <Pressable accessibilityRole="button" onPress={()=>void signOut()} style={[styles.signOut,{borderColor:theme.divider}]}><Text style={[styles.signOutLabel,{color:theme.danger}]}>Sign out</Text></Pressable>

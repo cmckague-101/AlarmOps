@@ -1,9 +1,15 @@
 import type {QualificationCardRequest,SavedSignature} from '@fireops/domain';
+import {useEffect,useState} from 'react';
 import {supabase} from './supabase';
 
 type RequestRow={id:string;company_id:string;crew_user_id:string;crew_name:string;card_data:{companyPhone:string;homeBase:string;primaryQualificationId:string};photo_path:string;employee_signature:SavedSignature;owner_signature:SavedSignature|null;owner_name:string|null;status:QualificationCardRequest['status'];submitted_at:string;approved_at:string|null};
 const columns='id,company_id,crew_user_id,crew_name,card_data,photo_path,employee_signature,owner_signature,owner_name,status,submitted_at,approved_at';
 function fromRow(row:RequestRow):QualificationCardRequest{return {id:row.id,companyId:row.company_id,crewUserId:row.crew_user_id,crewName:row.crew_name,status:row.status,companyPhone:row.card_data.companyPhone,homeBase:row.card_data.homeBase,primaryQualificationId:row.card_data.primaryQualificationId,photoPath:row.photo_path,employeeSignature:row.employee_signature,...(row.owner_signature?{ownerSignature:row.owner_signature}:{}),...(row.owner_name?{ownerName:row.owner_name}:{}),submittedAt:row.submitted_at,...(row.approved_at?{approvedAt:row.approved_at}:{})}}
+export function usePendingQualificationCardCount(companyId:string|undefined,enabled:boolean){
+  const [count,setCount]=useState(0);
+  useEffect(()=>{if(!companyId||!enabled||!supabase){setCount(0);return}let active=true;const client=supabase;const load=async()=>{const {count:pending,error}=await client.from('qualification_card_requests').select('id',{count:'exact',head:true}).eq('company_id',companyId).eq('status','pending');if(active&&!error)setCount(pending??0)};void load();const channel=client.channel(`web-pending-qualification-cards:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'qualification_card_requests',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{active=false;void client.removeChannel(channel)}},[companyId,enabled]);
+  return count;
+}
 export async function loadQualificationCardData(companyId:string,userId:string,isOwner:boolean){
   if(!supabase)throw new Error('Qualification card approvals require company connection.');
   const [profileResult,requestResult]=await Promise.all([
