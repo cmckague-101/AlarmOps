@@ -24,10 +24,18 @@ export type CrewExperience = {
   days:string;
   file?:VehicleFile;
 };
+export type AnnualQualificationRecord = {
+  rt130CompletionDate:string;
+  rt130CurrencyDate:string;
+  wctCompletionDate:string;
+  wctCurrencyDate:string;
+};
 export type CrewMember = {
   id:string;name:string;email:string;phone:string;role:UserRole;status:'Active'|'Invited';
   credentials?:CrewCredential[];
   experiences?:CrewExperience[];
+  /** One current annual record, replaced whenever annual dates are edited. */
+  annualRecord?:AnnualQualificationRecord;
   /** Legacy single-credential fields retained while existing records migrate. */
   credential?:VehicleFile;credentialName?:string;
   joinedAt?:string;

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type {
   Activity,
+  AnnualQualificationRecord,
   CrewCredential,
   CrewExperience,
   CrewMember,
@@ -377,6 +378,13 @@ export async function addMyCrewExperience(
 export async function updateMyCrewExperience(companyId:string,experience:CrewExperience) {
   if(!supabase)throw new Error('Qualifications are unavailable.');
   const {error}=await supabase.rpc('update_my_crew_experience',{target_company_id:companyId,experience});
+  if(error)throw new Error(error.message);
+  await refreshFleet({showIndicator:false});
+}
+
+export async function updateMyAnnualQualificationRecord(companyId:string,annualRecord:AnnualQualificationRecord) {
+  if(!supabase)throw new Error('Qualifications are unavailable.');
+  const {error}=await supabase.rpc('update_my_annual_qualification_record',{target_company_id:companyId,annual_record:annualRecord});
   if(error)throw new Error(error.message);
   await refreshFleet({showIndicator:false});
 }
