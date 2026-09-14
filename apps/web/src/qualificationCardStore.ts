@@ -10,6 +10,12 @@ export function usePendingQualificationCardCount(companyId:string|undefined,enab
   useEffect(()=>{if(!companyId||!enabled||!supabase){setCount(0);return}let active=true;const client=supabase;const load=async()=>{const {count:pending,error}=await client.from('qualification_card_requests').select('id',{count:'exact',head:true}).eq('company_id',companyId).eq('status','pending');if(active&&!error)setCount(pending??0)};void load();const channel=client.channel(`web-pending-qualification-cards:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'qualification_card_requests',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{active=false;void client.removeChannel(channel)}},[companyId,enabled]);
   return count;
 }
+export async function loadCompanyQualificationCardRequests(companyId:string){
+  if(!supabase)throw new Error('Qualification card approvals require company connection.');
+  const {data,error}=await supabase.from('qualification_card_requests').select(columns).eq('company_id',companyId).order('submitted_at',{ascending:false});
+  if(error)throw new Error(error.message);
+  return ((data??[]) as unknown as RequestRow[]).map(fromRow);
+}
 export async function loadQualificationCardData(companyId:string,userId:string,isOwner:boolean){
   if(!supabase)throw new Error('Qualification card approvals require company connection.');
   const [profileResult,requestResult]=await Promise.all([
