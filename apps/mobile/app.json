@@ -46,7 +46,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow FireOps to select vehicle photos for your company fleet records.",
+          "photosPermission": "Allow FireOps to select photos for your company fleet and qualification records.",
           "microphonePermission": false
         }
       ]
