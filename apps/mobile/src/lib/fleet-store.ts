@@ -362,6 +362,13 @@ export async function updateMyCrewCredential(companyId:string,credential:CrewCre
   await refreshFleet({showIndicator:false});
 }
 
+export async function deleteMyCrewCredential(companyId:string,credentialId:string) {
+  if(!supabase)throw new Error('Qualifications are unavailable.');
+  const {error}=await supabase.rpc('delete_my_crew_credential',{target_company_id:companyId,credential_id:credentialId});
+  if(error)throw new Error(error.message);
+  await refreshFleet({showIndicator:false});
+}
+
 export async function addMyCrewExperience(
   companyId: string,
   experience: CrewExperience,
@@ -378,6 +385,13 @@ export async function addMyCrewExperience(
 export async function updateMyCrewExperience(companyId:string,experience:CrewExperience) {
   if(!supabase)throw new Error('Qualifications are unavailable.');
   const {error}=await supabase.rpc('update_my_crew_experience',{target_company_id:companyId,experience});
+  if(error)throw new Error(error.message);
+  await refreshFleet({showIndicator:false});
+}
+
+export async function deleteMyCrewExperience(companyId:string,experienceId:string) {
+  if(!supabase)throw new Error('Qualifications are unavailable.');
+  const {error}=await supabase.rpc('delete_my_crew_experience',{target_company_id:companyId,experience_id:experienceId});
   if(error)throw new Error(error.message);
   await refreshFleet({showIndicator:false});
 }

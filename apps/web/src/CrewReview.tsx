@@ -27,13 +27,14 @@ export default function CrewReview({ crew, companyId }: { crew: CrewMember[]; co
   const approvedCard = member ? requests.find((request) => request.crewUserId === member.id && request.status === 'approved') : undefined;
 
   return <div className="crew-review">
-    <label className="crew-review-select">
-      <b>Crew Review</b>
-      <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+    <div className="crew-review-select">
+      <label htmlFor="crew-review-member"><b>Crew Review</b></label>
+      <select id="crew-review-member" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
         <option value="">Select crew member</option>
         {members.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
-    </label>
+      {selectedId && <button type="button" className="crew-review-clear" aria-label="Clear crew selection" onClick={() => setSelectedId('')}>×</button>}
+    </div>
     {member && <div className="crew-review-details">
       <header><div><h3>{member.name}</h3><p>{member.email} · {member.phone}</p></div><strong className={approvedCard ? 'complete' : ''}>{approvedCard ? 'Qualification card completed' : 'No completed qualification card'}</strong></header>
       {cardError && <p className="crew-review-error">{cardError}</p>}
