@@ -9,9 +9,13 @@ export function useAvailability(companyId?:string|null) {
   const [revision,setRevision] = useState(0);
   useEffect(() => {
     let active = true;
-    setStatuses({});setLoading(Boolean(companyId));setError('');
     const client = supabase;
-    if (!companyId || !client) {setLoading(false);return;}
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      setStatuses({});setLoading(Boolean(companyId));setError('');
+      if (!companyId || !client) setLoading(false);
+    });
+    if (!companyId || !client) return () => {active=false;};
     async function load() {
       try {
         const {data,error:failure} = await client!.from('crew_availability').select('user_id,available').eq('company_id',companyId!);

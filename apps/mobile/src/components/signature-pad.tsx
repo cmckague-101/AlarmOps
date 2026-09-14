@@ -1,12 +1,12 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useMemo,useState} from 'react';
 import {Pressable,StyleSheet,Text,View,type GestureResponderEvent,type LayoutChangeEvent} from 'react-native';
 import {signatureHasInk,type SavedSignature,type SignaturePoint} from '@fireops/domain';
 import {AppSymbol} from '@/components/app-symbol';
 import {type FireOpsTheme,useFireOpsTheme} from '@/theme';
 
 export function SignaturePad({value,onChange,onSigningChange,label}:{value?:SavedSignature;onChange:(value:SavedSignature)=>void;onSigningChange?:(signing:boolean)=>void;label:string}){
-  const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const [strokes,setStrokes]=useState<SignaturePoint[][]>(value?.strokes??[]);const [size,setSize]=useState({width:1,height:1});
-  useEffect(()=>setStrokes(value?.strokes??[]),[value]);
+  const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const [strokes,setStrokes]=useState<SignaturePoint[][]>(()=>value?.strokes??[]);const [lastValue,setLastValue]=useState(value);const [size,setSize]=useState({width:1,height:1});
+  if(value!==lastValue){setLastValue(value);setStrokes(value?.strokes??[])}
   const point=(event:GestureResponderEvent):SignaturePoint=>({x:Math.max(0,Math.min(1,event.nativeEvent.locationX/size.width)),y:Math.max(0,Math.min(1,event.nativeEvent.locationY/size.height))});
   const start=(event:GestureResponderEvent)=>{onSigningChange?.(true);const nextPoint=point(event);setStrokes(items=>[...items,[nextPoint]])};
   const move=(event:GestureResponderEvent)=>{const nextPoint=point(event);setStrokes(items=>items.map((stroke,index)=>index===items.length-1?[...stroke,nextPoint]:stroke))};

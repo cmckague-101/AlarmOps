@@ -83,24 +83,28 @@ export default function OperationsScreen() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setIncidentLoading(true);
-    setIncidentError('');
     void fetchNifcIncidents(controller.signal)
-      .then(setIncidents)
+      .then((nextIncidents) => {
+        if (!controller.signal.aborted) setIncidents(nextIncidents);
+      })
       .catch((fetchError) => {
         if (fetchError instanceof Error && fetchError.name === 'AbortError') return;
-        setIncidentError('Current NIFC fire data could not be loaded. Check your connection and try again.');
+        if (!controller.signal.aborted) setIncidentError('Current NIFC fire data could not be loaded. Check your connection and try again.');
       })
-      .finally(() => setIncidentLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setIncidentLoading(false);
+      });
     return () => controller.abort();
   }, [request]);
 
   useEffect(() => {
     if (!incidentId || incidentLoading || incidentError) return;
-    const incident = incidents.find(item => item.id === incidentId);
-    if (incident) setSelected(incident);
-    else setIncidentError('This fire is no longer available in the current NIFC feed.');
-    router.setParams({ incidentId: undefined });
+    void Promise.resolve().then(() => {
+      const incident = incidents.find(item => item.id === incidentId);
+      if (incident) setSelected(incident);
+      else setIncidentError('This fire is no longer available in the current NIFC feed.');
+      router.setParams({ incidentId: undefined });
+    });
   }, [incidentId, incidentLoading, incidentError, incidents, router]);
 
   const sortedFires = useMemo(
@@ -137,7 +141,11 @@ export default function OperationsScreen() {
       setAssigningVehicleId(null);
     }
   };
-  const refreshIncidents = () => setRequest((value) => value + 1);
+  const refreshIncidents = () => {
+    setIncidentLoading(true);
+    setIncidentError('');
+    setRequest((value) => value + 1);
+  };
   const openIncidentDetails = (incident: NifcIncident) => setSelected(incident);
   const closeIncidentDetails = () => { setSelected(null); setAssignmentError(''); };
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);

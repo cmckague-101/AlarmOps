@@ -20,8 +20,8 @@ const emptyRecord:AnnualQualificationRecord={rt130CompletionDate:'',rt130Currenc
 
 export default function AnnualRecordsScreen(){
   const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const account=access.value?.kind==='member'?access.value:null;const {crew}=useFleetVehicles(account?.company.id??null);const member=crew.find(item=>item.id===account?.user.id);
-  const [record,setRecord]=useState<AnnualQualificationRecord>(emptyRecord);const [showDate,setShowDate]=useState<DateKey|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
-  useEffect(()=>{if(member?.annualRecord)setRecord(member.annualRecord)},[member?.annualRecord]);
+  const [record,setRecord]=useState<AnnualQualificationRecord>(emptyRecord);const [showDate,setShowDate]=useState<DateKey|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [initialized,setInitialized]=useState(false);
+  useEffect(()=>{if(!member||initialized)return;let active=true;void Promise.resolve().then(()=>{if(!active)return;if(member.annualRecord)setRecord(member.annualRecord);setInitialized(true)});return()=>{active=false}},[member,initialized]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   if(!account)return null;
   const valid=fields.every(({key})=>Boolean(record[key]));
