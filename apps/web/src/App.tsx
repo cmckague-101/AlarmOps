@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'settings';
-type NavigablePage = Exclude<Page,'more'|'qualifications'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
+type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
@@ -44,6 +44,7 @@ const navigationMeta = {
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Roster',description:'Manage access and assignments',Icon:Users},
+  qualifications:{label:'Qualifications',description:'Credentials, licenses, and expiration dates',Icon:ShieldCheck},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   invoices:{label:'Invoices',description:'Upload and review invoices',Icon:FileText},
   payroll:{label:'Payroll',description:'Upload and review payroll documents',Icon:CircleDollarSign},
@@ -54,7 +55,7 @@ const navigationMeta = {
   inspections:{label:'Inspections',description:'Failed vehicle inspection history',Icon:ClipboardCheck},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
@@ -522,7 +523,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   };
 
   return <div className="app-shell">
-    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount}/>
+    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
       <Topbar saveState={saveState} notificationCount={currentUser.role==='member'?unreadThreadCount+unreadDocumentCount+unreadTrainingCount:undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
@@ -573,9 +574,9 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
 }
 
 function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
-function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number}) {
+function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
   return <aside className="sidebar"><Brand/><nav>
-    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
+    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
   </nav></aside>
 }
 function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
@@ -614,7 +615,7 @@ function MorePage({user,unreadDocumentCount,unreadTrainingCount,pendingCardCount
   ];
   const settings=navigationMeta.settings;
   const links=overflow.filter(target=>target!=='settings');
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{links.flatMap((target,index)=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:0;const link=<button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} new</i>}</b><small>{description}</small></span><ChevronRight/></button>;const qualifications=index===0?<button key="qualifications" onClick={()=>setPage('qualifications')}><span className="more-icon"><ShieldCheck/></span><span><b>Qualifications{pendingCardCount>0&&<i className="more-notification">{pendingCardCount} pending</i>}</b><small>Credentials, licenses, and expiration dates</small></span><ChevronRight/></button>:null;return qualifications?[link,qualifications]:[link]})}{comingSoon.map(({label,description,Icon})=><button key={label} onClick={()=>window.alert('Coming Soon')}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight/></button>)}<button onClick={()=>setPage('settings')}><span className="more-icon"><settings.Icon/></span><span><b>{settings.label}</b><small>{settings.description}</small></span><ChevronRight/></button></div></section></div>;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1><p>Additional company tools and settings.</p></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{links.map(target=>{const {label,description,Icon}=navigationMeta[target];const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} {target==='qualifications'?'pending':'new'}</i>}</b><small>{description}</small></span><ChevronRight/></button>})}{comingSoon.map(({label,description,Icon})=><button key={label} onClick={()=>window.alert('Coming Soon')}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight/></button>)}<button onClick={()=>setPage('settings')}><span className="more-icon"><settings.Icon/></span><span><b>{settings.label}</b><small>{settings.description}</small></span><ChevronRight/></button></div></section></div>;
 }
 
 function QualificationsPage({member,crew,companyId,pendingCardCount,setPage,onSelectCredential,onSelectExperience}:{member?:CrewMember;crew:CrewMember[];companyId?:string;pendingCardCount:number;setPage:(page:Page)=>void;onSelectCredential:(credential:CrewCredential)=>void;onSelectExperience:(experience:CrewExperience)=>void}) {

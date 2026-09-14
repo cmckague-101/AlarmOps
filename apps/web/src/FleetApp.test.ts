@@ -24,14 +24,14 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows quick action destinations to both roles and reserves crew management for owners',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
-    expect(navigationLayout('member').desktop).toEqual(['overview','operations','communications','vehicles','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
+    expect(navigationLayout('member').desktop).toEqual(['overview','operations','communications','vehicles','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
-    expect(navigationLayout('member').mobileOverflow).toEqual(['documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
+    expect(navigationLayout('member').mobileOverflow).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 });
 
