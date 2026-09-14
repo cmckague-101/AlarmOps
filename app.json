@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.ryan.inslee.fireopsplatform"
+  },
+  "ios": {
+    "bundleIdentifier": "com.ryan.inslee.fireopsplatform"
+  }
+}

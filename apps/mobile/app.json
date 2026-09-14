@@ -38,7 +38,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#19201D",
-          "image": "./assets/images/fireops-icon.png",
+          "image": "./assets/images/header.png",
           "imageWidth": 88
         }
       ],
