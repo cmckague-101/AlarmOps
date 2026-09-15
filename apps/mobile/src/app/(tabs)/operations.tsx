@@ -12,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import MapView, { Marker } from 'react-native-maps';
@@ -150,57 +151,66 @@ export default function OperationsScreen() {
   const closeIncidentDetails = () => { setSelected(null); setAssignmentError(''); };
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
   const showMapPins = mapLongitudeDelta < 12;
+  const mapsAvailable = Platform.OS !== 'android' || Boolean(Constants.expoConfig?.extra?.googleMapsConfigured);
   const incidentMap = (
     <>
-      <MapView
-        accessibilityLabel="Map of all active fires"
-        initialRegion={US_REGION}
-        onRegionChangeComplete={(region) => setMapLongitudeDelta(region.longitudeDelta)}
-        rotateEnabled={false}
-        style={styles.map}
-      >
-        {incidents.map((incident, index) => showMapPins ? (
-          <Marker
-            coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-            description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-            key={`${incident.id}-${index}-pin`}
-            onCalloutPress={() => openIncidentDetails(incident)}
-            pinColor={theme.danger}
-            title={incident.name}
-            tracksViewChanges={false}
-          />
-        ) : (
-          <Marker
-            anchor={{ x: 0.5, y: 0.5 }}
-            coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-            description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-            key={`${incident.id}-${index}-dot`}
-            onCalloutPress={() => openIncidentDetails(incident)}
-            title={incident.name}
-            tracksViewChanges={false}
-          >
-            <View style={styles.fireMarkerDot} />
-          </Marker>
-        ))}
-        {motiveVehicles.map((vehicle, index) => {
-          const coords = vehicleCoordinates(vehicle);
-          if (!coords) return null;
-          return (
+      {mapsAvailable ? (
+        <MapView
+          accessibilityLabel="Map of all active fires"
+          initialRegion={US_REGION}
+          onRegionChangeComplete={(region) => setMapLongitudeDelta(region.longitudeDelta)}
+          rotateEnabled={false}
+          style={styles.map}
+        >
+          {incidents.map((incident, index) => showMapPins ? (
+            <Marker
+              coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+              description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
+              key={`${incident.id}-${index}-pin`}
+              onCalloutPress={() => openIncidentDetails(incident)}
+              pinColor={theme.danger}
+              title={incident.name}
+              tracksViewChanges={false}
+            />
+          ) : (
             <Marker
               anchor={{ x: 0.5, y: 0.5 }}
-              coordinate={coords}
-              description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
-              key={`${vehicle.id}-${index}-vehicle`}
-              onCalloutPress={() => openVehicleDetails(vehicle.id)}
-              title={vehicle.name}
+              coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+              description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
+              key={`${incident.id}-${index}-dot`}
+              onCalloutPress={() => openIncidentDetails(incident)}
+              title={incident.name}
               tracksViewChanges={false}
             >
-              <View style={styles.vehicleMarkerDot} />
+              <View style={styles.fireMarkerDot} />
             </Marker>
-          );
-        })}
-      </MapView>
-      {!incidentLoading && incidents.length === 0 && !incidentError ? (
+          ))}
+          {motiveVehicles.map((vehicle, index) => {
+            const coords = vehicleCoordinates(vehicle);
+            if (!coords) return null;
+            return (
+              <Marker
+                anchor={{ x: 0.5, y: 0.5 }}
+                coordinate={coords}
+                description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
+                key={`${vehicle.id}-${index}-vehicle`}
+                onCalloutPress={() => openVehicleDetails(vehicle.id)}
+                title={vehicle.name}
+                tracksViewChanges={false}
+              >
+                <View style={styles.vehicleMarkerDot} />
+              </Marker>
+            );
+          })}
+        </MapView>
+      ) : (
+        <View style={styles.mapUnavailable}>
+          <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={24} color={theme.commandForeground} />
+          <Text style={styles.mapEmptyTitle}>Map unavailable</Text>
+          <Text style={styles.mapEmptyCopy}>Google Maps is not configured for this Android build.</Text>
+        </View>
+      )}
+      {mapsAvailable && !incidentLoading && incidents.length === 0 && !incidentError ? (
         <View pointerEvents="none" style={styles.mapEmptyOverlay}>
           <View style={styles.mapEmptyCard}>
             <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.commandForeground} />
@@ -463,6 +473,7 @@ function createStyles(theme: FireOpsTheme) {
     landscapeErrorCard: { width: '100%', maxWidth: 380, borderRadius: 14, backgroundColor: theme.dangerSurface, padding: 16, gap: 12 },
     mapEmptyOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     mapEmptyCard: { maxWidth: 250, alignItems: 'center', gap: 6, borderRadius: 14, backgroundColor: theme.paper, paddingHorizontal: 20, paddingVertical: 16 },
+    mapUnavailable: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
     mapEmptyTitle: { color: theme.commandForeground, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },
     mapEmptyCopy: { color: theme.secondary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
     discoverySection: { gap: 8 },

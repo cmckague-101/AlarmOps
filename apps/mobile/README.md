@@ -2,6 +2,8 @@
 
 Expo/React Native client for iOS and Android.
 
+Android local APK builds, Supabase environment setup, and cloud-device testing: [`ANDROID_TESTING.md`](./ANDROID_TESTING.md).
+
 ## Setup
 
 Copy `.env.example` to `.env.local` and fill in same Supabase project values used by web app.
