@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -12,11 +13,15 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, G, Path } from 'react-native-svg';
+import { geoAlbersUsa, geoPath } from 'd3-geo';
+import type { FeatureCollection } from 'geojson';
+import { feature } from 'topojson-client';
+import type { Topology } from 'topojson-specification';
+import statesTopology from 'us-atlas/states-10m.json';
 
 import type { MotiveVehicleSnapshot, NifcIncident } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
@@ -37,12 +42,23 @@ const US_STATE_NAMES: Record<string, string> = {
   WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
 };
 
-const US_REGION = {
-  latitude: 39.5,
-  longitude: -98.35,
-  latitudeDelta: 41,
-  longitudeDelta: 64,
-};
+const states = feature(statesTopology as unknown as Topology, 'states') as unknown as FeatureCollection;
+const projection = geoAlbersUsa().fitExtent([[20, 20], [880, 540]], states);
+const statePath = geoPath(projection);
+const MAP_FRAME = { x: 0, y: 0, width: 900, height: 560 };
+
+type MapViewport = typeof MAP_FRAME;
+
+function viewportAround(point: [number, number], zoom: number): MapViewport {
+  const width = MAP_FRAME.width / zoom;
+  const height = MAP_FRAME.height / zoom;
+  return {
+    x: Math.max(MAP_FRAME.x, Math.min(MAP_FRAME.width - width, point[0] - width / 2)),
+    y: Math.max(MAP_FRAME.y, Math.min(MAP_FRAME.height - height, point[1] - height / 2)),
+    width,
+    height,
+  };
+}
 
 function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
@@ -59,6 +75,163 @@ function vehicleCoordinates(vehicle: FleetVehicle) {
   if (location.includes('shasta lake')) return { latitude: 40.6804, longitude: -122.3708 };
   if (location.includes('anderson')) return { latitude: 40.4482, longitude: -122.2978 };
   return null;
+}
+
+function IncidentMap({
+  incidents,
+  vehicles,
+  onIncidentDetails,
+  onVehicleDetails,
+  styles,
+  theme,
+}: {
+  incidents: NifcIncident[];
+  vehicles: FleetVehicle[];
+  onIncidentDetails: (incident: NifcIncident) => void;
+  onVehicleDetails: (vehicleId: string) => void;
+  styles: ReturnType<typeof createStyles>;
+  theme: FireOpsTheme;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [center, setCenter] = useState<[number, number]>([450, 280]);
+  const [focusedIncident, setFocusedIncident] = useState<NifcIncident | null>(null);
+  const viewport = viewportAround(center, zoom);
+  const markerScale = viewport.width / MAP_FRAME.width;
+  const viewportRef = useRef(viewport);
+  const zoomRef = useRef(zoom);
+  const layoutRef = useRef({ width: 0, height: 0 });
+  const dragStartRef = useRef(viewport);
+
+  useEffect(() => {
+    viewportRef.current = viewport;
+    zoomRef.current = zoom;
+  }, [viewport, zoom]);
+
+  // PanResponder stores these callbacks; ref reads happen only during touch events.
+  // eslint-disable-next-line react-hooks/refs
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => (
+      zoomRef.current > 1 && (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4)
+    ),
+    onPanResponderGrant: () => {
+      dragStartRef.current = viewportRef.current;
+    },
+    onPanResponderMove: (_, gesture) => {
+      const start = dragStartRef.current;
+      const layout = layoutRef.current;
+      if (!layout.width || !layout.height) return;
+      const scale = Math.min(layout.width / start.width, layout.height / start.height);
+      const x = Math.max(MAP_FRAME.x, Math.min(MAP_FRAME.width - start.width, start.x - gesture.dx / scale));
+      const y = Math.max(MAP_FRAME.y, Math.min(MAP_FRAME.height - start.height, start.y - gesture.dy / scale));
+      setCenter([x + start.width / 2, y + start.height / 2]);
+    },
+    onPanResponderTerminationRequest: () => false,
+  }), []);
+
+  const changeZoom = (nextZoom: number) => setZoom(Math.max(1, Math.min(4, nextZoom)));
+  const focusIncident = (incident: NifcIncident) => {
+    const point = projection([incident.longitude, incident.latitude]);
+    if (point) setCenter(point);
+    setFocusedIncident(incident);
+    setZoom((current) => Math.max(current, 2.5));
+  };
+  const resetMap = () => {
+    setFocusedIncident(null);
+    setCenter([450, 280]);
+    setZoom(1);
+  };
+
+  return (
+    <View
+      onLayout={(event) => { layoutRef.current = event.nativeEvent.layout; }}
+      style={styles.map}
+    >
+      <Svg
+        {...panResponder.panHandlers}
+        accessibilityHint={zoom > 1 ? 'Drag to move around the map' : 'Select a fire or zoom in to explore the map'}
+        accessibilityLabel={`United States map showing ${incidents.length} active wildfire incidents`}
+        accessibilityRole="image"
+        style={styles.map}
+        viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
+      >
+        <G>
+          {states.features.map((state, index) => (
+            <Path
+              d={statePath(state) ?? undefined}
+              fill={theme.paper}
+              key={String(state.id ?? index)}
+              stroke={theme.divider}
+              strokeWidth={1.1 * markerScale}
+            />
+          ))}
+        </G>
+        <G>
+          {incidents.map((incident, index) => {
+            const point = projection([incident.longitude, incident.latitude]);
+            if (!point) return null;
+            const focused = focusedIncident?.id === incident.id;
+            const radius = Math.max(6, Math.min(12, 6 + Math.log10(Math.max(1, incident.acres ?? 1)) * 1.4)) * markerScale;
+            return (
+              <G key={`${incident.id}-${index}`} onPress={() => focusIncident(incident)}>
+                <Circle cx={point[0]} cy={point[1]} fill="transparent" r={24 * markerScale} />
+                <Circle
+                  cx={point[0]}
+                  cy={point[1]}
+                  fill={theme.ember}
+                  r={radius}
+                  stroke={focused ? theme.commandForeground : theme.paper}
+                  strokeWidth={(focused ? 3 : 2) * markerScale}
+                />
+              </G>
+            );
+          })}
+        </G>
+        <G>
+          {vehicles.map((vehicle, index) => {
+            const coords = vehicleCoordinates(vehicle);
+            const point = coords ? projection([coords.longitude, coords.latitude]) : null;
+            if (!point) return null;
+            return (
+              <G key={`${vehicle.id}-${index}`} onPress={() => onVehicleDetails(vehicle.id)}>
+                <Circle cx={point[0]} cy={point[1]} fill="transparent" r={25 * markerScale} />
+                <Circle cx={point[0]} cy={point[1]} fill={theme.green} r={8 * markerScale} stroke={theme.paper} strokeWidth={2.5 * markerScale} />
+              </G>
+            );
+          })}
+        </G>
+      </Svg>
+
+      <View style={styles.mapControls}>
+        <Pressable accessibilityLabel="Zoom in" accessibilityRole="button" disabled={zoom >= 4} onPress={() => changeZoom(zoom * 1.5)} style={styles.mapControlButton}>
+          <AppSymbol name={{ ios: 'plus', android: 'add' }} size={19} color={theme.commandForeground} />
+        </Pressable>
+        <Pressable accessibilityLabel="Zoom out" accessibilityRole="button" disabled={zoom <= 1} onPress={() => changeZoom(zoom / 1.5)} style={styles.mapControlButton}>
+          <AppSymbol name={{ ios: 'minus', android: 'remove' }} size={19} color={theme.commandForeground} />
+        </Pressable>
+        <Pressable accessibilityLabel="Reset map" accessibilityRole="button" onPress={resetMap} style={styles.mapControlButton}>
+          <AppSymbol name={{ ios: 'arrow.counterclockwise', android: 'restart_alt' }} size={18} color={theme.commandForeground} />
+        </Pressable>
+      </View>
+
+      {focusedIncident ? (
+        <Pressable
+          accessibilityLabel={`Open details for ${focusedIncident.name}`}
+          accessibilityRole="button"
+          onPress={() => onIncidentDetails(focusedIncident)}
+          style={({ pressed }) => [styles.mapSelection, pressed && styles.pressed]}
+        >
+          <View style={styles.fireIcon}>
+            <AppSymbol name={{ ios: 'flame.fill', android: 'local_fire_department' }} size={18} color={theme.danger} />
+          </View>
+          <View style={styles.rowCopy}>
+            <Text numberOfLines={1} style={styles.rowTitle}>{focusedIncident.name}</Text>
+            <Text style={styles.rowMeta}>{focusedIncident.state || 'State unavailable'} · {formatAcres(focusedIncident.acres)}</Text>
+          </View>
+          <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 export default function OperationsScreen() {
@@ -80,7 +253,6 @@ export default function OperationsScreen() {
   const [selected, setSelected] = useState<NifcIncident | null>(null);
   const [assigningVehicleId, setAssigningVehicleId] = useState<string | null>(null);
   const [assignmentError, setAssignmentError] = useState('');
-  const [mapLongitudeDelta, setMapLongitudeDelta] = useState(US_REGION.longitudeDelta);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -150,67 +322,17 @@ export default function OperationsScreen() {
   const openIncidentDetails = (incident: NifcIncident) => setSelected(incident);
   const closeIncidentDetails = () => { setSelected(null); setAssignmentError(''); };
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
-  const showMapPins = mapLongitudeDelta < 12;
-  const mapsAvailable = Platform.OS !== 'android' || Boolean(Constants.expoConfig?.extra?.googleMapsConfigured);
   const incidentMap = (
     <>
-      {mapsAvailable ? (
-        <MapView
-          accessibilityLabel="Map of all active fires"
-          initialRegion={US_REGION}
-          onRegionChangeComplete={(region) => setMapLongitudeDelta(region.longitudeDelta)}
-          rotateEnabled={false}
-          style={styles.map}
-        >
-          {incidents.map((incident, index) => showMapPins ? (
-            <Marker
-              coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-              description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-              key={`${incident.id}-${index}-pin`}
-              onCalloutPress={() => openIncidentDetails(incident)}
-              pinColor={theme.danger}
-              title={incident.name}
-              tracksViewChanges={false}
-            />
-          ) : (
-            <Marker
-              anchor={{ x: 0.5, y: 0.5 }}
-              coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
-              description={`${incident.state || 'Location unavailable'} · ${formatAcres(incident.acres)}`}
-              key={`${incident.id}-${index}-dot`}
-              onCalloutPress={() => openIncidentDetails(incident)}
-              title={incident.name}
-              tracksViewChanges={false}
-            >
-              <View style={styles.fireMarkerDot} />
-            </Marker>
-          ))}
-          {motiveVehicles.map((vehicle, index) => {
-            const coords = vehicleCoordinates(vehicle);
-            if (!coords) return null;
-            return (
-              <Marker
-                anchor={{ x: 0.5, y: 0.5 }}
-                coordinate={coords}
-                description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
-                key={`${vehicle.id}-${index}-vehicle`}
-                onCalloutPress={() => openVehicleDetails(vehicle.id)}
-                title={vehicle.name}
-                tracksViewChanges={false}
-              >
-                <View style={styles.vehicleMarkerDot} />
-              </Marker>
-            );
-          })}
-        </MapView>
-      ) : (
-        <View style={styles.mapUnavailable}>
-          <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={24} color={theme.commandForeground} />
-          <Text style={styles.mapEmptyTitle}>Map unavailable</Text>
-          <Text style={styles.mapEmptyCopy}>Google Maps is not configured for this Android build.</Text>
-        </View>
-      )}
-      {mapsAvailable && !incidentLoading && incidents.length === 0 && !incidentError ? (
+      <IncidentMap
+        incidents={incidents}
+        onIncidentDetails={openIncidentDetails}
+        onVehicleDetails={openVehicleDetails}
+        styles={styles}
+        theme={theme}
+        vehicles={motiveVehicles}
+      />
+      {!incidentLoading && incidents.length === 0 && !incidentError ? (
         <View pointerEvents="none" style={styles.mapEmptyOverlay}>
           <View style={styles.mapEmptyCard}>
             <AppSymbol name={{ ios: 'map.fill', android: 'map' }} size={22} color={theme.commandForeground} />
@@ -467,13 +589,15 @@ function createStyles(theme: FireOpsTheme) {
     searchClearButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     mapCard: { height: 290, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 16, backgroundColor: theme.surfaceAlt },
     map: { flex: 1 },
+    mapControls: { position: 'absolute', top: 10, right: 10, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 10, backgroundColor: theme.paper },
+    mapControlButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    mapSelection: { position: 'absolute', right: 10, bottom: 10, left: 10, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, paddingHorizontal: 12, paddingVertical: 9 },
     landscapeMap: { flex: 1, backgroundColor: theme.surfaceAlt },
     landscapeStatusOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     landscapeStatusCard: { borderRadius: 14, backgroundColor: theme.paper, padding: 18 },
     landscapeErrorCard: { width: '100%', maxWidth: 380, borderRadius: 14, backgroundColor: theme.dangerSurface, padding: 16, gap: 12 },
     mapEmptyOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     mapEmptyCard: { maxWidth: 250, alignItems: 'center', gap: 6, borderRadius: 14, backgroundColor: theme.paper, paddingHorizontal: 20, paddingVertical: 16 },
-    mapUnavailable: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
     mapEmptyTitle: { color: theme.commandForeground, fontSize: 16, lineHeight: 21, fontWeight: '800', textAlign: 'center' },
     mapEmptyCopy: { color: theme.secondary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
     discoverySection: { gap: 8 },
@@ -482,8 +606,6 @@ function createStyles(theme: FireOpsTheme) {
     vehicleRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     fireIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.dangerSurface },
     vehicleIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.greenSurface },
-    fireMarkerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.danger, borderWidth: 1, borderColor: theme.paper },
-    vehicleMarkerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.green, borderWidth: 2, borderColor: theme.paper },
     modalSafeArea: { flex: 1, backgroundColor: theme.canvas },
     modalContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40, gap: 28 },
     modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },

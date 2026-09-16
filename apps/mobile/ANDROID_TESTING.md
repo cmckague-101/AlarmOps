@@ -9,10 +9,9 @@ FireOps requires these build-time Expo variables:
 ```text
 EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
-GOOGLE_MAPS_API_KEY
 ```
 
-`EXPO_PUBLIC_*` values are embedded into the APK. Use only Supabase URL and publishable/anon key; never use a service-role key. `GOOGLE_MAPS_API_KEY` enables Maps SDK for Android on Operations screen. Restrict key in Google Cloud to Android app `com.tinykings.fireops` and signing-certificate SHA-1 fingerprints.
+`EXPO_PUBLIC_*` values are embedded into the APK. Use only Supabase URL and publishable/anon key; never use a service-role key.
 
 ### EAS preview builds
 
@@ -141,8 +140,7 @@ Other limited-free/trial services include BrowserStack App Live and Appetize.io.
 
 ## Pre-test checks
 
-- APK contains `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, and Android Maps metadata generated from `GOOGLE_MAPS_API_KEY`.
-- Google Maps key allows `com.tinykings.fireops` with build certificate's SHA-1 fingerprint.
+- APK contains `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
 - Backend URLs use public HTTPS addresses, not `localhost`.
 - Test account contains no sensitive production data.
 - Build uses `preview`, not `development`; development builds may require a Metro server.
