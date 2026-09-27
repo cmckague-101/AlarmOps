@@ -16,16 +16,18 @@ describe('qualification card',()=>{
     expect(qualificationCardPositions({...member,credentials:undefined,credentialName:'Legacy Red Card',credential:{name:'red-card.pdf',type:'application/pdf',dataUrl:'data:application/pdf;base64,test'}})).toHaveLength(1);
   });
 
-  it('renders selected position, signatures, and escaped employee-provided values',()=>{
+  it('renders owner-selected position, representative signature, and escaped company settings',()=>{
     const signature={strokes:[[{x:0.1,y:0.5},{x:0.8,y:0.4}]]};
-    const html=createQualificationCardHtml(member,{employeeName:member.name,companyName:'Fire & Co',companyPhone:'555-0100',homeBase:'North <Base>',primaryQualificationId:'fft2',employeeSignature:signature,approvedAt:'2026-09-23T12:00:00Z'});
+    const html=createQualificationCardHtml(member,{employeeName:member.name,companyName:'Fire & Co',companyPhone:'555-0100',homeBase:'North <Base>',primaryQualificationId:'fft2',cardPosition:'FAL3',ownerSignature:signature,approvedAt:'2026-09-23T12:00:00Z'});
+    expect(html).toContain('FAL3');
     expect(html).toContain('FFT2');
-    expect(html).toContain('Firefighter Type 2');
     expect(html).toContain('Alex &lt;River&gt;');
     expect(html).toContain('Fire &amp; Co');
     expect(html).not.toContain('S-130');
     expect(html).toContain('<polyline');
-    expect(html).toContain('09/23/2026');
+    expect(html).toContain('Company Representative');
+    expect(html).not.toContain('Employee Signature');
+    expect(html).toContain('2026');
     expect(signatureHasInk(signature)).toBe(true);
   });
 });
