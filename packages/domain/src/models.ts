@@ -57,12 +57,10 @@ export type NationalFireActivity = {
 export type VehicleInspectionItemKind = 'pass_fail' | 'photo';
 export const DEFAULT_VEHICLE_INSPECTION_ITEMS:ReadonlyArray<{label:string;kind:VehicleInspectionItemKind}> = [
   {label:'VIPR Inventory',kind:'pass_fail'},
-  {label:'Damage to Vehicle',kind:'pass_fail'},
-  {label:'Light Check',kind:'pass_fail'},
-  {label:'Horn',kind:'pass_fail'},
-  {label:'Washer Fluid',kind:'pass_fail'},
-  {label:'Tires',kind:'pass_fail'},
-  {label:'Interior Cleanliness',kind:'photo'},
+  {label:'Damage to vehicle',kind:'pass_fail'},
+  {label:'Light check, horn, washer fluid',kind:'pass_fail'},
+  {label:'tires',kind:'pass_fail'},
+  {label:'Interior cleanliness',kind:'photo'},
 ];
 export type VehicleInspectionTemplateItem = {id:string;label:string;position:number;kind:VehicleInspectionItemKind};
 export type InspectionResult = 'Pass' | 'Fail';
