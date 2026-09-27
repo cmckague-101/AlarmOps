@@ -11,11 +11,11 @@ import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
 const qualificationActions=[
-  {label:'Add credentials',path:'/qualifications/add',ios:'plus',android:'add',color:'#C94321'},
-  {label:'Add experience',path:'/qualifications/experience',ios:'briefcase.fill',android:'work',color:'#285F9E'},
-  {label:'Master record',path:'/qualifications/master-record',ios:'doc.text.fill',android:'description',color:'#26765A'},
-  {label:'Build qualification card',path:'/qualifications/card',ios:'person.text.rectangle.fill',android:'badge',color:'#A95616'},
-  {label:'Update annual records',path:'/qualifications/annual-records',ios:'calendar',android:'event',color:'#6552A3'},
+  {label:'Add Credentials',path:'/qualifications/add',ios:'plus',android:'add',color:'#C94321'},
+  {label:'Add Experience',path:'/qualifications/experience',ios:'briefcase.fill',android:'work',color:'#285F9E'},
+  {label:'Master Record',path:'/qualifications/master-record',ios:'doc.text.fill',android:'description',color:'#26765A'},
+  {label:'Build Qualification Card',path:'/qualifications/card',ios:'person.text.rectangle.fill',android:'badge',color:'#A95616'},
+  {label:'Update Annual Records',path:'/qualifications/annual-records',ios:'calendar',android:'event',color:'#6552A3'},
 ] as const;
 
 export default function QualificationsScreen(){
