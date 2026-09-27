@@ -54,21 +54,20 @@ export type NationalFireActivity = {
   reportDate:string;fetchedAt:string;sourceUrl:string;areas:NationalFireActivityRow[];total:NationalFireActivityRow;
 };
 
-export const DEFAULT_VEHICLE_INSPECTION_ITEMS = [
-  'Brakes, steering, horn, lights, mirrors',
-  'Tires, wheels, lug nuts, suspension',
-  'Leaks, belts, hoses, oil, coolant',
-  'Pump operation, primer, gauges, plumbing',
-  'Tank, foam system, hose reels, drafting equipment',
-  'Hose, fittings, nozzles, tools, chainsaws',
-  'Radios, chargers, mobile data, GPS',
-  'Cab, compartments, undercarriage, biohazards',
-  'Damage photos, missing equipment, fuel and DEF',
-] as const;
-export type VehicleInspectionTemplateItem = {id:string;label:string;position:number};
+export type VehicleInspectionItemKind = 'pass_fail' | 'photo';
+export const DEFAULT_VEHICLE_INSPECTION_ITEMS:ReadonlyArray<{label:string;kind:VehicleInspectionItemKind}> = [
+  {label:'VIPR Inventory',kind:'pass_fail'},
+  {label:'Damage to Vehicle',kind:'pass_fail'},
+  {label:'Light Check',kind:'pass_fail'},
+  {label:'Horn',kind:'pass_fail'},
+  {label:'Washer Fluid',kind:'pass_fail'},
+  {label:'Tires',kind:'pass_fail'},
+  {label:'Interior Cleanliness',kind:'photo'},
+];
+export type VehicleInspectionTemplateItem = {id:string;label:string;position:number;kind:VehicleInspectionItemKind};
 export type InspectionResult = 'Pass' | 'Fail';
 export type VehicleInspectionItem = {
-  id:string;label:string;result:InspectionResult;defectNotes?:string;photo?:VehicleFile;
+  id:string;label:string;kind?:VehicleInspectionItemKind;result?:InspectionResult;defectNotes?:string;photo?:VehicleFile;
 };
 export type VehicleInspection = {
   id:string;assignmentIncident:string;inspectorId:string;inspectorName:string;createdAt:string;items:VehicleInspectionItem[];
