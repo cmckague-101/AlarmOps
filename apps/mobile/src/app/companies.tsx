@@ -7,11 +7,11 @@ import {supabase} from '@/lib/supabase';
 import {AdminCompany,useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
-type CompanyRow={id:string;name:string;company_code:string;industry:string;crew_invite_limit:number};
+type CompanyRow={id:string;name:string;company_code:string;industry:string;phone:string;location:string;logo_path:string|null;crew_invite_limit:number};
 export default function CompaniesScreen(){
   const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access,selectCompany,signOut}=useSession();
   const [companies,setCompanies]=useState<AdminCompany[]>([]);const [loading,setLoading]=useState(true);const [busyId,setBusyId]=useState('');const [error,setError]=useState('');const [attempt,setAttempt]=useState(0);
-  useEffect(()=>{let active=true;void (async()=>{if(!supabase)return;const {data,error:loadError}=await supabase.from('companies').select('id,name,company_code,industry,crew_invite_limit').order('name');if(!active)return;if(loadError)setError('Companies could not be loaded. Check connection and try again.');else setCompanies(((data??[]) as CompanyRow[]).map(row=>({id:row.id,name:row.name,code:row.company_code,industry:row.industry,crewInviteLimit:row.crew_invite_limit})));setLoading(false)})();return()=>{active=false}},[attempt]);
+  useEffect(()=>{let active=true;void (async()=>{if(!supabase)return;const {data,error:loadError}=await supabase.from('companies').select('id,name,company_code,industry,phone,location,logo_path,crew_invite_limit').order('name');if(!active)return;if(loadError)setError('Companies could not be loaded. Check connection and try again.');else setCompanies(((data??[]) as CompanyRow[]).map(row=>({id:row.id,name:row.name,code:row.company_code,industry:row.industry,phone:row.phone,location:row.location,logoPath:row.logo_path,crewInviteLimit:row.crew_invite_limit})));setLoading(false)})();return()=>{active=false}},[attempt]);
   if(!session)return <Redirect href="/sign-in"/>;
   if(access.value?.kind==='member')return <Redirect href="/(tabs)"/>;
   if(access.status==='error')return <Redirect href="/"/>;

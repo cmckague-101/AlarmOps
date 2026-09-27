@@ -91,7 +91,7 @@ export type Activity = {
 };
 
 export type FireOpsUser = {id:string;name:string;role:UserRole};
-export type CompanyInfo = {name:string;code:string;industry:string;crewInviteLimit:number;crewInvitedCount:number};
+export type CompanyInfo = {name:string;code:string;industry:string;phone?:string;location?:string;logo?:VehicleFile;crewInviteLimit:number;crewInvitedCount:number};
 export type MotiveVehicleSnapshot = {
   vin:string;location:string;speed:string;updatedAt:string;
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};

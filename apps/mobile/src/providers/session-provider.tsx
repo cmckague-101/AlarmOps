@@ -7,11 +7,11 @@ import {unregisterFromPushNotifications} from '@/lib/notifications';
 export type CompanyAccess={
   kind:'member';
   user:FireOpsUser;
-  company:{id:string;name:string;code:string;industry:string;crewInviteLimit:number};
+  company:{id:string;name:string;code:string;industry:string;phone:string;location:string;logoPath:string|null;crewInviteLimit:number};
   isAdmin?:boolean;
 };
 type AdminAccess={kind:'admin';userName:string};
-export type AdminCompany={id:string;name:string;code:string;industry:string;crewInviteLimit:number};
+export type AdminCompany={id:string;name:string;code:string;industry:string;phone:string;location:string;logoPath:string|null;crewInviteLimit:number};
 export type AccountAccess=CompanyAccess|AdminAccess;
 type AccessState={status:'idle'|'loading'|'ready'|'error';value:null|AccountAccess;error:string};
 
@@ -19,6 +19,7 @@ type SessionContextValue={
   configured:boolean;loading:boolean;session:Session|null;access:AccessState;
   retryAccess:()=>void;signOut:()=>Promise<void>;
   selectCompany:(company:AdminCompany)=>Promise<void>;clearCompany:()=>void;
+  updateCompanyProfile:(profile:{name:string;phone:string;location:string;logoPath:string|null})=>Promise<void>;
 };
 
 const SessionContext=createContext<SessionContextValue|null>(null);
@@ -73,14 +74,14 @@ export function SessionProvider({children}:PropsWithChildren){
       }
       const membership=membershipResult.data;
       if(!membership){setAccess({status:'error',value:null,error:'Your account is not assigned to a company. Ask your company owner for access.'});return}
-      const companyResult=await supabase.from('companies').select('id,name,company_code,industry,crew_invite_limit').eq('id',membership.company_id).single<{id:string;name:string;company_code:string;industry:string;crew_invite_limit:number}>();
+      const companyResult=await supabase.from('companies').select('id,name,company_code,industry,phone,location,logo_path,crew_invite_limit').eq('id',membership.company_id).single<{id:string;name:string;company_code:string;industry:string;phone:string;location:string;logo_path:string|null;crew_invite_limit:number}>();
       if(!active)return;
       if(companyResult.error){
         console.error('Company access check failed',companyResult.error);
         setAccess({status:'error',value:null,error:'Company details could not be loaded. Check your connection and try again.'});
         return;
       }
-      setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,crewInviteLimit:companyResult.data.crew_invite_limit}},error:''});
+      setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logoPath:companyResult.data.logo_path,crewInviteLimit:companyResult.data.crew_invite_limit}},error:''});
     })();
     return()=>{active=false};
   },[sessionUserId,sessionUserEmail,attempt]);
@@ -98,7 +99,15 @@ export function SessionProvider({children}:PropsWithChildren){
     setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId!,name:access.value.userName,role:'owner'},company,isAdmin:true},error:''});
   },[access.value,sessionUserId]);
   const clearCompany=useCallback(()=>setAttempt(value=>value+1),[]);
-  const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut,selectCompany,clearCompany}),[loading,session,access,retryAccess,signOut,selectCompany,clearCompany]);
+  const updateCompanyProfile=useCallback(async(profile:{name:string;phone:string;location:string;logoPath:string|null})=>{
+    if(!supabase||access.value?.kind!=='member')throw new Error('Company is unavailable.');
+    const current=access.value;
+    const {data,error}=await supabase.rpc('update_company_profile',{target_company_id:current.company.id,company_name:profile.name,company_phone:profile.phone,company_location:profile.location,company_logo_path:profile.logoPath});
+    if(error)throw new Error(error.message);
+    const row=data as {name:string;phone:string;location:string;logo_path:string|null};
+    setAccess({status:'ready',value:{...current,company:{...current.company,name:row.name,phone:row.phone,location:row.location,logoPath:row.logo_path}},error:''});
+  },[access.value]);
+  const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile}),[loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
