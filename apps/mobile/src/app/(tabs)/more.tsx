@@ -5,19 +5,13 @@ import {AppSymbol} from '@/components/app-symbol';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
-import {useNotificationInbox} from '@/lib/notification-inbox-store';
 import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
-  {label:'Notifications',path:'/notifications',ios:'bell.fill',android:'notifications',color:'#C94321'},
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
-  {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#A95616'},
-  {label:'Invoices',path:'/invoices',ios:'doc.plaintext.fill',android:'request_quote',color:'#981D5C'},
-  {label:'Payroll',path:'/payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#26765A'},
-  {label:'Availability',path:'/availability',ios:'person.crop.circle.badge.checkmark',android:'event_available',color:'#34745C'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
@@ -35,15 +29,14 @@ export default function More(){
   const member=access.value?.kind==='member'?access.value:null;
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
-  const {unreadCount:unreadNotifications}=useNotificationInbox(member?.company.id??null,member?.user.id??null);
   const pendingQualificationCards=usePendingQualificationCardCount(member?.user.role==='owner'?member.company.id:null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
-  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Notifications:unreadNotifications,Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
+  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
   const visible=sections.filter(section=>!('ownerOnly' in section)||member?.user.role==='owner');
   const singleColumn=width<360||fontScale>1.3;
 
-  return <SectionScreen title="More" description="Notifications, documents, training, and account settings" showTitle={false}>
+  return <SectionScreen title="More" description="Documents, training, and account settings" showTitle={false}>
     <View style={styles.grid}>{visible.map(section=>{
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       return <Pressable
