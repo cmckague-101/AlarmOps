@@ -20,6 +20,7 @@
 .upload-field input{pointer-events:auto}
 .upload-field:focus-within>label{border-color:var(--focus);box-shadow:0 0 0 3px #dce8e1}
 .upload-field>small{display:block;color:var(--danger);font-size:11px;margin-top:5px}
+.photo-upload-field{grid-template-columns:repeat(2,minmax(0,1fr))}.photo-upload-field>span b{color:var(--orange);margin-left:2px}.photo-upload-field>label{grid-column:auto;justify-content:center;border-style:solid;font-weight:700}.photo-upload-field>.photo-upload-current{min-width:0;min-height:44px;display:flex;align-items:center;gap:8px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-subtle);color:var(--ink)}.photo-upload-current svg{color:var(--green)}.photo-upload-current span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.photo-upload-field>small{grid-column:1/-1}@media(max-width:480px){.photo-upload-field{grid-template-columns:1fr}.photo-upload-field>span,.photo-upload-field>small{grid-column:1}.photo-upload-field>.upload-remove{width:100%}}
 .page-heading h1,.drawer header h2{margin-top:0}
 .priority.medium,.stat-icon.amber,.action-count,.action-icon.urgent,.vehicle-issues h4 span,.resolve-button,.reopen-button{color:var(--warning)}
 .priority.high,.issue-status{color:#854b16}

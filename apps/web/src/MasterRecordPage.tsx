@@ -30,7 +30,7 @@ function sectionsFor(member: CrewMember): Section[] {
     { title: 'Incident Qualifications', columns: ['Code', 'Position title', 'Completed', 'Expires', 'Provider'], rows: credentialRows(credentialsFor(credentials, ['Qualification'])) },
     { title: 'Position Task Books', columns: ['Code', 'Position title', 'Initiated / completed', 'Expires', 'Provider'], rows: credentialRows(credentialsFor(credentials, ['Task Book'])) },
     { title: 'Training', columns: ['Code', 'Training title', 'Completed', 'Currency / expiration', 'Provider'], rows: trainingRows },
-    { title: 'Licenses and Certificates', columns: ['Code', 'License or certificate title', 'Issued', 'Expiration', 'Issued by'], rows: credentialRows(credentialsFor(credentials, ['License', 'Medical'])) },
+    { title: 'Licenses and Certificates', columns: ['Code', 'License or certificate title', 'Issued', 'Expiration', 'Issued by'], rows: credentialRows(credentialsFor(credentials, ['License', 'DOT Medical'])) },
     { title: 'Competencies', columns: ['Code', 'Competency title', 'Effective', 'Expiration', 'Provider'], rows: [] },
     { title: 'Incident Experience', columns: ['Incident', 'Position', 'Days', 'Documentation'], rows: experiences.map(item => [item.incident, item.position, item.days, item.file ? 'Attached' : '—']) },
     { title: 'Other Qualifications', columns: ['Code', 'Qualification title', 'Completed', 'Expiration', 'Provider'], rows: credentials.filter(item => !item.recordType).map(item => ['—', item.name, '—', '—', '—']) },

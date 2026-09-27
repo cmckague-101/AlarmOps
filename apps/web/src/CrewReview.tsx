@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { loadCompanyQualificationCardRequests } from './qualificationCardStore';
 import './CrewReview.css';
 
-const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'Medical'];
+const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'DOT Medical'];
 const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'Not recorded';
 
 export default function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId?: string }) {
@@ -41,7 +41,8 @@ export default function CrewReview({ crew, companyId }: { crew: CrewMember[]; co
       <div className="crew-review-grid">
         {recordTypes.map((type) => {
           const records = credentials.filter((credential) => (credential.recordType ?? 'Qualification') === type);
-          return <section key={type}><h4>{type}</h4>{records.length ? records.map((record) => <article key={record.id}><b>{record.name}</b><span>Course: {record.courseCode || 'Not recorded'}</span><span>Completed: {date(record.completionDate)}</span><span>Expires: {date(record.expirationDate)}</span><span>Provider: {record.provider || 'Not recorded'}</span><span>File: {record.file?.name || 'None'}</span></article>) : <p>No records</p>}</section>;
+          const photoOnly = type === 'License' || type === 'DOT Medical';
+          return <section key={type}><h4>{type}</h4>{records.length ? records.map((record) => <article key={record.id}><b>{record.name}</b>{photoOnly ? <span>Photo: {record.file?.name || 'None'}</span> : <><span>Course: {record.courseCode || 'Not recorded'}</span><span>Completed: {date(record.completionDate)}</span><span>Expires: {date(record.expirationDate)}</span><span>Provider: {record.provider || 'Not recorded'}</span><span>File: {record.file?.name || 'None'}</span></>}</article>) : <p>No records</p>}</section>;
         })}
         <section><h4>Experience</h4>{member.experiences?.length ? member.experiences.map((experience) => <article key={experience.id}><b>{experience.incident}</b><span>Position: {experience.position}</span><span>Days: {experience.days}</span><span>File: {experience.file?.name || 'None'}</span></article>) : <p>No experience records</p>}</section>
         <section><h4>Annual records</h4>{member.annualRecord ? <article><span>RT-130 completion: {date(member.annualRecord.rt130CompletionDate)}</span><span>RT-130 currency: {date(member.annualRecord.rt130CurrencyDate)}</span><span>WCT completion: {date(member.annualRecord.wctCompletionDate)}</span><span>WCT currency: {date(member.annualRecord.wctCurrencyDate)}</span></article> : <p>No annual record</p>}</section>

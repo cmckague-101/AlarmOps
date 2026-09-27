@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { loadCompanyCardRequests } from '@/lib/qualification-card-store';
 import { useFireOpsTheme } from '@/theme';
 
-const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'Medical'];
+const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'DOT Medical'];
 const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'Not recorded';
 
 export function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId: string }) {
@@ -43,7 +43,8 @@ export function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId:
       {cardError ? <Text style={styles.error}>{cardError}</Text> : null}
       {recordTypes.map((type) => {
         const records = credentials.filter((credential) => (credential.recordType ?? 'Qualification') === type);
-        return <View key={type} style={styles.section}><Text style={styles.sectionTitle}>{type}</Text>{records.length ? records.map((record) => <View key={record.id} style={styles.record}><Text style={styles.recordTitle}>{record.name}</Text><Text style={styles.meta}>Course: {record.courseCode || 'Not recorded'}</Text><Text style={styles.meta}>Completed: {date(record.completionDate)}</Text><Text style={styles.meta}>Expires: {date(record.expirationDate)}</Text><Text style={styles.meta}>Provider: {record.provider || 'Not recorded'}</Text><Text style={styles.meta}>File: {record.file?.name || 'None'}</Text></View>) : <Text style={styles.empty}>No records</Text>}</View>;
+        const photoOnly = type === 'License' || type === 'DOT Medical';
+        return <View key={type} style={styles.section}><Text style={styles.sectionTitle}>{type}</Text>{records.length ? records.map((record) => <View key={record.id} style={styles.record}><Text style={styles.recordTitle}>{record.name}</Text>{photoOnly ? <Text style={styles.meta}>Photo: {record.file?.name || 'None'}</Text> : <><Text style={styles.meta}>Course: {record.courseCode || 'Not recorded'}</Text><Text style={styles.meta}>Completed: {date(record.completionDate)}</Text><Text style={styles.meta}>Expires: {date(record.expirationDate)}</Text><Text style={styles.meta}>Provider: {record.provider || 'Not recorded'}</Text><Text style={styles.meta}>File: {record.file?.name || 'None'}</Text></>}</View>) : <Text style={styles.empty}>No records</Text>}</View>;
       })}
       <View style={styles.section}><Text style={styles.sectionTitle}>Experience</Text>{member.experiences?.length ? member.experiences.map((experience) => <View key={experience.id} style={styles.record}><Text style={styles.recordTitle}>{experience.incident}</Text><Text style={styles.meta}>Position: {experience.position}</Text><Text style={styles.meta}>Days: {experience.days}</Text><Text style={styles.meta}>File: {experience.file?.name || 'None'}</Text></View>) : <Text style={styles.empty}>No experience records</Text>}</View>
       <View style={styles.section}><Text style={styles.sectionTitle}>Annual records</Text>{member.annualRecord ? <View style={styles.record}><Text style={styles.meta}>RT-130 completion: {date(member.annualRecord.rt130CompletionDate)}</Text><Text style={styles.meta}>RT-130 currency: {date(member.annualRecord.rt130CurrencyDate)}</Text><Text style={styles.meta}>WCT completion: {date(member.annualRecord.wctCompletionDate)}</Text><Text style={styles.meta}>WCT currency: {date(member.annualRecord.wctCurrencyDate)}</Text></View> : <Text style={styles.empty}>No annual record</Text>}</View>

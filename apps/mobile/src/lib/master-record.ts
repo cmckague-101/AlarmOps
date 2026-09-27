@@ -27,7 +27,7 @@ export function getMasterRecordSections(member:CrewMember):MasterRecordSection[]
     {title:'Incident Qualifications',columns:['Code','Position title','Completed','Expires','Provider'],rows:credentialRows(byType(credentials,['Qualification']))},
     {title:'Position Task Books',columns:['Code','Position title','Completed','Expires','Provider'],rows:credentialRows(byType(credentials,['Task Book']))},
     {title:'Training',columns:['Code','Training title','Completed','Currency / expiration','Provider'],rows:trainingRows},
-    {title:'Licenses and Certificates',columns:['Code','License or certificate','Issued','Expiration','Issued by'],rows:credentialRows(byType(credentials,['License','Medical']))},
+    {title:'Licenses and Certificates',columns:['Code','License or certificate','Issued','Expiration','Issued by'],rows:credentialRows(byType(credentials,['License','DOT Medical']))},
     {title:'Competencies',columns:['Code','Competency title','Effective','Expiration','Provider'],rows:[]},
     {title:'Incident Experience',columns:['Incident','Position','Days','Documentation'],rows:(member.experiences??[]).map(item=>[item.incident,item.position,item.days,item.file?'Attached':'—'])},
     {title:'Other Qualifications',columns:['Code','Qualification title','Completed','Expiration','Provider'],rows:credentials.filter(item=>!item.recordType).map(item=>['—',item.name,'—','—','—'])},
