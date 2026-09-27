@@ -16,6 +16,7 @@
       }
     },
     "android": {
+      "versionCode": 1,
       "package": "com.tinykings.fireops",
       "icon": "./assets/images/fireops-icon.png",
       "predictiveBackGestureEnabled": true,
