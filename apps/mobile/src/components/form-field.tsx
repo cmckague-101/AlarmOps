@@ -6,7 +6,7 @@ export function FormField({label,error,...props}:Props){
   const theme=useFireOpsTheme();
   return <View style={styles.field}>
     <Text style={[styles.label,{color:theme.secondary}]}>{label}</Text>
-    <TextInput {...props} accessibilityLabel={label} accessibilityHint={error} placeholderTextColor={theme.secondary} style={[styles.input,{backgroundColor:theme.paper,borderColor:error?theme.danger:theme.divider,color:theme.ink},props.style]}/>
+    <TextInput {...props} accessibilityLabel={label} accessibilityHint={error} placeholderTextColor={theme.secondary} selectionColor={theme.ember} cursorColor={theme.ember} style={[styles.input,{backgroundColor:theme.surfaceAlt,borderColor:error?theme.danger:theme.divider,color:theme.ink},props.style]}/>
     {error&&<Text accessibilityRole="alert" style={[styles.error,{color:theme.danger}]}>{error}</Text>}
   </View>;
 }
