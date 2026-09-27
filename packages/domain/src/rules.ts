@@ -58,7 +58,7 @@ export function trainingStage(training:Training,now=new Date()):TrainingStage {
 }
 
 export function dashboardNotifications(
-  threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=10,trainings:Training[]=[]
+  threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=5,trainings:Training[]=[]
 ):DashboardNotification[]{
   if(user.role!=='member')return [];
   const communicationItems=threads.flatMap(thread=>{

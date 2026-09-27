@@ -67,7 +67,6 @@ export default function SettingsScreen(){
         <PreferenceToggle label="Crew Chat activity" value={preferences.communicationReplies} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({communicationReplies:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="New documents" value={preferences.documentAdded} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({documentAdded:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="New training" value={preferences.trainingCreated} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({trainingCreated:value})} styles={styles} theme={theme}/>
-        <PreferenceToggle label="Vehicle assignments" value={preferences.vehicleAssigned} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({vehicleAssigned:value})} styles={styles} theme={theme}/>
         <PreferenceToggle label="Issue updates and resolutions" value={preferences.issueUpdates} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({issueUpdates:value})} styles={styles} theme={theme}/>
       </View>}
       <Text style={styles.hint}>Notifications stay in your inbox when push is off. Critical service notices cannot be disabled.</Text>

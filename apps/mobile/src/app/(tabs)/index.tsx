@@ -51,7 +51,7 @@ export default function DashboardScreen() {
   const recentActivities = [...activities]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, 5);
-  const notifications = inboxNotifications.slice(0, 10);
+  const notifications = inboxNotifications.slice(0, 5);
 
   const openIssue = (issue: FleetIssue) => router.push(`/issue/${encodeURIComponent(issue.id)}`);
   const openActivity = (activity: Activity) => {

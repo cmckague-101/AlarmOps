@@ -686,7 +686,7 @@ function VehicleCard({vehicle,assignedName,issueCount,motiveMock,onClick}:{vehic
 function StatusBadge({status}:{status:Status}) {return <span className={`status ${status.toLowerCase().replace(/ /g,'-')}`}><i/>{vehicleStatusLabel(status)}</span>}
 
 function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onOpen:(page:'communications'|'documents'|'training')=>void}){
-  const notifications=dashboardNotifications(threads,documents,user,10,trainings);
+  const notifications=dashboardNotifications(threads,documents,user,5,trainings);
   const unreadCount=notifications.filter(notification=>notification.unread).length;
   const formatDate=(date:string)=>new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   return <section className="action-section notification-section" aria-labelledby="notifications-title"><div className="action-heading"><div><h2 id="notifications-title">Notifications</h2><p>Company updates shared with you</p></div>{unreadCount>0&&<span className="notification-count" aria-label={`${unreadCount} unread ${unreadCount===1?'notification':'notifications'}`}>{unreadCount}</span>}</div>

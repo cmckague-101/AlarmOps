@@ -121,9 +121,11 @@ describe('dashboard notifications',()=>{
     expect(notifications.every(item=>item.unread)).toBe(true);
   });
 
-  it('limits member notifications to 10 and hides section data from owners',()=>{
+  it('limits member dashboard notifications to latest 5 and hides section data from owners',()=>{
     const documents=Array.from({length:12},(_,index)=>document(`document-${index}`,`2025-08-30T${String(index).padStart(2,'0')}:00:00Z`));
-    expect(dashboardNotifications([],documents,crew)).toHaveLength(10);
+    expect(dashboardNotifications([],documents,crew).map(item=>item.id)).toEqual([
+      'document-document-11','document-document-10','document-document-9','document-document-8','document-document-7',
+    ]);
     expect(dashboardNotifications([],documents,{...crew,role:'owner'})).toEqual([]);
   });
 });

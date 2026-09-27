@@ -166,10 +166,12 @@ export function refreshNotificationInbox() {
         supabase.from('user_notifications')
           .select('id,event_type,entity_type,entity_id,title,body,path,group_key,read_at,created_at')
           .eq('company_id', companyId).eq('user_id', userId)
+          .neq('event_type', 'vehicle_assigned')
           .order('created_at', {ascending: false}).limit(100),
         supabase.from('user_notifications')
           .select('id', {count: 'exact', head: true})
-          .eq('company_id', companyId).eq('user_id', userId).is('read_at', null),
+          .eq('company_id', companyId).eq('user_id', userId)
+          .neq('event_type', 'vehicle_assigned').is('read_at', null),
         supabase.from('notification_preferences')
           .select('push_enabled,communication_replies,document_added,training_created,vehicle_assigned,issue_updates')
           .eq('company_id', companyId).eq('user_id', userId).maybeSingle<PreferenceRow>(),
