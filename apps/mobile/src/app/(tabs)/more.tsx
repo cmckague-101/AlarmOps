@@ -15,7 +15,7 @@ const sections=[
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
-  {label:'Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
+  {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
   {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
