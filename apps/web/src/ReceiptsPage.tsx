@@ -249,7 +249,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const filterCrew = crew.filter((member) => member.status === 'Active' || receipts.some((receipt) => receipt.uploadedBy === member.id));
 
   return <div className="page receipts-page">
-    <div className="page-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1><p>{isOwner ? 'Review expense receipts submitted by crew.' : 'Keep expense records ready for reimbursement and audits.'}</p></div></div>
+    <div className="page-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1>{!isOwner&&<p>Keep expense records ready for reimbursement and audits.</p>}</div></div>
 
     <section className="receipt-upload-card" aria-labelledby="add-receipt-heading">
       <div className="receipt-card-heading"><ReceiptText/><div><h2 id="add-receipt-heading">Add receipt</h2><p>Upload date will be recorded as {formatDate(new Date().toISOString())}.</p></div></div>

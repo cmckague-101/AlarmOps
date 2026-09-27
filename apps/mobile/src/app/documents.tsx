@@ -77,8 +77,7 @@ export default function CompanyDocumentsScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text accessibilityRole="header" style={styles.title}>Company documents</Text>
-            <Text style={styles.subtitle}>Files and references available to every crew member.</Text>
+            <Text accessibilityRole="header" adjustsFontSizeToFit numberOfLines={1} style={styles.title}>Company Documents</Text>
           </View>
           {canManage ? (
             <Pressable

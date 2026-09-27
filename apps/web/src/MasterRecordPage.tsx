@@ -73,7 +73,7 @@ export default function MasterRecordPage({ member, onBack }: { member?: CrewMemb
 
   return <div className="page master-record-page">
     <button className="qualification-back" onClick={onBack}><ArrowLeft /> Back to qualifications</button>
-    <div className="master-record-heading"><div><p className="master-record-eyebrow">Responder master record</p><h1>{member?.name ?? 'Master record'}</h1><p>Complete qualification, training, credential, and incident experience history.</p></div>
+    <div className="master-record-heading"><div><p className="master-record-eyebrow">Responder master record</p><h1>{member?.name ?? 'Master record'}</h1></div>
       <button className="master-record-prepare" disabled={!member} onClick={preparePacket}><Download /> Prepare PDF Packet</button>
     </div>
     {!member ? <div className="master-record-empty"><FileText/><h2>No responder record found</h2><p>Your crew profile is not available.</p></div> : <>

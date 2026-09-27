@@ -98,7 +98,7 @@ export function StoredDocumentsScreen({kind}: {kind: 'invoices' | 'payroll'}) {
     <Stack.Screen options={{ title }} />
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshStoredDocuments} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
-        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>{isOwner ? title : `My ${title.toLowerCase()}`}</Text><Text style={styles.subtitle}>{isOwner ? 'Review documents submitted by crew.' : 'Upload documents and keep them ready for review.'}</Text></View>
+        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>{isOwner ? title : `My ${title.toLowerCase()}`}</Text>{!isOwner ? <Text style={styles.subtitle}>Upload documents and keep them ready for review.</Text> : null}</View>
         <Pressable accessibilityRole="button" accessibilityLabel="Add document" onPress={() => router.push(`/${kind}/form` as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>
       </View>
 

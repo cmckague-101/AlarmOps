@@ -31,7 +31,7 @@ export default function InventoryPage({canManage=true,items,error,currentUserId,
     setBusyId(item.id);setRowError('');
     try{await onUpdate(item,quantity)}catch(updateError){setRowError(updateError instanceof Error?updateError.message:'Quantity could not be updated. Check connection and try again.')}finally{setBusyId('')}
   };
-  return <div className="page stock-page"><div className="page-heading stock-heading"><div><h1>Inventory</h1><p>Track company supplies and equipment counts.</p></div>{canManage&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button>}</div>
+  return <div className="page stock-page"><div className="page-heading stock-heading"><div><h1>Inventory</h1></div>{canManage&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button>}</div>
     {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
     {rowError&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{rowError}</span></div>}
     <section className="stock-summary" aria-label="Inventory summary"><div><strong>{items.length}</strong><span>{items.length===1?'item':'items'}</span></div><div><strong>{(total-checkedOut).toLocaleString()}</strong><span>available</span></div><div><strong>{checkedOut.toLocaleString()}</strong><span>checked out</span></div></section>

@@ -35,10 +35,7 @@ export default function CommunicationsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshCommunications} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingRow}>
-          <View style={styles.headingCopy}>
-            <Text style={styles.company}>{member?.company.name}</Text>
-            <Text style={styles.subtitle}>Company threads and crew replies.</Text>
-          </View>
+          <View style={styles.headingCopy} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Start a new thread"

@@ -68,7 +68,7 @@ export default function StoredDocumentsPage({kind, companyId, user, crew}: {kind
   const people = new Map(crew.map(person => [person.id,person.name]));
   records.forEach(record => people.set(record.uploaded_by,record.uploaded_by_name));
   return <div className="page receipts-page">
-    <div className="page-heading"><div><h1>{owner ? title : `My ${title.toLowerCase()}`}</h1><p>{owner ? `Store and review company ${title.toLowerCase()} documents.` : 'Your uploads are visible to you and the company owner.'}</p></div></div>
+    <div className="page-heading"><div><h1>{owner ? title : `My ${title.toLowerCase()}`}</h1>{!owner&&<p>Your uploads are visible to you and the company owner.</p>}</div></div>
     <section className="receipt-upload-card"><div className="receipt-card-heading"><FileText/><div><h2>Add {kind === 'invoices' ? 'invoice' : 'payroll document'}</h2><p>Photograph a document or upload an image or PDF. Maximum 10 MB.</p></div></div>
       <form ref={form} className="receipt-form stored-document-form" onSubmit={event=>void upload(event)}>
         <label><span>Name</span><input required maxLength={160} value={name} onChange={event=>setName(event.target.value)} placeholder="Document name" disabled={busy}/></label>

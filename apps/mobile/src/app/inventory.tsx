@@ -60,7 +60,7 @@ export default function InventoryScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInventory} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
-        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Inventory</Text><Text style={styles.subtitle}>Track company supplies and equipment counts.</Text></View>
+        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Inventory</Text></View>
         {canManage && <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>}
       </View>
       <View accessibilityLabel={`${items.length} inventory items, ${total - checkedOut} available, ${checkedOut} checked out`} style={styles.summary}><Summary value={items.length.toLocaleString()} label={items.length === 1 ? 'item' : 'items'} styles={styles} /><View style={styles.summaryRule} /><Summary value={(total - checkedOut).toLocaleString()} label="available" styles={styles} /><View style={styles.summaryRule} /><Summary value={checkedOut.toLocaleString()} label="checked out" styles={styles} /></View>

@@ -99,7 +99,7 @@ export default function ReceiptsScreen() {
     <Stack.Screen options={{ title: 'Receipts' }} />
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshReceipts} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
-        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>{isOwner ? 'Receipts' : 'My receipts'}</Text><Text style={styles.subtitle}>{isOwner ? 'Review expense receipts submitted by crew.' : 'Upload expense records and keep them ready for review.'}</Text></View>
+        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>{isOwner ? 'Receipts' : 'My receipts'}</Text>{!isOwner ? <Text style={styles.subtitle}>Upload expense records and keep them ready for review.</Text> : null}</View>
         <Pressable accessibilityRole="button" accessibilityLabel="Add receipt" onPress={() => router.push('/receipt/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>
       </View>
 
