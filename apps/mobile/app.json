@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/images/fireops-ios-icon.png",
-      "bundleIdentifier": "com.ryan.inslee.fireopsplatform",
+      "bundleIdentifier": "com.tinykings.fireops",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
