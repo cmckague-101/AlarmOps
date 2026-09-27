@@ -38,13 +38,13 @@ export default function MasterRecordScreen(){
     }finally{setPreparing(false)}
   };
 
-  return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Master record'}}/><ScrollView contentContainerStyle={styles.content}>
+  return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Master Record'}}/><ScrollView contentContainerStyle={styles.content}>
     <Pressable accessibilityRole="button" onPress={()=>router.back()} style={({pressed})=>[styles.back,pressed&&styles.pressed]}><AppSymbol name="chevron.left" color={theme.ink} size={19}/><Text style={styles.backText}>Back to qualifications</Text></Pressable>
     {loading?<Text style={styles.state}>Loading master record…</Text>:error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:!member?<View style={styles.empty}><AppSymbol name="doc.text.fill" color={theme.ember} size={31}/><Text style={styles.emptyTitle}>No responder record found</Text><Text style={styles.emptyText}>Your crew profile is not available.</Text></View>:<>
-      <View style={styles.heading}><Text style={styles.eyebrow}>RESPONDER MASTER RECORD</Text><Text accessibilityRole="header" style={styles.title}>{member.name}</Text></View>
-      <Pressable accessibilityRole="button" disabled={preparing} onPress={()=>void preparePacket()} style={({pressed})=>[styles.prepare,(pressed||preparing)&&styles.preparePressed]}><AppSymbol name="square.and.arrow.down" color={theme.commandText} size={20}/><Text style={styles.prepareText}>{preparing?'Preparing PDF…':'Prepare PDF Packet'}</Text></Pressable>
+      <View style={styles.heading}><Text style={styles.eyebrow}>MASTER RECORD</Text><Text accessibilityRole="header" style={styles.title}>{member.name}</Text></View>
       <View style={styles.summary}><Summary label="Credentials on record" value={member.credentials?.length??0} styles={styles}/><View style={styles.summaryRule}/><Summary label="Incident experience" value={member.experiences?.length??0} styles={styles}/></View>
       <View style={styles.sections}>{sections.map(section=><View style={styles.section} key={section.title}><View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{section.title}</Text><Text style={styles.count}>{section.rows.length}</Text></View>{section.rows.length?section.rows.map((row,rowIndex)=><View style={styles.record} key={`${section.title}-${rowIndex}`}>{row.map((value,columnIndex)=><View style={styles.field} key={section.columns[columnIndex]}><Text style={styles.label}>{section.columns[columnIndex]}</Text><Text style={styles.value}>{value}</Text></View>)}</View>):<Text style={styles.noRecords}>No records on file</Text>}</View>)}</View>
+      <Pressable accessibilityRole="button" disabled={preparing} onPress={()=>void preparePacket()} style={({pressed})=>[styles.prepare,(pressed||preparing)&&styles.preparePressed]}><AppSymbol name="square.and.arrow.down" color={theme.commandText} size={20}/><Text style={styles.prepareText}>{preparing?'Preparing PDF…':'Prepare PDF Packet'}</Text></Pressable>
     </>}
   </ScrollView></SafeAreaView>;
 }
