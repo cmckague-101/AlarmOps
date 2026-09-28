@@ -1,0 +1,12 @@
+diff --git a/node_modules/react-native-maps/src/MapView.tsx b/node_modules/react-native-maps/src/MapView.tsx
+index d6866df..28216bf 100644
+--- a/node_modules/react-native-maps/src/MapView.tsx
++++ b/node_modules/react-native-maps/src/MapView.tsx
+@@ -819,6 +819,9 @@ class MapView extends React.Component<MapViewProps, State> {
+   private _onMapReady() {
++    if (this.state.isReady) {
++      return;
++    }
+     const {onMapReady} = this.props;
+     this.setState({isReady: true}, () => {
+       if (onMapReady) {

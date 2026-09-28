@@ -24,6 +24,7 @@ import type { Topology } from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
 
 import type { MotiveVehicleSnapshot, NifcIncident } from '@fireops/domain';
+import { AppleIncidentMap } from '@/components/apple-incident-map';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
 import { updateFleetVehicle, useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
@@ -324,14 +325,24 @@ export default function OperationsScreen() {
   const openVehicleDetails = (vehicleId: string) => router.push(`/vehicle/${vehicleId}` as never);
   const incidentMap = (
     <>
-      <IncidentMap
-        incidents={incidents}
-        onIncidentDetails={openIncidentDetails}
-        onVehicleDetails={openVehicleDetails}
-        styles={styles}
-        theme={theme}
-        vehicles={motiveVehicles}
-      />
+      {Platform.OS === 'ios' ? (
+        <AppleIncidentMap
+          incidents={incidents}
+          onIncidentDetails={openIncidentDetails}
+          onVehicleDetails={openVehicleDetails}
+          style={styles.map}
+          vehicles={motiveVehicles}
+        />
+      ) : (
+        <IncidentMap
+          incidents={incidents}
+          onIncidentDetails={openIncidentDetails}
+          onVehicleDetails={openVehicleDetails}
+          styles={styles}
+          theme={theme}
+          vehicles={motiveVehicles}
+        />
+      )}
       {!incidentLoading && incidents.length === 0 && !incidentError ? (
         <View pointerEvents="none" style={styles.mapEmptyOverlay}>
           <View style={styles.mapEmptyCard}>
