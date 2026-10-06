@@ -107,6 +107,19 @@ Prepare:
 
 Explain that FireOps is invite-only and give reviewer usable credentials plus navigation steps. If iPad support is not intended, set `ios.supportsTablet` to `false` before screenshots and first release.
 
+## Local Xcode build and upload
+
+Use the preparation script when archiving and uploading from local Xcode instead of EAS. Find the latest build number in App Store Connect → FireOps Fleet → TestFlight, then pass a higher integer:
+
+```bash
+# From repository root
+npm run ios:app-store:prepare --workspace=@fireops/mobile -- 7
+```
+
+The script validates the clean worktree and production environment, installs locked dependencies, runs release checks, validates Expo identity, regenerates `apps/mobile/ios`, and applies the supplied build number. It then prints the remaining signing, archive, and upload steps for Xcode.
+
+Use `--skip-checks` only when checks already passed for the same commit. Use `--allow-dirty` only for deliberate non-release testing. Always open `apps/mobile/ios/FireOps.xcworkspace`; root `ios/` is obsolete and has the wrong bundle identifier.
+
 ## First TestFlight build
 
 ### 1. Release checks

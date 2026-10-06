@@ -51,6 +51,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "ios:app-store:prepare": "bash scripts/prepare-ios-app-store.sh",
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc",
