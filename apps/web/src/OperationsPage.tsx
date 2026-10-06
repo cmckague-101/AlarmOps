@@ -120,6 +120,7 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
   const [request,setRequest]=useState(0);
   const mapRef=useRef<HTMLDivElement|null>(null);
   const [hovered,setHovered]=useState<NifcIncident|null>(null);
+  const [hoveredVehicle,setHoveredVehicle]=useState<FireResourceVehicle|null>(null);
   const [tip,setTip]=useState<{x:number;y:number;flipX:boolean;flipY:boolean}|null>(null);
   useEffect(()=>{
     const controller=new AbortController();
@@ -166,16 +167,33 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
     const x=client.x-rect.left;
     const y=client.y-rect.top;
     setHovered(incident);
+    setHoveredVehicle(null);
     setTip({x,y,flipX:x>rect.width-210,flipY:y<74});
   };
-  const hideFireTip=()=>{setHovered(null);setTip(null)};
+  const showVehicleTip=(vehicle:FireResourceVehicle)=>{
+    const map=mapRef.current;
+    const svg=map?.querySelector('svg');
+    const coords=vehicleCoordinates(vehicle);
+    const point=coords?projection([coords.longitude,coords.latitude]):null;
+    if(!map||!svg||!point)return;
+    const ctm=(svg as SVGSVGElement).getScreenCTM();
+    if(!ctm)return;
+    const rect=map.getBoundingClientRect();
+    const client=new DOMPoint(point[0],point[1]).matrixTransform(ctm);
+    const x=client.x-rect.left;
+    const y=client.y-rect.top;
+    setHovered(null);
+    setHoveredVehicle(vehicle);
+    setTip({x,y,flipX:x>rect.width-210,flipY:y<74});
+  };
+  const hideMapTip=()=>{setHovered(null);setHoveredVehicle(null);setTip(null)};
 
   return <div className="page operations-page">
     <div className="page-heading operations-heading"><div><h1>Operations</h1></div></div>
     <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
       <div className="fire-map-panel">
         <header><div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
-        <div className="fire-map" ref={mapRef} onMouseLeave={hideFireTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
+        <div className="fire-map" ref={mapRef} onMouseLeave={hideMapTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
           <svg viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc">
             <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
             <g className="us-states">{states.features.map((state,index)=><path key={String(state.id??index)} d={path(state)??undefined}/>)}</g>
@@ -185,7 +203,7 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
               const active=selected?.id===incident.id;
               const radius=Math.max(5,Math.min(11,5+Math.log10(Math.max(1,incident.acres??1))*1.5))*markerScale;
               const select=()=>setSelected(incident);
-              return <g key={`${incident.id}-${index}`} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}} onMouseEnter={()=>showFireTip(incident)} onFocus={()=>showFireTip(incident)} onBlur={hideFireTip}>
+              return <g key={`${incident.id}-${index}`} className={active?'active':''} role="button" tabIndex={0} aria-label={`${incident.name}, ${formatAcres(incident.acres)} acres`} onClick={select} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select()}}} onMouseEnter={()=>showFireTip(incident)} onFocus={()=>showFireTip(incident)} onBlur={hideMapTip}>
                 <circle className="fire-marker-hit" cx={point[0]} cy={point[1]} r={Math.max(14*markerScale,radius+5*markerScale)}/><circle className="fire-marker" cx={point[0]} cy={point[1]} r={radius}/>
               </g>;
             })}</g>
@@ -195,13 +213,14 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
               if(!point)return null;
               const open=()=>onVehicleSelect?.(vehicle.id);
               const iconScale=markerScale*.72;
-              return <g key={`${vehicle.id}-${index}`} role={onVehicleSelect?'button':undefined} tabIndex={onVehicleSelect?0:undefined} aria-label={`${vehicle.unit} Motive location ${vehicle.motive?.location??''}`} onClick={open} onKeyDown={event=>{if(onVehicleSelect&&(event.key==='Enter'||event.key===' ')){event.preventDefault();open()}}}>
+              return <g key={`${vehicle.id}-${index}`} role={onVehicleSelect?'button':undefined} tabIndex={onVehicleSelect?0:undefined} aria-label={`${vehicle.unit} Motive location ${vehicle.motive?.location??''}`} onClick={open} onKeyDown={event=>{if(onVehicleSelect&&(event.key==='Enter'||event.key===' ')){event.preventDefault();open()}}} onMouseEnter={()=>showVehicleTip(vehicle)} onFocus={()=>showVehicleTip(vehicle)} onBlur={hideMapTip}>
                 <circle className="vehicle-marker-hit" cx={point[0]} cy={point[1]} r={18*markerScale}/><circle className="vehicle-marker" cx={point[0]} cy={point[1]} r={11*markerScale}/>
                 <g className="vehicle-marker-icon" transform={`translate(${point[0]} ${point[1]}) scale(${iconScale}) translate(-12 -12)`}><path d="M10 17h4V5H2v12h3M14 9h4l4 4v4h-2M14 17h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></g>
               </g>;
             })}</g>:null}
           </svg>
           {hovered&&tip&&<div className={`fire-tooltip${tip.flipX?' flip-x':''}${tip.flipY?' flip-y':''}`} style={{left:tip.x,top:tip.y}} role="tooltip"><b>{hovered.name}</b><dl><div><dt>Acres</dt><dd>{formatAcres(hovered.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(hovered.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(hovered.personnel)}</dd></div></dl></div>}
+          {hoveredVehicle&&tip&&<div className={`fire-tooltip${tip.flipX?' flip-x':''}${tip.flipY?' flip-y':''}`} style={{left:tip.x,top:tip.y}} role="tooltip"><b>{hoveredVehicle.unit}</b></div>}
           {loading&&<MapState icon={<RefreshCw className="spin"/>} title="Loading current fires" copy="Requesting active incident data from NIFC."/>}
           {!loading&&error&&<MapState icon={<Flame/>} title="NIFC data unavailable" copy={error} action={<button className="secondary" onClick={()=>setRequest(value=>value+1)}><RefreshCw/> Try again</button>}/>} 
           {!loading&&!error&&!visible.length&&<MapState icon={<MapPin/>} title="No active fires reported" copy="NIFC is not reporting any active wildfire incidents."/>}
