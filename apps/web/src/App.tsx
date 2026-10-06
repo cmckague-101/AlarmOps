@@ -416,7 +416,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
       setVehicles(items=>items.map(vehicle=>vehicle.assignedTo===member.id?{...vehicle,assignedTo:undefined,assignedFire:undefined,status:vehicle.status==='Assigned'?'Ready':vehicle.status}:vehicle));
       logActivity({action:`${member.name} removed from crew`,detail:assignmentCount?`App access revoked · ${assignmentCount} vehicle ${assignmentCount===1?'assignment':'assignments'} cleared`:'App access revoked',tone:'urgent'});
       setCrewDeleteCandidate(null);
-      showNotice(removal?.accountDeleted?`${member.name} removed and account deleted`:removal?.accountCleanupFailed?`${member.name} removed; access revoked, but account cleanup failed`:`${member.name} removed and access revoked`);
+      showNotice(removal?.accountDeleted?`${member.name} removed and pending account deleted`:removal?.accountCleanupFailed?`${member.name} removed and access revoked; account retained`:`${member.name} removed and access revoked`);
     } catch (error) {
       setCrewDeleteError(error instanceof Error?error.message:'Crew member could not be removed. Check your connection and try again.');
     } finally {

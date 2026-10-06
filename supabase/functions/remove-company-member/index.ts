@@ -71,6 +71,7 @@ Deno.serve(async (request) => {
   if (targetResult.data?.role === 'owner') return response(403, {error: 'Company owner cannot be removed.'});
 
   const crewData = crewResult.data?.data as {
+    status?: string;
     credential?: {path?: string};
     credentials?: {file?: {path?: string}}[];
   } | undefined;
@@ -119,7 +120,12 @@ Deno.serve(async (request) => {
     });
   }
 
-  const accountEligible = (membershipCountResult.count ?? 0) === 1 && !targetAdminResult.data;
+  // Keep accepted users' Auth accounts and historical records. Removal revokes
+  // this company's access only. Pending invite accounts have no user history and
+  // may be deleted when this is their sole membership, allowing a future reinvite.
+  const accountEligible = crewData?.status === 'Invited'
+    && (membershipCountResult.count ?? 0) === 1
+    && !targetAdminResult.data;
   let accountDeleted = false;
   let accountCleanupFailed = false;
 
