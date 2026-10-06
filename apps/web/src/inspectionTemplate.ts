@@ -11,7 +11,7 @@ export function useInspectionTemplate(companyId:string){
   const load=useCallback(async()=>{
     if(!supabase){setItems(defaults);setLoading(false);return}
     const {data,error:loadError}=await supabase.from('company_vehicle_inspection_items').select('id,label,position,kind').eq('company_id',companyId).order('position');
-    if(loadError){setError(`Inspection template could not load. ${loadError.message}`)}else{setItems((data??[]) as VehicleInspectionTemplateItem[]);setError('')}
+    if(loadError){setError(`Inspection Template could not load. ${loadError.message}`)}else{setItems((data??[]) as VehicleInspectionTemplateItem[]);setError('')}
     setLoading(false);
   },[companyId]);
   useEffect(()=>{setLoading(Boolean(supabase));void load();if(!supabase)return;const channel=supabase.channel(`web-inspection-template:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'company_vehicle_inspection_items',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{void supabase?.removeChannel(channel)}},[companyId,load]);
