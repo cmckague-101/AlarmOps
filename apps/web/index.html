@@ -6,14 +6,15 @@
     <meta name="theme-color" content="#f7f7f4" />
     <script>
       (() => {
-        let storedTheme = null;
-        try { storedTheme = localStorage.getItem('fireops-theme'); } catch {}
-        const theme = storedTheme === 'light' || storedTheme === 'dark'
-          ? storedTheme
-          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme;
-        document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0F1317' : '#f7f7f4';
+        const colorScheme = matchMedia('(prefers-color-scheme: dark)');
+        const applySystemTheme = ({ matches }) => {
+          const theme = matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0F1317' : '#f7f7f4';
+        };
+        applySystemTheme(colorScheme);
+        colorScheme.addEventListener('change', applySystemTheme);
       })();
     </script>
     <meta name="description" content="FireOps software for wildland crew, fleet, training, and incident operations." />

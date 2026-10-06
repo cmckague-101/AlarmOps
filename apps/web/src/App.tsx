@@ -32,7 +32,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
-  BriefcaseBusiness, CircleDollarSign, Ellipsis, Moon, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Sun, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
 type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'settings';
@@ -598,17 +598,8 @@ function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.Rea
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span>{notificationCount>0&&<span className="sidebar-nav-badge" aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>}</button>
 }
 function Topbar({saveState,notificationCount,onNotifications,onSignOut,onSwitchCompany}:{saveState:SaveState;notificationCount?:number;onNotifications?:()=>void;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
-  const [darkMode,setDarkMode]=useState(()=>document.documentElement.dataset.theme==='dark');
   const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
-  const toggleTheme=()=>{
-    const theme=darkMode?'light':'dark';
-    document.documentElement.dataset.theme=theme;
-    document.documentElement.style.colorScheme=theme;
-    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#0F1317':'#f7f7f4');
-    try{localStorage.setItem('fireops-theme',theme)}catch{/* Storage may be unavailable in private browsing. */}
-    setDarkMode(theme==='dark');
-  };
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}{notificationCount!==undefined&&<button className="notification-button" onClick={onNotifications} aria-label={notificationCount?`Open notifications, ${notificationCount} unread`:'Open notifications'}><Bell/>{notificationCount>0&&<b>{notificationCount>99?'99+':notificationCount}</b>}</button>}<button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={`Switch to ${darkMode?'light':'dark'} mode`} onClick={toggleTheme}><span className={darkMode?'':'active'}><Sun/></span><span className={darkMode?'active':''}><Moon/></span></button>{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}{notificationCount!==undefined&&<button className="notification-button" onClick={onNotifications} aria-label={notificationCount?`Open notifications, ${notificationCount} unread`:'Open notifications'}><Bell/>{notificationCount>0&&<b>{notificationCount>99?'99+':notificationCount}</b>}</button>}{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
 }
 
 function InspectionsPage({vehicles,template}:{vehicles:Vehicle[];template:{items:VehicleInspectionTemplateItem[];loading:boolean;error:string;add:(label:string)=>Promise<void>;update:(item:VehicleInspectionTemplateItem,label:string)=>Promise<void>;remove:(item:VehicleInspectionTemplateItem)=>Promise<void>}}) {
