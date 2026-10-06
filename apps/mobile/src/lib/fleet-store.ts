@@ -7,6 +7,8 @@ import type {
   CrewMember,
   FireOpsUser,
   FleetIssue,
+  MotiveCameraCapture,
+  MotiveCameraCaptureRequest,
   MotiveConnection,
   MotiveVehicleSnapshot,
   NifcIncident,
@@ -52,6 +54,28 @@ export type FleetVehicle = {
   updatedAt: string | null;
   source: Record<string, unknown>;
 };
+
+export async function captureMotiveCameraImage(companyId:string,fleetVehicleId:string):Promise<MotiveCameraCapture> {
+  if(!supabase)throw new Error("Company is unavailable.");
+  const client=supabase;
+  const invoke=async(body:Record<string,string>)=>{
+    const {data,error}=await client.functions.invoke<MotiveCameraCaptureRequest>("motive-integration",{body:{companyId,...body}});
+    if(error){
+      const context=(error as {context?:Response}).context;
+      const response=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
+      throw new Error(response?.error??"Motive camera image could not be captured.");
+    }
+    if(!data)throw new Error("Motive camera returned an invalid response.");
+    return data;
+  };
+  let result=await invoke({action:"capture-image",fleetVehicleId});
+  for(let attempt=0;result.status==="pending"&&attempt<30;attempt+=1){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    result=await invoke({action:"capture-status",fleetVehicleId,requestId:result.requestId,cameraType:result.cameraType});
+  }
+  if(result.status!=="ready")throw new Error("Motive camera is still processing the image. Try again shortly.");
+  return result;
+}
 
 export type SharedFleetSnapshot = {
   vehicles: FleetVehicle[];

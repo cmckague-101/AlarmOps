@@ -27,6 +27,9 @@ type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;comp
 type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
 type FleetChangeResult = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;version:number};
 type AccessCheckError = {code?:string;message?:string}|null;
+type MotiveCaptureRequest =
+  | {status:'pending';requestId:string;cameraType:'dashcam'|'omnicam';position:string;capturedAt?:string}
+  | {status:'ready';imageUrl:string;capturedAt:string;expiresAt?:string;position:string};
 
 const accessRetryDelays=[0,350,900];
 
@@ -642,6 +645,23 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     return data;
   },[companyId]);
 
+  const captureMotiveImage=useCallback(async(fleetVehicleId:string)=>{
+    if(!supabase)throw new Error('Company is unavailable.');
+    const invoke=async(body:Record<string,string>)=>{
+      const {data,error:captureError}=await supabase!.functions.invoke<MotiveCaptureRequest>('motive-integration',{body:{companyId,...body}});
+      if(captureError){const context=(captureError as {context?:Response}).context;const response=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;throw new Error(response?.error||'Motive camera image could not be captured.');}
+      if(!data)throw new Error('Motive camera returned an invalid response.');
+      return data;
+    };
+    let result=await invoke({action:'capture-image',fleetVehicleId});
+    for(let attempt=0;result.status==='pending'&&attempt<30;attempt+=1){
+      await new Promise(resolve=>window.setTimeout(resolve,2000));
+      result=await invoke({action:'capture-status',fleetVehicleId,requestId:result.requestId,cameraType:result.cameraType});
+    }
+    if(result.status!=='ready')throw new Error('Motive camera is still processing the image. Try again shortly.');
+    return result;
+  },[companyId]);
+
   const disconnectMotive=useCallback(async()=>{
     if(!supabase)throw new Error('Company is unavailable.');
     const {data,error:disconnectError}=await supabase.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'disconnect'}});
@@ -898,7 +918,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onUpdateCompany={updateCompany} onConnectMotive={connectMotive} onDisconnectMotive={disconnectMotive} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onUpdateCredential={updateCredential} onDeleteCredential={deleteCredential} onCreateExperience={createExperience} onUpdateExperience={updateExperience} onDeleteExperience={deleteExperience} onUpdateAnnualRecord={updateAnnualRecord} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onDeleteCrew={deleteCrew} onUpdateCompany={updateCompany} onConnectMotive={connectMotive} onDisconnectMotive={disconnectMotive} onCaptureMotiveImage={captureMotiveImage} onCreateThread={createCommunicationThread} onReplyToThread={replyToCommunicationThread} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onUpdateCredential={updateCredential} onDeleteCredential={deleteCredential} onCreateExperience={createExperience} onUpdateExperience={updateExperience} onDeleteExperience={deleteExperience} onUpdateAnnualRecord={updateAnnualRecord} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

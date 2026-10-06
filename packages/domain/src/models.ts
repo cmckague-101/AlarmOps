@@ -97,6 +97,10 @@ export type MotiveVehicleSnapshot = {
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
 };
 export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;syncedAt?:string;matched?:number;unmatched?:number;duplicateVins?:string[];mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
+export type MotiveCameraCapture = {imageUrl:string;capturedAt:string;expiresAt?:string;position:string};
+export type MotiveCameraCaptureRequest =
+  | {status:'pending';requestId:string;cameraType:'dashcam'|'omnicam';position:string;capturedAt?:string}
+  | ({status:'ready'}&MotiveCameraCapture);
 export type MotiveAuthorization = {authorizationUrl:string};
 export type FleetSnapshot = {vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[]};
 export type FleetRemoteChange =

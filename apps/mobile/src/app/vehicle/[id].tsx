@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppSymbol } from "@/components/app-symbol";
 import { openFleetFile, removeFleetFiles } from "@/lib/fleet-files";
 import {
+  captureMotiveCameraImage,
   deleteFleetVehicle,
   refreshFleet,
   updateFleetVehicle,
@@ -132,7 +133,8 @@ export default function VehicleDetailScreen() {
   const [crewQuery, setCrewQuery] = useState("");
   const [fileError, setFileError] = useState("");
   const [capturing, setCapturing] = useState(false);
-  const [cameraCapture, setCameraCapture] = useState<string | null>(null);
+  const [cameraCapture, setCameraCapture] = useState<{imageUrl:string;capturedAt:string} | null>(null);
+  const [cameraError, setCameraError] = useState("");
   const [firePickerOpen, setFirePickerOpen] = useState(false);
   const [fireQuery, setFireQuery] = useState("");
   const [incidents, setIncidents] = useState<NifcIncident[]>([]);
@@ -176,11 +178,17 @@ export default function VehicleDetailScreen() {
   if (!session || access.status === "error") return <Redirect href="/" />;
 
   const captureCameraImage = async () => {
-    if (!vehicle?.motive || capturing || vehicle.motive.camera?.status !== "online") return;
+    if (!vehicle?.motive || !companyId || capturing) return;
     setCapturing(true);
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    setCameraCapture(vehicle.motive.camera?.capturedAt ?? new Date().toISOString());
-    setCapturing(false);
+    setCameraError("");
+    try {
+      const capture=await captureMotiveCameraImage(companyId,vehicle.id);
+      setCameraCapture({imageUrl:capture.imageUrl,capturedAt:capture.capturedAt});
+    } catch (captureError) {
+      setCameraError(captureError instanceof Error?captureError.message:"Motive camera image could not be captured.");
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const changeStatus = async (status: VehicleStatus) => {
@@ -519,16 +527,17 @@ export default function VehicleDetailScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Capture Motive camera image"
-                  accessibilityState={{ disabled: capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "unavailable") }}
-                  disabled={capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "unavailable")}
+                  accessibilityState={{ disabled: capturing }}
+                  disabled={capturing}
                   onPress={() => void captureCameraImage()}
                   style={({ pressed }) => [styles.cameraButton, pressed && styles.buttonPressed]}
                 >
                   <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.commandText} size={18} />
                   <Text style={styles.cameraButtonLabel}>
-                    {capturing ? "Capturing…" : vehicle.motive.camera?.status === "offline" ? "Camera offline" : vehicle.motive.camera?.status !== "online" ? "Camera unavailable" : "Camera online · Capture image"}
+                    {capturing ? "Capturing…" : "Capture camera image"}
                   </Text>
                 </Pressable>
+                {cameraError ? <Text accessibilityRole="alert" style={styles.cameraError}>{cameraError}</Text> : null}
               </View>
             ) : null}
 
@@ -938,7 +947,7 @@ export default function VehicleDetailScreen() {
           <View style={styles.cameraViewerHeader}>
             <View style={styles.cameraViewerCopy}>
               <Text style={styles.cameraViewerTitle}>{vehicle?.name ?? "Vehicle"} camera image</Text>
-              <Text style={styles.cameraViewerTime}>Captured {formattedDate(cameraCapture)}</Text>
+              <Text style={styles.cameraViewerTime}>Captured {formattedDate(cameraCapture?.capturedAt ?? null)}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Close camera image" hitSlop={10} onPress={() => setCameraCapture(null)} style={styles.cameraClose}>
               <AppSymbol name={{ ios: "xmark", android: "close" } as never} color="#FFFFFF" size={22} />
@@ -947,7 +956,7 @@ export default function VehicleDetailScreen() {
           <Image
             accessibilityLabel={`Forward camera capture from ${vehicle?.name ?? "vehicle"}`}
             resizeMode="contain"
-            source={vehicle?.motive?.camera?.imageUrl ? { uri: vehicle.motive.camera.imageUrl } : require("../../../assets/images/motive-camera-demo.png")}
+            source={cameraCapture ? { uri: cameraCapture.imageUrl } : undefined}
             style={styles.cameraImage}
           />
         </SafeAreaView>
@@ -1309,6 +1318,7 @@ function createStyles(theme: FireOpsTheme) {
       paddingHorizontal: 12,
     },
     cameraButtonLabel: { color: theme.commandText, fontSize: 13, fontWeight: "800" },
+    cameraError: { color: "#FFB4AB", fontSize: 12, lineHeight: 17, fontWeight: "700" },
     section: { gap: 13 },
     sectionHeading: {
       minHeight: 40,

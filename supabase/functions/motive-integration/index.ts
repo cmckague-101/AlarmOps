@@ -23,6 +23,11 @@ type MotiveIntegration = {
   last_sync_at:string|null;sync_snapshot:Record<string,unknown>|null;
 };
 type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number};
+type MotiveCaptureResponse = {
+  request_id?:string|number;camera_type?:string;position?:string;status?:string;failure_reason?:string;created_at?:string;
+  vehicle?:{id?:string|number}|null;asset?:{id?:string|number}|null;
+  images?:Record<string,{url?:string;expires_at?:string}>;
+};
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -145,6 +150,58 @@ function motiveEntities(vehicleRows:unknown[],assetRows:unknown[]):MotiveEntity[
   return [...vehicles,...assets];
 }
 
+async function motiveRequest(path:string,init:RequestInit,token:string){
+  return fetch(`https://api.gomotive.com${path}`,{
+    ...init,
+    headers:{Authorization:`Bearer ${token}`,Accept:'application/json',...(init.headers??{})},
+    signal:AbortSignal.timeout(15000),
+  });
+}
+
+async function integrationWithToken(admin:AdminClient,companyId:string,encryptionSecret:string,redirectUri:string){
+  const {data:integration,error}=await admin.from('company_motive_integrations').select('encrypted_client_id,client_id_iv,encrypted_client_secret,client_secret_iv,encrypted_access_token,access_token_iv,encrypted_refresh_token,refresh_token_iv,token_expires_at,last_sync_at,sync_snapshot').eq('company_id',companyId).maybeSingle();
+  if(error)throw new Error('Motive connection could not be loaded.');
+  if(!integration?.encrypted_access_token)throw new Error('Motive is not connected.');
+  return {integration:integration as MotiveIntegration,token:await accessToken(admin,companyId,integration as MotiveIntegration,encryptionSecret,redirectUri)};
+}
+
+async function mappedMotiveEntity(admin:AdminClient,companyId:string,fleetVehicleId:string){
+  const {data,error}=await admin.from('company_motive_vehicle_mappings').select('motive_entity_type,motive_entity_id').eq('company_id',companyId).eq('fleet_vehicle_id',fleetVehicleId).maybeSingle();
+  if(error)throw new Error('Motive vehicle mapping could not be loaded.');
+  if(!data)throw new Error('This vehicle is not matched to Motive. Sync fleet data and verify its VIN.');
+  return {type:data.motive_entity_type as 'vehicle'|'asset',id:String(data.motive_entity_id)};
+}
+
+async function captureMotiveImage(admin:AdminClient,companyId:string,fleetVehicleId:string,encryptionSecret:string,redirectUri:string){
+  const entity=await mappedMotiveEntity(admin,companyId,fleetVehicleId);
+  if(!/^\d+$/.test(entity.id))throw new Error('Motive vehicle mapping is invalid. Sync fleet data again.');
+  const {integration,token:initialToken}=await integrationWithToken(admin,companyId,encryptionSecret,redirectUri);
+  const body={position:'front_facing',...(entity.type==='vehicle'?{vehicle_id:Number(entity.id)}:{asset_id:Number(entity.id)})};
+  let token=initialToken;
+  let response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);
+  if(response.status===401){token=await refreshAccessToken(admin,companyId,integration,encryptionSecret,redirectUri);response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);}
+  const result=await response.json().catch(()=>null) as MotiveCaptureResponse|null;
+  if(!response.ok||!result?.request_id||!result.camera_type)throw new Error(response.status===403?'Motive camera permission is missing. Reconnect Motive with camera access.':'Motive could not start the camera capture.');
+  return {status:'pending',requestId:String(result.request_id),cameraType:result.camera_type,position:result.position??'front_facing',capturedAt:result.created_at??new Date().toISOString()};
+}
+
+async function motiveCaptureStatus(admin:AdminClient,companyId:string,fleetVehicleId:string,requestId:string,cameraType:string,encryptionSecret:string,redirectUri:string){
+  const entity=await mappedMotiveEntity(admin,companyId,fleetVehicleId);
+  const {integration,token:initialToken}=await integrationWithToken(admin,companyId,encryptionSecret,redirectUri);
+  const path=`/v1/image_captures/${encodeURIComponent(cameraType)}/${encodeURIComponent(requestId)}`;
+  let response=await motiveRequest(path,{method:'GET'},initialToken);
+  if(response.status===401){const token=await refreshAccessToken(admin,companyId,integration,encryptionSecret,redirectUri);response=await motiveRequest(path,{method:'GET'},token);}
+  const result=await response.json().catch(()=>null) as MotiveCaptureResponse|null;
+  const returnedId=String(entity.type==='vehicle'?result?.vehicle?.id??'':result?.asset?.id??'');
+  if(returnedId!==entity.id)throw new Error('Motive camera response did not match this vehicle.');
+  if(result?.status==='pending')return {status:'pending',requestId,cameraType,position:result.position??'front_facing',capturedAt:result.created_at};
+  if(!response.ok||result?.status==='failed')throw new Error(result?.failure_reason||'Motive camera capture failed.');
+  const position=result?.position??'front_facing';
+  const image=result?.images?.[position]??Object.values(result?.images??{})[0];
+  if(result?.status!=='success'||!image?.url)throw new Error('Motive returned an invalid camera image.');
+  return {status:'ready',imageUrl:image.url,expiresAt:image.expires_at,position,capturedAt:result.created_at??new Date().toISOString()};
+}
+
 async function syncFleet(admin:AdminClient,companyId:string,encryptionSecret:string,redirectUri:string){
   const {data:integration,error:integrationError}=await admin.from('company_motive_integrations').select('encrypted_client_id,client_id_iv,encrypted_client_secret,client_secret_iv,encrypted_access_token,access_token_iv,encrypted_refresh_token,refresh_token_iv,token_expires_at,last_sync_at,sync_snapshot').eq('company_id',companyId).maybeSingle();
   if(integrationError)throw new Error('Motive connection could not be loaded.');
@@ -256,16 +313,16 @@ Deno.serve(async (request) => {
   const actor = userResult.user;
   if (userError || !actor) return jsonResponse(401, {error: 'Session is invalid or expired.'});
 
-  let input: {companyId?: string;action?: string;clientId?: string;clientSecret?: string;returnTo?: string};
+  let input: {companyId?: string;action?: string;clientId?: string;clientSecret?: string;returnTo?: string;fleetVehicleId?:string;requestId?:string;cameraType?:string};
   try { input = await request.json(); }
   catch { return jsonResponse(400, {error: 'Invalid request body.'}); }
 
   const companyId = input.companyId?.trim() ?? '';
   const action = input.action ?? 'status';
   if (!/^[0-9a-f-]{36}$/i.test(companyId)) return jsonResponse(400, {error: 'Company is invalid.'});
-  if (!['status', 'sync', 'connect', 'disconnect'].includes(action)) return jsonResponse(400, {error: 'Action is invalid.'});
+  if (!['status', 'sync', 'capture-image', 'capture-status', 'connect', 'disconnect'].includes(action)) return jsonResponse(400, {error: 'Action is invalid.'});
   try {
-    const ownerOnly=action!=='sync';
+    const ownerOnly=!['sync','capture-image','capture-status'].includes(action);
     if (!await companyAccess(admin, companyId, actor.id, ownerOnly)) return jsonResponse(403, {error: ownerOnly?'Company owner access required.':'Company membership required.'});
   } catch {
     return jsonResponse(500, {error: 'Motive access could not be verified.'});
@@ -274,6 +331,17 @@ Deno.serve(async (request) => {
   if(action==='sync'){
     try{return jsonResponse(200,await syncFleet(admin,companyId,encryptionSecret,redirectUri));}
     catch(error){console.error('Motive fleet sync failed:',error);return jsonResponse(502,{error:error instanceof Error?error.message:'Motive fleet could not be synchronized.'});}
+  }
+
+  if(action==='capture-image'||action==='capture-status'){
+    const fleetVehicleId=input.fleetVehicleId?.trim()??'';
+    if(!/^[0-9a-f-]{36}$/i.test(fleetVehicleId))return jsonResponse(400,{error:'Vehicle is invalid.'});
+    try{
+      if(action==='capture-image')return jsonResponse(200,await captureMotiveImage(admin,companyId,fleetVehicleId,encryptionSecret,redirectUri));
+      const requestId=input.requestId?.trim()??'';const cameraType=input.cameraType?.trim()??'';
+      if(!/^\d+$/.test(requestId)||!['dashcam','omnicam'].includes(cameraType))return jsonResponse(400,{error:'Camera capture request is invalid.'});
+      return jsonResponse(200,await motiveCaptureStatus(admin,companyId,fleetVehicleId,requestId,cameraType,encryptionSecret,redirectUri));
+    }catch(error){console.error('Motive camera capture failed:',error);return jsonResponse(502,{error:error instanceof Error?error.message:'Motive camera image could not be captured.'});}
   }
 
   if (action === 'status') {

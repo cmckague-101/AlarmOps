@@ -14,7 +14,7 @@ Credentials and tokens are scoped by FireOps `company_id`, encrypted with AES-25
 ## Motive developer application setup
 
 1. Create an application in [Motive Developer Portal](https://developer.gomotive.com/portal).
-2. Enable required read permissions for companies, vehicles, assets, locations, and camera connections.
+2. Enable required permissions for companies, vehicles, assets, locations, camera connections, and camera media/image capture.
 3. Set **Success Redirect URI** to the deployed Edge Function callback:
 
    `https://<supabase-project-ref>.supabase.co/functions/v1/motive-integration`
@@ -67,9 +67,16 @@ Authenticated company members can request a fleet sync. The Edge Function:
 
 Missing and duplicate VINs stay unmatched rather than using unreliable make, model, plate, or unit-name guesses.
 
+## Camera image capture
+
+- Web and mobile vehicle detail pages can request a current forward-facing image for a VIN-matched Motive vehicle or asset.
+- FireOps starts capture server-side, then polls Motive until image is ready. OAuth tokens never reach client.
+- Capture requests verify company membership and persisted vehicle mapping before calling Motive.
+- Returned media URL is Motive-signed and time-limited; FireOps does not persist camera images.
+
 ## Next implementation slice
 
-- Add camera availability/timeline flow after identity mapping.
+- Add available-video timeline and video recall flow.
 - Add explicit manual refresh and unmatched-VIN diagnostics UI.
 - Add background sync scheduling, rate limiting, sync audit records, retries, and Motive API error telemetry.
 
