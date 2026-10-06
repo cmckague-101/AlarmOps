@@ -78,6 +78,7 @@ export function AppleIncidentMap({
             description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
             key={`${vehicle.id}-${index}-vehicle`}
             onCalloutPress={() => onVehicleDetails(vehicle.id)}
+            onPress={() => onVehicleDetails(vehicle.id)}
             title={vehicle.name}
             tracksViewChanges={false}
           >
