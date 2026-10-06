@@ -96,7 +96,8 @@ export type MotiveVehicleSnapshot = {
   vin:string;location:string;speed:string;updatedAt:string;
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
 };
-export type MotiveConnection = {connected:boolean;lastFour?:string;connectedAt?:string;lastVerifiedAt?:string;mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
+export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
+export type MotiveAuthorization = {authorizationUrl:string};
 export type FleetSnapshot = {vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[]};
 export type FleetRemoteChange =
   | {collection:'vehicles';event:'upsert';record:Vehicle}

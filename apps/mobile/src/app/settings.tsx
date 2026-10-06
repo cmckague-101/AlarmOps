@@ -1,6 +1,6 @@
-import {formatPhoneNumber,type MotiveConnection} from '@fireops/domain';
+import {formatPhoneNumber,type MotiveAuthorization,type MotiveConnection} from '@fireops/domain';
 import * as ImagePicker from 'expo-image-picker';
-import {Redirect,Stack,useRouter} from 'expo-router';
+import {Redirect,Stack,useLocalSearchParams,useRouter} from 'expo-router';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {Alert,Image,KeyboardAvoidingView,Linking,Platform,Pressable,RefreshControl,ScrollView,StyleSheet,Switch,Text,TextInput,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -12,9 +12,9 @@ import {refreshNotificationInbox,saveNotificationPreferences,useNotificationInbo
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
-async function motiveRequest(companyId:string,action:'status'|'save'|'disconnect',apiKey?:string){
+async function motiveRequest(companyId:string,action:'status'|'disconnect'){
   if(!supabase)throw new Error('Motive integration is unavailable.');
-  const {data,error}=await supabase.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action,...(apiKey?{apiKey}:{})}});
+  const {data,error}=await supabase.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action}});
   if(error){
     const context=(error as {context?:Response}).context;
     const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
@@ -23,14 +23,25 @@ async function motiveRequest(companyId:string,action:'status'|'save'|'disconnect
   if(!data)throw new Error('Motive returned an invalid response.');
   return data;
 }
+async function connectMotive(companyId:string,clientId:string,clientSecret:string){
+  if(!supabase)throw new Error('Motive integration is unavailable.');
+  const {data,error}=await supabase.functions.invoke<MotiveAuthorization>('motive-integration',{body:{companyId,action:'connect',clientId,clientSecret,returnTo:'fireops://settings'}});
+  if(error){
+    const context=(error as {context?:Response}).context;
+    const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
+    throw new Error(body?.error||error.message||'Motive authorization could not be started.');
+  }
+  if(!data?.authorizationUrl)throw new Error('Motive returned an invalid authorization response.');
+  return data;
+}
 
 export default function SettingsScreen(){
-  const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
+  const router=useRouter();const oauthParams=useLocalSearchParams<{motive?:string;motive_error?:string}>();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
   const {session,access,clearCompany,updateCompanyProfile}=useSession();const member=access.value?.kind==='member'?access.value:null;
   const {crew,refreshing}=useFleetVehicles(member?.company.id??null);
   const {preferences,loading:notificationsLoading,refreshing:notificationsRefreshing,savingPreferences,error:notificationsError}=useNotificationInbox(member?.company.id??null,member?.user.id??null);
   const [seatsUsed,setSeatsUsed]=useState<number|null>(null);const [connection,setConnection]=useState<MotiveConnection>({connected:false});
-  const [apiKey,setApiKey]=useState('');const [showKey,setShowKey]=useState(false);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [saved,setSaved]=useState(false);
+  const [clientId,setClientId]=useState('');const [clientSecret,setClientSecret]=useState('');const [showSecret,setShowSecret]=useState(false);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [error,setError]=useState(typeof oauthParams.motive_error==='string'?oauthParams.motive_error:'');const [saved,setSaved]=useState(oauthParams.motive==='connected');
   const [companyName,setCompanyName]=useState(member?.company.name??'');const [companyPhone,setCompanyPhone]=useState(formatPhoneNumber(member?.company.phone??''));const [companyLocation,setCompanyLocation]=useState(member?.company.location??'');const [logoFile,setLogoFile]=useState<LocalFleetFile>();const [logoUri,setLogoUri]=useState('');const [profileBusy,setProfileBusy]=useState(false);const [profileError,setProfileError]=useState('');const [profileSaved,setProfileSaved]=useState(false);
   const owner=crew.find(person=>person.role==='owner')?.name??(member?.user.role==='owner'?member.user.name:'Not available');
   const isOwner=member?.user.role==='owner';const companyId=member?.company.id;
@@ -44,21 +55,21 @@ export default function SettingsScreen(){
     }catch(loadError){setError(loadError instanceof Error?loadError.message:'Settings could not be loaded.');}
     finally{setLoading(false)}
   },[companyId,isOwner]);
-  useEffect(()=>{if(!companyId)return;let active=true;void Promise.all([loadCrewSeatsUsed(companyId),isOwner?motiveRequest(companyId,'status'):Promise.resolve(null)]).then(([usage,motive])=>{if(!active)return;setSeatsUsed(usage);if(motive)setConnection(motive);setLoading(false)}).catch(loadError=>{if(!active)return;setError(loadError instanceof Error?loadError.message:'Settings could not be loaded.');setLoading(false)});return()=>{active=false}},[companyId,isOwner]);
+  useEffect(()=>{if(!companyId)return;let active=true;void Promise.all([loadCrewSeatsUsed(companyId),isOwner?motiveRequest(companyId,'status'):Promise.resolve(null)]).then(([usage,motive])=>{if(!active)return;setSeatsUsed(usage);if(motive)setConnection(motive);setLoading(false)}).catch(loadError=>{if(!active)return;setError(loadError instanceof Error?loadError.message:'Settings could not be loaded.');setLoading(false)});return()=>{active=false}},[companyId,isOwner,oauthParams.motive]);
+  useEffect(()=>{if(oauthParams.motive==='connected'){setSaved(true);setError('')}else if(typeof oauthParams.motive_error==='string'){setSaved(false);setError(oauthParams.motive_error)}},[oauthParams.motive,oauthParams.motive_error]);
   useEffect(()=>{if(!member)return;setCompanyName(member.company.name);setCompanyPhone(formatPhoneNumber(member.company.phone));setCompanyLocation(member.company.location);if(!member.company.logoPath){setLogoUri('');return}let active=true;void openFleetFile({name:'Company logo',type:'image/*',path:member.company.logoPath}).then(url=>{if(active)setLogoUri(url)}).catch(()=>{if(active)setLogoUri('')});return()=>{active=false}},[member]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   if(!member)return <Redirect href="/"/>;
   const limit=member.company.crewInviteLimit;const used=seatsUsed??crew.filter(person=>person.role==='member').length;const available=Math.max(0,limit-used);
-  const save=async()=>{
-    const key=apiKey.trim();if(!companyId||!key||busy)return;
+  const connect=async()=>{
+    const id=clientId.trim();const secret=clientSecret.trim();if(!companyId||!id||!secret||busy)return;
     setBusy(true);setError('');setSaved(false);
-    try{setConnection(await motiveRequest(companyId,'save',key));setApiKey('');setShowKey(false);setSaved(true)}
-    catch(saveError){setError(saveError instanceof Error?saveError.message:'Motive API key could not be saved.')}
-    finally{setBusy(false)}
+    try{const authorization=await connectMotive(companyId,id,secret);setClientSecret('');setShowSecret(false);await Linking.openURL(authorization.authorizationUrl);setBusy(false)}
+    catch(connectError){setError(connectError instanceof Error?connectError.message:'Motive authorization could not be started.');setBusy(false)}
   };
-  const disconnect=()=>Alert.alert('Disconnect Motive?','Vehicle tracking and camera data will stop until a new API key is connected.',[
+  const disconnect=()=>Alert.alert('Disconnect Motive?','Stored OAuth credentials will be removed and vehicle tracking and camera data will stop.',[
     {text:'Cancel',style:'cancel'},
-    {text:'Disconnect',style:'destructive',onPress:()=>{if(!companyId)return;setBusy(true);setError('');setSaved(false);void motiveRequest(companyId,'disconnect').then(next=>{setConnection(next);setApiKey('')}).catch(disconnectError=>setError(disconnectError instanceof Error?disconnectError.message:'Motive connection could not be removed.')).finally(()=>setBusy(false))}},
+    {text:'Disconnect',style:'destructive',onPress:()=>{if(!companyId)return;setBusy(true);setError('');setSaved(false);void motiveRequest(companyId,'disconnect').then(next=>{setConnection(next);setClientId('');setClientSecret('')}).catch(disconnectError=>setError(disconnectError instanceof Error?disconnectError.message:'Motive connection could not be removed.')).finally(()=>setBusy(false))}},
   ]);
   const chooseLogo=async()=>{const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted){Alert.alert('Photo access required','Allow photo access to upload company logo.');return}const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],quality:.9});if(result.canceled)return;const asset=result.assets[0];const file={uri:asset.uri,name:asset.fileName??`company-logo-${Date.now()}.jpg`,type:asset.mimeType??'image/jpeg'};setLogoFile(file);setLogoUri(asset.uri);setProfileSaved(false)};
   const saveProfile=async()=>{if(!member||!companyName.trim()||profileBusy)return;setProfileBusy(true);setProfileError('');setProfileSaved(false);let uploadedPath:string|undefined;try{if(logoFile){const uploaded=await uploadFleetFile(member.company.id,member.user.id,logoFile);uploadedPath=uploaded.path??undefined}const oldPath=member.company.logoPath;await updateCompanyProfile({name:companyName.trim(),phone:companyPhone.trim(),location:companyLocation.trim(),logoPath:uploadedPath??oldPath});setLogoFile(undefined);setProfileSaved(true);if(uploadedPath&&oldPath&&uploadedPath!==oldPath)try{await removeFleetFiles([oldPath])}catch{}}catch(saveError){if(uploadedPath)try{await removeFleetFiles([uploadedPath])}catch{}setProfileError(saveError instanceof Error?saveError.message:'Company profile could not be saved.')}finally{setProfileBusy(false)}};
@@ -87,12 +98,13 @@ export default function SettingsScreen(){
       {notificationsError?<Text accessibilityRole="alert" style={styles.error}>{notificationsError}</Text>:null}
     </View>
     {isOwner?<View style={styles.panel}><View style={styles.panelHeader}><View style={styles.keyIcon}><AppSymbol name={{ios:'key.fill',android:'key'} as never} color={theme.commandForeground} size={20}/></View><View style={styles.panelCopy}><Text style={styles.panelTitle}>Motive</Text><Text style={styles.panelSubtitle}>Vehicle tracking and camera data.</Text></View><View style={[styles.status,connection.connected&&styles.connected]}><View style={[styles.dot,connection.connected&&styles.connectedDot]}/><Text style={[styles.statusText,connection.connected&&styles.connectedText]}>{connection.connected?'Connected':'Not connected'}</Text></View></View>
-      <Text style={styles.integrationTitle}>{connection.connected?`API key ending in ${connection.lastFour??'••••'}`:'Motive API key'}</Text><Text style={styles.help}>Key is verified with Motive, encrypted, and never shown again. Vehicles match Motive records by VIN.</Text>
-      <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL('https://gomotive.com')} style={styles.link}><Text style={styles.linkText}>Visit gomotive.com</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.commandForeground} size={16}/></Pressable>
-      {connection.lastVerifiedAt?<Text style={styles.verified}>Verified {new Date(connection.lastVerifiedAt).toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</Text>:null}
-      <Text style={styles.label}>{connection.connected?'Replace API key':'API key'}</Text><View style={styles.secret}><TextInput accessibilityLabel="Motive API key" autoCapitalize="none" autoCorrect={false} editable={!busy} onChangeText={value=>{setApiKey(value);setError('');setSaved(false)}} placeholder="Paste Motive API key" placeholderTextColor={theme.secondary} secureTextEntry={!showKey} style={styles.input} value={apiKey}/><Pressable accessibilityRole="button" accessibilityLabel={showKey?'Hide API key':'Show API key'} onPress={()=>setShowKey(value=>!value)} style={styles.eye}><AppSymbol name={{ios:showKey?'eye.slash':'eye',android:showKey?'visibility_off':'visibility'} as never} color={theme.secondary} size={19}/></Pressable></View><Text style={styles.hint}>Find this in Motive Dashboard → Admin → Developers.</Text>
-      {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}{saved?<Text accessibilityRole="alert" style={styles.success}>Motive connection saved.</Text>:null}
-      <View style={styles.actions}><Pressable accessibilityRole="button" disabled={busy||!apiKey.trim()} onPress={()=>void save()} style={({pressed})=>[styles.primary,(busy||!apiKey.trim())&&styles.disabled,pressed&&styles.pressed]}><Text style={styles.primaryText}>{busy?'Verifying…':connection.connected?'Verify and replace key':'Verify and connect'}</Text></Pressable>{connection.connected?<Pressable accessibilityRole="button" disabled={busy} onPress={disconnect} style={({pressed})=>[styles.disconnect,pressed&&styles.pressed]}><Text style={styles.disconnectText}>Disconnect</Text></Pressable>:null}</View>
+      <Text style={styles.integrationTitle}>{connection.connected?`OAuth connected · Client ID ending in ${connection.clientIdLastFour??'••••'}`:connection.configured?'Motive authorization pending':'Motive OAuth 2.0'}</Text><Text style={styles.help}>Credentials and OAuth tokens are encrypted per company and remain server-side. Vehicles match Motive records by VIN.</Text>
+      <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL('https://developer.gomotive.com/portal')} style={styles.link}><Text style={styles.linkText}>Open Motive Developer Portal</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.commandForeground} size={16}/></Pressable>
+      {connection.lastVerifiedAt?<Text style={styles.verified}>Authorized {new Date(connection.lastVerifiedAt).toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</Text>:null}
+      <Text style={styles.label}>Client ID</Text><View style={styles.secret}><TextInput accessibilityLabel="Motive client ID" autoCapitalize="none" autoCorrect={false} editable={!busy} onChangeText={value=>{setClientId(value);setError('');setSaved(false)}} placeholder={connection.configured?'Enter Client ID to reconnect':'Motive Client ID'} placeholderTextColor={theme.secondary} style={styles.input} value={clientId}/></View>
+      <Text style={styles.label}>Client secret</Text><View style={styles.secret}><TextInput accessibilityLabel="Motive client secret" autoCapitalize="none" autoCorrect={false} editable={!busy} onChangeText={value=>{setClientSecret(value);setError('');setSaved(false)}} placeholder="Motive Client Secret" placeholderTextColor={theme.secondary} secureTextEntry={!showSecret} style={styles.input} value={clientSecret}/><Pressable accessibilityRole="button" accessibilityLabel={showSecret?'Hide client secret':'Show client secret'} onPress={()=>setShowSecret(value=>!value)} style={styles.eye}><AppSymbol name={{ios:showSecret?'eye.slash':'eye',android:showSecret?'visibility_off':'visibility'} as never} color={theme.secondary} size={19}/></Pressable></View><Text style={styles.hint}>Create a Motive developer app and set its success redirect URI to FireOps OAuth callback URL.</Text>
+      {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}{saved?<Text accessibilityRole="alert" style={styles.success}>Motive authorization complete.</Text>:null}
+      <View style={styles.actions}><Pressable accessibilityRole="button" disabled={busy||!clientId.trim()||!clientSecret.trim()} onPress={()=>void connect()} style={({pressed})=>[styles.primary,(busy||!clientId.trim()||!clientSecret.trim())&&styles.disabled,pressed&&styles.pressed]}><Text style={styles.primaryText}>{busy?'Opening Motive…':connection.connected?'Reconnect Motive':'Authorize with Motive'}</Text></Pressable>{connection.connected||connection.configured?<Pressable accessibilityRole="button" disabled={busy} onPress={disconnect} style={({pressed})=>[styles.disconnect,pressed&&styles.pressed]}><Text style={styles.disconnectText}>Disconnect</Text></Pressable>:null}</View>
     </View>:error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
     {member.isAdmin?<Pressable accessibilityRole="button" onPress={switchCompany} style={({pressed})=>[styles.switchButton,pressed&&styles.pressed]}><AppSymbol name={{ios:'building.2',android:'business'} as never} color={theme.ink} size={19}/><Text style={styles.switchText}>Switch company</Text></Pressable>:null}
   </ScrollView></KeyboardAvoidingView></SafeAreaView>;
