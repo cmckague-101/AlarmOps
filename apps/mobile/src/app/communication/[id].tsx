@@ -27,8 +27,10 @@ export default function CommunicationThreadScreen() {
   const member = access.value?.kind === 'member' ? access.value : null;
   const { threads, loading, error } = useCommunications(member?.company.id ?? null, member?.user.id ?? null);
   const thread = threads.find((item) => item.id === id);
+  const joined = Boolean(thread && (thread.createdById === member?.user.id || thread.replies.some((item) => item.createdById === member?.user.id)));
   const [reply, setReply] = useState('');
   const [saving, setSaving] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -51,6 +53,19 @@ export default function CommunicationThreadScreen() {
       setSaveError(replyError instanceof Error ? replyError.message : 'Reply could not be posted. Check your connection and try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const joinConversation = async () => {
+    if (!thread || joined) return;
+    setJoining(true);
+    setSaveError('');
+    try {
+      await replyToCommunicationThread(thread.id, 'Joined the conversation.');
+    } catch (joinError) {
+      setSaveError(joinError instanceof Error ? joinError.message : 'Could not join the conversation. Check your connection and try again.');
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -135,6 +150,19 @@ export default function CommunicationThreadScreen() {
                 ) : <Text style={styles.emptyReplies}>No replies yet. Start the conversation below.</Text>}
               </View>
 
+              <View style={styles.joinRow}>
+                <Text style={styles.joinCopy}>Get notified when someone replies.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={joined || joining || saving}
+                  onPress={() => void joinConversation()}
+                  style={({ pressed }) => [styles.joinButton, (joined || joining || saving) && styles.disabled, pressed && !joining && styles.pressed]}
+                >
+                  <Text style={styles.joinLabel}>{joined ? 'Joined' : joining ? 'Joining…' : 'Join conversation'}</Text>
+                </Pressable>
+              </View>
+              {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
+
               <View style={styles.replyForm}>
                 <Text style={styles.label}>Reply to thread</Text>
                 <TextInput
@@ -148,12 +176,11 @@ export default function CommunicationThreadScreen() {
                   textAlignVertical="top"
                   value={reply}
                 />
-                {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
                 <Pressable
                   accessibilityRole="button"
-                  disabled={saving || !reply.trim()}
+                  disabled={saving || joining || !reply.trim()}
                   onPress={() => void postReply()}
-                  style={({ pressed }) => [styles.submitButton, (saving || !reply.trim()) && styles.disabled, pressed && !saving && styles.pressed]}
+                  style={({ pressed }) => [styles.submitButton, (saving || joining || !reply.trim()) && styles.disabled, pressed && !saving && styles.pressed]}
                 >
                   <Text style={styles.submitLabel}>{saving ? 'Posting…' : 'Post reply'}</Text>
                 </Pressable>
@@ -195,6 +222,10 @@ function createStyles(theme: FireOpsTheme) {
     replyAuthor: { color: theme.ink, fontSize: 14, lineHeight: 19, fontWeight: '700' },
     replyBody: { color: theme.ink, fontSize: 15, lineHeight: 22 },
     emptyReplies: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
+    joinRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    joinCopy: { flex: 1, color: theme.secondary, fontSize: 13, lineHeight: 18 },
+    joinButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 10, backgroundColor: theme.paper, paddingHorizontal: 14 },
+    joinLabel: { color: theme.ink, fontSize: 14, fontWeight: '800' },
     replyForm: { gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, paddingTop: 22 },
     label: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     input: { minHeight: 116, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, color: theme.ink, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 13, fontSize: 16, lineHeight: 23 },
