@@ -123,7 +123,7 @@ export default function VehicleFormScreen() {
   };
 
   const choosePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 });
     if (result.canceled) return;
     const asset = result.assets[0];
     setPhoto({ uri: asset.uri, name: asset.fileName ?? `${form.unit.trim() || 'vehicle'}-photo.jpg`, type: asset.mimeType ?? 'image/jpeg' });

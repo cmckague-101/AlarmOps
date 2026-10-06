@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { NifcIncident, VehicleStatus } from "@fireops/domain";
+import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -19,12 +20,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppSymbol } from "@/components/app-symbol";
-import { openFleetFile, removeFleetFiles } from "@/lib/fleet-files";
+import { openFleetFile, removeFleetFiles, uploadFleetFile } from "@/lib/fleet-files";
 import {
   captureMotiveCameraImage,
   deleteFleetVehicle,
   refreshFleet,
   updateFleetVehicle,
+  updateFleetVehicleFiles,
   useFleetVehicles,
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
@@ -132,6 +134,7 @@ export default function VehicleDetailScreen() {
   const [crewPickerOpen, setCrewPickerOpen] = useState(false);
   const [crewQuery, setCrewQuery] = useState("");
   const [fileError, setFileError] = useState("");
+  const [photoSaving, setPhotoSaving] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [cameraCapture, setCameraCapture] = useState<{imageUrl:string;capturedAt:string} | null>(null);
   const [cameraError, setCameraError] = useState("");
@@ -188,6 +191,44 @@ export default function VehicleDetailScreen() {
       setCameraError(captureError instanceof Error?captureError.message:"Motive camera image could not be captured.");
     } finally {
       setCapturing(false);
+    }
+  };
+
+  const changePhoto = async () => {
+    if (!vehicle || !user || !companyId || !canManage || photoSaving) return;
+    setFileError("");
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled) return;
+      setPhotoSaving(true);
+      const asset = result.assets[0];
+      const uploaded = await uploadFleetFile(companyId, user.id, {
+        uri: asset.uri,
+        name: asset.fileName ?? `${vehicle.name}-photo.jpg`,
+        type: asset.mimeType ?? "image/jpeg",
+      });
+      try {
+        await updateFleetVehicleFiles(
+          vehicle,
+          { photo: uploaded },
+          user,
+          { action: `${vehicle.name} photo updated`, detail: "Vehicle photo changed" },
+        );
+      } catch (error) {
+        void removeFleetFiles([uploaded.path]).catch(() => undefined);
+        throw error;
+      }
+      if (vehicle.photo?.path)
+        void removeFleetFiles([vehicle.photo.path]).catch(() => undefined);
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : "Photo could not be updated.");
+    } finally {
+      setPhotoSaving(false);
     }
   };
 
@@ -434,13 +475,39 @@ export default function VehicleDetailScreen() {
           <>
             <View style={styles.identity}>
               {photoUrl ? (
-                <Image
-                  accessibilityLabel={`${vehicle.name} vehicle photo`}
-                  resizeMode="cover"
-                  source={{ uri: photoUrl }}
-                  style={styles.vehiclePhoto}
-                />
+                <Pressable
+                  accessibilityRole={canManage ? "button" : "image"}
+                  accessibilityLabel={canManage ? `Change ${vehicle.name} vehicle photo` : `${vehicle.name} vehicle photo`}
+                  disabled={!canManage || photoSaving}
+                  onPress={() => void changePhoto()}
+                  style={({ pressed }) => [styles.vehiclePhotoButton, pressed && styles.buttonPressed]}
+                >
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    resizeMode="cover"
+                    source={{ uri: photoUrl }}
+                    style={styles.vehiclePhoto}
+                  />
+                  {canManage ? (
+                    <View style={styles.photoEditBadge}>
+                      <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color="#FFFFFF" size={13} />
+                      <Text style={styles.photoEditLabel}>{photoSaving ? "Saving…" : "Change photo"}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ) : canManage ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${vehicle.name} vehicle photo`}
+                  disabled={photoSaving}
+                  onPress={() => void changePhoto()}
+                  style={({ pressed }) => [styles.emptyVehiclePhoto, pressed && styles.buttonPressed]}
+                >
+                  <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.ember} size={24} />
+                  <Text style={styles.emptyVehiclePhotoLabel}>{photoSaving ? "Saving…" : "Add vehicle photo"}</Text>
+                </Pressable>
               ) : null}
+              {fileError ? <Text accessibilityRole="alert" style={styles.saveError}>{fileError}</Text> : null}
               <View style={styles.titleRow}>
                 <Text style={styles.title}>{vehicle.name}</Text>
                 <View
@@ -816,7 +883,6 @@ export default function VehicleDetailScreen() {
                   );
                 })}
               </View>
-              {fileError ? <Text accessibilityRole="alert" style={styles.saveError}>{fileError}</Text> : null}
             </View>
 
             <View style={styles.section}>
@@ -1214,13 +1280,45 @@ function createStyles(theme: FireOpsTheme) {
     },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 32 },
     identity: { gap: 8 },
-    vehiclePhoto: {
-      width: "100%",
-      aspectRatio: 16 / 9,
-      borderRadius: 16,
+    vehiclePhotoButton: {
+      position: "relative",
+      width: 180,
+      height: 180,
+      alignSelf: "center",
+      borderRadius: 18,
+      overflow: "hidden",
       backgroundColor: theme.surfaceAlt,
       marginBottom: 8,
     },
+    vehiclePhoto: { width: "100%", height: "100%" },
+    photoEditBadge: {
+      position: "absolute",
+      right: 8,
+      bottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      borderRadius: 8,
+      backgroundColor: "rgba(20, 30, 25, 0.84)",
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    photoEditLabel: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+    emptyVehiclePhoto: {
+      width: 180,
+      height: 180,
+      alignSelf: "center",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: theme.divider,
+      borderRadius: 18,
+      backgroundColor: theme.surfaceAlt,
+      marginBottom: 8,
+    },
+    emptyVehiclePhotoLabel: { color: theme.ember, fontSize: 13, fontWeight: "700" },
     titleRow: {
       flexDirection: "row",
       alignItems: "flex-start",
