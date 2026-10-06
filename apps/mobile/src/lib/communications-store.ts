@@ -176,6 +176,17 @@ export async function createCommunicationThread(subject: string, description: st
   return thread;
 }
 
+export async function deleteCommunicationThread(threadId: string) {
+  if (!supabase || !activeCompanyId) throw new Error('Company communications are unavailable.');
+  const { error } = await supabase
+    .from('communication_threads')
+    .delete()
+    .eq('id', threadId)
+    .eq('company_id', activeCompanyId);
+  if (error) throw new Error(error.message);
+  emit({ ...snapshot, threads: snapshot.threads.filter((thread) => thread.id !== threadId) });
+}
+
 export async function replyToCommunicationThread(threadId: string, body: string) {
   if (!supabase || !activeCompanyId) throw new Error('Company communications are unavailable.');
   const { data, error } = await supabase

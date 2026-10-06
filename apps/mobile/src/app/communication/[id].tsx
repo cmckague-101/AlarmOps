@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isThreadUnread } from '@fireops/domain';
-import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { markCommunicationThreadSeen, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
+import { deleteCommunicationThread, markCommunicationThreadSeen, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -20,6 +20,7 @@ function initial(name: string) {
 
 export default function CommunicationThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
@@ -28,6 +29,7 @@ export default function CommunicationThreadScreen() {
   const thread = threads.find((item) => item.id === id);
   const [reply, setReply] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
@@ -52,9 +54,37 @@ export default function CommunicationThreadScreen() {
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert('Delete thread?', 'This permanently deletes the thread and all replies.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          setSaveError('');
+          try {
+            await deleteCommunicationThread(id);
+            router.replace('/(tabs)/communications');
+          } catch (deleteError) {
+            setSaveError(deleteError instanceof Error ? deleteError.message : 'Thread could not be deleted.');
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <Stack.Screen options={{ title: thread?.subject ?? 'Thread' }} />
+      <Stack.Screen options={{
+        title: thread?.subject ?? 'Thread',
+        headerRight: member?.user.role === 'owner' && thread ? () => (
+          <Pressable accessibilityRole="button" disabled={deleting} onPress={confirmDelete}>
+            <Text style={{ color: theme.danger, fontWeight: '700' }}>{deleting ? 'Deleting...' : 'Delete'}</Text>
+          </Pressable>
+        ) : undefined,
+      }} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
           {loading ? <Text style={styles.stateText}>Loading thread…</Text> : null}
