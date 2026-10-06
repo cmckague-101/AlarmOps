@@ -17,6 +17,7 @@ export function QuickActions() {
   const actions = [
     {path:'/availability',label:'Availability',ios:'circle',android:'radio_button_unchecked',color:theme.green},
     ...(member?.user.role === 'member' ? [{path:'/inspection',label:'Inspect',ios:'list.bullet.clipboard.fill',android:'fact_check',color:theme.green}] : []),
+    ...(member?.user.role === 'owner' ? [{path:'/inspections',label:'Inspections',ios:'list.bullet.clipboard.fill',android:'fact_check',color:theme.green}] : []),
     {path:'/inventory',label:'Check Out Gear',ios:'bag.fill',android:'shopping_bag',color:theme.warning},
     {path:'/payroll',label:'Payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#285f9e'},
     {path:'/receipts',label:'Receipts',ios:'receipt',android:'receipt_long',color:theme.ember},

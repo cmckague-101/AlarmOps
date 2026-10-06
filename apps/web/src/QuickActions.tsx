@@ -1,11 +1,11 @@
 import {Check, Circle, ClipboardCheck, FileText, ReceiptText, ShoppingBag, Wallet, X} from 'lucide-react';
 import type {CrewMember,FireOpsUser} from '@fireops/domain';
 import {useAvailability} from './useAvailability';
-export type QuickAction = 'availability'|'inventory'|'payroll'|'receipts'|'invoices';
+export type QuickAction = 'availability'|'inspections'|'inventory'|'payroll'|'receipts'|'invoices';
 export function QuickActions({companyId,user,onOpen,onInspect}:{companyId?:string;user:FireOpsUser;onOpen:(page:QuickAction)=>void;onInspect:()=>void}) {
   const {statuses,loading,error} = useAvailability(companyId);
   const status = statuses[user.id];
-  const actions = [{id:'availability',label:'Availability',Icon:Circle},{id:'inventory',label:'Check Out Gear',Icon:ShoppingBag},{id:'payroll',label:'Payroll',Icon:Wallet},{id:'receipts',label:'Receipts',Icon:ReceiptText},{id:'invoices',label:'Invoices',Icon:FileText}] as const;
+  const actions = [{id:'availability',label:'Availability',Icon:Circle},...(user.role==='owner'?[{id:'inspections',label:'Inspections',Icon:ClipboardCheck} as const]:[]),{id:'inventory',label:'Check Out Gear',Icon:ShoppingBag},{id:'payroll',label:'Payroll',Icon:Wallet},{id:'receipts',label:'Receipts',Icon:ReceiptText},{id:'invoices',label:'Invoices',Icon:FileText}] as const;
   return <section className="quick-actions" aria-labelledby="quick-actions-title"><h2 id="quick-actions-title">Quick Actions</h2><div className="quick-actions-grid">{actions.flatMap(({id,label,Icon},index)=>[...(index===1&&user.role==='member'?[<button key="inspect" className="quick-action quick-action-inspect" onClick={onInspect}><span className="quick-action-icon"><ClipboardCheck/></span><strong>Inspect</strong></button>]:[]),<button key={id} className={`quick-action quick-action-${id}`} onClick={()=>onOpen(id)}><span className="quick-action-icon"><Icon/></span><strong>{label}</strong>{id==='availability' && <span className="quick-action-status">{user.role==='owner' ? 'Crew readiness' : loading ? 'Loading…' : error ? 'Status unavailable' : status === undefined ? 'Not set' : status ? 'Available' : 'Unavailable'}</span>}</button>])}</div></section>;
 }
 export function AvailabilityPage({companyId,user,crew}:{companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
