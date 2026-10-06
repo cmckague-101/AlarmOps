@@ -129,7 +129,7 @@ export type FireResourceVehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;plate?:string;
   assignedFire?:{id:string;name:string;state:string};
   assignedCrew?:{id:string;name:string};
-  motive?:{location:string;speed:string;updatedAt:string};
+  motive?:Pick<MotiveVehicleSnapshot,'location'|'speed'|'updatedAt'|'latitude'|'longitude'>;
 };
 
 export type DashboardNotification = {

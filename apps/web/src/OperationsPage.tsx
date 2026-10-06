@@ -72,15 +72,9 @@ const path=geoPath(projection);
 const MAP_FRAME=[0,0,900,560] as const;
 
 function vehicleCoordinates(vehicle:FireResourceVehicle){
-  const motive=vehicle.motive as (FireResourceVehicle['motive']&{latitude?:number;longitude?:number;lat?:number;lon?:number})|undefined;
-  const latitude=Number(motive?.latitude??motive?.lat);
-  const longitude=Number(motive?.longitude??motive?.lon);
-  if(Number.isFinite(latitude)&&Number.isFinite(longitude))return {latitude,longitude};
-  const location=motive?.location.toLocaleLowerCase()??'';
-  if(location.includes('redding'))return {latitude:40.5865,longitude:-122.3917};
-  if(location.includes('shasta lake'))return {latitude:40.6804,longitude:-122.3708};
-  if(location.includes('anderson'))return {latitude:40.4482,longitude:-122.2978};
-  return null;
+  const latitude=vehicle.motive?.latitude;
+  const longitude=vehicle.motive?.longitude;
+  return typeof latitude==='number'&&Number.isFinite(latitude)&&typeof longitude==='number'&&Number.isFinite(longitude)?{latitude,longitude}:null;
 }
 
 function frameBounds(bounds:[[number,number],[number,number]]){
@@ -200,8 +194,10 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
               const point=coords?projection([coords.longitude,coords.latitude]):null;
               if(!point)return null;
               const open=()=>onVehicleSelect?.(vehicle.id);
+              const iconScale=markerScale*.72;
               return <g key={`${vehicle.id}-${index}`} role={onVehicleSelect?'button':undefined} tabIndex={onVehicleSelect?0:undefined} aria-label={`${vehicle.unit} Motive location ${vehicle.motive?.location??''}`} onClick={open} onKeyDown={event=>{if(onVehicleSelect&&(event.key==='Enter'||event.key===' ')){event.preventDefault();open()}}}>
-                <circle className="vehicle-marker-hit" cx={point[0]} cy={point[1]} r={16*markerScale}/><circle className="vehicle-marker" cx={point[0]} cy={point[1]} r={7*markerScale}/>
+                <circle className="vehicle-marker-hit" cx={point[0]} cy={point[1]} r={18*markerScale}/><circle className="vehicle-marker" cx={point[0]} cy={point[1]} r={11*markerScale}/>
+                <g className="vehicle-marker-icon" transform={`translate(${point[0]} ${point[1]}) scale(${iconScale}) translate(-12 -12)`}><path d="M10 17h4V5H2v12h3M14 9h4l4 4v4h-2M14 17h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></g>
               </g>;
             })}</g>:null}
           </svg>

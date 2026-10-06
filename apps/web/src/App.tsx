@@ -952,21 +952,21 @@ function DeleteVehicleDialog({vehicle,issueCount,onCancel,onConfirm}:{vehicle:Ve
 
 function motiveDemoFor(vehicle:Vehicle) {
   const feeds=[
-    {location:'Redding, CA · I-5 North',speed:'42 mph',ago:'2 min ago'},
-    {location:'Shasta Lake, CA · Shasta Dam Blvd',speed:'0 mph',ago:'5 min ago'},
-    {location:'Anderson, CA · Factory Outlets Dr',speed:'27 mph',ago:'1 min ago'}
+    {location:'Redding, CA · I-5 North',speed:'42 mph',ago:'2 min ago',latitude:40.5865,longitude:-122.3917},
+    {location:'Shasta Lake, CA · Shasta Dam Blvd',speed:'0 mph',ago:'5 min ago',latitude:40.6804,longitude:-122.3708},
+    {location:'Anderson, CA · Factory Outlets Dr',speed:'27 mph',ago:'1 min ago',latitude:40.4482,longitude:-122.2978}
   ];
   return feeds[Math.abs(vehicle.id.split('').reduce((sum,char)=>sum+char.charCodeAt(0),0))%feeds.length];
 }
 
 function motiveSnapshotFor(vehicle:Vehicle,connection:MotiveConnection){
-  if(connection.mock){const feed=motiveDemoFor(vehicle);return {location:feed.location,speed:feed.speed,updatedAt:`Updated ${feed.ago}`}}
+  if(connection.mock){const feed=motiveDemoFor(vehicle);return {location:feed.location,speed:feed.speed,updatedAt:`Updated ${feed.ago}`,latitude:feed.latitude,longitude:feed.longitude}}
   const vin=vehicle.vin.trim().toUpperCase();
   const snapshot=vin?connection.vehicles?.find(item=>item.vin.trim().toUpperCase()===vin):undefined;
   if(!snapshot)return undefined;
   const timestamp=Date.parse(snapshot.updatedAt);
   const updatedAt=Number.isNaN(timestamp)?snapshot.updatedAt:`Updated ${new Date(timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
-  return {location:snapshot.location,speed:snapshot.speed,updatedAt};
+  return {location:snapshot.location,speed:snapshot.speed,updatedAt,latitude:snapshot.latitude,longitude:snapshot.longitude};
 }
 
 function MotiveHeroStatus({vehicle,motive,mock}:{vehicle:Vehicle;motive:{location:string;speed:string;updatedAt:string};mock:boolean}) {

@@ -23,7 +23,7 @@ import { feature } from 'topojson-client';
 import type { Topology } from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
 
-import type { MotiveVehicleSnapshot, NifcIncident } from '@fireops/domain';
+import type { NifcIncident } from '@fireops/domain';
 import { AppleIncidentMap } from '@/components/apple-incident-map';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
@@ -65,17 +65,12 @@ function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
 }
 
-type MotiveWithCoordinates = MotiveVehicleSnapshot & { latitude?: number; longitude?: number; lat?: number; lon?: number };
 function vehicleCoordinates(vehicle: FleetVehicle) {
-  const motive = vehicle.motive as MotiveWithCoordinates | undefined;
-  const latitude = Number(motive?.latitude ?? motive?.lat);
-  const longitude = Number(motive?.longitude ?? motive?.lon);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) return { latitude, longitude };
-  const location = motive?.location.toLocaleLowerCase() ?? '';
-  if (location.includes('redding')) return { latitude: 40.5865, longitude: -122.3917 };
-  if (location.includes('shasta lake')) return { latitude: 40.6804, longitude: -122.3708 };
-  if (location.includes('anderson')) return { latitude: 40.4482, longitude: -122.2978 };
-  return null;
+  const latitude = vehicle.motive?.latitude;
+  const longitude = vehicle.motive?.longitude;
+  return typeof latitude === 'number' && Number.isFinite(latitude) && typeof longitude === 'number' && Number.isFinite(longitude)
+    ? { latitude, longitude }
+    : null;
 }
 
 function IncidentMap({
@@ -192,10 +187,16 @@ function IncidentMap({
             const coords = vehicleCoordinates(vehicle);
             const point = coords ? projection([coords.longitude, coords.latitude]) : null;
             if (!point) return null;
+            const iconScale = markerScale * 0.72;
             return (
               <G key={`${vehicle.id}-${index}`} onPress={() => onVehicleDetails(vehicle.id)}>
                 <Circle cx={point[0]} cy={point[1]} fill="transparent" r={25 * markerScale} />
-                <Circle cx={point[0]} cy={point[1]} fill={theme.green} r={8 * markerScale} stroke={theme.paper} strokeWidth={2.5 * markerScale} />
+                <Circle cx={point[0]} cy={point[1]} fill={theme.green} r={11 * markerScale} stroke={theme.paper} strokeWidth={2.5 * markerScale} />
+                <G transform={`translate(${point[0]} ${point[1]}) scale(${iconScale}) translate(-12 -12)`}>
+                  <Path d="M10 17h4V5H2v12h3M14 9h4l4 4v4h-2M14 17h1" fill="none" stroke={theme.paper} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                  <Circle cx={7.5} cy={17.5} fill={theme.green} r={2.5} stroke={theme.paper} strokeWidth={2} />
+                  <Circle cx={17.5} cy={17.5} fill={theme.green} r={2.5} stroke={theme.paper} strokeWidth={2} />
+                </G>
               </G>
             );
           })}

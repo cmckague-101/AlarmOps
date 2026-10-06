@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 
-import type { MotiveVehicleSnapshot } from '@fireops/domain';
+import { AppSymbol } from '@/components/app-symbol';
 import type { FleetVehicle } from '@/lib/fleet-store';
 import type { AppleIncidentMapProps } from './apple-incident-map';
 
@@ -17,18 +17,12 @@ function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
 }
 
-type MotiveWithCoordinates = MotiveVehicleSnapshot & { latitude?: number; longitude?: number; lat?: number; lon?: number };
-
 function vehicleCoordinates(vehicle: FleetVehicle) {
-  const motive = vehicle.motive as MotiveWithCoordinates | undefined;
-  const latitude = Number(motive?.latitude ?? motive?.lat);
-  const longitude = Number(motive?.longitude ?? motive?.lon);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) return { latitude, longitude };
-  const location = motive?.location.toLocaleLowerCase() ?? '';
-  if (location.includes('redding')) return { latitude: 40.5865, longitude: -122.3917 };
-  if (location.includes('shasta lake')) return { latitude: 40.6804, longitude: -122.3708 };
-  if (location.includes('anderson')) return { latitude: 40.4482, longitude: -122.2978 };
-  return null;
+  const latitude = vehicle.motive?.latitude;
+  const longitude = vehicle.motive?.longitude;
+  return typeof latitude === 'number' && Number.isFinite(latitude) && typeof longitude === 'number' && Number.isFinite(longitude)
+    ? { latitude, longitude }
+    : null;
 }
 
 export function AppleIncidentMap({
@@ -87,7 +81,9 @@ export function AppleIncidentMap({
             title={vehicle.name}
             tracksViewChanges={false}
           >
-            <View style={styles.vehicleMarker} />
+            <View style={styles.vehicleMarker}>
+              <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={14} color="#FFFFFF" />
+            </View>
           </Marker>
         );
       })}
@@ -105,9 +101,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2231A',
   },
   vehicleMarker: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: '#FFFFFF',
     backgroundColor: '#18864B',
