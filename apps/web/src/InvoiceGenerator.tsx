@@ -1,5 +1,5 @@
-import { ChangeEvent, useMemo, useState } from 'react';
-import { ArrowLeft, FileDown, ImagePlus, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowLeft, FileDown, Plus, Trash2 } from 'lucide-react';
 
 type LineItem = { id: number; description: string; quantity: string; rate: string };
 
@@ -17,20 +17,12 @@ export function InvoiceGenerator({ companyLogoUrl, onBack }: InvoiceGeneratorPro
   const [billTo, setBillTo] = useState('');
   const [billFrom, setBillFrom] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [logo, setLogo] = useState(companyLogoUrl ?? '');
+  const logo = companyLogoUrl ?? '';
   const [items, setItems] = useState<LineItem[]>([emptyItem(1)]);
   const total = useMemo(() => items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.rate) || 0), 0), [items]);
 
   const updateItem = (id: number, key: keyof Omit<LineItem, 'id'>, value: string) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, [key]: value } : item));
-  };
-
-  const uploadLogo = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setLogo(String(reader.result ?? ''));
-    reader.readAsDataURL(file);
   };
 
   const generatePdf = () => {
@@ -62,7 +54,7 @@ export function InvoiceGenerator({ companyLogoUrl, onBack }: InvoiceGeneratorPro
         <label style={labelStyle}>Bill from<textarea style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} value={billFrom} onChange={(event) => setBillFrom(event.target.value)} placeholder={'Company name\nAddress\nEmail'} /></label>
         <label style={labelStyle}>Bill to<textarea style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} value={billTo} onChange={(event) => setBillTo(event.target.value)} placeholder={'Customer name\nAddress\nEmail'} /></label>
       </div>
-      <label style={labelStyle}>Company logo<div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>{logo && <img src={logo} alt="Company logo" style={{ width: 96, height: 64, objectFit: 'contain', border: '1px solid #e4e7ec', borderRadius: 8 }} />}<span style={{ position: 'relative', display: 'inline-flex', gap: 8, alignItems: 'center', padding: '10px 14px', border: '1px solid #d0d5dd', borderRadius: 8, cursor: 'pointer' }}><ImagePlus size={18} /> Choose logo<input aria-label="Choose company logo" type="file" accept="image/*" onChange={uploadLogo} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></span></div></label>
+      <div style={labelStyle}>Company logo<div>{logo ? <img src={logo} alt="Company logo" style={{ width: 96, height: 64, objectFit: 'contain', border: '1px solid #e4e7ec', borderRadius: 8 }} /> : <span style={{ color: '#667085', fontWeight: 400 }}>Add company logo in Settings to include it on invoices.</span>}</div></div>
       <div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}><strong>Line items</strong><button type="button" onClick={() => setItems((current) => [...current, emptyItem(Date.now())])} style={{ border: '1px solid #d0d5dd', borderRadius: 8, background: '#fff', padding: '8px 12px', display: 'flex', gap: 6, cursor: 'pointer' }}><Plus size={16} /> Add item</button></div>
         <div style={{ display: 'grid', gap: 10 }}>{items.map((item) => <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1fr) 90px 120px 44px', gap: 10 }}><input aria-label="Item description" style={inputStyle} value={item.description} onChange={(event) => updateItem(item.id, 'description', event.target.value)} placeholder="Description" /><input aria-label="Quantity" style={inputStyle} type="number" min="0" step="any" value={item.quantity} onChange={(event) => updateItem(item.id, 'quantity', event.target.value)} /><input aria-label="Rate" style={inputStyle} type="number" min="0" step="0.01" value={item.rate} onChange={(event) => updateItem(item.id, 'rate', event.target.value)} /><button aria-label="Remove item" type="button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter(({ id }) => id !== item.id))} style={{ border: 0, background: 'transparent', color: '#b42318', cursor: items.length === 1 ? 'not-allowed' : 'pointer' }}><Trash2 size={18} /></button></div>)}</div>
         <div style={{ textAlign: 'right', fontSize: 20, fontWeight: 700, marginTop: 18 }}>Total: {money(total)}</div>
