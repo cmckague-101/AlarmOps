@@ -68,7 +68,7 @@ export default function NewInspectionScreen() {
     setUploading(index);
     try {
       const previous = items[index]?.photo as FleetVehicleFile | undefined;
-      const photo = await uploadFleetFile(companyId, user.id, { uri: asset.uri, name: asset.fileName ?? `inspection-${Date.now()}.jpg`, type: asset.mimeType ?? "image/jpeg" });
+      const photo = await uploadFleetFile(companyId, user.id, { uri: asset.uri, name: asset.fileName ?? "inspection-photo.jpg", type: asset.mimeType ?? "image/jpeg" });
       if (photo.path) uploadedPaths.current.add(photo.path);
       if (previous?.path) { uploadedPaths.current.delete(previous.path); await removeFleetFiles([previous.path]); }
       updateItem(index, { photo: { name: photo.name, type: photo.type ?? "image/jpeg", dataUrl: "", path: photo.path ?? undefined } });

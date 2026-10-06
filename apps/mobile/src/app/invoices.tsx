@@ -10,13 +10,15 @@ export default function Screen() {
   const member=access.value?.kind==='member'?access.value:null;
   const isOwner=member?.user.role==='owner';
   const [generatorOpen,setGeneratorOpen]=useState(false);
-  const [logoUri,setLogoUri]=useState('');
+  const logoPath=member?.company.logoPath;
+  const [loadedLogo,setLoadedLogo]=useState({path:'',uri:''});
   useEffect(()=>{
-    if(!member?.company.logoPath)return setLogoUri('');
+    if(!logoPath)return;
     let active=true;
-    void openFleetFile({name:'Company logo',type:'image/*',path:member.company.logoPath}).then(uri=>{if(active)setLogoUri(uri)}).catch(()=>{if(active)setLogoUri('')});
+    void openFleetFile({name:'Company logo',type:'image/*',path:logoPath}).then(uri=>{if(active)setLoadedLogo({path:logoPath,uri})}).catch(()=>{if(active)setLoadedLogo({path:logoPath,uri:''})});
     return()=>{active=false};
-  },[member?.company.logoPath]);
+  },[logoPath]);
+  const logoUri=loadedLogo.path===logoPath?loadedLogo.uri:'';
   if(generatorOpen&&isOwner)return <InvoiceGeneratorScreen companyLogoUri={logoUri} onBack={()=>setGeneratorOpen(false)}/>;
   return <View style={styles.screen}>
     {isOwner?<View style={styles.generatorCard}><View style={styles.copy}><Text style={styles.title}>Invoice Generator</Text><Text style={styles.subtitle}>Build a custom invoice and generate a PDF.</Text></View><Pressable accessibilityRole="button" onPress={()=>setGeneratorOpen(true)} style={({pressed})=>[styles.button,pressed&&styles.pressed]}><Text style={styles.buttonText}>Create invoice</Text></Pressable></View>:null}
