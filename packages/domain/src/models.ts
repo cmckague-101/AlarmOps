@@ -93,10 +93,10 @@ export type Activity = {
 export type FireOpsUser = {id:string;name:string;role:UserRole};
 export type CompanyInfo = {name:string;code:string;industry:string;phone?:string;location?:string;logo?:VehicleFile;crewInviteLimit:number;crewInvitedCount:number};
 export type MotiveVehicleSnapshot = {
-  vin:string;location:string;speed:string;updatedAt:string;
+  vin:string;location:string;speed:string;updatedAt:string;fleetVehicleId?:string;motiveId?:string;entityType?:'vehicle'|'asset';latitude?:number;longitude?:number;
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
 };
-export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
+export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;syncedAt?:string;matched?:number;unmatched?:number;duplicateVins?:string[];mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
 export type MotiveAuthorization = {authorizationUrl:string};
 export type FleetSnapshot = {vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[]};
 export type FleetRemoteChange =

@@ -176,7 +176,7 @@ export default function VehicleDetailScreen() {
   if (!session || access.status === "error") return <Redirect href="/" />;
 
   const captureCameraImage = async () => {
-    if (!vehicle?.motive || capturing || vehicle.motive.camera?.status === "offline" || vehicle.motive.camera?.status === "unavailable") return;
+    if (!vehicle?.motive || capturing || vehicle.motive.camera?.status !== "online") return;
     setCapturing(true);
     await new Promise((resolve) => setTimeout(resolve, 650));
     setCameraCapture(vehicle.motive.camera?.capturedAt ?? new Date().toISOString());
@@ -519,14 +519,14 @@ export default function VehicleDetailScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Capture Motive camera image"
-                  accessibilityState={{ disabled: capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "online") }}
-                  disabled={capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "online")}
+                  accessibilityState={{ disabled: capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "unavailable") }}
+                  disabled={capturing || ["offline", "unavailable"].includes(vehicle.motive.camera?.status ?? "unavailable")}
                   onPress={() => void captureCameraImage()}
                   style={({ pressed }) => [styles.cameraButton, pressed && styles.buttonPressed]}
                 >
                   <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.commandText} size={18} />
                   <Text style={styles.cameraButtonLabel}>
-                    {capturing ? "Capturing…" : vehicle.motive.camera?.status === "offline" ? "Camera offline" : vehicle.motive.camera?.status === "unavailable" ? "Camera unavailable" : "Camera online · Capture image"}
+                    {capturing ? "Capturing…" : vehicle.motive.camera?.status === "offline" ? "Camera offline" : vehicle.motive.camera?.status !== "online" ? "Camera unavailable" : "Camera online · Capture image"}
                   </Text>
                 </Pressable>
               </View>

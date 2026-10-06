@@ -7,6 +7,7 @@ import type {
   CrewMember,
   FireOpsUser,
   FleetIssue,
+  MotiveConnection,
   MotiveVehicleSnapshot,
   NifcIncident,
   VehicleInspection,
@@ -722,16 +723,18 @@ export function refreshFleet(
     const collections = Object.entries(tables) as [FleetCollection, string][];
     const changeSequenceAtStart = fleetChangeSequence;
     let results;
+    let motiveResult;
     try {
-      results = await Promise.all(
-        collections.map(([, table]) =>
+      [results,motiveResult] = await Promise.all([
+        Promise.all(collections.map(([, table]) =>
           client
             .from(table)
             .select("record_id, data, version, updated_at")
             .eq("company_id", companyId)
             .order("updated_at", { ascending: false }),
-        ),
-      );
+        )),
+        client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'sync'}}),
+      ]);
     } catch (loadError) {
       if (version === companyVersion) {
         const message =
@@ -776,8 +779,12 @@ export function refreshFleet(
       }),
     ) as Record<FleetCollection, unknown[]>;
 
+    const motiveSnapshots=!motiveResult.error&&motiveResult.data?.connected?motiveResult.data.vehicles??[]:[];
+    const motiveByFleetId=new Map(motiveSnapshots.filter(item=>item.fleetVehicleId).map(item=>[item.fleetVehicleId,item]));
+    const motiveByVin=new Map(motiveSnapshots.map(item=>[item.vin.trim().toUpperCase(),item]));
     const vehicles = (results[0].data ?? [])
       .map((row) => normalizeVehicle(row as VehicleRow))
+      .map(vehicle=>({...vehicle,motive:motiveByFleetId.get(vehicle.id)??(vehicle.vin?motiveByVin.get(vehicle.vin.trim().toUpperCase()):undefined)}))
       .sort((a, b) => a.name.localeCompare(b.name));
     const issues = (loaded.issues as FleetIssue[])
       .map((issue) => ({

@@ -41,7 +41,7 @@ Set these Supabase secrets:
 - Access and refresh tokens are encrypted independently.
 - Reconnecting replaces credentials and clears prior tokens before authorization.
 - Disconnecting deletes credentials, tokens, and pending OAuth states for that company.
-- Future Motive API proxy calls must refresh expired access tokens server-side and persist rotated tokens before retrying requests.
+- Fleet sync refreshes expired access tokens server-side, persists rotated tokens, and retries one unauthorized request.
 
 ## Vehicle identity mapping
 
@@ -54,14 +54,24 @@ Set these Supabase secrets:
 
 VIN connects records, but is not direct Motive lookup capability. Motive ID becomes durable API identifier after matching.
 
+## Fleet sync
+
+Authenticated company members can request a fleet sync. The Edge Function:
+
+1. Refreshes expired OAuth tokens when needed.
+2. Loads all pages from Motive vehicle-location and asset-location endpoints.
+3. Matches normalized VINs only when unique in both FireOps and Motive.
+4. Stores durable Motive entity IDs in `company_motive_vehicle_mappings`.
+5. Returns sanitized location, speed, coordinates, and freshness metadata—never credentials or tokens.
+6. Displays matched live data on web and mobile vehicle cards/details.
+
+Missing and duplicate VINs stay unmatched rather than using unreliable make, model, plate, or unit-name guesses.
+
 ## Next implementation slice
 
-- Add server-side token refresh and authenticated Motive request helper.
-- Add paginated VIN matching job and mapping columns/table.
-- Show match status on each FireOps vehicle.
-- Add vehicle location endpoint and freshness metadata.
 - Add camera availability/timeline flow after identity mapping.
-- Add rate limiting, sync audit records, retries, and Motive API error telemetry.
+- Add explicit manual refresh and unmatched-VIN diagnostics UI.
+- Add background sync scheduling, rate limiting, sync audit records, retries, and Motive API error telemetry.
 
 Sources:
 

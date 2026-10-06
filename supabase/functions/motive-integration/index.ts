@@ -17,6 +17,12 @@ const motiveScopes = [
 // Database types are not generated for Edge Functions; keep service client schema-dynamic.
 type AdminClient = any;
 type EncryptedValue = {encrypted: string; iv: string};
+type MotiveIntegration = {
+  encrypted_client_id:string;client_id_iv:string;encrypted_client_secret:string;client_secret_iv:string;
+  encrypted_access_token:string|null;access_token_iv:string|null;encrypted_refresh_token:string|null;refresh_token_iv:string|null;token_expires_at:string|null;
+  last_sync_at:string|null;sync_snapshot:Record<string,unknown>|null;
+};
+type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number};
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -76,13 +82,95 @@ function validReturnTo(value: string, request: Request) {
   }
 }
 
-async function ownerCanManage(admin: AdminClient, companyId: string, userId: string) {
-  const [{data: ownership, error: ownerError}, {data: scopedAdmin, error: adminError}] = await Promise.all([
-    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', userId).eq('role', 'owner').maybeSingle(),
+async function companyAccess(admin: AdminClient, companyId: string, userId: string, ownerOnly: boolean) {
+  let memberQuery = admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', userId);
+  if (ownerOnly) memberQuery = memberQuery.eq('role', 'owner');
+  const [{data: membership, error: memberError}, {data: scopedAdmin, error: adminError}] = await Promise.all([
+    memberQuery.maybeSingle(),
     admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', userId).gt('expires_at', new Date().toISOString()).maybeSingle(),
   ]);
-  if (ownerError || adminError) throw new Error('Motive access could not be verified.');
-  return Boolean(ownership || scopedAdmin);
+  if (memberError || adminError) throw new Error('Motive access could not be verified.');
+  return Boolean(membership || scopedAdmin);
+}
+
+async function refreshAccessToken(admin:AdminClient,companyId:string,integration:MotiveIntegration,encryptionSecret:string,redirectUri:string) {
+  if (!integration.encrypted_refresh_token || !integration.refresh_token_iv) throw new Error('Motive refresh token is unavailable. Reconnect Motive.');
+  const [clientId,clientSecret,refreshToken]=await Promise.all([
+    decryptValue(integration.encrypted_client_id,integration.client_id_iv,encryptionSecret),
+    decryptValue(integration.encrypted_client_secret,integration.client_secret_iv,encryptionSecret),
+    decryptValue(integration.encrypted_refresh_token,integration.refresh_token_iv,encryptionSecret),
+  ]);
+  const response=await fetch('https://api.gomotive.com/oauth/token',{
+    method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
+    body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,redirect_uri:redirectUri,client_id:clientId,client_secret:clientSecret}),signal:AbortSignal.timeout(12000),
+  });
+  const body=await response.json().catch(()=>null) as {access_token?:string;refresh_token?:string;expires_in?:number}|null;
+  if(!response.ok||!body?.access_token)throw new Error('Motive session expired. Reconnect Motive.');
+  const access=await encryptValue(body.access_token,encryptionSecret);
+  const rotated=body.refresh_token?await encryptValue(body.refresh_token,encryptionSecret):null;
+  const expiresAt=new Date(Date.now()+Math.max(60,Number(body.expires_in)||7200)*1000).toISOString();
+  const update:Record<string,unknown>={encrypted_access_token:access.encrypted,access_token_iv:access.iv,token_expires_at:expiresAt,last_verified_at:new Date().toISOString()};
+  if(rotated){update.encrypted_refresh_token=rotated.encrypted;update.refresh_token_iv=rotated.iv;}
+  const {error}=await admin.from('company_motive_integrations').update(update).eq('company_id',companyId);
+  if(error)throw new Error('Refreshed Motive session could not be saved.');
+  return body.access_token;
+}
+
+async function accessToken(admin:AdminClient,companyId:string,integration:MotiveIntegration,encryptionSecret:string,redirectUri:string){
+  if(integration.encrypted_access_token&&integration.access_token_iv&&integration.token_expires_at&&Date.parse(integration.token_expires_at)>Date.now()+60_000){
+    return decryptValue(integration.encrypted_access_token,integration.access_token_iv,encryptionSecret);
+  }
+  return refreshAccessToken(admin,companyId,integration,encryptionSecret,redirectUri);
+}
+
+async function motivePages(path:string,token:string,key:'vehicles'|'assets'){
+  const records:unknown[]=[];
+  for(let page=1;page<=100;page+=1){
+    const url=new URL(`https://api.gomotive.com${path}`);url.searchParams.set('per_page','100');url.searchParams.set('page_no',String(page));
+    const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal:AbortSignal.timeout(15000)});
+    if(!response.ok){const error=new Error(response.status===403?'Motive permission missing. Enable required OAuth scopes, then reconnect.':`Motive API request failed (${response.status}).`) as Error&{status?:number};error.status=response.status;throw error;}
+    const body=await response.json() as Record<string,unknown>;
+    const pageRecords=Array.isArray(body[key])?body[key] as unknown[]:[];records.push(...pageRecords);
+    const pagination=body.pagination as {total?:number}|undefined;
+    if(!pageRecords.length||records.length>=Number(pagination?.total??records.length))break;
+  }
+  return records;
+}
+
+function normalizedVin(value:unknown){return typeof value==='string'?value.trim().toUpperCase():'';}
+function finiteNumber(value:unknown){const parsed=Number(value);return Number.isFinite(parsed)?parsed:undefined;}
+function motiveEntities(vehicleRows:unknown[],assetRows:unknown[]):MotiveEntity[]{
+  const vehicles=vehicleRows.flatMap(row=>{const vehicle=(row as {vehicle?:Record<string,unknown>})?.vehicle;if(!vehicle)return[];const vin=normalizedVin(vehicle.vin);if(!vin)return[];const location=vehicle.current_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const speed=finiteNumber(location?.speed);return [{id:String(vehicle.id),type:'vehicle' as const,vin,location:typeof location?.description==='string'&&location.description.trim()?location.description:'Location unavailable',speed:speed===undefined?'Speed unavailable':`${Math.round(speed)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:String(vehicle.updated_at??new Date().toISOString()),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
+  const assets=assetRows.flatMap(row=>{const asset=(row as {asset?:Record<string,unknown>})?.asset;if(!asset)return[];const vin=normalizedVin(asset.vin);if(!vin)return[];const gateway=asset.asset_gateway as Record<string,unknown>|null|undefined;const location=gateway?.last_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const kph=finiteNumber(location?.ground_speed_kph);return [{id:String(asset.id),type:'asset' as const,vin,location:typeof location?.address==='string'&&location.address.trim()?location.address:'Location unavailable',speed:kph===undefined?'Speed unavailable':`${Math.round(kph*0.621371)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:new Date().toISOString(),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
+  return [...vehicles,...assets];
+}
+
+async function syncFleet(admin:AdminClient,companyId:string,encryptionSecret:string,redirectUri:string){
+  const {data:integration,error:integrationError}=await admin.from('company_motive_integrations').select('encrypted_client_id,client_id_iv,encrypted_client_secret,client_secret_iv,encrypted_access_token,access_token_iv,encrypted_refresh_token,refresh_token_iv,token_expires_at,last_sync_at,sync_snapshot').eq('company_id',companyId).maybeSingle();
+  if(integrationError)throw new Error('Motive connection could not be loaded.');
+  if(!integration?.encrypted_access_token)return {connected:false,vehicles:[],matched:0,unmatched:0,duplicateVins:[]};
+  if(integration.last_sync_at&&integration.sync_snapshot&&Date.parse(integration.last_sync_at)>Date.now()-60_000)return integration.sync_snapshot;
+  let token=await accessToken(admin,companyId,integration as MotiveIntegration,encryptionSecret,redirectUri);
+  let rows:[unknown[],unknown[]];
+  try{rows=await Promise.all([motivePages('/v1/vehicle_locations',token,'vehicles'),motivePages('/v1/asset_locations',token,'assets')]);}
+  catch(error){if((error as {status?:number}).status!==401)throw error;token=await refreshAccessToken(admin,companyId,integration as MotiveIntegration,encryptionSecret,redirectUri);rows=await Promise.all([motivePages('/v1/vehicle_locations',token,'vehicles'),motivePages('/v1/asset_locations',token,'assets')]);}
+  const entities=motiveEntities(rows[0],rows[1]);
+  const {data:fleetRows,error:fleetError}=await admin.from('fleet_vehicles').select('record_id,data').eq('company_id',companyId);
+  if(fleetError)throw new Error('FireOps vehicles could not be matched.');
+  const fleetByVin=new Map<string,{record_id:string;data:Record<string,unknown>}[]>();
+  for(const row of fleetRows??[]){const vin=normalizedVin(row.data?.vin);if(!vin)continue;fleetByVin.set(vin,[...(fleetByVin.get(vin)??[]),row]);}
+  const motiveByVin=new Map<string,MotiveEntity[]>();for(const entity of entities)motiveByVin.set(entity.vin,[...(motiveByVin.get(entity.vin)??[]),entity]);
+  const duplicateVins=[...motiveByVin].filter(([,items])=>items.length!==1).map(([vin])=>vin);
+  const snapshots:(MotiveEntity&{fleetVehicleId:string;motiveId:string;entityType:'vehicle'|'asset'})[]=[];const mappings:Record<string,unknown>[]=[];
+  for(const [vin,fleet] of fleetByVin){const motive=motiveByVin.get(vin);if(fleet.length!==1||motive?.length!==1)continue;const entity=motive[0];snapshots.push({...entity,motiveId:entity.id,entityType:entity.type,fleetVehicleId:fleet[0].record_id});mappings.push({company_id:companyId,fleet_vehicle_id:fleet[0].record_id,motive_entity_type:entity.type,motive_entity_id:entity.id,vin,matched_at:new Date().toISOString()});}
+  if(mappings.length){
+    const {error}=await admin.from('company_motive_vehicle_mappings').upsert(mappings,{onConflict:'company_id,fleet_vehicle_id'});if(error)throw new Error('Motive vehicle matches could not be saved.');
+    await admin.from('company_motive_vehicle_mappings').delete().eq('company_id',companyId).not('fleet_vehicle_id','in',`(${mappings.map(item=>item.fleet_vehicle_id).join(',')})`);
+  }else await admin.from('company_motive_vehicle_mappings').delete().eq('company_id',companyId);
+  const syncedAt=new Date().toISOString();
+  const snapshot={connected:true,vehicles:snapshots,matched:snapshots.length,unmatched:[...fleetByVin.values()].reduce((sum,items)=>sum+items.length,0)-snapshots.length,duplicateVins,syncedAt};
+  await admin.from('company_motive_integrations').update({last_verified_at:syncedAt,last_sync_at:syncedAt,sync_snapshot:snapshot}).eq('company_id',companyId);
+  return snapshot;
 }
 
 async function handleCallback(request: Request, admin: AdminClient, encryptionSecret: string, redirectUri: string) {
@@ -175,11 +263,17 @@ Deno.serve(async (request) => {
   const companyId = input.companyId?.trim() ?? '';
   const action = input.action ?? 'status';
   if (!/^[0-9a-f-]{36}$/i.test(companyId)) return jsonResponse(400, {error: 'Company is invalid.'});
-  if (!['status', 'connect', 'disconnect'].includes(action)) return jsonResponse(400, {error: 'Action is invalid.'});
+  if (!['status', 'sync', 'connect', 'disconnect'].includes(action)) return jsonResponse(400, {error: 'Action is invalid.'});
   try {
-    if (!await ownerCanManage(admin, companyId, actor.id)) return jsonResponse(403, {error: 'Company owner access required.'});
+    const ownerOnly=action!=='sync';
+    if (!await companyAccess(admin, companyId, actor.id, ownerOnly)) return jsonResponse(403, {error: ownerOnly?'Company owner access required.':'Company membership required.'});
   } catch {
     return jsonResponse(500, {error: 'Motive access could not be verified.'});
+  }
+
+  if(action==='sync'){
+    try{return jsonResponse(200,await syncFleet(admin,companyId,encryptionSecret,redirectUri));}
+    catch(error){console.error('Motive fleet sync failed:',error);return jsonResponse(502,{error:error instanceof Error?error.message:'Motive fleet could not be synchronized.'});}
   }
 
   if (action === 'status') {
@@ -233,6 +327,8 @@ Deno.serve(async (request) => {
       scopes: motiveScopes,
       connected_at: null,
       last_verified_at: null,
+      last_sync_at: null,
+      sync_snapshot: null,
       updated_by: actor.id,
     });
     if (saveError) throw saveError;
