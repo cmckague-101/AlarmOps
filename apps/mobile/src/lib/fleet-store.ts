@@ -368,6 +368,22 @@ export async function inviteCrewMember(
   await refreshFleet({ showIndicator: false });
 }
 
+export async function resendCrewInvitation(companyId: string, userId: string) {
+  if (!supabase) throw new Error("Invitation service is unavailable.");
+  const { data, error } = await supabase.functions.invoke<{ resent?: boolean }>(
+    "invite-company-member",
+    { body: { action: "resend", companyId, userId } },
+  );
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    const body = context instanceof Response
+      ? await context.clone().json().catch(() => null) as { error?: string } | null
+      : null;
+    throw new Error(body?.error ?? "Invitation could not be resent.");
+  }
+  if (!data?.resent) throw new Error("Invitation service returned an invalid response.");
+}
+
 export async function addMyCrewCredential(
   companyId: string,
   credential: CrewCredential,
@@ -456,7 +472,16 @@ export async function removeCrewMember(companyId: string, userId: string) {
   const { data, error } = await supabase.functions.invoke("remove-company-member", {
     body: { companyId, userId },
   });
-  if (error) throw new Error((data as { error?: string } | null)?.error ?? error.message);
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    const body = context instanceof Response
+      ? await context.clone().json().catch(() => null) as { error?: string } | null
+      : null;
+    throw new Error(body?.error ?? "Crew member could not be removed.");
+  }
+  if (!(data as { removed?: boolean } | null)?.removed) {
+    throw new Error("Crew removal service returned an invalid response.");
+  }
   await refreshFleet({ showIndicator: false });
   return data as { accountDeleted?: boolean; accountCleanupFailed?: boolean };
 }

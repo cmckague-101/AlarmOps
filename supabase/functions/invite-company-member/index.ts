@@ -40,19 +40,23 @@ Deno.serve(async (request) => {
   const actor = userResult.user;
   if (userError || !actor) return response(401, {error: 'Session is invalid or expired.'});
 
-  let input: {companyId?: string; email?: string; name?: string; phone?: string};
+  let input: {action?: 'invite' | 'resend'; companyId?: string; userId?: string; email?: string; name?: string; phone?: string};
   try {
     input = await request.json();
   } catch {
     return response(400, {error: 'Invalid request body.'});
   }
 
+  const action = input.action ?? 'invite';
+  if (action !== 'invite' && action !== 'resend') return response(400, {error: 'Invitation action is invalid.'});
   const companyId = input.companyId?.trim() ?? '';
+  const userId = input.userId?.trim() ?? '';
   const email = input.email?.trim().toLowerCase() ?? '';
   const phone = input.phone?.trim() ?? '';
   const suppliedName = input.name?.trim() ?? '';
   if (!/^[0-9a-f-]{36}$/i.test(companyId)) return response(400, {error: 'Company is invalid.'});
-  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) return response(400, {error: 'Enter a valid email address.'});
+  if (action === 'resend' && !/^[0-9a-f-]{36}$/i.test(userId)) return response(400, {error: 'Crew member is invalid.'});
+  if (action === 'invite' && (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254)) return response(400, {error: 'Enter a valid email address.'});
   if (suppliedName.length > 120 || phone.length > 30) return response(400, {error: 'Crew details are too long.'});
 
   const [{data: ownership}, {data: systemAdmin}, {data: company, error: companyError}] = await Promise.all([
@@ -63,13 +67,46 @@ Deno.serve(async (request) => {
   if (companyError || !company) return response(404, {error: 'Company not found.'});
   if (!ownership && !systemAdmin) return response(403, {error: 'Company owner access required.'});
 
+  const redirectTo = `${appUrl.replace(/\/$/, '')}/accept-invite`;
+  if (action === 'resend') {
+    const [{data: membership, error: membershipError}, {data: crewRow, error: crewError}, userLookup] = await Promise.all([
+      admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', userId).eq('role', 'member').maybeSingle(),
+      admin.from('fleet_crew').select('data').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
+      admin.auth.admin.getUserById(userId),
+    ]);
+    const invitedCrew = crewRow?.data as {status?: string; email?: string} | undefined;
+    const invitedUser = userLookup.data.user;
+    if (membershipError || crewError || userLookup.error) {
+      console.error('Invitation resend lookup failed:', membershipError ?? crewError ?? userLookup.error);
+      return response(500, {error: 'Pending invitation could not be verified.'});
+    }
+    if (!membership || !invitedCrew || invitedCrew.status !== 'Invited' || !invitedUser?.email) {
+      return response(409, {error: 'Only pending crew invitations can be resent.'});
+    }
+    if (invitedUser.email_confirmed_at) return response(409, {error: 'This invitation has already been accepted.'});
+    if (invitedCrew.email?.toLowerCase() !== invitedUser.email.toLowerCase()) {
+      return response(409, {error: 'Invitation email no longer matches this crew member.'});
+    }
+    const {error: resendError} = await admin.auth.resend({
+      type: 'signup',
+      email: invitedUser.email,
+      options: {emailRedirectTo: redirectTo},
+    });
+    if (resendError) {
+      console.error('Auth invitation resend failed:', resendError);
+      return response(resendError.status === 429 ? 429 : 400, {
+        error: resendError.status === 429 ? 'Email rate limit reached. Wait a few minutes and try again.' : 'Invitation email could not be resent.',
+      });
+    }
+    return response(200, {resent: true});
+  }
+
   const {data: existingProfile} = await admin.from('profiles').select('user_id').ilike('email', email).maybeSingle();
   if (existingProfile) return response(409, {error: 'This email already belongs to a FireOps account.'});
 
   const fallbackName = email.split('@')[0].split(/[._-]/).filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
   const name = suppliedName || fallbackName || 'Invited crew member';
-  const redirectTo = `${appUrl.replace(/\/$/, '')}/accept-invite`;
   const {data: invite, error: inviteError} = await admin.auth.admin.inviteUserByEmail(email, {
     redirectTo,
     data: {full_name: name, company_id: companyId, company_name: company.name, role: 'member'},
