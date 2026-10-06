@@ -20,7 +20,8 @@ Credentials and tokens are scoped by FireOps `company_id`, encrypted with AES-25
    `https://<supabase-project-ref>.supabase.co/functions/v1/motive-integration`
 
 4. In FireOps company settings, enter that application's client ID and client secret.
-5. Select **Authorize with Motive**, review permissions, and install the application.
+5. In Motive Dashboard, open **Admin → Safety → Cameras**, enable **Capture Trip Images**, and save. Motive requires this company-level `video_monitoring` feature for camera media APIs.
+6. Select **Authorize with Motive**, review permissions, and install the application.
 
 Every company can use distinct Motive application credentials while sharing the FireOps callback endpoint. Single-use OAuth state binds each callback to the initiating FireOps company and owner.
 
@@ -69,7 +70,7 @@ Missing and duplicate VINs stay unmatched rather than using unreliable make, mod
 
 ## Camera image capture
 
-- Web and mobile vehicle detail pages can request a current forward-facing image for a VIN-matched Motive vehicle or asset.
+- Web and mobile vehicle detail pages can request a current front-facing Dashcam image for a VIN-matched vehicle or left-side Omnicam image for a matched asset.
 - FireOps starts capture server-side, then polls Motive until image is ready. OAuth tokens never reach client.
 - Capture requests verify company membership and persisted vehicle mapping before calling Motive.
 - Returned media URL is Motive-signed and time-limited; FireOps does not persist camera images.

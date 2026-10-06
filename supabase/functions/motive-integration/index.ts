@@ -176,13 +176,14 @@ async function captureMotiveImage(admin:AdminClient,companyId:string,fleetVehicl
   const entity=await mappedMotiveEntity(admin,companyId,fleetVehicleId);
   if(!/^\d+$/.test(entity.id))throw new Error('Motive vehicle mapping is invalid. Sync fleet data again.');
   const {integration,token:initialToken}=await integrationWithToken(admin,companyId,encryptionSecret,redirectUri);
-  const body={position:'front_facing',...(entity.type==='vehicle'?{vehicle_id:Number(entity.id)}:{asset_id:Number(entity.id)})};
+  const position=entity.type==='vehicle'?'front_facing':'side_left';
+  const body={position,...(entity.type==='vehicle'?{vehicle_id:Number(entity.id)}:{asset_id:Number(entity.id)})};
   let token=initialToken;
   let response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);
   if(response.status===401){token=await refreshAccessToken(admin,companyId,integration,encryptionSecret,redirectUri);response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);}
   const result=await response.json().catch(()=>null) as MotiveCaptureResponse|null;
-  if(!response.ok||!result?.request_id||!result.camera_type)throw new Error(response.status===403?'Motive camera permission is missing. Reconnect Motive with camera access.':'Motive could not start the camera capture.');
-  return {status:'pending',requestId:String(result.request_id),cameraType:result.camera_type,position:result.position??'front_facing',capturedAt:result.created_at??new Date().toISOString()};
+  if(!response.ok||!result?.request_id||!result.camera_type)throw new Error(response.status===403?'Motive camera capture is disabled. In Motive, go to Admin > Safety > Cameras, enable Capture Trip Images, and save.':'Motive could not start the camera capture.');
+  return {status:'pending',requestId:String(result.request_id),cameraType:result.camera_type,position:result.position??position,capturedAt:result.created_at??new Date().toISOString()};
 }
 
 async function motiveCaptureStatus(admin:AdminClient,companyId:string,fleetVehicleId:string,requestId:string,cameraType:string,encryptionSecret:string,redirectUri:string){
