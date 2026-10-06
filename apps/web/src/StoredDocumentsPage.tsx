@@ -1,3 +1,5 @@
+import { useState as useInvoiceGeneratorState } from 'react';
+import { InvoiceGenerator } from './InvoiceGenerator';
 import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
 import {Camera, ExternalLink, FileText, Upload} from 'lucide-react';
 import type {CrewMember, FireOpsUser} from '@fireops/domain';
@@ -6,7 +8,7 @@ import {supabase} from './supabase';
 type DocumentRow = {id:string;name:string;original_file_name:string;storage_path:string;uploaded_by:string;uploaded_by_name:string;created_at:string};
 const columns = 'id,name,original_file_name,storage_path,uploaded_by,uploaded_by_name,created_at';
 
-export default function StoredDocumentsPage({kind, companyId, user, crew}: {kind:'invoices'|'payroll';companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
+function StoredDocumentsContent({kind, companyId, user, crew}: {kind:'invoices'|'payroll';companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
   const title = kind === 'invoices' ? 'Invoices' : 'Payroll';
   const bucket = `${kind}-files`;
   const [records,setRecords] = useState<DocumentRow[]>([]);
@@ -84,4 +86,22 @@ export default function StoredDocumentsPage({kind, companyId, user, crew}: {kind
       {loading ? <p className="receipt-state">Loading documents…</p> : !visible.length ? <p className="receipt-state">No documents found. Uploaded files will appear here.</p> : <div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Name</th>{owner && <th>Uploaded by</th>}<th>Date</th><th>File</th></tr></thead><tbody>{visible.map(record=><tr key={record.id}><td><b>{record.name}</b><small>{record.original_file_name}</small></td>{owner && <td>{record.uploaded_by_name}</td>}<td>{new Date(record.created_at).toLocaleDateString()}</td><td><button className="receipt-open" onClick={()=>void open(record)} aria-label={`Open ${record.name}`}><ExternalLink/>View</button></td></tr>)}</tbody></table></div>}
     </section>
   </div>;
+}
+
+
+type InvoiceDocumentsPageProps = Parameters<typeof StoredDocumentsContent>[0] & {
+  isCompanyOwner?: boolean;
+  companyLogoUrl?: string | null;
+};
+
+export default function StoredDocumentsPage(props: InvoiceDocumentsPageProps) {
+  const [generatorOpen, setGeneratorOpen] = useInvoiceGeneratorState(false);
+  if (generatorOpen && props.isCompanyOwner) return <InvoiceGenerator companyLogoUrl={props.companyLogoUrl} onBack={() => setGeneratorOpen(false)} />;
+  return <>
+    {props.isCompanyOwner ? <div style={{ margin: '0 0 20px', padding: 18, border: '1px solid #e4e7ec', borderRadius: 12, background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+      <div><strong style={{ display: 'block', fontSize: 17 }}>Invoice Generator</strong><span style={{ color: '#667085', fontSize: 14 }}>Build custom invoice and generate PDF.</span></div>
+      <button type="button" onClick={() => setGeneratorOpen(true)} style={{ border: 0, borderRadius: 8, padding: '10px 14px', background: '#b42318', color: '#fff', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Create invoice</button>
+    </div> : null}
+    <StoredDocumentsContent {...props} />
+  </>;
 }
