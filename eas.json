@@ -1,5 +1,10 @@
-   {                                                                                                                    
-     "submit": {                                                                                                        
-       "production": {}                                                                                                 
-     }                                                                                                                  
-   }  
+{
+  "build": {
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
