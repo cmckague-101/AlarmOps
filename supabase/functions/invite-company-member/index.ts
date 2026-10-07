@@ -101,11 +101,75 @@ Deno.serve(async (request) => {
     return response(200, {resent: true});
   }
 
-  const {data: existingProfile} = await admin.from('profiles').select('user_id').ilike('email', email).maybeSingle();
-  if (existingProfile) return response(409, {error: 'This email already belongs to a FireOps account.'});
-
   const fallbackName = email.split('@')[0].split(/[._-]/).filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+  const {data: existingProfile, error: profileError} = await admin.from('profiles')
+    .select('user_id,full_name').ilike('email', email).maybeSingle();
+  if (profileError) {
+    console.error('Existing account lookup failed:', profileError);
+    return response(500, {error: 'FireOps account could not be checked.'});
+  }
+
+  if (existingProfile) {
+    const [{data: memberships, error: membershipLookupError}, {data: crew, error: crewLookupError}, userLookup] = await Promise.all([
+      admin.from('company_members').select('company_id').eq('user_id', existingProfile.user_id),
+      admin.from('fleet_crew').select('record_id').eq('company_id', companyId).eq('record_id', existingProfile.user_id).maybeSingle(),
+      admin.auth.admin.getUserById(existingProfile.user_id),
+    ]);
+    if (membershipLookupError || crewLookupError || userLookup.error || !userLookup.data.user) {
+      console.error('Existing account verification failed:', membershipLookupError ?? crewLookupError ?? userLookup.error);
+      return response(500, {error: 'FireOps account could not be verified.'});
+    }
+    if (memberships?.some((membership) => membership.company_id === companyId) || crew) {
+      return response(409, {error: 'This person is already on your crew.'});
+    }
+    if (memberships?.length) return response(409, {error: 'This email already belongs to another FireOps company.'});
+
+    const name = suppliedName || existingProfile.full_name?.trim() || fallbackName || 'Crew member';
+    const pending = !userLookup.data.user.email_confirmed_at;
+    const member = {id: existingProfile.user_id, name, email, phone, role: 'member', status: pending ? 'Invited' : 'Active'};
+    const {error: membershipError} = await admin.from('company_members').insert({
+      company_id: companyId,
+      user_id: existingProfile.user_id,
+      role: 'member',
+    });
+    if (membershipError) {
+      console.error('Existing account membership creation failed:', membershipError);
+      return response(membershipError.code === '23514' ? 409 : 400, {error: messageForDatabaseError(membershipError.message)});
+    }
+
+    const {data: crewRow, error: crewError} = await admin.from('fleet_crew').insert({
+      company_id: companyId,
+      record_id: existingProfile.user_id,
+      data: member,
+      version: 1,
+      updated_by: actor.id,
+    }).select('version').single();
+    if (crewError) {
+      console.error('Existing account crew record creation failed:', crewError);
+      await admin.from('company_members').delete().eq('company_id', companyId).eq('user_id', existingProfile.user_id);
+      return response(crewError.code === '23514' ? 409 : 400, {error: messageForDatabaseError(crewError.message)});
+    }
+
+    if (pending) {
+      const {error: resendError} = await admin.auth.resend({
+        type: 'signup',
+        email,
+        options: {emailRedirectTo: redirectTo},
+      });
+      if (resendError) {
+        console.error('Existing account invitation resend failed:', resendError);
+        await admin.from('fleet_crew').delete().eq('company_id', companyId).eq('record_id', existingProfile.user_id);
+        await admin.from('company_members').delete().eq('company_id', companyId).eq('user_id', existingProfile.user_id);
+        return response(resendError.status === 429 ? 429 : 400, {
+          error: resendError.status === 429 ? 'Email rate limit reached. Wait a few minutes and try again.' : 'Invitation email could not be sent.',
+        });
+      }
+    }
+
+    return response(200, {member, version: crewRow.version, existingAccount: true, invitationSent: pending});
+  }
+
   const name = suppliedName || fallbackName || 'Invited crew member';
   const {data: invite, error: inviteError} = await admin.auth.admin.inviteUserByEmail(email, {
     redirectTo,
@@ -144,5 +208,5 @@ Deno.serve(async (request) => {
     return response(crewError.code === '23514' ? 409 : 400, {error: messageForDatabaseError(crewError.message)});
   }
 
-  return response(200, {member, version: crewRow.version});
+  return response(200, {member, version: crewRow.version, existingAccount: false, invitationSent: true});
 });
