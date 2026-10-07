@@ -12,6 +12,8 @@ const motiveScopes = [
   'locations.vehicle_locations_single',
   'locations.asset_locations',
   'camera_connections.read',
+  'image_captures.manage',
+  'images.read',
 ].join(' ');
 
 // Database types are not generated for Edge Functions; keep service client schema-dynamic.
@@ -176,7 +178,7 @@ async function mappedMotiveEntity(admin:AdminClient,companyId:string,fleetVehicl
 function motiveCaptureError(response:Response,result:MotiveCaptureResponse|null){
   const detail=typeof result?.error==='string'?result.error:result?.error?.message??result?.message??result?.errors?.map(error=>typeof error==='string'?error:error.message).find(Boolean);
   console.error('Motive image capture request rejected:',{status:response.status,detail:detail??'No error detail returned'});
-  if(response.status===403)return 'Motive denied camera capture. Verify the Motive developer app has camera media access, reconnect Motive, and confirm Capture Trip Images is enabled under Admin > Safety > Cameras.';
+  if(response.status===403)return 'Motive denied camera capture. Verify Image Captures and Images permissions are enabled for the Motive developer app, then reconnect Motive to grant the updated OAuth scopes.';
   return detail?.trim()||`Motive could not start the camera capture (${response.status}).`;
 }
 
