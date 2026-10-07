@@ -14,7 +14,7 @@ Credentials and tokens are scoped by FireOps `company_id`, encrypted with AES-25
 ## Motive developer application setup
 
 1. Create an application in [Motive Developer Portal](https://developer.gomotive.com/portal).
-2. Enable required permissions for companies, vehicles, assets, locations, camera connections, **Image Captures**, and **Images**. FireOps requests `image_captures.manage` and `images.read` during authorization.
+2. Enable required permissions for companies, vehicles, assets, locations, camera connections, and camera media/image capture.
 3. Set **Success Redirect URI** to the deployed Edge Function callback:
 
    `https://<supabase-project-ref>.supabase.co/functions/v1/motive-integration`
@@ -40,7 +40,7 @@ Set these Supabase secrets:
 - Authorization codes expire after 10 minutes; state records use the same lifetime.
 - Motive access tokens normally expire after 7,200 seconds.
 - Access and refresh tokens are encrypted independently.
-- Reconnecting replaces credentials and clears prior tokens before authorization. Reauthorization is required after adding scopes because existing tokens do not gain newly requested permissions.
+- Reconnecting replaces credentials and clears prior tokens before authorization.
 - Disconnecting deletes credentials, tokens, and pending OAuth states for that company.
 - Fleet sync refreshes expired access tokens server-side, persists rotated tokens, and retries one unauthorized request.
 
