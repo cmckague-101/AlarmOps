@@ -180,7 +180,7 @@ echo "==> Applying version $VERSION and build $BUILD_NUMBER"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST"
 
-ACTUAL_BUNDLE_ID="$(xcodebuild -workspace "$WORKSPACE" -scheme FireOps -configuration Release -showBuildSettings 2>/dev/null | awk -F ' = ' '/PRODUCT_BUNDLE_IDENTIFIER = / { print $2; exit }')"
+ACTUAL_BUNDLE_ID="$(xcodebuild -workspace "$WORKSPACE" -scheme FireOps -configuration Release -showBuildSettings 2>/dev/null | awk '$1 == "PRODUCT_BUNDLE_IDENTIFIER" { print $3; exit }')"
 if [[ "$ACTUAL_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]]; then
   echo "Generated Xcode bundle identifier is '$ACTUAL_BUNDLE_ID', expected '$EXPECTED_BUNDLE_ID'." >&2
   exit 1
