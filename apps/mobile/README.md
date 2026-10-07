@@ -27,6 +27,16 @@ Payloads use validated local `data.path` routes and persistent `data.notificatio
 
 Full event matrix, architecture, deployment, secrets, and verification: [`../../docs/push-notifications.md`](../../docs/push-notifications.md).
 
+## Production deployment
+
+From a clean Git worktree, queue an iOS production build with automatic App Store Connect submission and an Android production build without submission:
+
+```bash
+npm run deploy:mobile:production
+```
+
+Both builds run asynchronously in EAS. Successful iOS submission uploads to App Store Connect; it does not publish the app without App Review and release. Android artifact remains in EAS for download or later submission.
+
 ## TestFlight
 
 See [`TESTFLIGHT.md`](./TESTFLIGHT.md) for first-time Apple/EAS setup, release checks, submission, and future update steps.
