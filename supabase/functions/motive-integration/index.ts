@@ -25,6 +25,7 @@ type MotiveIntegration = {
 type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number};
 type MotiveCaptureResponse = {
   request_id?:string|number;camera_type?:string;position?:string;status?:string;failure_reason?:string;created_at?:string;
+  error?:string|{message?:string};message?:string;errors?:Array<string|{message?:string}>;
   vehicle?:{id?:string|number}|null;asset?:{id?:string|number}|null;
   images?:Record<string,{url?:string;expires_at?:string}>;
 };
@@ -172,6 +173,13 @@ async function mappedMotiveEntity(admin:AdminClient,companyId:string,fleetVehicl
   return {type:data.motive_entity_type as 'vehicle'|'asset',id:String(data.motive_entity_id)};
 }
 
+function motiveCaptureError(response:Response,result:MotiveCaptureResponse|null){
+  const detail=typeof result?.error==='string'?result.error:result?.error?.message??result?.message??result?.errors?.map(error=>typeof error==='string'?error:error.message).find(Boolean);
+  console.error('Motive image capture request rejected:',{status:response.status,detail:detail??'No error detail returned'});
+  if(response.status===403)return 'Motive denied camera capture. Verify the Motive developer app has camera media access, reconnect Motive, and confirm Capture Trip Images is enabled under Admin > Safety > Cameras.';
+  return detail?.trim()||`Motive could not start the camera capture (${response.status}).`;
+}
+
 async function captureMotiveImage(admin:AdminClient,companyId:string,fleetVehicleId:string,encryptionSecret:string,redirectUri:string){
   const entity=await mappedMotiveEntity(admin,companyId,fleetVehicleId);
   if(!/^\d+$/.test(entity.id))throw new Error('Motive vehicle mapping is invalid. Sync fleet data again.');
@@ -182,7 +190,8 @@ async function captureMotiveImage(admin:AdminClient,companyId:string,fleetVehicl
   let response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);
   if(response.status===401){token=await refreshAccessToken(admin,companyId,integration,encryptionSecret,redirectUri);response=await motiveRequest('/v1/image_captures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},token);}
   const result=await response.json().catch(()=>null) as MotiveCaptureResponse|null;
-  if(!response.ok||!result?.request_id||!result.camera_type)throw new Error(response.status===403?'Motive camera capture is disabled. In Motive, go to Admin > Safety > Cameras, enable Capture Trip Images, and save.':'Motive could not start the camera capture.');
+  if(!response.ok)throw new Error(motiveCaptureError(response,result));
+  if(!result?.request_id||!result.camera_type)throw new Error('Motive returned an invalid camera capture response.');
   return {status:'pending',requestId:String(result.request_id),cameraType:result.camera_type,position:result.position??position,capturedAt:result.created_at??new Date().toISOString()};
 }
 
