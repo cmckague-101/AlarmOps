@@ -593,15 +593,16 @@ export default function VehicleDetailScreen() {
                 </View>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Capture Motive camera image"
-                  accessibilityState={{ disabled: capturing }}
-                  disabled={capturing}
+                  accessibilityLabel="Motive camera capture unavailable"
+                  accessibilityHint="Camera capture requires Motive API key support"
+                  accessibilityState={{ disabled: true }}
+                  disabled
                   onPress={() => void captureCameraImage()}
-                  style={({ pressed }) => [styles.cameraButton, pressed && styles.buttonPressed]}
+                  style={[styles.cameraButton, styles.disabled]}
                 >
                   <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.commandText} size={18} />
                   <Text style={styles.cameraButtonLabel}>
-                    {capturing ? "Capturing…" : "Capture camera image"}
+                    Camera capture unavailable
                   </Text>
                 </Pressable>
                 {cameraError ? <Text accessibilityRole="alert" style={styles.cameraError}>{cameraError}</Text> : null}
