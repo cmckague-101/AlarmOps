@@ -98,9 +98,9 @@ export default function StoredDocumentsPage(props: InvoiceDocumentsPageProps) {
   const [generatorOpen, setGeneratorOpen] = useInvoiceGeneratorState(false);
   if (generatorOpen && props.isCompanyOwner) return <InvoiceGenerator companyLogoUrl={props.companyLogoUrl} onBack={() => setGeneratorOpen(false)} />;
   return <>
-    {props.isCompanyOwner ? <div style={{ margin: '0 0 20px', padding: 18, border: '1px solid #e4e7ec', borderRadius: 12, background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-      <div><strong style={{ display: 'block', fontSize: 17 }}>Invoice Generator</strong><span style={{ color: '#667085', fontSize: 14 }}>Build custom invoice and generate PDF.</span></div>
-      <button type="button" onClick={() => setGeneratorOpen(true)} style={{ border: 0, borderRadius: 8, padding: '10px 14px', background: '#b42318', color: '#fff', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Create invoice</button>
+    {props.isCompanyOwner ? <div style={{ margin: '0 0 20px', padding: 18, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', color: 'var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+      <div><strong style={{ display: 'block', fontSize: 17 }}>Invoice Generator</strong><span style={{ color: 'var(--muted)', fontSize: 14 }}>Build custom invoice and generate PDF.</span></div>
+      <button type="button" onClick={() => setGeneratorOpen(true)} style={{ border: 0, borderRadius: 8, padding: '10px 14px', background: 'var(--orange)', color: '#fff', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Create invoice</button>
     </div> : null}
     <StoredDocumentsContent {...props} />
   </>;

@@ -3,6 +3,8 @@ import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
+import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+
 type LineItem = { id: number; description: string; quantity: string; rate: string };
 type Props = { companyLogoUri?: string | null; onBack: () => void };
 const item = (id: number): LineItem => ({ id, description: '', quantity: '1', rate: '0.00' });
@@ -10,6 +12,8 @@ const money = (value: number) => value.toLocaleString('en-US', { style: 'currenc
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char] ?? char);
 
 export function InvoiceGeneratorScreen({ companyLogoUri, onBack }: Props) {
+  const theme = useFireOpsTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [billFrom, setBillFrom] = useState('');
@@ -35,19 +39,21 @@ export function InvoiceGeneratorScreen({ companyLogoUri, onBack }: Props) {
     <Pressable onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Back to invoices</Text></Pressable>
     <Text style={styles.title}>Invoice Generator</Text><Text style={styles.subtitle}>Create invoice and save it as PDF.</Text>
     <View style={styles.card}>
-      <Text style={styles.label}>Invoice date</Text><TextInput style={styles.input} value={invoiceDate} onChangeText={setInvoiceDate} placeholder="YYYY-MM-DD" />
-      <Text style={styles.label}>Invoice number</Text><TextInput style={styles.input} value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="INV-001" />
-      <Text style={styles.label}>Bill from</Text><TextInput style={[styles.input, styles.multiline]} multiline value={billFrom} onChangeText={setBillFrom} placeholder={'Company name\nAddress\nEmail'} />
-      <Text style={styles.label}>Bill to</Text><TextInput style={[styles.input, styles.multiline]} multiline value={billTo} onChangeText={setBillTo} placeholder={'Customer name\nAddress\nEmail'} />
+      <Text style={styles.label}>Invoice date</Text><TextInput style={styles.input} value={invoiceDate} onChangeText={setInvoiceDate} placeholder="YYYY-MM-DD" placeholderTextColor={theme.secondary} />
+      <Text style={styles.label}>Invoice number</Text><TextInput style={styles.input} value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="INV-001" placeholderTextColor={theme.secondary} />
+      <Text style={styles.label}>Bill from</Text><TextInput style={[styles.input, styles.multiline]} multiline value={billFrom} onChangeText={setBillFrom} placeholder={'Company name\nAddress\nEmail'} placeholderTextColor={theme.secondary} />
+      <Text style={styles.label}>Bill to</Text><TextInput style={[styles.input, styles.multiline]} multiline value={billTo} onChangeText={setBillTo} placeholder={'Customer name\nAddress\nEmail'} placeholderTextColor={theme.secondary} />
       <Text style={styles.label}>Company logo</Text>{logo ? <Image source={{ uri: logo }} style={styles.logo} resizeMode="contain" /> : <Text style={styles.logoHelp}>Add company logo in Settings to include it on invoices.</Text>}
       <View style={styles.lineHeader}><Text style={styles.sectionTitle}>Line items</Text><Pressable style={styles.secondaryButton} onPress={() => setItems((rows) => [...rows, item(Date.now())])}><Text style={styles.secondaryText}>+ Add item</Text></Pressable></View>
-      {items.map((row) => <View key={row.id} style={styles.lineItem}><TextInput style={[styles.input, styles.description]} value={row.description} onChangeText={(value) => update(row.id, 'description', value)} placeholder="Description" /><View style={styles.numberRow}><TextInput style={[styles.input, styles.number]} value={row.quantity} onChangeText={(value) => update(row.id, 'quantity', value)} keyboardType="decimal-pad" placeholder="Qty" /><TextInput style={[styles.input, styles.number]} value={row.rate} onChangeText={(value) => update(row.id, 'rate', value)} keyboardType="decimal-pad" placeholder="Rate" /><Pressable disabled={items.length === 1} onPress={() => setItems((rows) => rows.filter(({ id }) => id !== row.id))}><Text style={[styles.remove, items.length === 1 && styles.disabled]}>Remove</Text></Pressable></View></View>)}
+      {items.map((row) => <View key={row.id} style={styles.lineItem}><TextInput style={[styles.input, styles.description]} value={row.description} onChangeText={(value) => update(row.id, 'description', value)} placeholder="Description" placeholderTextColor={theme.secondary} /><View style={styles.numberRow}><TextInput style={[styles.input, styles.number]} value={row.quantity} onChangeText={(value) => update(row.id, 'quantity', value)} keyboardType="decimal-pad" placeholder="Qty" placeholderTextColor={theme.secondary} /><TextInput style={[styles.input, styles.number]} value={row.rate} onChangeText={(value) => update(row.id, 'rate', value)} keyboardType="decimal-pad" placeholder="Rate" placeholderTextColor={theme.secondary} /><Pressable disabled={items.length === 1} onPress={() => setItems((rows) => rows.filter(({ id }) => id !== row.id))}><Text style={[styles.remove, items.length === 1 && styles.disabled]}>Remove</Text></Pressable></View></View>)}
       <Text style={styles.total}>Total: {money(total)}</Text>
       <Pressable style={styles.primaryButton} onPress={generatePdf}><Text style={styles.primaryText}>Generate PDF</Text></Pressable>
     </View>
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fafc' }, content: { padding: 20, paddingBottom: 48 }, back: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 8 }, backText: { color: '#344054', fontSize: 15, fontWeight: '600' }, title: { color: '#101828', fontSize: 28, fontWeight: '800' }, subtitle: { color: '#667085', marginTop: 5, marginBottom: 20 }, card: { backgroundColor: '#fff', borderColor: '#e4e7ec', borderWidth: 1, borderRadius: 14, padding: 18 }, label: { color: '#344054', fontWeight: '700', fontSize: 13, marginBottom: 6, marginTop: 14 }, input: { borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: '#101828', backgroundColor: '#fff' }, multiline: { minHeight: 90, textAlignVertical: 'top' }, logo: { width: 96, height: 64, borderWidth: 1, borderColor: '#e4e7ec', borderRadius: 8 }, logoHelp: { color: '#667085', fontSize: 13, lineHeight: 18 }, secondaryButton: { borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 }, secondaryText: { color: '#344054', fontWeight: '700' }, lineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 10 }, sectionTitle: { color: '#101828', fontSize: 16, fontWeight: '800' }, lineItem: { gap: 8, marginBottom: 12 }, description: { flex: 1 }, numberRow: { flexDirection: 'row', gap: 8, alignItems: 'center' }, number: { flex: 1 }, remove: { color: '#b42318', fontWeight: '700', padding: 5 }, disabled: { opacity: 0.35 }, total: { textAlign: 'right', color: '#101828', fontSize: 20, fontWeight: '800', marginVertical: 20 }, primaryButton: { backgroundColor: '#b42318', borderRadius: 9, padding: 14, alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-});
+function createStyles(theme: FireOpsTheme) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.canvas }, content: { padding: 20, paddingBottom: 48 }, back: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 8 }, backText: { color: theme.commandForeground, fontSize: 15, fontWeight: '600' }, title: { color: theme.ink, fontSize: 28, fontWeight: '800' }, subtitle: { color: theme.secondary, marginTop: 5, marginBottom: 20 }, card: { backgroundColor: theme.paper, borderColor: theme.divider, borderWidth: 1, borderRadius: 14, padding: 18 }, label: { color: theme.ink, fontWeight: '700', fontSize: 13, marginBottom: 6, marginTop: 14 }, input: { borderColor: theme.divider, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: theme.ink, backgroundColor: theme.paper }, multiline: { minHeight: 90, textAlignVertical: 'top' }, logo: { width: 96, height: 64, borderWidth: 1, borderColor: theme.divider, borderRadius: 8 }, logoHelp: { color: theme.secondary, fontSize: 13, lineHeight: 18 }, secondaryButton: { borderColor: theme.divider, borderWidth: 1, borderRadius: 8, backgroundColor: theme.paper, paddingHorizontal: 12, paddingVertical: 9 }, secondaryText: { color: theme.commandForeground, fontWeight: '700' }, lineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 10 }, sectionTitle: { color: theme.ink, fontSize: 16, fontWeight: '800' }, lineItem: { gap: 8, marginBottom: 12 }, description: { flex: 1 }, numberRow: { flexDirection: 'row', gap: 8, alignItems: 'center' }, number: { flex: 1 }, remove: { color: theme.danger, fontWeight: '700', padding: 5 }, disabled: { opacity: 0.35 }, total: { textAlign: 'right', color: theme.ink, fontSize: 20, fontWeight: '800', marginVertical: 20 }, primaryButton: { backgroundColor: theme.ember, borderRadius: 9, padding: 14, alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  });
+}
