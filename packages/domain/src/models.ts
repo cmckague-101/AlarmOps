@@ -156,5 +156,5 @@ export type FireResourceVehicle = {
 };
 
 export type DashboardNotification = {
-  id:string;source:'communications'|'documents'|'training';title:string;detail:string;createdAt:string;unread:boolean;
+  id:string;source:'communications'|'documents'|'training'|'qualifications';title:string;detail:string;createdAt:string;unread:boolean;
 };

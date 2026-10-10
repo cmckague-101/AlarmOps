@@ -41,7 +41,7 @@ export default function DashboardScreen() {
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, crew, activities, loading, refreshing, error } = useFleetVehicles(companyId);
-  const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null);
+  const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null, user?.role ?? null);
 
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
   const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));

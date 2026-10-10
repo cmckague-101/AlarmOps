@@ -18,7 +18,7 @@ export default function TabLayout(){
   const {threads}=useCommunications(member?.company.id??null,member?.user.id??null);
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
-  const {unreadCount:unreadNotifications}=useNotificationInbox(member?.company.id??null,member?.user.id??null);
+  const {unreadCount:unreadNotifications}=useNotificationInbox(member?.company.id??null,member?.user.id??null,member?.user.role??null);
   const unreadCommunications=member?threads.filter(thread=>isThreadUnread(thread,member.user)).length:0;
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;

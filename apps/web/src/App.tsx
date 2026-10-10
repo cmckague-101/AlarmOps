@@ -14,6 +14,7 @@ import MasterRecordPage from './MasterRecordPage';
 import QualificationCardPage from './QualificationCardPage';
 import CrewReview from './CrewReview';
 import {usePendingQualificationCardCount} from './qualificationCardStore';
+import {useDashboardInbox} from './useDashboardInbox';
 import {
   assignableUserRoles, credentialExpiresWithinMonth, crewCredentials, dashboardNotifications, formatPhoneNumber, isCompanyManager, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, trainingStage, userRoleLabel, visibleVehicleIssues,
   type Activity, type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
@@ -175,6 +176,7 @@ type AppProps={
 
 export default function App({user=demoUser,company=demoCompany,companyId,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,vehicleTypeOptions:vehicleTypeData,vehicleTypeError,onDataChange,onInviteCrew,onResendCrewInvite,onUpdateCrewRole,onDeleteCrew,onUpdateCompany,onConnectMotive,onDisconnectMotive,onCaptureMotiveImage,onCreateThread,onDeleteThread,onReplyToThread,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onCheckoutInventoryItem,onCheckinInventoryItem,onListVehicleNotes,onSaveVehicleNote,onDeleteVehicleNote,onCreateVehicleType,onDeleteVehicleType,onCreateCredential,onUpdateCredential,onDeleteCredential,onCreateExperience,onUpdateExperience,onDeleteExperience,onUpdateAnnualRecord,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:AppProps) {
   const currentUser = user;
+  const dashboardInbox=useDashboardInbox(companyId,currentUser);
   const [companyDetails,setCompanyDetails]=useState<CompanyInfo>(()=>{if(onUpdateCompany)return company;try{const stored=localStorage.getItem('fireops-company-profile');return stored?{...company,...JSON.parse(stored) as Partial<CompanyInfo>}:company}catch{return company}});
   useEffect(()=>{if(onUpdateCompany)setCompanyDetails(company)},[company,onUpdateCompany]);
   const updateCompany=async(profile:{name:string;phone:string;location:string;logo?:VehicleFile})=>{
@@ -201,7 +203,6 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   const unreadThreadCount=threads.filter(thread=>isThreadUnread(thread,currentUser)).length;
   const [documents,setDocuments]=useState<CompanyDocument[]>(()=>companyDocuments??loadCompanyDocuments());
   useEffect(()=>{if(companyDocuments)setDocuments(companyDocuments)},[companyDocuments]);
-  const unreadDocumentCount=documents.filter(document=>isDocumentUnread(document,currentUser)).length;
   const [trainings,setTrainings]=useState<Training[]>(()=>trainingData??loadTrainings());
   useEffect(()=>{if(trainingData)setTrainings(trainingData)},[trainingData]);
   const unreadTrainingCount=trainings.filter(training=>trainingStage(training)==='scheduled'&&isTrainingUnread(training,currentUser)).length;
@@ -554,14 +555,14 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   };
 
   return <div className="app-shell">
-    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
+    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
-      <Topbar saveState={saveState} notificationCount={!canManageFleet?unreadThreadCount+unreadDocumentCount+unreadTrainingCount:undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?.filter(item=>item.unread).length??unreadThreadCount+unreadTrainingCount):undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
       <main>
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {page === 'overview' && <Dashboard quickActions={<QuickActions companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={setPage} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
+        {page === 'overview' && <Dashboard quickActions={<QuickActions companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onOpenNotifications={(target,id)=>{if(id)void dashboardInbox.markRead(id);setPage(target)}} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
         {page === 'crew' && canManageFleet && <CrewPage crew={crew} vehicles={vehicles} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
@@ -581,12 +582,12 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'qualification-annual-records' && <AnnualRecordsPage record={crew.find(member=>member.id===currentUser.id)?.annualRecord} onCancel={()=>setPage('qualifications')} onSave={async annualRecord=>{const current=crew.find(member=>member.id===currentUser.id);if(!current)throw new Error('Crew record not found.');const next=onUpdateAnnualRecord?await onUpdateAnnualRecord(annualRecord):{...current,annualRecord};setCrew(items=>items.map(item=>item.id===next.id?next:item));if(!onUpdateAnnualRecord)saveLocal('fireops-crew',crew.map(item=>item.id===next.id?next:item));setPage('qualifications');showNotice('Annual record updated')}}/>}
 
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined}))} onAssignVehicle={(vehicleId,fire)=>updateFireAssignment(vehicleId,fire)} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
-        {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
+        {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
 
         {page === 'settings' && <SettingsPage company={companyDetails} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive}/>}
         </div>
       </main>
-      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={unreadDocumentCount} unreadTrainingCount={unreadTrainingCount}/>
+      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
@@ -710,23 +711,23 @@ function VehicleCard({vehicle,assignedName,issueCount,motive,motiveMock,onClick}
 }
 function StatusBadge({status}:{status:Status}) {return <span className={`status ${status.toLowerCase().replace(/ /g,'-')}`}><i/>{vehicleStatusLabel(status)}</span>}
 
-function MemberNotifications({threads,documents,trainings,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onOpen:(page:'communications'|'documents'|'training')=>void}){
-  const notifications=dashboardNotifications(threads,documents,user,5,trainings);
+function MemberNotifications({threads,documents,trainings,inboxNotifications,user,onOpen}:{threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];inboxNotifications:DashboardNotification[]|null;user:FireOpsUser;onOpen:(page:'communications'|'training'|'qualifications',id?:string)=>void}){
+  const notifications=inboxNotifications??dashboardNotifications(threads,documents,user,5,trainings);
   const unreadCount=notifications.filter(notification=>notification.unread).length;
   const formatDate=(date:string)=>new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   return <section className="action-section notification-section" aria-labelledby="notifications-title"><div className="action-heading"><div><h2 id="notifications-title">Notifications</h2><p>Company updates shared with you</p></div>{unreadCount>0&&<span className="notification-count" aria-label={`${unreadCount} unread ${unreadCount===1?'notification':'notifications'}`}>{unreadCount}</span>}</div>
-    <div className="notification-list">{notifications.map(notification=><button className={`notification-row ${notification.unread?'unread':''}`} key={notification.id} onClick={()=>onOpen(notification.source)}><span className={`notification-icon ${notification.source}`}>{notification.source==='communications'?<MessageSquare/>:notification.source==='training'?<GraduationCap/>:<FileText/>}</span><span className="notification-copy"><span><b>{notification.title}</b>{notification.unread&&<i>New</i>}</span><small>{notification.detail}</small></span><span className="notification-meta"><em>{notification.source==='communications'?'Communication':notification.source==='training'?'Training':'Document'}</em><time dateTime={notification.createdAt}>{formatDate(notification.createdAt)}</time></span><ChevronRight/></button>)}{!notifications.length&&<div className="notification-empty"><span><Bell/></span><div><b>No notifications yet</b><p>New company updates will appear here.</p></div></div>}</div>
+    <div className="notification-list">{notifications.map(notification=><button className={`notification-row ${notification.unread?'unread':''}`} key={notification.id} onClick={()=>onOpen(notification.source as 'communications'|'training'|'qualifications',notification.id)}><span className={`notification-icon ${notification.source}`}>{notification.source==='communications'?<MessageSquare/>:notification.source==='training'?<GraduationCap/>:<ShieldCheck/>}</span><span className="notification-copy"><span><b>{notification.title}</b>{notification.unread&&<i>New</i>}</span><small>{notification.detail}</small></span><span className="notification-meta"><em>{notification.source==='communications'?'Crew Chat':notification.source==='training'?'Training':'Qualification'}</em><time dateTime={notification.createdAt}>{formatDate(notification.createdAt)}</time></span><ChevronRight/></button>)}{!notifications.length&&<div className="notification-empty"><span><Bell/></span><div><b>No notifications yet</b><p>New company updates will appear here.</p></div></div>}</div>
   </section>;
 }
 
-function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,user,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'documents'|'training')=>void;onSelectIncident:(id:string)=>void}) {
+function Dashboard({quickActions,vehicles,issues,crew,threads,documents,trainings,inboxNotifications,user,onSelectVehicle,onSelectIssue,onSelectCrew,onOpenNotifications,onSelectIncident}:{quickActions:React.ReactNode;vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];inboxNotifications:DashboardNotification[]|null;user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onOpenNotifications:(page:'communications'|'training'|'qualifications',id?:string)=>void;onSelectIncident:(id:string)=>void}) {
   if(isCompanyManager(user.role))return <OwnerDashboard quickActions={quickActions} nationalFireActivity={<NationalFireActivitySection/>} name={user.name} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>;
   const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page overview-page"><div className="page-heading"><div><h1>Dashboard</h1></div><div className="dashboard-user"><span>{user.name}</span></div></div>
     {quickActions}
     <NationalFireActivitySection/>
     {openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="Current issues" id="current-issues"/>}
-    <MemberNotifications threads={threads} documents={documents} trainings={trainings} user={user} onOpen={onOpenNotifications}/>
+    <MemberNotifications threads={threads} documents={documents} trainings={trainings} inboxNotifications={inboxNotifications} user={user} onOpen={onOpenNotifications}/>
   </div>
 }
 

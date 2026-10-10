@@ -71,7 +71,6 @@ export function dashboardNotifications(
     const latest=candidates[0];
     return latest?[{id:`communication-${thread.id}`,source:'communications' as const,title:thread.subject,detail:latest.detail,createdAt:latest.createdAt,unread:isThreadUnread(thread,user)}]:[];
   });
-  const documentItems=documents.map(document=>({id:`document-${document.id}`,source:'documents' as const,title:document.name,detail:'Company document added or updated',createdAt:document.updatedAt,unread:isDocumentUnread(document,user)}));
   const trainingItems=trainings.filter(training=>trainingStage(training)==='scheduled').map(training=>({id:`training-${training.id}`,source:'training' as const,title:training.courseTitle,detail:`${training.courseCode} · ${new Date(training.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,createdAt:training.createdAt,unread:isTrainingUnread(training,user)}));
-  return [...communicationItems,...documentItems,...trainingItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
+  return [...communicationItems,...trainingItems].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt)).slice(0,Math.max(0,limit));
 }

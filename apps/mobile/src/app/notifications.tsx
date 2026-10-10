@@ -37,7 +37,7 @@ export default function NotificationsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const {session, access} = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const {notifications, unreadCount, loading, refreshing, error} = useNotificationInbox(member?.company.id ?? null, member?.user.id ?? null);
+  const {notifications, unreadCount, loading, refreshing, error} = useNotificationInbox(member?.company.id ?? null, member?.user.id ?? null, member?.user.role ?? null);
   const groups = useMemo(() => {
     const grouped = new Map<string, InboxNotification[]>();
     notifications.forEach((notification) => grouped.set(notification.groupKey, [...(grouped.get(notification.groupKey) ?? []), notification]));
@@ -77,7 +77,7 @@ export default function NotificationsScreen() {
           <View style={styles.empty}>
             <AppSymbol name={{ios: 'bell.slash', android: 'notifications_off'} as never} color={theme.secondary} size={28} />
             <Text style={styles.emptyTitle}>No notifications yet</Text>
-            <Text style={styles.emptyBody}>Replies, new documents, training, assignments, and issue updates will appear here.</Text>
+            <Text style={styles.emptyBody}>{member.user.role === 'owner' || member.user.role === 'admin' ? 'Company updates will appear here.' : 'Crew Chat, new training, and your approved qualifications will appear here.'}</Text>
           </View>
         ) : (
           <View style={styles.list}>

@@ -113,22 +113,22 @@ describe('dashboard notifications',()=>{
   const thread=(id:string,createdAt:string):CommunicationThread=>({id,subject:`Dispatch ${id}`,description:'Report to staging.',createdBy:'Company Owner',createdById:'owner-1',createdByRole:'owner',createdAt,replies:[]});
   const document=(id:string,updatedAt:string):CompanyDocument=>({id,name:`Document ${id}`,file:storedFile(`company/owner/${id}.pdf`),createdAt:updatedAt,updatedAt});
 
-  it('combines communication and document notifications newest first',()=>{
+  it('shows Crew Chat notifications and excludes documents',()=>{
     const notifications=dashboardNotifications(
       [thread('thread-1','2025-08-30T10:00:00Z')],
       [document('document-1','2025-08-30T11:00:00Z')],
       crew
     );
-    expect(notifications.map(item=>item.source)).toEqual(['documents','communications']);
+    expect(notifications.map(item=>item.source)).toEqual(['communications']);
     expect(notifications.every(item=>item.unread)).toBe(true);
   });
 
   it('limits member dashboard notifications to latest 5 and hides section data from owners',()=>{
-    const documents=Array.from({length:12},(_,index)=>document(`document-${index}`,`2025-08-30T${String(index).padStart(2,'0')}:00:00Z`));
-    expect(dashboardNotifications([],documents,crew).map(item=>item.id)).toEqual([
-      'document-document-11','document-document-10','document-document-9','document-document-8','document-document-7',
+    const threads=Array.from({length:12},(_,index)=>thread(`thread-${index}`,`2025-08-30T${String(index).padStart(2,'0')}:00:00Z`));
+    expect(dashboardNotifications(threads,[],crew).map(item=>item.id)).toEqual([
+      'communication-thread-11','communication-thread-10','communication-thread-9','communication-thread-8','communication-thread-7',
     ]);
-    expect(dashboardNotifications([],documents,{...crew,role:'owner'})).toEqual([]);
+    expect(dashboardNotifications(threads,[],{...crew,role:'owner'})).toEqual([]);
   });
 });
 

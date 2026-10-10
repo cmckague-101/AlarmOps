@@ -1,6 +1,7 @@
 import {useEffect, useSyncExternalStore} from 'react';
 import * as Notifications from 'expo-notifications';
 import type {RealtimeChannel} from '@supabase/supabase-js';
+import type {UserRole} from '@fireops/domain';
 
 import {supabase} from '@/lib/supabase';
 
@@ -8,8 +9,10 @@ export type NotificationEventType =
   | 'communication_reply'
   | 'document_added'
   | 'training_created'
-  | 'vehicle_assigned'
   | 'issue_updated'
+  | 'qualification_approved'
+  | 'vehicle_note_added'
+  | 'failed_inspection'
   | 'system';
 
 export type InboxNotification = {
@@ -30,7 +33,6 @@ export type NotificationPreferences = {
   communicationReplies: boolean;
   documentAdded: boolean;
   trainingCreated: boolean;
-  vehicleAssigned: boolean;
   issueUpdates: boolean;
 };
 
@@ -52,7 +54,6 @@ type PreferenceRow = {
   communication_replies: boolean;
   document_added: boolean;
   training_created: boolean;
-  vehicle_assigned: boolean;
   issue_updates: boolean;
 };
 
@@ -71,7 +72,6 @@ export const defaultNotificationPreferences: NotificationPreferences = {
   communicationReplies: true,
   documentAdded: true,
   trainingCreated: true,
-  vehicleAssigned: true,
   issueUpdates: true,
 };
 
@@ -86,7 +86,13 @@ let snapshot: InboxSnapshot = {
 };
 let activeCompanyId: string | null | undefined;
 let activeUserId: string | null | undefined;
+let activeRole: UserRole | null | undefined;
 let selectionVersion = 0;
+const crewDashboardEventTypes: NotificationEventType[] = ['communication_reply', 'training_created', 'qualification_approved'];
+
+function isCrewRole(role: UserRole | null | undefined) {
+  return role === 'fire_fighter' || role === 'shop_tech';
+}
 let request: Promise<void> | null = null;
 let requestVersion = -1;
 let refreshQueued = false;
@@ -125,7 +131,6 @@ function preferencesFromRow(row?: PreferenceRow | null): NotificationPreferences
     communicationReplies: row.communication_replies,
     documentAdded: row.document_added,
     trainingCreated: row.training_created,
-    vehicleAssigned: row.vehicle_assigned,
     issueUpdates: row.issue_updates,
   };
 }
@@ -136,7 +141,6 @@ function preferenceValues(preferences: NotificationPreferences) {
     communication_replies: preferences.communicationReplies,
     document_added: preferences.documentAdded,
     training_created: preferences.trainingCreated,
-    vehicle_assigned: preferences.vehicleAssigned,
     issue_updates: preferences.issueUpdates,
   };
 }
@@ -150,6 +154,7 @@ export function refreshNotificationInbox() {
   const version = selectionVersion;
   const companyId = activeCompanyId;
   const userId = activeUserId;
+  const role = activeRole;
   emit({...snapshot, loading: snapshot.notifications.length === 0, refreshing: snapshot.notifications.length > 0, error: null});
 
   request = (async () => {
@@ -162,18 +167,23 @@ export function refreshNotificationInbox() {
       return;
     }
     try {
+      let notificationQuery = supabase.from('user_notifications')
+        .select('id,event_type,entity_type,entity_id,title,body,path,group_key,read_at,created_at')
+        .eq('company_id', companyId).eq('user_id', userId)
+        .order('created_at', {ascending: false}).limit(100);
+      let unreadQuery = supabase.from('user_notifications')
+        .select('id', {count: 'exact', head: true})
+        .eq('company_id', companyId).eq('user_id', userId)
+        .is('read_at', null);
+      if (isCrewRole(role)) {
+        notificationQuery = notificationQuery.in('event_type', crewDashboardEventTypes);
+        unreadQuery = unreadQuery.in('event_type', crewDashboardEventTypes);
+      }
       const [notificationResult, unreadResult, preferenceResult] = await Promise.all([
-        supabase.from('user_notifications')
-          .select('id,event_type,entity_type,entity_id,title,body,path,group_key,read_at,created_at')
-          .eq('company_id', companyId).eq('user_id', userId)
-          .neq('event_type', 'vehicle_assigned')
-          .order('created_at', {ascending: false}).limit(100),
-        supabase.from('user_notifications')
-          .select('id', {count: 'exact', head: true})
-          .eq('company_id', companyId).eq('user_id', userId)
-          .neq('event_type', 'vehicle_assigned').is('read_at', null),
+        notificationQuery,
+        unreadQuery,
         supabase.from('notification_preferences')
-          .select('push_enabled,communication_replies,document_added,training_created,vehicle_assigned,issue_updates')
+          .select('push_enabled,communication_replies,document_added,training_created,issue_updates')
           .eq('company_id', companyId).eq('user_id', userId).maybeSingle<PreferenceRow>(),
       ]);
       if (version !== selectionVersion) return;
@@ -228,8 +238,10 @@ export async function markAllInboxNotificationsRead() {
   const previous = snapshot.notifications;
   const previousUnreadCount = snapshot.unreadCount;
   emit({...snapshot, unreadCount: 0, notifications: previous.map((item) => item.readAt ? item : {...item, readAt})});
-  const {error} = await supabase.from('user_notifications').update({read_at: readAt})
+  let updateQuery = supabase.from('user_notifications').update({read_at: readAt})
     .eq('company_id', activeCompanyId).eq('user_id', activeUserId).is('read_at', null);
+  if (isCrewRole(activeRole)) updateQuery = updateQuery.in('event_type', crewDashboardEventTypes);
+  const {error} = await updateQuery;
   if (error) {
     emit({...snapshot, unreadCount: previousUnreadCount, notifications: previous, error: `Notifications could not be marked read. ${error.message}`});
     throw new Error(error.message);
@@ -253,10 +265,11 @@ export async function saveNotificationPreferences(patch: Partial<NotificationPre
   emit({...snapshot, preferences: next, savingPreferences: false, error: null});
 }
 
-function selectAccount(companyId: string | null, userId: string | null) {
-  if (companyId === activeCompanyId && userId === activeUserId) return;
+function selectAccount(companyId: string | null, userId: string | null, role: UserRole | null) {
+  if (companyId === activeCompanyId && userId === activeUserId && role === activeRole) return;
   activeCompanyId = companyId;
   activeUserId = userId;
+  activeRole = role;
   selectionVersion += 1;
   refreshQueued = false;
   if (channel && supabase) void supabase.removeChannel(channel);
@@ -279,7 +292,7 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-export function useNotificationInbox(companyId: string | null, userId: string | null) {
-  useEffect(() => selectAccount(companyId, userId), [companyId, userId]);
+export function useNotificationInbox(companyId: string | null, userId: string | null, role: UserRole | null = null) {
+  useEffect(() => selectAccount(companyId, userId, role), [companyId, userId, role]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
