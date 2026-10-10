@@ -6,6 +6,7 @@ import type { FleetVehicle } from '@/lib/fleet-store';
 export type AppleIncidentMapProps = {
   incidents: NifcIncident[];
   vehicles: FleetVehicle[];
+  focusedVehicleId?: string;
   onIncidentDetails: (incident: NifcIncident) => void;
   onVehicleDetails: (vehicleId: string) => void;
   style: StyleProp<ViewStyle>;

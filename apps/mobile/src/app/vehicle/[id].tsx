@@ -75,10 +75,11 @@ function formatSpeed(value: string) {
   return Number.isFinite(speed) ? `${Math.round(speed)} mph` : value || "Unavailable";
 }
 
-function VehicleLocationMap({ latitude, longitude, location, styles, theme }: {
+function VehicleLocationMap({ latitude, longitude, location, onOpen, styles, theme }: {
   latitude: number;
   longitude: number;
   location: string;
+  onOpen: () => void;
   styles: DetailStyles;
   theme: FireOpsTheme;
 }) {
@@ -108,11 +109,13 @@ function VehicleLocationMap({ latitude, longitude, location, styles, theme }: {
     }
   }
   return (
-    <View
-      accessibilityLabel={`Map showing ${location}`}
-      accessibilityRole="image"
+    <Pressable
+      accessibilityHint="Opens vehicle location on Operations map"
+      accessibilityLabel={`View ${location} on Operations map`}
+      accessibilityRole="button"
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={styles.locationMap}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.locationMap, pressed && styles.buttonPressed]}
     >
       <View style={[styles.locationTiles, { left: width / 2 - (x - (centerX - 1)) * tileSize, top: 105 - (y - (centerY - 1)) * tileSize }]}>{tiles}</View>
       <View style={styles.locationMarker}>
@@ -123,11 +126,9 @@ function VehicleLocationMap({ latitude, longitude, location, styles, theme }: {
           <AppSymbol name={{ ios: "location.fill", android: "location_on" } as never} color={theme.ember} size={13} />
           <Text numberOfLines={1} style={styles.locationCaptionLabel}>{location}</Text>
         </View>
-        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=${zoom}/${latitude}/${longitude}`)}>
-          <Text style={styles.locationAttribution}>© OpenStreetMap contributors</Text>
-        </Pressable>
+        <Text style={styles.locationAttribution}>© OpenStreetMap contributors</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -678,7 +679,7 @@ export default function VehicleDetailScreen() {
                 {cameraError ? <Text accessibilityRole="alert" style={styles.cameraError}>{cameraError}</Text> : null}
                 </View>
                 {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
-                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} styles={styles} theme={theme} />
+                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
                 ) : null}
               </View>
             ) : null}

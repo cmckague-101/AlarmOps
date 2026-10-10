@@ -78,6 +78,7 @@ function IncidentMap({
   vehicles,
   onIncidentDetails,
   onVehicleDetails,
+  focusedVehicleId,
   styles,
   theme,
 }: {
@@ -85,6 +86,7 @@ function IncidentMap({
   vehicles: FleetVehicle[];
   onIncidentDetails: (incident: NifcIncident) => void;
   onVehicleDetails: (vehicleId: string) => void;
+  focusedVehicleId?: string;
   styles: ReturnType<typeof createStyles>;
   theme: FireOpsTheme;
 }) {
@@ -102,6 +104,18 @@ function IncidentMap({
     viewportRef.current = viewport;
     zoomRef.current = zoom;
   }, [viewport, zoom]);
+
+  useEffect(() => {
+    if (!focusedVehicleId) return;
+    const vehicle = vehicles.find((item) => item.id === focusedVehicleId);
+    const coordinates = vehicle ? vehicleCoordinates(vehicle) : null;
+    const point = coordinates ? projection([coordinates.longitude, coordinates.latitude]) : null;
+    if (point) {
+      setFocusedIncident(null);
+      setCenter(point);
+      setZoom(4);
+    }
+  }, [focusedVehicleId, vehicles]);
 
   // PanResponder stores these callbacks; ref reads happen only during touch events.
   // eslint-disable-next-line react-hooks/refs
@@ -246,7 +260,7 @@ export default function OperationsScreen() {
   const member = access.value?.kind === 'member' ? access.value : null;
   const user = member?.user ?? null;
   const { vehicles } = useFleetVehicles(member?.company.id ?? null);
-  const { incidentId } = useLocalSearchParams<{ incidentId?: string }>();
+  const { incidentId, vehicleId } = useLocalSearchParams<{ incidentId?: string; vehicleId?: string }>();
   const [incidents, setIncidents] = useState<NifcIncident[]>([]);
   const [incidentLoading, setIncidentLoading] = useState(true);
   const [incidentError, setIncidentError] = useState('');
@@ -328,6 +342,7 @@ export default function OperationsScreen() {
     <>
       {Platform.OS === 'ios' ? (
         <AppleIncidentMap
+          focusedVehicleId={vehicleId}
           incidents={incidents}
           onIncidentDetails={openIncidentDetails}
           onVehicleDetails={openVehicleDetails}
@@ -336,6 +351,7 @@ export default function OperationsScreen() {
         />
       ) : (
         <IncidentMap
+          focusedVehicleId={vehicleId}
           incidents={incidents}
           onIncidentDetails={openIncidentDetails}
           onVehicleDetails={openVehicleDetails}

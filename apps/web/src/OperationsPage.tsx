@@ -111,9 +111,10 @@ function useAnimatedViewBox(target:number[]){
   return current;
 }
 
-export default function OperationsPage({requestedIncidentId,onIncidentOpened,resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
+export default function OperationsPage({requestedIncidentId,onIncidentOpened,requestedVehicleId,onVehicleOpened,resources=[],motiveEnabled=false,assignableVehicles=[],onAssignVehicle,onVehicleSelect}:{requestedIncidentId?:string|null;onIncidentOpened?:()=>void;requestedVehicleId?:string|null;onVehicleOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void}){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [selected,setSelected]=useState<NifcIncident|null>(null);
+  const [focusedVehicleId,setFocusedVehicleId]=useState<string|null>(null);
   const [fireQuery,setFireQuery]=useState('');
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -140,6 +141,11 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
     onIncidentOpened?.();
   },[requestedIncidentId,loading,error,incidents,onIncidentOpened]);
 
+  useEffect(()=>{
+    if(!requestedVehicleId)return;
+    setSelected(null);setFocusedVehicleId(requestedVehicleId);onVehicleOpened?.();
+  },[requestedVehicleId,onVehicleOpened]);
+
   const visible=incidents;
   const normalizedFireQuery=fireQuery.trim().toLocaleLowerCase();
   const sortedVisible=[...visible].sort((a,b)=>(b.acres??-1)-(a.acres??-1)||a.name.localeCompare(b.name));
@@ -150,8 +156,12 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,res
       const point=projection([selected.longitude,selected.latitude]);
       if(point)return frameBounds([[point[0]-25,point[1]-25],[point[0]+25,point[1]+25]]);
     }
+    const focusedVehicle=resources.find(vehicle=>vehicle.id===focusedVehicleId);
+    const coordinates=focusedVehicle?vehicleCoordinates(focusedVehicle):null;
+    const point=coordinates?projection([coordinates.longitude,coordinates.latitude]):null;
+    if(point)return frameBounds([[point[0]-25,point[1]-25],[point[0]+25,point[1]+25]]);
     return [...MAP_FRAME];
-  },[selected]);
+  },[focusedVehicleId,resources,selected]);
   const viewBox=useAnimatedViewBox(targetViewBox);
   const markerScale=viewBox[2]/MAP_FRAME[2];
   const latestUpdate=incidents.reduce<number|null>((latest,incident)=>incident.updated&&(!latest||incident.updated>latest)?incident.updated:latest,null);

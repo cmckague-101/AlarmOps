@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 
@@ -28,15 +28,25 @@ function vehicleCoordinates(vehicle: FleetVehicle) {
 export function AppleIncidentMap({
   incidents,
   vehicles,
+  focusedVehicleId,
   onIncidentDetails,
   onVehicleDetails,
   style,
 }: AppleIncidentMapProps) {
   const [longitudeDelta, setLongitudeDelta] = useState(US_REGION.longitudeDelta);
+  const mapRef = useRef<MapView>(null);
   const showPins = longitudeDelta < 12;
+
+  useEffect(() => {
+    if (!focusedVehicleId) return;
+    const vehicle = vehicles.find((item) => item.id === focusedVehicleId);
+    const coordinate = vehicle ? vehicleCoordinates(vehicle) : null;
+    if (coordinate) mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 350);
+  }, [focusedVehicleId, vehicles]);
 
   return (
     <MapView
+      ref={mapRef}
       accessibilityLabel={`Apple Map showing ${incidents.length} active wildfire incidents`}
       initialRegion={US_REGION}
       mapType="standard"
