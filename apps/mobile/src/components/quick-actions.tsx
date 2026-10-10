@@ -1,3 +1,4 @@
+import {canInspectVehicle} from '@fireops/domain';
 import {Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
 import {useRouter} from 'expo-router';
 import {AppSymbol} from './app-symbol';
@@ -16,7 +17,7 @@ export function QuickActions() {
   const styles = StyleSheet.create({section:{gap:16},title:{fontSize:24,fontWeight:'800',color:theme.ink},grid:{flexDirection:'row',flexWrap:'wrap',gap:12},card:{width:width<360||fontScale>1.3?'100%':'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:10,padding:20,minHeight:170,borderRadius:16,borderWidth:1,borderColor:theme.divider,backgroundColor:theme.paper},fullCard:{width:'100%'},icon:{width:52,height:52,alignItems:'center',justifyContent:'center',borderRadius:14},label:{color:theme.ink,fontSize:16,fontWeight:'800',textAlign:'center'},status:{color:theme.secondary,fontSize:14,textAlign:'center'},pressed:{opacity:.65}});
   const actions = [
     {path:'/availability',label:'Availability',ios:'circle',android:'radio_button_unchecked',color:theme.green},
-    ...(member?.user.role !== 'owner' && member?.user.role !== 'admin' ? [{path:'/inspection',label:'Inspect',ios:'list.bullet.clipboard.fill',android:'fact_check',color:theme.green}] : []),
+    ...(member && canInspectVehicle(member.user.role) && member.user.role !== 'owner' && member.user.role !== 'admin' ? [{path:'/inspection',label:'Inspect',ios:'list.bullet.clipboard.fill',android:'fact_check',color:theme.green}] : []),
     ...(member?.user.role === 'owner' || member?.user.role === 'admin' ? [{path:'/inspections',label:'Inspections',ios:'list.bullet.clipboard.fill',android:'fact_check',color:theme.green}] : []),
     {path:'/inventory',label:'Check Out Gear',ios:'bag.fill',android:'shopping_bag',color:theme.warning},
     {path:'/payroll',label:'Payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#285f9e'},

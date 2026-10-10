@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { VehicleInspection } from "@fireops/domain";
+import { canInspectVehicle, type VehicleInspection } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -40,6 +40,7 @@ export default function NewInspectionScreen() {
   }, []);
 
   if (!session || access.status === "error") return <Redirect href="/" />;
+  if (user && !canInspectVehicle(user.role)) return <Redirect href="/(tabs)/fleet" />;
 
   const updateItem = (index: number, patch: Partial<CheckItem>) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   const selectResult = (index: number, result: "Pass" | "Fail") => {

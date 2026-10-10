@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { NifcIncident, VehicleStatus } from "@fireops/domain";
+import { canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -543,28 +543,32 @@ export default function VehicleDetailScreen() {
                 </Text>
               ) : null}
               <View style={styles.topActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push({ pathname: "/inspection/new" as never, params: { vehicleId: vehicle.id } })}
-                  style={({ pressed }) => [styles.inspectButton, pressed && styles.buttonPressed]}
-                >
-                  <Text style={styles.inspectLabel}>Inspect</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/issue/new" as never,
-                      params: { vehicleId: vehicle.id },
-                    })
-                  }
-                  style={({ pressed }) => [
-                    styles.openIssueButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Text style={styles.openIssueLabel}>Open issue</Text>
-                </Pressable>
+                {user && canInspectVehicle(user.role) ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: "/inspection/new" as never, params: { vehicleId: vehicle.id } })}
+                    style={({ pressed }) => [styles.inspectButton, pressed && styles.buttonPressed]}
+                  >
+                    <Text style={styles.inspectLabel}>Inspect</Text>
+                  </Pressable>
+                ) : null}
+                {user && canOpenVehicleIssue(user.role) ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/issue/new" as never,
+                        params: { vehicleId: vehicle.id },
+                      })
+                    }
+                    style={({ pressed }) => [
+                      styles.openIssueButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text style={styles.openIssueLabel}>Open issue</Text>
+                  </Pressable>
+                ) : null}
                 {user?.role !== "fire_fighter" ? (
                   <Pressable
                     accessibilityRole="button"

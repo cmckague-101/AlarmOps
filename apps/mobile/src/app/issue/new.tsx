@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { IssuePriority } from '@fireops/domain';
+import { canOpenVehicleIssue, type IssuePriority } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +29,7 @@ export default function NewIssueScreen() {
   const [saveError, setSaveError] = useState('');
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
+  if (user && !canOpenVehicleIssue(user.role)) return <Redirect href="/(tabs)/fleet" />;
 
   const valid = Boolean(selectedVehicle && title.trim() && description.trim() && user);
   const submit = async () => {

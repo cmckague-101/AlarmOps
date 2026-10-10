@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {navigationLayout} from './App';
 import {
-  dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
+  canInspectVehicle,canOpenVehicleIssue,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
 } from '@fireops/domain';
 import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
@@ -33,6 +33,18 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
     expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
     expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+  });
+});
+
+describe('vehicle action permissions',()=>{
+  it('prevents fire fighters from opening issues or inspecting vehicles',()=>{
+    expect(canOpenVehicleIssue('fire_fighter')).toBe(false);
+    expect(canInspectVehicle('fire_fighter')).toBe(false);
+  });
+
+  it.each(['owner','admin','shop_tech'] as const)('allows %s to open issues and inspect vehicles',role=>{
+    expect(canOpenVehicleIssue(role)).toBe(true);
+    expect(canInspectVehicle(role)).toBe(true);
   });
 });
 

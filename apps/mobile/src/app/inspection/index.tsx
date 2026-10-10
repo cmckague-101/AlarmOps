@@ -1,3 +1,4 @@
+import {canInspectVehicle} from '@fireops/domain';
 import {useMemo} from 'react';
 import {Redirect, Stack, useRouter} from 'expo-router';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
@@ -17,11 +18,13 @@ export default function SelectInspectionVehicleScreen(){
   const theme=useFireOpsTheme();
   const styles=useMemo(()=>createStyles(theme),[theme]);
   const {session,access}=useSession();
-  const companyId=access.value?.kind==='member'?access.value.company.id:null;
+  const member=access.value?.kind==='member'?access.value:null;
+  const companyId=member?.company.id??null;
   const {vehicles,loading,error}=useFleetVehicles(companyId);
   const ordered=useMemo(()=>[...vehicles].sort((a,b)=>a.name.localeCompare(b.name)),[vehicles]);
 
   if(!session||access.status==='error')return <Redirect href="/"/>;
+  if(member&&!canInspectVehicle(member.user.role))return <Redirect href="/(tabs)/fleet"/>;
 
   return <SafeAreaView style={styles.safe} edges={['bottom']}>
     <Stack.Screen options={{title:'Select vehicle'}}/>

@@ -11,6 +11,14 @@ export function isCompanyManager(role:UserRole):boolean {
   return role==='owner'||role==='admin';
 }
 
+export function canOpenVehicleIssue(role:UserRole):boolean {
+  return role!=='fire_fighter';
+}
+
+export function canInspectVehicle(role:UserRole):boolean {
+  return role!=='fire_fighter';
+}
+
 export function userRoleLabel(role:UserRole):string {
   return role==='owner'?'Owner':assignableUserRoles.find(option=>option.value===role)?.label??role;
 }
