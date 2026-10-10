@@ -86,6 +86,10 @@ export type VehicleInspection = {
   id:string;assignmentIncident:string;inspectorId:string;inspectorName:string;createdAt:string;items:VehicleInspectionItem[];
 };
 
+export type VehicleNote = {
+  id:string;vehicleId:string;subject:string;body:string;createdBy:string;createdById:string;createdAt:string;updatedAt:string;
+};
+
 export type Vehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;
   vin:string;plate:string;status:VehicleStatus;photo?:VehicleFile;contract?:VehicleFile;

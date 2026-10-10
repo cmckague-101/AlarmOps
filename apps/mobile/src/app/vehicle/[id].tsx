@@ -565,6 +565,15 @@ export default function VehicleDetailScreen() {
                 >
                   <Text style={styles.openIssueLabel}>Open issue</Text>
                 </Pressable>
+                {user?.role !== "fire_fighter" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push(`/vehicle-notes/${encodeURIComponent(vehicle.id)}` as never)}
+                    style={({ pressed }) => [styles.vehicleNotesButton, pressed && styles.buttonPressed]}
+                  >
+                    <Text style={styles.vehicleNotesLabel}>Vehicle Notes</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
 
@@ -1383,6 +1392,16 @@ function createStyles(theme: FireOpsTheme) {
       fontSize: 14,
       fontWeight: "700",
     },
+    vehicleNotesButton: {
+      minHeight: 44,
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.ember,
+      backgroundColor: theme.paper,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+    },
+    vehicleNotesLabel: { color: theme.ember, fontSize: 14, fontWeight: "700" },
     buttonPressed: { opacity: 0.76 },
     motiveCard: {
       gap: 14,
