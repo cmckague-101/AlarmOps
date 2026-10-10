@@ -75,6 +75,62 @@ function formatSpeed(value: string) {
   return Number.isFinite(speed) ? `${Math.round(speed)} mph` : value || "Unavailable";
 }
 
+function VehicleLocationMap({ latitude, longitude, location, styles, theme }: {
+  latitude: number;
+  longitude: number;
+  location: string;
+  styles: DetailStyles;
+  theme: FireOpsTheme;
+}) {
+  const [width, setWidth] = useState(0);
+  const zoom = 15;
+  const tileSize = 256;
+  const tileCount = 2 ** zoom;
+  const safeLatitude = Math.max(-85.0511, Math.min(85.0511, latitude));
+  const x = (longitude + 180) / 360 * tileCount;
+  const latitudeRadians = safeLatitude * Math.PI / 180;
+  const y = (1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) / 2 * tileCount;
+  const centerX = Math.floor(x);
+  const centerY = Math.floor(y);
+  const tiles = [];
+  for (let row = -1; row <= 1; row += 1) {
+    for (let column = -1; column <= 1; column += 1) {
+      const tileX = (centerX + column + tileCount) % tileCount;
+      const tileY = Math.max(0, Math.min(tileCount - 1, centerY + row));
+      tiles.push(
+        <Image
+          accessibilityIgnoresInvertColors
+          key={`${tileX}-${tileY}`}
+          source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png` }}
+          style={{ position: "absolute", left: (column + 1) * tileSize, top: (row + 1) * tileSize, width: tileSize, height: tileSize }}
+        />,
+      );
+    }
+  }
+  return (
+    <View
+      accessibilityLabel={`Map showing ${location}`}
+      accessibilityRole="image"
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={styles.locationMap}
+    >
+      <View style={[styles.locationTiles, { left: width / 2 - (x - (centerX - 1)) * tileSize, top: 105 - (y - (centerY - 1)) * tileSize }]}>{tiles}</View>
+      <View style={styles.locationMarker}>
+        <AppSymbol name={{ ios: "truck.box.fill", android: "local_shipping" } as never} color="#FFFFFF" size={16} />
+      </View>
+      <View style={styles.locationCaption}>
+        <View style={styles.locationCaptionText}>
+          <AppSymbol name={{ ios: "location.fill", android: "location_on" } as never} color={theme.ember} size={13} />
+          <Text numberOfLines={1} style={styles.locationCaptionLabel}>{location}</Text>
+        </View>
+        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=${zoom}/${latitude}/${longitude}`)}>
+          <Text style={styles.locationAttribution}>© OpenStreetMap contributors</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function DetailRow({
   label,
   value,
@@ -582,7 +638,8 @@ export default function VehicleDetailScreen() {
             </View>
 
             {vehicle.motive ? (
-              <View accessibilityLabel="Motive vehicle status" style={styles.motiveCard}>
+              <View style={styles.motiveStack}>
+                <View accessibilityLabel="Motive vehicle status" style={styles.motiveCard}>
                 <View style={styles.motiveHeading}>
                   <View style={styles.motiveLive}>
                     <View style={[styles.connectionDot, telemetryIsCurrent(vehicle.motive.updatedAt) && styles.connectionDotLive]} />
@@ -619,6 +676,10 @@ export default function VehicleDetailScreen() {
                   </Text>
                 </Pressable>
                 {cameraError ? <Text accessibilityRole="alert" style={styles.cameraError}>{cameraError}</Text> : null}
+                </View>
+                {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
+                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} styles={styles} theme={theme} />
+                ) : null}
               </View>
             ) : null}
 
@@ -1407,6 +1468,7 @@ function createStyles(theme: FireOpsTheme) {
     },
     vehicleNotesLabel: { color: theme.ember, fontSize: 14, fontWeight: "700" },
     buttonPressed: { opacity: 0.76 },
+    motiveStack: { gap: 10 },
     motiveCard: {
       gap: 14,
       borderRadius: 14,
@@ -1441,6 +1503,53 @@ function createStyles(theme: FireOpsTheme) {
     },
     cameraButtonLabel: { color: theme.commandText, fontSize: 13, fontWeight: "800" },
     cameraError: { color: "#FFB4AB", fontSize: 12, lineHeight: 17, fontWeight: "700" },
+    locationMap: {
+      height: 210,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: theme.divider,
+      borderRadius: 14,
+      backgroundColor: theme.surfaceAlt,
+    },
+    locationTiles: { position: "absolute", width: 768, height: 768 },
+    locationMarker: {
+      position: "absolute",
+      left: "50%",
+      top: "50%",
+      width: 36,
+      height: 36,
+      marginLeft: -18,
+      marginTop: -25,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 3,
+      borderColor: "#FFFFFF",
+      borderRadius: 18,
+      backgroundColor: theme.green,
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    locationCaption: {
+      position: "absolute",
+      left: 8,
+      right: 8,
+      bottom: 8,
+      minHeight: 34,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      borderRadius: 8,
+      backgroundColor: theme.paper,
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+    },
+    locationCaptionText: { minWidth: 0, flex: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+    locationCaptionLabel: { flex: 1, color: theme.ink, fontSize: 11, fontWeight: "700" },
+    locationAttribution: { color: theme.secondary, fontSize: 9, textDecorationLine: "underline" },
     section: { gap: 13 },
     sectionHeading: {
       minHeight: 40,
