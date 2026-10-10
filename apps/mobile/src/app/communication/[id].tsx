@@ -94,7 +94,7 @@ export default function CommunicationThreadScreen() {
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <Stack.Screen options={{
         title: thread?.subject ?? 'Thread',
-        headerRight: member?.user.role === 'owner' && thread ? () => (
+        headerRight: (member?.user.role === 'owner' || member?.user.role === 'admin') && thread ? () => (
           <Pressable accessibilityRole="button" disabled={deleting} onPress={confirmDelete}>
             <Text style={{ color: theme.danger, fontWeight: '700' }}>{deleting ? 'Deleting...' : 'Delete'}</Text>
           </Pressable>

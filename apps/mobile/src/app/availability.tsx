@@ -13,7 +13,7 @@ export default function AvailabilityScreen() {
   const theme = useFireOpsTheme();
   const {crew,loading:crewLoading,error:crewError} = useFleetVehicles(member?.company.id ?? null);
   const {statuses,loading,error,busy,save,retry} = useAvailability(member?.company.id);
-  const owner = member?.user.role==='owner';
+  const owner = member?.user.role==='owner'||member?.user.role==='admin';
   const styles = StyleSheet.create({safe:{flex:1,backgroundColor:theme.canvas},content:{padding:20,gap:24,paddingBottom:48},title:{color:theme.ink,fontSize:30,fontWeight:'800'},copy:{color:theme.secondary,fontSize:16,lineHeight:24},record:{padding:20,gap:16,borderWidth:1,borderColor:theme.divider,borderRadius:16,backgroundColor:theme.paper},name:{color:theme.ink,fontSize:20,fontWeight:'700'},controls:{gap:12},button:{minHeight:56,borderRadius:12,padding:16,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10},buttonText:{color:'#FFFFFF',fontSize:16,fontWeight:'800',flexShrink:1},error:{color:theme.danger,fontSize:16},self:{alignItems:'center',gap:20},disabled:{opacity:.5}});
   if (!session || access.status==='error') return <Redirect href="/"/>;
   const label = (value:boolean|undefined)=>value===undefined?'Not set':value?'Available':'Unavailable';

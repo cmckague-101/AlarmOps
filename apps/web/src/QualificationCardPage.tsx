@@ -1,4 +1,4 @@
-import {createQualificationCardHtml,qualificationCardPositionLabel,qualificationCardPositions,signatureHasInk,type CompanyInfo,type CrewMember,type FireOpsUser,type QualificationCardInput,type QualificationCardRequest,type SavedSignature,type VehicleFile} from '@fireops/domain';
+import {createQualificationCardHtml,isCompanyManager,qualificationCardPositionLabel,qualificationCardPositions,signatureHasInk,type CompanyInfo,type CrewMember,type FireOpsUser,type QualificationCardInput,type QualificationCardRequest,type SavedSignature,type VehicleFile} from '@fireops/domain';
 import {ArrowLeft,CheckCircle2,Download,ImagePlus,RefreshCw,ShieldAlert,Trash2} from 'lucide-react';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import SignaturePad from './SignaturePad';
@@ -6,7 +6,7 @@ import {approveQualificationCard,loadQualificationCardData,qualificationCardPhot
 import './QualificationCardPage.css';
 
 export default function QualificationCardPage({member,crew,company,companyId,user,uploadFile,onBack}:{member?:CrewMember;crew:CrewMember[];company:CompanyInfo;companyId?:string;user:FireOpsUser;uploadFile?:(file:File)=>Promise<VehicleFile>;onBack:()=>void}){
-  const positions=useMemo(()=>qualificationCardPositions(member),[member]);const isOwner=user.role==='owner';
+  const positions=useMemo(()=>qualificationCardPositions(member),[member]);const isOwner=isCompanyManager(user.role);
   const [primaryQualificationId,setPrimaryQualificationId]=useState(()=>positions[0]?.id??'');
   const [photoDataUrl,setPhotoDataUrl]=useState('');const [photoName,setPhotoName]=useState('');const [photoFile,setPhotoFile]=useState<File>();const [photoPath,setPhotoPath]=useState('');
   const [requests,setRequests]=useState<QualificationCardRequest[]>([]);const [loading,setLoading]=useState(Boolean(companyId));const [busy,setBusy]=useState(false);const [error,setError]=useState('');

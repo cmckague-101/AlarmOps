@@ -132,7 +132,7 @@ export default function FleetScreen() {
           <View style={styles.headingGroup}>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
-          {currentUser?.role === 'owner' ? (
+          {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Add vehicle" onPress={() => router.push('/vehicle/form')} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
               <AppSymbol name="plus" color={theme.commandText} size={18} />
               <Text style={styles.addButtonLabel}>Add</Text>
@@ -153,8 +153,8 @@ export default function FleetScreen() {
         {!loading && !error && vehicles.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No vehicles yet</Text>
-            <Text style={styles.emptyText}>{currentUser?.role === 'owner' ? 'Add your first vehicle to begin tracking readiness and assignments.' : 'Vehicles added to your department will appear here automatically.'}</Text>
-            {currentUser?.role === 'owner' ? (
+            <Text style={styles.emptyText}>{currentUser?.role === 'owner' || currentUser?.role === 'admin' ? 'Add your first vehicle to begin tracking readiness and assignments.' : 'Vehicles added to your department will appear here automatically.'}</Text>
+            {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (
               <Pressable accessibilityRole="button" onPress={() => router.push('/vehicle/form')} style={styles.emptyAddButton}>
                 <AppSymbol name="plus" color={theme.commandText} size={18} />
                 <Text style={styles.addButtonLabel}>Add first vehicle</Text>

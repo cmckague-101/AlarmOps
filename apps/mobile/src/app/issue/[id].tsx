@@ -41,7 +41,7 @@ export default function IssueDetailScreen() {
   if (!session || access.status === 'error') return <Redirect href="/" />;
 
   const beginEditing = () => {
-    if (!issue || user?.role !== 'owner') return;
+    if (!issue || (user?.role !== 'owner' && user?.role !== 'admin')) return;
     setDetails({ title: issue.title, description: issue.description, priority: issue.priority });
     setDetailErrors({});
     setSaveError('');
@@ -55,7 +55,7 @@ export default function IssueDetailScreen() {
   };
 
   const saveDetails = async () => {
-    if (!issue || user?.role !== 'owner') return;
+    if (!issue || (user?.role !== 'owner' && user?.role !== 'admin')) return;
     const nextErrors = {
       ...(!details.title.trim() ? { title: 'Issue title is required.' } : {}),
       ...(!details.description.trim() ? { description: 'Description is required.' } : {}),
@@ -215,7 +215,7 @@ export default function IssueDetailScreen() {
                 )}
               </View>
 
-              {user?.role === 'owner' && !editingDetails ? (
+              {(user?.role === 'owner' || user?.role === 'admin') && !editingDetails ? (
                 <Pressable accessibilityRole="button" onPress={beginEditing} style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}>
                   <AppSymbol name={{ ios: 'pencil', android: 'edit' } as never} color={theme.ember} size={17} />
                   <Text style={styles.editButtonLabel}>Edit issue details</Text>

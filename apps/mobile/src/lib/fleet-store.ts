@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type {
   Activity,
   AnnualQualificationRecord,
+  AssignableUserRole,
   CrewCredential,
   CrewExperience,
   CrewMember,
@@ -465,6 +466,13 @@ export async function saveCrewMember(
     { collection: "crew", record: member },
     { collection: "activities", record: activity },
   ]);
+}
+
+export async function updateCrewMemberRole(companyId:string,member:CrewMember,role:AssignableUserRole):Promise<CrewMember> {
+  if(!supabase)throw new Error("Company is unavailable.");
+  const {error}=await supabase.rpc("update_company_member_role",{target_company_id:companyId,target_user_id:member.id,new_role:role});
+  if(error)throw new Error(error.message);
+  return {...member,role};
 }
 
 export async function removeCrewMember(companyId: string, userId: string) {

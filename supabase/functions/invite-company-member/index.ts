@@ -127,11 +127,11 @@ Deno.serve(async (request) => {
 
     const name = suppliedName || existingProfile.full_name?.trim() || fallbackName || 'Crew member';
     const pending = !userLookup.data.user.email_confirmed_at;
-    const member = {id: existingProfile.user_id, name, email, phone, role: 'member', status: pending ? 'Invited' : 'Active'};
+    const member = {id: existingProfile.user_id, name, email, phone, role: 'fire_fighter', status: pending ? 'Invited' : 'Active'};
     const {error: membershipError} = await admin.from('company_members').insert({
       company_id: companyId,
       user_id: existingProfile.user_id,
-      role: 'member',
+      role: 'fire_fighter',
     });
     if (membershipError) {
       console.error('Existing account membership creation failed:', membershipError);
@@ -173,7 +173,7 @@ Deno.serve(async (request) => {
   const name = suppliedName || fallbackName || 'Invited crew member';
   const {data: invite, error: inviteError} = await admin.auth.admin.inviteUserByEmail(email, {
     redirectTo,
-    data: {full_name: name, company_id: companyId, company_name: company.name, role: 'member'},
+    data: {full_name: name, company_id: companyId, company_name: company.name, role: 'fire_fighter'},
   });
   if (inviteError || !invite.user) {
     console.error('Auth invitation failed:', inviteError);
@@ -182,11 +182,11 @@ Deno.serve(async (request) => {
     });
   }
 
-  const member = {id: invite.user.id, name, email, phone, role: 'member', status: 'Invited'};
+  const member = {id: invite.user.id, name, email, phone, role: 'fire_fighter', status: 'Invited'};
   const {error: membershipError} = await admin.from('company_members').insert({
     company_id: companyId,
     user_id: invite.user.id,
-    role: 'member',
+    role: 'fire_fighter',
   });
   if (membershipError) {
     console.error('Membership creation failed:', membershipError);

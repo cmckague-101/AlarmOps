@@ -35,7 +35,7 @@ export default function VehicleTypesScreen() {
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
   if (access.status === 'idle' || access.status === 'loading') return <SafeAreaView style={styles.safeArea}><Text style={styles.loading}>Checking fleet access…</Text></SafeAreaView>;
-  if (!companyId || !user || user.role !== 'owner') return <Redirect href="/(tabs)/fleet" />;
+  if (!companyId || !user || user.role !== 'owner' && user.role !== 'admin') return <Redirect href="/(tabs)/fleet" />;
 
   const add = async () => {
     const value = name.trim();

@@ -29,11 +29,11 @@ export default function More(){
   const member=access.value?.kind==='member'?access.value:null;
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
-  const pendingQualificationCards=usePendingQualificationCardCount(member?.user.role==='owner'?member.company.id:null);
+  const pendingQualificationCards=usePendingQualificationCardCount(member&&(member.user.role==='owner'||member.user.role==='admin')?member.company.id:null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
   const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
-  const visible=sections.filter(section=>!('ownerOnly' in section)||member?.user.role==='owner');
+  const visible=sections.filter(section=>!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'));
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="More" description="Documents, training, and account settings" showTitle={false}>

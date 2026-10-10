@@ -10,7 +10,7 @@ import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
 export default function InspectionTemplateScreen(){
  const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const member=access.value?.kind==='member'?access.value:null;const companyId=member?.company.id??null;const {items,loading,error:loadError}=useInspectionTemplate(companyId);const [name,setName]=useState('');const [editingId,setEditingId]=useState<string|null>(null);const [editingName,setEditingName]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
- if(!session||access.status==='error')return <Redirect href="/"/>;if(!member||member.user.role!=='owner')return <Redirect href="/(tabs)/more"/>;
+ if(!session||access.status==='error')return <Redirect href="/"/>;if(!member||member.user.role!=='owner'&&member.user.role!=='admin')return <Redirect href="/(tabs)/more"/>;
  const run=async(action:()=>Promise<void>)=>{setBusy(true);setError('');try{await action()}catch(actionError){setError(actionError instanceof Error?actionError.message:'Template could not be updated.')}finally{setBusy(false)}};
  const add=()=>{const value=name.trim();if(!value||!companyId)return;void run(async()=>{await addInspectionTemplateItem(companyId,value,items);setName('')})};
  const save=(item:VehicleInspectionTemplateItem)=>{const value=editingName.trim();if(!value||!companyId)return;void run(async()=>{await updateInspectionTemplateItem(companyId,item,value);setEditingId(null)})};

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
-import type { CrewMember, FireOpsUser } from '@fireops/domain';
+import { isCompanyManager, type CrewMember, type FireOpsUser } from '@fireops/domain';
 import { supabase } from './supabase';
 
 const BUCKET = 'receipt-files';
@@ -102,7 +102,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const [editName, setEditName] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [actionId, setActionId] = useState('');
-  const isOwner = user.role === 'owner';
+  const isOwner = isCompanyManager(user.role);
 
   const load = useCallback(async () => {
     if (!companyId || !supabase) {

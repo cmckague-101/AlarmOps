@@ -17,7 +17,7 @@ function snapshot():FleetSnapshot {
       documents:[{id:'registration',name:'Registration',file:storedFile('company/user/registration.pdf')},{id:'vipr',name:'VIPR checklist',file:storedFile('company/user/vipr.pdf')}],
     }],
     issues:[],
-    crew:[{id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',email:'crew@example.com',phone:'',role:'member',status:'Active',credential:storedFile('company/owner/credential.pdf'),credentials:[{id:'red-card',name:'Red Card',file:storedFile('company/owner/red-card.pdf')},{id:'emt',name:'EMT',file:storedFile('company/owner/emt.jpg')}]}],
+    crew:[{id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',email:'crew@example.com',phone:'',role:'fire_fighter',status:'Active',credential:storedFile('company/owner/credential.pdf'),credentials:[{id:'red-card',name:'Red Card',file:storedFile('company/owner/red-card.pdf')},{id:'emt',name:'EMT',file:storedFile('company/owner/emt.jpg')}]}],
     activities:[],
   };
 }
@@ -25,13 +25,14 @@ function snapshot():FleetSnapshot {
 describe('responsive navigation',()=>{
   it('shows quick action destinations to both roles and reserves crew management for owners',()=>{
     expect(navigationLayout('owner').desktop).toEqual(['overview','operations','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
-    expect(navigationLayout('member').desktop).toEqual(['overview','operations','communications','vehicles','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+    expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
+    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','operations','communications','vehicles','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
     expect(navigationLayout('owner').mobileOverflow).toEqual(['crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
-    expect(navigationLayout('member').mobileOverflow).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 });
 
@@ -42,13 +43,14 @@ describe('vehicle issue visibility',()=>{
   ];
 
   it('shows every open issue to crew, regardless of reporter',()=>{
-    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'fire_fighter'};
     expect(visibleVehicleIssues(issues,crew).map(issue=>issue.id)).toEqual(['open-other']);
   });
 
   it('shows open and resolved issue history to owners',()=>{
     const owner:FireOpsUser={id:'owner-1',name:'Owner',role:'owner'};
     expect(visibleVehicleIssues(issues,owner)).toEqual(issues);
+    expect(visibleVehicleIssues(issues,{...owner,role:'admin'})).toEqual(issues);
   });
 });
 
@@ -78,7 +80,7 @@ describe('fleet record comparison',()=>{
 });
 
 describe('communication unread rules',()=>{
-  const user:FireOpsUser={id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',role:'member'};
+  const user:FireOpsUser={id:'22222222-2222-4222-8222-222222222222',name:'Crew Member',role:'fire_fighter'};
   const thread=(overrides:Partial<CommunicationThread>={}):CommunicationThread=>({
     id:'thread-1',subject:'Dispatch update',description:'Meet at staging.',createdBy:'Company Owner',createdById:'11111111-1111-4111-8111-111111111111',createdByRole:'owner',createdAt:'2025-08-28T10:00:00Z',replies:[],...overrides
   });
@@ -89,25 +91,25 @@ describe('communication unread rules',()=>{
   });
 
   it('does not notify all crew about a crew-created thread',()=>{
-    expect(isThreadUnread(thread({createdByRole:'member'}),user)).toBe(false);
+    expect(isThreadUnread(thread({createdByRole:'fire_fighter'}),user)).toBe(false);
   });
 
   it('notifies owner about every new thread, but not unrelated replies',()=>{
     const owner:FireOpsUser={id:'11111111-1111-4111-8111-111111111111',name:'Company Owner',role:'owner'};
-    const crewThread=thread({createdBy:'Crew Member',createdById:user.id,createdByRole:'member'});
+    const crewThread=thread({createdBy:'Crew Member',createdById:user.id,createdByRole:'fire_fighter'});
     expect(isThreadUnread(crewThread,owner)).toBe(true);
     expect(isThreadUnread({...crewThread,seenAt:'2025-08-28T10:01:00Z',replies:[{id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'}]},owner)).toBe(false);
   });
 
   it('notifies thread creators and participants about new replies',()=>{
     const reply={id:'reply-1',body:'Copy.',createdBy:'Other Crew',createdById:'33333333-3333-4333-8333-333333333333',createdAt:'2025-08-28T10:05:00Z'};
-    expect(isThreadUnread(thread({createdById:user.id,createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[reply]}),user)).toBe(true);
-    expect(isThreadUnread(thread({createdByRole:'member',seenAt:'2025-08-28T10:01:00Z',replies:[{...reply,createdById:user.id,createdAt:'2025-08-28T10:02:00Z'},reply]}),user)).toBe(true);
+    expect(isThreadUnread(thread({createdById:user.id,createdByRole:'fire_fighter',seenAt:'2025-08-28T10:01:00Z',replies:[reply]}),user)).toBe(true);
+    expect(isThreadUnread(thread({createdByRole:'fire_fighter',seenAt:'2025-08-28T10:01:00Z',replies:[{...reply,createdById:user.id,createdAt:'2025-08-28T10:02:00Z'},reply]}),user)).toBe(true);
   });
 });
 
 describe('dashboard notifications',()=>{
-  const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+  const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'fire_fighter'};
   const thread=(id:string,createdAt:string):CommunicationThread=>({id,subject:`Dispatch ${id}`,description:'Report to staging.',createdBy:'Company Owner',createdById:'owner-1',createdByRole:'owner',createdAt,replies:[]});
   const document=(id:string,updatedAt:string):CompanyDocument=>({id,name:`Document ${id}`,file:storedFile(`company/owner/${id}.pdf`),createdAt:updatedAt,updatedAt});
 
@@ -134,7 +136,7 @@ describe('training unread rules',()=>{
   const training:Training={id:'training-1',courseCode:'S-130',courseTitle:'Firefighter Training',date:'2025-09-10T16:00:00Z',location:'Station 1',instructor:'Alex Reed',capacity:20,information:'',createdAt:'2025-08-30T10:00:00Z',updatedAt:'2025-08-30T10:00:00Z',signups:[]};
 
   it('notifies crew until training is opened',()=>{
-    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'fire_fighter'};
     expect(isTrainingUnread(training,crew)).toBe(true);
     expect(isTrainingUnread({...training,viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(false);
     expect(isTrainingUnread(training,{...crew,role:'owner'})).toBe(false);
@@ -153,7 +155,7 @@ describe('document unread rules',()=>{
   const document:CompanyDocument={id:'document-1',name:'Employee handbook',file:storedFile('company/owner/handbook.pdf'),createdAt:'2025-08-30T10:00:00Z',updatedAt:'2025-08-30T10:00:00Z'};
 
   it('notifies crew until latest document version is viewed',()=>{
-    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'member'};
+    const crew:FireOpsUser={id:'crew-1',name:'Crew Member',role:'fire_fighter'};
     expect(isDocumentUnread(document,crew)).toBe(true);
     expect(isDocumentUnread({...document,viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(false);
     expect(isDocumentUnread({...document,updatedAt:'2025-08-30T10:02:00Z',viewedAt:'2025-08-30T10:01:00Z'},crew)).toBe(true);

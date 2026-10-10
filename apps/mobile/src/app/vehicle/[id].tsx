@@ -119,14 +119,14 @@ export default function VehicleDetailScreen() {
     (issue) => issue.vehicleId === id && issue.status === "Open",
   );
   const resolvedIssues = issues
-    .filter((issue) => user?.role === "owner" && issue.vehicleId === id && issue.status === "Resolved")
+    .filter((issue) => (user?.role === "owner" || user?.role === "admin") && issue.vehicleId === id && issue.status === "Resolved")
     .sort(
       (a, b) =>
         Date.parse(b.resolvedAt ?? b.createdAt) -
         Date.parse(a.resolvedAt ?? a.createdAt),
     );
   const activeCrew = crew.filter((member) => member.status === "Active");
-  const canManage = user?.role === "owner";
+  const canManage = user?.role === "owner" || user?.role === "admin";
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleting, setDeleting] = useState(false);

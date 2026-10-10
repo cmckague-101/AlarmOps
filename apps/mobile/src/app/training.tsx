@@ -40,7 +40,7 @@ export default function TrainingScreen() {
               <AppSymbol name={{ ios: 'arrow.up.right.square', android: 'open_in_new' } as never} color={theme.ember} size={15} />
             </Pressable>
           </View>
-          {member?.user.role === 'owner' ? (
+          {member?.user.role === 'owner' || member?.user.role === 'admin' ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Create training" onPress={() => router.push('/training/form' as never)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
               <AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={19} />
               <Text style={styles.addLabel}>New</Text>
@@ -62,7 +62,7 @@ export default function TrainingScreen() {
               <View style={styles.empty}>
                 <View style={styles.emptyIcon}><AppSymbol name={{ ios: 'graduationcap', android: 'school' } as never} color={theme.secondary} size={28} /></View>
                 <Text style={styles.emptyTitle}>No training scheduled</Text>
-                <Text style={styles.emptyText}>{member?.user.role === 'owner' ? 'Create the first course and notify the crew.' : 'New courses will appear when your company owner schedules them.'}</Text>
+                <Text style={styles.emptyText}>{member?.user.role === 'owner' || member?.user.role === 'admin' ? 'Create the first course and notify the crew.' : 'New courses will appear when your company owner schedules them.'}</Text>
               </View>
             )}
           </TrainingSection>

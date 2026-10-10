@@ -2,6 +2,7 @@ import type {
   CommunicationThread, CompanyDocument, CrewCredential, CrewMember, DashboardNotification, FireOpsUser, FleetIssue,
   Training, TrainingStage, Vehicle,
 } from './models';
+import {isCompanyManager} from './models';
 
 export function normalizeVehicle(vehicle:Vehicle):Vehicle {
   const normalizedStatus=(vehicle.status as string)==='Maintenance'?'Out of service':vehicle.status;
@@ -15,7 +16,7 @@ export function normalizeVehicles(vehicles:Vehicle[]):Vehicle[]{
 }
 
 export function visibleVehicleIssues(issues:FleetIssue[],user:FireOpsUser):FleetIssue[]{
-  return user.role==='owner'?issues:issues.filter(issue=>issue.status==='Open');
+  return isCompanyManager(user.role)?issues:issues.filter(issue=>issue.status==='Open');
 }
 
 export function crewCredentials(member:CrewMember):CrewCredential[]{
@@ -35,18 +36,18 @@ export function credentialExpiresWithinMonth(credential:CrewCredential,now=new D
 
 export function isThreadUnread(thread:CommunicationThread,user:FireOpsUser):boolean {
   const seenAt=thread.seenAt?Date.parse(thread.seenAt):0;
-  const newThread=thread.createdById!==user.id&&Date.parse(thread.createdAt)>seenAt&&(user.role==='owner'||thread.createdByRole==='owner');
+  const newThread=thread.createdById!==user.id&&Date.parse(thread.createdAt)>seenAt&&(isCompanyManager(user.role)||isCompanyManager(thread.createdByRole));
   const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
   const relevantReply=participates&&thread.replies.some(reply=>reply.createdById!==user.id&&Date.parse(reply.createdAt)>seenAt);
   return newThread||relevantReply;
 }
 
 export function isDocumentUnread(document:CompanyDocument,user:FireOpsUser):boolean {
-  return user.role==='member'&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
+  return !isCompanyManager(user.role)&&Date.parse(document.updatedAt)>Date.parse(document.viewedAt??'1970-01-01');
 }
 
 export function isTrainingUnread(training:Training,user:FireOpsUser):boolean {
-  return user.role==='member'&&Date.parse(training.createdAt)>Date.parse(training.viewedAt??'1970-01-01');
+  return !isCompanyManager(user.role)&&Date.parse(training.createdAt)>Date.parse(training.viewedAt??'1970-01-01');
 }
 
 export function trainingStage(training:Training,now=new Date()):TrainingStage {
@@ -60,11 +61,11 @@ export function trainingStage(training:Training,now=new Date()):TrainingStage {
 export function dashboardNotifications(
   threads:CommunicationThread[],documents:CompanyDocument[],user:FireOpsUser,limit=5,trainings:Training[]=[]
 ):DashboardNotification[]{
-  if(user.role!=='member')return [];
+  if(isCompanyManager(user.role))return [];
   const communicationItems=threads.flatMap(thread=>{
     const participates=thread.createdById===user.id||thread.replies.some(reply=>reply.createdById===user.id);
     const candidates=[
-      ...(thread.createdByRole==='owner'&&thread.createdById!==user.id?[{createdAt:thread.createdAt,detail:`New communication from ${thread.createdBy}`}]:[]),
+      ...(isCompanyManager(thread.createdByRole)&&thread.createdById!==user.id?[{createdAt:thread.createdAt,detail:`New communication from ${thread.createdBy}`}]:[]),
       ...(participates?thread.replies.filter(reply=>reply.createdById!==user.id).map(reply=>({createdAt:reply.createdAt,detail:`${reply.createdBy} replied`})):[])
     ].sort((left,right)=>Date.parse(right.createdAt)-Date.parse(left.createdAt));
     const latest=candidates[0];

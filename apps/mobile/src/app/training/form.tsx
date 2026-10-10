@@ -48,7 +48,7 @@ export default function TrainingFormScreen() {
   const values = form ?? initial;
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (member && member.user.role !== 'owner') return <Redirect href={'/training' as never} />;
+  if (member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href={'/training' as never} />;
 
   const update = (key: FormKey, value: string) => {
     setForm({ ...values, [key]: value });

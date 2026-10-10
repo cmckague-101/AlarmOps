@@ -45,7 +45,7 @@ export default function ReceiptsScreen() {
   const [crewId, setCrewId] = useState('all');
   const [busyId, setBusyId] = useState('');
   const [actionError, setActionError] = useState('');
-  const isOwner = member?.user.role === 'owner';
+  const isOwner = member?.user.role === 'owner' || member?.user.role === 'admin';
 
   const crew = useMemo(() => {
     const people = new Map<string, string>();

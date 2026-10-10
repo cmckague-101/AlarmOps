@@ -296,7 +296,7 @@ export default function OperationsScreen() {
 
   const motiveVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.motive), [vehicles]);
   const assignableVehicles = useMemo(
-    () => vehicles.filter((vehicle) => vehicle.assignedTo && (user?.role === 'owner' || vehicle.assignedTo === user?.id)),
+    () => vehicles.filter((vehicle) => vehicle.assignedTo && (user?.role === 'owner' || user?.role === 'admin' || vehicle.assignedTo === user?.id)),
     [user?.id, user?.role, vehicles],
   );
   const assignVehicleToFire = async (vehicle: FleetVehicle, incident: NifcIncident) => {

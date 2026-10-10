@@ -22,7 +22,7 @@ export default function InventoryScreen() {
   const filtered = items.filter((item) => item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  const canManage = member?.user.role === 'owner';
+  const canManage = member?.user.role === 'owner' || member?.user.role === 'admin';
 
   const updateQuantity = async (item: InventoryItem, quantity: number) => {
     const checkedOut = item.checkouts.reduce((sum, checkout) => sum + checkout.quantity, 0);

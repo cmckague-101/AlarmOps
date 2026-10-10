@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {commandCenter,type CrewMember,type FleetIssue} from '@fireops/domain';
-const crew:CrewMember[]=[{id:'a',name:'Alex',email:'',phone:'',role:'member',status:'Active'},{id:'b',name:'Blair',email:'',phone:'',role:'member',status:'Active'}];
+const crew:CrewMember[]=[{id:'a',name:'Alex',email:'',phone:'',role:'fire_fighter',status:'Active'},{id:'b',name:'Blair',email:'',phone:'',role:'shop_tech',status:'Active'}];
 const fire={id:'fire',name:'Walker Fire',state:'OR'};
 describe('owner command center',()=>{
   it('groups fires, counts people once, and preserves every vehicle assignment',()=>{

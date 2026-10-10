@@ -40,7 +40,7 @@ export default function ReceiptFormScreen() {
   const amountCents = amountToCents(resolvedAmount);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (editing && member && member.user.role !== 'owner') return <Redirect href="/receipts" />;
+  if (editing && member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href="/receipts" />;
   if (editing && !loading && !receipt) return <Redirect href="/receipts" />;
 
   const chooseFile = async () => {

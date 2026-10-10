@@ -31,7 +31,7 @@ export default function TrainingDetailScreen() {
   const [actionError, setActionError] = useState('');
 
   useEffect(() => {
-    if (training && member?.user.role === 'member' && isTrainingUnread(training, member.user)) {
+    if (training && member && member.user.role !== 'owner' && member.user.role !== 'admin' && isTrainingUnread(training, member.user)) {
       void markTrainingViewed(training.id).catch(() => undefined);
     }
   }, [training, member]);
@@ -95,7 +95,7 @@ export default function TrainingDetailScreen() {
 
             {training.information ? <View style={styles.section}><Text style={styles.sectionTitle}>Course information</Text><Text selectable style={styles.information}>{training.information}</Text></View> : null}
 
-            {member?.user.role === 'member' ? (
+            {member?.user.role !== 'owner' && member?.user.role !== 'admin' ? (
               <View style={styles.registrationSection}>
                 {expired ? <Text style={styles.expiredMessage}>Course ended. Registration is closed.</Text> : (
                   <>
@@ -109,14 +109,14 @@ export default function TrainingDetailScreen() {
               </View>
             ) : null}
 
-            {member?.user.role === 'owner' ? (
+            {member?.user.role === 'owner' || member?.user.role === 'admin' ? (
               <View style={styles.section}>
                 <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Signed up</Text><Text style={styles.count}>{training.signups.length}</Text></View>
                 {training.signups.length ? [...training.signups].sort((a, b) => a.userName.localeCompare(b.userName)).map((signup) => <View key={signup.userId} style={styles.rosterRow}><View style={styles.avatar}><Text style={styles.avatarLabel}>{signup.userName.slice(0, 1).toUpperCase()}</Text></View><View><Text style={styles.rosterName}>{signup.userName}</Text><Text style={styles.rosterMeta}>Registered {formatDate(signup.signedUpAt)}</Text></View></View>) : <Text style={styles.emptyRoster}>No crew members have signed up.</Text>}
               </View>
             ) : null}
 
-            {member?.user.role === 'owner' ? (
+            {member?.user.role === 'owner' || member?.user.role === 'admin' ? (
               <View style={styles.ownerActions}>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push({ pathname: '/training/form', params: { id: training.id } } as never)} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryLabel}>Edit training</Text></Pressable>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={confirmDelete} style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}><Text style={styles.deleteLabel}>Delete training</Text></Pressable>

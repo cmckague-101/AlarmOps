@@ -68,7 +68,7 @@ export default function DashboardScreen() {
     void refreshNotificationInbox();
   };
 
-  if(user?.role==='owner')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || notificationsRefreshing} error={error}/>;
+  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || notificationsRefreshing} error={error}/>;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>

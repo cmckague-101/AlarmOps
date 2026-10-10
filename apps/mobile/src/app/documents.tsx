@@ -22,7 +22,7 @@ export default function CompanyDocumentsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const canManage = member?.user.role === 'owner';
+  const canManage = member?.user.role === 'owner' || member?.user.role === 'admin';
   const { documents, loading, refreshing, error } = useCompanyDocuments(member?.company.id ?? null, member?.user.id ?? null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
@@ -36,7 +36,7 @@ export default function CompanyDocumentsScreen() {
     try {
       const url = await openFleetFile({ name: document.file.name, type: document.file.type, path: document.file.path ?? null });
       await Linking.openURL(url);
-      if (member?.user.role === 'member') await markCompanyDocumentViewed(document.id);
+      if (member?.user.role !== 'owner' && member?.user.role !== 'admin') await markCompanyDocumentViewed(document.id);
     } catch (openError) {
       setActionError(openError instanceof Error ? openError.message : 'Document could not be opened.');
     } finally {

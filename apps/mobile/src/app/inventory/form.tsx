@@ -14,7 +14,7 @@ export default function InventoryFormScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { items, loading } = useInventory(member?.user.role === 'owner' ? member.company.id : null);
+  const { items, loading } = useInventory(member?.user.role === 'owner' || member?.user.role === 'admin' ? member.company.id : null);
   const item = id ? items.find((entry) => entry.id === id) : undefined;
   const [name, setName] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export default function InventoryFormScreen() {
   const quantityValue = quantity ?? (item ? String(item.quantity) : '0');
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (member && member.user.role !== 'owner') return <Redirect href="/(tabs)/more" />;
+  if (member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href="/(tabs)/more" />;
 
   const submit = async () => {
     const nextErrors: { name?: string; quantity?: string } = {};

@@ -1,4 +1,19 @@
-export type UserRole = 'owner' | 'member';
+export type UserRole = 'owner' | 'admin' | 'shop_tech' | 'fire_fighter';
+export type AssignableUserRole = Exclude<UserRole, 'owner'>;
+
+export const assignableUserRoles:ReadonlyArray<{value:AssignableUserRole;label:string}> = [
+  {value:'admin',label:'Admin'},
+  {value:'shop_tech',label:'Shop Tech'},
+  {value:'fire_fighter',label:'Fire Fighter'},
+];
+
+export function isCompanyManager(role:UserRole):boolean {
+  return role==='owner'||role==='admin';
+}
+
+export function userRoleLabel(role:UserRole):string {
+  return role==='owner'?'Owner':assignableUserRoles.find(option=>option.value===role)?.label??role;
+}
 export type VehicleStatus = 'Ready' | 'Assigned' | 'Out of service';
 export type IssuePriority = 'Low' | 'Medium' | 'High' | 'Critical';
 export type IssueStatus = 'Open' | 'Resolved';

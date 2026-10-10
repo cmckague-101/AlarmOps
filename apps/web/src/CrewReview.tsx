@@ -8,7 +8,7 @@ const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'Licen
 const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'Not recorded';
 
 export default function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId?: string }) {
-  const members = useMemo(() => crew.filter((member) => member.role === 'member').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
+  const members = useMemo(() => crew.filter((member) => member.role !== 'owner').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
   const [selectedId, setSelectedId] = useState('');
   const [requests, setRequests] = useState<QualificationCardRequest[]>([]);
   const [cardError, setCardError] = useState('');

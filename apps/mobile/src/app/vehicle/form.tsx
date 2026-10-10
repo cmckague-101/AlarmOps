@@ -115,7 +115,7 @@ export default function VehicleFormScreen() {
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
   if (access.status === 'idle' || access.status === 'loading') return <SafeAreaView style={styles.safeArea}><Text style={styles.loading}>Checking fleet access…</Text></SafeAreaView>;
-  if (!user || user.role !== 'owner') return <Redirect href={id ? `/vehicle/${id}` : '/(tabs)/fleet'} />;
+  if (!user || user.role !== 'owner' && user.role !== 'admin') return <Redirect href={id ? `/vehicle/${id}` : '/(tabs)/fleet'} />;
 
   const update = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));

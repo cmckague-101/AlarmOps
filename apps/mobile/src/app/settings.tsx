@@ -44,7 +44,7 @@ export default function SettingsScreen(){
   const [clientId,setClientId]=useState('');const [clientSecret,setClientSecret]=useState('');const [showSecret,setShowSecret]=useState(false);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [error,setError]=useState(typeof oauthParams.motive_error==='string'?oauthParams.motive_error:'');const [saved,setSaved]=useState(oauthParams.motive==='connected');
   const [companyName,setCompanyName]=useState(member?.company.name??'');const [companyPhone,setCompanyPhone]=useState(formatPhoneNumber(member?.company.phone??''));const [companyLocation,setCompanyLocation]=useState(member?.company.location??'');const [logoFile,setLogoFile]=useState<LocalFleetFile>();const [logoUri,setLogoUri]=useState('');const [profileBusy,setProfileBusy]=useState(false);const [profileError,setProfileError]=useState('');const [profileSaved,setProfileSaved]=useState(false);
   const owner=crew.find(person=>person.role==='owner')?.name??(member?.user.role==='owner'?member.user.name:'Not available');
-  const isOwner=member?.user.role==='owner';const companyId=member?.company.id;
+  const isOwner=member?.user.role==='owner'||member?.user.role==='admin';const companyId=member?.company.id;
   const load=useCallback(async()=>{
     if(!companyId)return;
     await Promise.resolve();
@@ -60,7 +60,7 @@ export default function SettingsScreen(){
   useEffect(()=>{let active=true;void Promise.resolve().then(async()=>{if(!member||!active)return;setCompanyName(member.company.name);setCompanyPhone(formatPhoneNumber(member.company.phone));setCompanyLocation(member.company.location);if(!member.company.logoPath){setLogoUri('');return}try{const url=await openFleetFile({name:'Company logo',type:'image/*',path:member.company.logoPath});if(active)setLogoUri(url)}catch{if(active)setLogoUri('')}});return()=>{active=false}},[member]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   if(!member)return <Redirect href="/"/>;
-  const limit=member.company.crewInviteLimit;const used=seatsUsed??crew.filter(person=>person.role==='member').length;const available=Math.max(0,limit-used);
+  const limit=member.company.crewInviteLimit;const used=seatsUsed??crew.filter(person=>person.role!=='owner').length;const available=Math.max(0,limit-used);
   const connect=async()=>{
     const id=clientId.trim();const secret=clientSecret.trim();if(!companyId||!id||!secret||busy)return;
     setBusy(true);setError('');setSaved(false);

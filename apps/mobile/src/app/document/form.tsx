@@ -28,7 +28,7 @@ export default function CompanyDocumentFormScreen() {
   const effectiveName = name ?? document?.name ?? '';
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (member && member.user.role !== 'owner') return <Redirect href={'/documents' as never} />;
+  if (member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href={'/documents' as never} />;
 
   const chooseFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({

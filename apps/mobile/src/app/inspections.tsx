@@ -19,7 +19,7 @@ export default function InspectionsScreen(){
   const years=useMemo(()=>[...new Set([currentYear,...allFailed.map(entry=>new Date(entry.inspection.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a,b)=>b-a),[allFailed,currentYear]);
   const failed=useMemo(()=>allFailed.filter(entry=>new Date(entry.inspection.createdAt).getFullYear()===year&&(vehicleId==='all'||entry.vehicle.id===vehicleId)).sort((left,right)=>Date.parse(right.inspection.createdAt)-Date.parse(left.inspection.createdAt)),[allFailed,vehicleId,year]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
-  if(!member||member.user.role!=='owner')return <Redirect href="/(tabs)/more"/>;
+  if(!member||member.user.role!=='owner'&&member.user.role!=='admin')return <Redirect href="/(tabs)/more"/>;
   const selectedVehicle=vehicles.find(vehicle=>vehicle.id===vehicleId);
   const openPhoto=async(photo:{name:string;type:string;path?:string})=>{setPhotoError('');try{await Linking.openURL(await openFleetFile({...photo,path:photo.path??null}))}catch(openError){setPhotoError(openError instanceof Error?openError.message:'Photo could not be opened.')}};
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Inspections'}}/><ScrollView contentContainerStyle={styles.content}>

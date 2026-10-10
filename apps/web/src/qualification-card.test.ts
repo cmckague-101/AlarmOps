@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {createQualificationCardHtml,qualificationCardPositions,signatureHasInk,type CrewMember} from '@fireops/domain';
 
 const member:CrewMember={
-  id:'crew-1',name:'Alex <River>',email:'alex@example.com',phone:'',role:'member',status:'Active',
+  id:'crew-1',name:'Alex <River>',email:'alex@example.com',phone:'',role:'fire_fighter',status:'Active',
   credentials:[
     {id:'fft2',name:'Firefighter Type 2',recordType:'Qualification',courseCode:'FFT2',completionDate:'2025-05-01',expirationDate:'2026-12-31'},
     {id:'s130',name:'Firefighter Training',recordType:'Training',courseCode:'S-130',completionDate:'2025-04-01'},

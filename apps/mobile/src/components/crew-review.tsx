@@ -11,7 +11,7 @@ const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleD
 export function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId: string }) {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const members = useMemo(() => crew.filter((member) => member.role === 'member').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
+  const members = useMemo(() => crew.filter((member) => member.role !== 'owner').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [requests, setRequests] = useState<QualificationCardRequest[]>([]);
