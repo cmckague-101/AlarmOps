@@ -475,6 +475,13 @@ export async function updateCrewMemberRole(companyId:string,member:CrewMember,ro
   return {...member,role};
 }
 
+export async function updateCrewMemberDetails(companyId:string,member:CrewMember,details:{name:string;email:string;phone:string}):Promise<CrewMember> {
+  if(!supabase)throw new Error("Company is unavailable.");
+  const {data,error}=await supabase.rpc("update_company_member_details",{target_company_id:companyId,target_user_id:member.id,member_name:details.name,member_email:details.email,member_phone:details.phone});
+  if(error)throw new Error(error.message);
+  return (data as {member?:CrewMember}|null)?.member??{...member,...details};
+}
+
 export async function removeCrewMember(companyId: string, userId: string) {
   if (!supabase) throw new Error("Crew removal service is unavailable.");
   const { data, error } = await supabase.functions.invoke("remove-company-member", {
