@@ -7,7 +7,7 @@ returns void language sql security definer set search_path = '' as $$
     ('VIPR Inventory', 0, 'pass_fail'),
     ('Damage to vehicle', 1, 'pass_fail'),
     ('Light check, horn, washer fluid', 2, 'pass_fail'),
-    ('tires', 3, 'pass_fail'),
+    ('Tires', 3, 'pass_fail'),
     ('Interior cleanliness', 4, 'photo')
   ) as item(label, position, kind)
   where not exists (
@@ -27,6 +27,6 @@ cross join (values
   ('VIPR Inventory', 0, 'pass_fail'),
   ('Damage to vehicle', 1, 'pass_fail'),
   ('Light check, horn, washer fluid', 2, 'pass_fail'),
-  ('tires', 3, 'pass_fail'),
+  ('Tires', 3, 'pass_fail'),
   ('Interior cleanliness', 4, 'photo')
 ) as item(label, position, kind);
