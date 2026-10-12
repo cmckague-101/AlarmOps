@@ -42,9 +42,9 @@ export function payrollDayName(value: string) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date(year, month - 1, day));
 }
 
-export function createPayrollRows(start = localIsoDate(new Date())): PayrollDay[] {
+export function createPayrollRows(start = ''): PayrollDay[] {
   return Array.from({ length: 21 }, (_, index) => ({
-    date: addPayrollDays(start, index),
+    date: start ? addPayrollDays(start, index) : '',
     hoursWorked: 0,
     crewIds: [],
     notes: '',
@@ -52,7 +52,7 @@ export function createPayrollRows(start = localIsoDate(new Date())): PayrollDay[
 }
 
 export function updatePayrollDate(rows: PayrollDay[], index: number, date: string) {
-  return rows.map((row, rowIndex) => rowIndex < index ? row : { ...row, date: addPayrollDays(date, rowIndex - index) });
+  return rows.map((row, rowIndex) => rowIndex < index ? row : { ...row, date: date ? addPayrollDays(date, rowIndex - index) : '' });
 }
 
 export function updatePayrollCrew(rows: PayrollDay[], index: number, crewIds: string[]) {

@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { createPayrollRows, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate } from '@fireops/domain';
 
 describe('payroll helpers', () => {
+  it('leaves dates empty until the first date is selected', () => {
+    const emptyRows = createPayrollRows();
+    expect(emptyRows.every(row => row.date === '')).toBe(true);
+
+    const datedRows = updatePayrollDate(emptyRows, 0, '2026-01-05');
+    expect(datedRows[0].date).toBe('2026-01-05');
+    expect(datedRows[20].date).toBe('2026-01-25');
+  });
+
   it('creates 21 consecutive days and derives weekday', () => {
     const rows = createPayrollRows('2026-01-05');
     expect(rows).toHaveLength(21);
