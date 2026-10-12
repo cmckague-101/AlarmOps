@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPayrollRows, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate } from '@fireops/domain';
+import { createPayrollRows, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate } from '@fireops/domain';
 
 describe('payroll helpers', () => {
   it('leaves dates empty until the first date is selected', () => {
@@ -35,5 +35,18 @@ describe('payroll helpers', () => {
   it('calculates overtime independently for Monday-Sunday weeks', () => {
     const rows = createPayrollRows('2026-01-05').map((row, index) => ({ ...row, hoursWorked: index < 7 ? 8 : index < 14 ? 10 : 0 }));
     expect(payrollTotals(rows)).toEqual({ totalDays: 14, totalHours: 126, regularHours: 80, overtimeHours: 46 });
+  });
+
+  it('calculates hours and days independently for each crew member', () => {
+    const rows = createPayrollRows('2026-01-05').map((row, index) => ({
+      ...row,
+      hoursWorked: index < 5 ? 10 : 0,
+      crewIds: index < 3 ? ['a', 'b'] : index < 5 ? ['a'] : [],
+    }));
+
+    expect(payrollCrewTotals(rows)).toEqual([
+      { crewId: 'a', totalDays: 5, totalHours: 50, regularHours: 40, overtimeHours: 10 },
+      { crewId: 'b', totalDays: 3, totalHours: 30, regularHours: 30, overtimeHours: 0 },
+    ]);
   });
 });

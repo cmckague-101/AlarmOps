@@ -83,3 +83,10 @@ export function payrollTotals(rows: PayrollDay[]) {
 export function payrollCrewIds(rows: PayrollDay[]) {
   return [...new Set(rows.flatMap(row => row.crewIds))];
 }
+
+export function payrollCrewTotals(rows: PayrollDay[]) {
+  return payrollCrewIds(rows).map(crewId => ({
+    crewId,
+    ...payrollTotals(rows.filter(row => row.crewIds.includes(crewId))),
+  }));
+}
