@@ -21,6 +21,7 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
   const saveTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const formCrew = useMemo(()=>crew.filter(person=>person.role!=='owner'),[crew]);
   const eligibleCrew = useMemo(()=>formCrew.filter(person=>person.status==='Active'),[formCrew]);
+  const crewNames = useMemo(()=>new Map(formCrew.map(person=>[person.id,person.name])),[formCrew]);
 
   const load = useCallback(async()=>{
     if(!supabase||!companyId){setLoading(false);return}
@@ -67,7 +68,7 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
     {draft&&<button className="payroll-draft-card" onClick={()=>setSelected(draft)}><span><b>Payroll form in progress</b><small>Last saved {new Date(draft.updatedAt).toLocaleString()}</small></span><strong>Continue</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="receipt-list-card"><div className="receipt-list-heading"><h2>{manager?'Payroll forms':'Submitted payroll'}</h2><div className="payroll-filters"><label>Year <select value={year} onChange={event=>setYear(Number(event.target.value))}>{years.map(value=><option key={value}>{value}</option>)}</select></label>{manager&&<label>Crew member <select value={crewFilter} onChange={event=>setCrewFilter(event.target.value)}><option value="all">All Crew</option>{eligibleCrew.map(person=><option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}</div></div>
-      {loading?<p className="receipt-state">Loading payroll…</p>:!visible.length?<p className="receipt-state">No payroll forms found for selected filters.</p>:<div className="receipt-table-wrap"><table className="receipt-table"><thead><tr>{manager&&<th>Crew member</th>}<th>Engine</th><th>Period</th><th>Hours</th><th>Status</th><th/></tr></thead><tbody>{visible.map(form=>{const totals=payrollTotals(form.rows);return <tr key={form.id}>{manager&&<td>{form.createdByName}</td>}<td>{form.engineNumber||'—'}</td><td>{form.rows[0]?.date} – {form.rows[20]?.date}</td><td>{totals.totalHours} ({totals.overtimeHours} OT)</td><td><span className={`payroll-status ${form.status}`}>{form.status}</span></td><td><button className="receipt-open" onClick={()=>setSelected(form)}>View</button></td></tr>})}</tbody></table></div>}
+      {loading?<p className="receipt-state">Loading payroll…</p>:!visible.length?<p className="receipt-state">No payroll forms found for selected filters.</p>:<div className="receipt-table-wrap"><table className="receipt-table"><thead><tr>{manager&&<th>Crew member</th>}<th>Engine</th><th>Period</th><th>Hours</th>{manager&&<th>Crew</th>}<th>Status</th><th/></tr></thead><tbody>{visible.map(form=>{const totals=payrollTotals(form.rows);return <tr key={form.id}>{manager&&<td>{form.createdByName}</td>}<td>{form.engineNumber||'—'}</td><td>{form.rows[0]?.date} – {form.rows[20]?.date}</td><td>{totals.totalHours} ({totals.overtimeHours} OT)</td>{manager&&<td>{payrollCrewIds(form.rows).map(id=>crewNames.get(id)??'Unknown crew').join(', ')||'—'}</td>}<td><span className={`payroll-status ${form.status}`}>{form.status}</span></td><td><button className="receipt-open" onClick={()=>setSelected(form)}>View</button></td></tr>})}</tbody></table></div>}
     </section></div>;
 }
 
