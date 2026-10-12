@@ -48,7 +48,7 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
   async function submit(){
     if(!selected||!supabase)return;if(saveTimer.current)clearTimeout(saveTimer.current);await save(selected);
     const {data,error:failure}=await supabase.from('payroll_forms').update({status:'pending'}).eq('id',selected.id).eq('status','draft').select(columns).single<PayrollRow>();
-    if(failure){setError(`Payroll could not submit. ${failure.message}`);return}const submitted=fromRow(data);setSelected(submitted);setDraft(null);setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
+    if(failure){setError(`Payroll could not submit. ${failure.message}`);return}const submitted=fromRow(data);setSelected(null);setDraft(null);setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
   }
   async function approve(form:PayrollForm){
     if(!supabase)return;const {data,error:failure}=await supabase.from('payroll_forms').update({status:'approved'}).eq('id',form.id).eq('status','pending').select(columns).single<PayrollRow>();
