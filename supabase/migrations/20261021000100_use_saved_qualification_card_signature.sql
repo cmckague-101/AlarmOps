@@ -3,7 +3,7 @@
 drop function if exists public.approve_qualification_card_request(uuid,jsonb,text);
 drop function if exists public.approve_qualification_card_request(uuid,jsonb);
 
-create function public.approve_qualification_card_request(request_id uuid,qualified_position text)
+create or replace function public.approve_qualification_card_request(request_id uuid,qualified_position text)
 returns public.qualification_card_requests
 language plpgsql security definer set search_path=''
 as $$
