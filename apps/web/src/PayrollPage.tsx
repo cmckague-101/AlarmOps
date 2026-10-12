@@ -52,7 +52,7 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
   }
   async function approve(form:PayrollForm){
     if(!supabase)return;const {data,error:failure}=await supabase.from('payroll_forms').update({status:'approved'}).eq('id',form.id).eq('status','pending').select(columns).single<PayrollRow>();
-    if(failure){setError(`Payroll could not be approved. ${failure.message}`);return}const approved=fromRow(data);setSelected(approved);setForms(current=>current.map(item=>item.id===approved.id?approved:item));
+    if(failure){setError(`Payroll could not be approved. ${failure.message}`);return}const approved=fromRow(data);setSelected(null);setForms(current=>current.map(item=>item.id===approved.id?approved:item));
   }
   async function removeDraft(){
     if(!selected||selected.status!=='draft'||!window.confirm('Delete this payroll form? This cannot be undone.'))return;
