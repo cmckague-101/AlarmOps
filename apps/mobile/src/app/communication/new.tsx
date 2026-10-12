@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { isCompanyManager } from '@fireops/domain';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,9 @@ export default function NewCommunicationThreadScreen() {
   const [saveError, setSaveError] = useState('');
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
+  if (access.status === 'ready' && (access.value?.kind !== 'member' || !isCompanyManager(access.value.user.role))) {
+    return <Redirect href="/(tabs)/communications" />;
+  }
 
   const valid = Boolean(subject.trim() && description.trim());
   const submit = async () => {

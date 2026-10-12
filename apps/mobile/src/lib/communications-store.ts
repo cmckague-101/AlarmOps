@@ -205,6 +205,23 @@ export async function replyToCommunicationThread(threadId: string, body: string)
   return reply;
 }
 
+export async function deleteCommunicationReply(threadId: string, replyId: string) {
+  if (!supabase || !activeCompanyId) throw new Error('Company communications are unavailable.');
+  const { error } = await supabase
+    .from('communication_replies')
+    .delete()
+    .eq('id', replyId)
+    .eq('thread_id', threadId)
+    .eq('company_id', activeCompanyId);
+  if (error) throw new Error(error.message);
+  emit({
+    ...snapshot,
+    threads: snapshot.threads.map((thread) => thread.id === threadId
+      ? { ...thread, replies: thread.replies.filter((reply) => reply.id !== replyId) }
+      : thread),
+  });
+}
+
 export async function markCommunicationThreadSeen(threadId: string) {
   if (!supabase || !activeCompanyId || !activeUserId) throw new Error('Company communications are unavailable.');
   const seenAt = new Date().toISOString();

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { isThreadUnread } from '@fireops/domain';
+import { isCompanyManager, isThreadUnread } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { deleteCommunicationThread, markCommunicationThreadSeen, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
+import { deleteCommunicationReply, deleteCommunicationThread, markCommunicationThreadSeen, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -32,6 +32,7 @@ export default function CommunicationThreadScreen() {
   const [saving, setSaving] = useState(false);
   const [joining, setJoining] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
@@ -69,6 +70,28 @@ export default function CommunicationThreadScreen() {
     }
   };
 
+  const confirmDeleteReply = (replyId: string) => {
+    if (!thread) return;
+    Alert.alert('Delete comment?', 'This permanently deletes this crew comment.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingReplyId(replyId);
+          setSaveError('');
+          try {
+            await deleteCommunicationReply(thread.id, replyId);
+          } catch (deleteError) {
+            setSaveError(deleteError instanceof Error ? deleteError.message : 'Comment could not be deleted.');
+          } finally {
+            setDeletingReplyId(null);
+          }
+        },
+      },
+    ]);
+  };
+
   const confirmDelete = () => {
     Alert.alert('Delete thread?', 'This permanently deletes the thread and all replies.', [
       { text: 'Cancel', style: 'cancel' },
@@ -94,7 +117,7 @@ export default function CommunicationThreadScreen() {
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <Stack.Screen options={{
         title: thread?.subject ?? 'Thread',
-        headerRight: (member?.user.role === 'owner' || member?.user.role === 'admin') && thread ? () => (
+        headerRight: member && isCompanyManager(member.user.role) && thread ? () => (
           <Pressable accessibilityRole="button" disabled={deleting} onPress={confirmDelete}>
             <Text style={{ color: theme.danger, fontWeight: '700' }}>{deleting ? 'Deleting...' : 'Delete'}</Text>
           </Pressable>
@@ -141,6 +164,17 @@ export default function CommunicationThreadScreen() {
                               <Text style={styles.replyAuthor}>{mine ? 'You' : item.createdBy}</Text>
                               <Text style={styles.authorMeta}>{formatDate(item.createdAt)}</Text>
                             </View>
+                            {member && isCompanyManager(member.user.role) ? (
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={`Delete comment from ${item.createdBy}`}
+                                disabled={deletingReplyId !== null}
+                                onPress={() => confirmDeleteReply(item.id)}
+                                style={({ pressed }) => [styles.deleteReplyButton, pressed && styles.pressed]}
+                              >
+                                <Text style={styles.deleteReplyLabel}>{deletingReplyId === item.id ? 'Deleting…' : 'Delete'}</Text>
+                              </Pressable>
+                            ) : null}
                           </View>
                           <Text selectable style={styles.replyBody}>{item.body}</Text>
                         </View>
@@ -221,6 +255,8 @@ function createStyles(theme: FireOpsTheme) {
     myReplyCard: { borderColor: theme.green, backgroundColor: theme.greenSurface },
     replyAuthor: { color: theme.ink, fontSize: 14, lineHeight: 19, fontWeight: '700' },
     replyBody: { color: theme.ink, fontSize: 15, lineHeight: 22 },
+    deleteReplyButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 6 },
+    deleteReplyLabel: { color: theme.danger, fontSize: 12, fontWeight: '700' },
     emptyReplies: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
     joinRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     joinCopy: { flex: 1, color: theme.secondary, fontSize: 13, lineHeight: 18 },

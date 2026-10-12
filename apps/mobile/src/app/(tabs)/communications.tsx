@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { isThreadUnread, type CommunicationThread } from '@fireops/domain';
+import { isCompanyManager, isThreadUnread, type CommunicationThread } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,15 +36,17 @@ export default function CommunicationsScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Start a new thread"
-            onPress={() => router.push('/communication/new' as never)}
-            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-          >
-            <AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={20} />
-            <Text style={styles.addButtonLabel}>New</Text>
-          </Pressable>
+          {member && isCompanyManager(member.user.role) ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start a new thread"
+              onPress={() => router.push('/communication/new' as never)}
+              style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+            >
+              <AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={20} />
+              <Text style={styles.addButtonLabel}>New</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.sectionHeading}>
@@ -72,7 +74,7 @@ export default function CommunicationsScreen() {
               <AppSymbol name={{ ios: 'bubble.left.and.bubble.right', android: 'forum' } as never} color={theme.secondary} size={27} />
             </View>
             <Text style={styles.emptyTitle}>No threads yet</Text>
-            <Text style={styles.emptyText}>Start a thread to share an update or ask the crew a question.</Text>
+            <Text style={styles.emptyText}>{member && isCompanyManager(member.user.role) ? 'Start a thread to share an update or ask the crew a question.' : 'Company owners and admins can start crew conversations.'}</Text>
           </View>
         ) : null}
 
