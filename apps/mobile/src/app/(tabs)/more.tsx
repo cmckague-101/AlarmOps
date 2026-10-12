@@ -13,7 +13,7 @@ const sections=[
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
-  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',ownerOnly:true},
+  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C'},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},

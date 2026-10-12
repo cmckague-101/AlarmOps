@@ -1,4 +1,4 @@
-import {crewCredentials,userRoleLabel} from '@fireops/domain';
+import {crewCredentials,isCompanyManager,userRoleLabel} from '@fireops/domain';
 import {Redirect,Stack,useRouter} from 'expo-router';
 import {useEffect,useMemo,useState} from 'react';
 import {Pressable,RefreshControl,ScrollView,StyleSheet,Text,View} from 'react-native';
@@ -12,14 +12,14 @@ export default function CrewScreen(){
   const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
   const {session,access}=useSession();const member=access.value?.kind==='member'?access.value:null;
   const {crew,vehicles,loading,refreshing,error}=useFleetVehicles(member?.company.id??null);
+  const canManage=Boolean(member&&isCompanyManager(member.user.role));
   const [seatsUsed,setSeatsUsed]=useState<number|null>(null);
-  useEffect(()=>{if(member?.company.id)void loadCrewSeatsUsed(member.company.id).then(setSeatsUsed).catch(()=>setSeatsUsed(null))},[member?.company.id,crew.length]);
+  useEffect(()=>{if(canManage&&member?.company.id)void loadCrewSeatsUsed(member.company.id).then(setSeatsUsed).catch(()=>setSeatsUsed(null))},[canManage,member?.company.id,crew.length]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
-  if(member&&member.user.role!=='owner'&&member.user.role!=='admin')return <Redirect href="/(tabs)/more"/>;
   const limit=member?.company.crewInviteLimit??0;const used=seatsUsed??crew.filter(item=>item.role!=='owner').length;const available=Math.max(0,limit-used);
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Roster'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.commandForeground}/>}>
-    <View style={styles.heading}><View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Roster</Text></View>{available>0?<Pressable accessibilityRole="button" onPress={()=>router.push('/crew/invite' as never)} style={({pressed})=>[styles.add,pressed&&styles.pressed]}><AppSymbol name="person.badge.plus" color="#fff" size={18}/><Text style={styles.addText}>Invite</Text></Pressable>:null}</View>
-    {available===0?<Text style={styles.limit}>{limit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</Text>:<Text style={styles.usage}>{used} of {limit} member seats used · {available} available</Text>}
+    <View style={styles.heading}><View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Roster</Text></View>{canManage&&available>0?<Pressable accessibilityRole="button" onPress={()=>router.push('/crew/invite' as never)} style={({pressed})=>[styles.add,pressed&&styles.pressed]}><AppSymbol name="person.badge.plus" color="#fff" size={18}/><Text style={styles.addText}>Invite</Text></Pressable>:null}</View>
+    {canManage?(available===0?<Text style={styles.limit}>{limit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</Text>:<Text style={styles.usage}>{used} of {limit} member seats used · {available} available</Text>):null}
     {error?<View style={styles.error}><Text style={styles.errorTitle}>Crew unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
     {loading?<Text style={styles.state}>Loading crew…</Text>:null}
     {!loading&&!error?<View style={styles.list}>{crew.map(person=>{const assigned=vehicles.filter(vehicle=>vehicle.assignedTo===person.id);const count=crewCredentials(person).length;return <Pressable key={person.id} accessibilityRole="button" onPress={()=>router.push(`/crew/${encodeURIComponent(person.id)}` as never)} style={({pressed})=>[styles.row,pressed&&styles.pressed]}><View style={styles.avatar}><Text style={styles.avatarText}>{person.name.slice(0,1).toUpperCase()}</Text></View><View style={styles.rowCopy}><View style={styles.nameLine}><Text numberOfLines={1} style={styles.name}>{person.name}</Text><Text style={styles.owner}>{userRoleLabel(person.role)}</Text><Text style={[styles.status,person.status==='Active'?styles.active:styles.invited]}>{person.status}</Text></View><Text numberOfLines={1} style={styles.meta}>{person.email}</Text><Text style={styles.meta}>{assigned.length?`${assigned.length} assigned ${assigned.length===1?'vehicle':'vehicles'}`:'No vehicle assigned'} · {count?`${count} ${count===1?'credential':'credentials'}`:'No credentials'}</Text></View><AppSymbol name="chevron.right" color={theme.secondary} size={16}/></Pressable>})}{!crew.length?<Text style={styles.state}>No crew records.</Text>:null}</View>:null}
