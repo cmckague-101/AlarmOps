@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Check, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { createPayrollRows, isCompanyManager, payrollCrewIds, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from './supabase';
 
@@ -54,9 +54,15 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
     if(!supabase)return;const {data,error:failure}=await supabase.from('payroll_forms').update({status:'approved'}).eq('id',form.id).eq('status','pending').select(columns).single<PayrollRow>();
     if(failure){setError(`Payroll could not be approved. ${failure.message}`);return}const approved=fromRow(data);setSelected(approved);setForms(current=>current.map(item=>item.id===approved.id?approved:item));
   }
+  async function removeDraft(){
+    if(!selected||selected.status!=='draft'||!window.confirm('Delete this payroll form? This cannot be undone.'))return;
+    if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);setError('');
+    if(supabase&&companyId){const {error:failure}=await supabase.from('payroll_forms').delete().eq('company_id',companyId).eq('id',selected.id).eq('status','draft');if(failure){setError(`Payroll form could not be deleted. ${failure.message}`);setSaving(false);return}}
+    const id=selected.id;setForms(current=>current.filter(item=>item.id!==id));setDraft(null);setSelected(null);setSaving(false);
+  }
   const years=useMemo(()=>[...new Set([currentYear,...forms.map(form=>new Date(form.createdAt).getFullYear())])].sort((a,b)=>b-a),[forms,currentYear]);
   const visible=forms.filter(form=>form.status!=='draft'&&new Date(form.createdAt).getFullYear()===year&&(!manager||crewFilter==='all'||form.createdBy===crewFilter));
-  if(selected)return <PayrollEditor form={selected} crew={eligibleCrew} saving={saving} error={error} onBack={()=>setSelected(null)} onChange={queueSave} onSubmit={()=>void submit()} onApprove={()=>void approve(selected)} canApprove={manager}/>;
+  if(selected)return <PayrollEditor form={selected} crew={eligibleCrew} saving={saving} error={error} onBack={()=>setSelected(null)} onChange={queueSave} onDelete={()=>void removeDraft()} onSubmit={()=>void submit()} onApprove={()=>void approve(selected)} canApprove={manager}/>;
   return <div className="page payroll-page"><div className="page-heading"><div><h1>{manager?'Payroll':'My payroll'}</h1><p>Digital payroll forms and approval history.</p></div><button className="primary" onClick={newForm}><Plus/>New Payroll Form</button></div>
     {draft&&<button className="payroll-draft-card" onClick={()=>setSelected(draft)}><span><b>Payroll form in progress</b><small>Last saved {new Date(draft.updatedAt).toLocaleString()}</small></span><strong>Continue</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
@@ -65,11 +71,11 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
     </section></div>;
 }
 
-function PayrollEditor({form,crew,saving,error,onBack,onChange,onSubmit,onApprove,canApprove}:{form:PayrollForm;crew:CrewMember[];saving:boolean;error:string;onBack:()=>void;onChange:(form:PayrollForm)=>void;onSubmit:()=>void;onApprove:()=>void;canApprove:boolean}){
+function PayrollEditor({form,crew,saving,error,onBack,onChange,onDelete,onSubmit,onApprove,canApprove}:{form:PayrollForm;crew:CrewMember[];saving:boolean;error:string;onBack:()=>void;onChange:(form:PayrollForm)=>void;onDelete:()=>void;onSubmit:()=>void;onApprove:()=>void;canApprove:boolean}){
   const editable=form.status==='draft';const names=new Map(crew.map(person=>[person.id,person.name]));const totals=payrollTotals(form.rows);const selectedCrew=payrollCrewIds(form.rows);
   function patch(values:Partial<PayrollForm>){if(editable)onChange({...form,...values})}
   function patchRow(index:number,values:Partial<PayrollDay>){patch({rows:form.rows.map((row,i)=>i===index?{...row,...values}:row)})}
-  return <div className="page payroll-page"><div className="page-heading"><div><button className="back-link" onClick={onBack}>← Back to payroll</button><h1>{editable?'Payroll form':`Payroll · ${form.status}`}</h1><p>{editable?(saving?'Saving changes…':'Changes save automatically'):'Submitted payroll is view only.'}</p></div></div>
+  return <div className="page payroll-page"><div className="page-heading"><div><button className="back-link" onClick={onBack}>← Back to payroll</button><h1>{editable?'Payroll form':`Payroll · ${form.status}`}</h1><p>{editable?(saving?'Saving changes…':'Changes save automatically'):'Submitted payroll is view only.'}</p></div>{editable&&<button className="payroll-delete" disabled={saving} onClick={onDelete}><Trash2/>Delete form</button>}</div>
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="payroll-form-card"><div className="payroll-header-fields"><label><span>Engine number</span><input value={form.engineNumber} disabled={!editable} onChange={event=>patch({engineNumber:event.target.value})}/></label><label><span>Incident(s)</span><input value={form.incidents} disabled={!editable} onChange={event=>patch({incidents:event.target.value})}/></label></div>
       <div className="payroll-form-crew"><b>Crew on form</b><span>{selectedCrew.length?selectedCrew.map(id=>names.get(id)??'Unknown crew').join(', '):'No crew selected'}</span></div>
