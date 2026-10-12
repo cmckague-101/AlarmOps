@@ -1,2 +1,2 @@
-import {StoredDocumentFormScreen} from '@/components/stored-document-form';
-export default function Screen() { return <StoredDocumentFormScreen kind="payroll"/>; }
+import { PayrollFormScreen } from '@/components/payroll-form-screen';
+export default function Screen(){return <PayrollFormScreen/>}

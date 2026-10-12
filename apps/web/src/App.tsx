@@ -1,4 +1,5 @@
 import StoredDocumentsPage from './StoredDocumentsPage';
+import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
 import {OwnerDashboard} from './OwnerDashboard';
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -49,7 +50,7 @@ const navigationMeta = {
   qualifications:{label:'Qualifications',description:'Credentials, licenses, and expiration dates',Icon:ShieldCheck},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   invoices:{label:'Invoices',description:'Upload and review invoices',Icon:FileText},
-  payroll:{label:'Payroll',description:'Upload and review payroll documents',Icon:CircleDollarSign},
+  payroll:{label:'Payroll',description:'Create, submit, and approve payroll forms',Icon:CircleDollarSign},
   availability:{label:'Availability',description:'Crew assignment availability',Icon:CircleUserRound},
   receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:CircleDollarSign},
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
@@ -583,7 +584,8 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
-        {(page === 'invoices' || page === 'payroll') && <StoredDocumentsPage isCompanyOwner={currentUser.role === 'owner'} companyLogoUrl={companyDetails.logo?.dataUrl} key={page} kind={page} companyId={companyId} user={currentUser} crew={crew}/>}
+        {page === 'invoices' && <StoredDocumentsPage isCompanyOwner={currentUser.role === 'owner'} companyLogoUrl={companyDetails.logo?.dataUrl} kind="invoices" companyId={companyId} user={currentUser} crew={crew}/>}
+        {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
         {page === 'inventory' && <InventoryPage canManage={canManageFleet} currentUserId={currentUser.id} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem} onCheckout={checkoutInventoryItem} onCheckin={checkinInventoryItem}/>}
