@@ -468,11 +468,24 @@ export async function saveCrewMember(
   ]);
 }
 
+const roleUpdateTimeoutMs=8000;
+
 export async function updateCrewMemberRole(companyId:string,member:CrewMember,role:AssignableUserRole):Promise<CrewMember> {
   if(!supabase)throw new Error("Company is unavailable.");
-  const {error}=await supabase.rpc("update_company_member_role",{target_company_id:companyId,target_user_id:member.id,new_role:role});
-  if(error)throw new Error(error.message);
-  return {...member,role};
+  for(let attempt=0;attempt<2;attempt+=1){
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),roleUpdateTimeoutMs);
+    try{
+      const result=await supabase.rpc("update_company_member_role",{target_company_id:companyId,target_user_id:member.id,new_role:role}).abortSignal(controller.signal);
+      if(!result.error)return {...member,role};
+      if(!controller.signal.aborted)throw new Error(result.error.message);
+    }catch(error){
+      if(!controller.signal.aborted)throw error;
+    }finally{
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error("Role update timed out. Check your connection and try again.");
 }
 
 export async function updateCrewMemberDetails(companyId:string,member:CrewMember,details:{name:string;email:string;phone:string}):Promise<CrewMember> {

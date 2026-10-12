@@ -33,6 +33,25 @@ type MotiveCaptureRequest =
   | {status:'ready';imageUrl:string;capturedAt:string;expiresAt?:string;position:string};
 
 const accessRetryDelays=[0,350,900];
+const roleUpdateTimeoutMs=8000;
+
+async function requestCrewRoleUpdate(companyId:string,userId:string,role:AssignableUserRole){
+  if(!supabase)throw new Error('Company is unavailable.');
+  for(let attempt=0;attempt<2;attempt+=1){
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),roleUpdateTimeoutMs);
+    try{
+      const result=await supabase.rpc('update_company_member_role',{target_company_id:companyId,target_user_id:userId,new_role:role}).abortSignal(controller.signal);
+      if(!result.error)return result.data;
+      if(!controller.signal.aborted)throw new Error(result.error.message);
+    }catch(error){
+      if(!controller.signal.aborted)throw error;
+    }finally{
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error('Role update timed out. Check your connection and try again.');
+}
 
 export function accountAccessErrorMessage(adminError:AccessCheckError,membershipError:AccessCheckError){
   const missingMigration=[adminError,membershipError].some(error=>error?.code==='PGRST202'||error?.code==='42883');
@@ -650,8 +669,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 
   const updateCrewRole=useCallback(async(member:CrewMember,nextRole:AssignableUserRole)=>{
     if(!supabase)throw new Error('Company is unavailable.');
-    const {data,error:updateError}=await supabase.rpc('update_company_member_role',{target_company_id:companyId,target_user_id:member.id,new_role:nextRole});
-    if(updateError)throw new Error(updateError.message);
+    const data=await requestCrewRoleUpdate(companyId,member.id,nextRole);
     const updated={...member,role:nextRole};
     const version=Number((data as {version?:number}|null)?.version);
     if(version)patchPersisted('crew','upsert',updated.id,updated,version);
