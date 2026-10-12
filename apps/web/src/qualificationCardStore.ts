@@ -16,15 +16,26 @@ export async function loadCompanyQualificationCardRequests(companyId:string){
   if(error)throw new Error(error.message);
   return ((data??[]) as unknown as RequestRow[]).map(fromRow);
 }
+export async function loadSavedSignature(userId:string){
+  if(!supabase)return undefined;
+  const {data,error}=await supabase.from('profiles').select('signature_data').eq('user_id',userId).maybeSingle<{signature_data:SavedSignature|null}>();
+  if(error)throw new Error(error.message);
+  return data?.signature_data??undefined;
+}
+export async function saveSavedSignature(userId:string,signature:SavedSignature){
+  if(!supabase)return;
+  const {error}=await supabase.from('profiles').update({signature_data:signature}).eq('user_id',userId);
+  if(error)throw new Error(error.message);
+}
 export async function loadQualificationCardData(companyId:string,userId:string,isOwner:boolean){
   if(!supabase)throw new Error('Qualification card approvals require company connection.');
-  const [profileResult,requestResult]=await Promise.all([
-    supabase.from('profiles').select('signature_data').eq('user_id',userId).maybeSingle<{signature_data:SavedSignature|null}>(),
+  const [signature,requestResult]=await Promise.all([
+    loadSavedSignature(userId),
     (isOwner?supabase.from('qualification_card_requests').select(columns).eq('company_id',companyId):supabase.from('qualification_card_requests').select(columns).eq('company_id',companyId).eq('crew_user_id',userId)).order('submitted_at',{ascending:false}),
   ]);
-  if(profileResult.error)throw new Error(profileResult.error.message);if(requestResult.error)throw new Error(requestResult.error.message);
-  return {signature:profileResult.data?.signature_data??undefined,requests:((requestResult.data??[]) as unknown as RequestRow[]).map(fromRow)};
+  if(requestResult.error)throw new Error(requestResult.error.message);
+  return {signature,requests:((requestResult.data??[]) as unknown as RequestRow[]).map(fromRow)};
 }
 export async function submitQualificationCard(companyId:string,primaryQualificationId:string,photoPath:string){if(!supabase)throw new Error('Qualification card approvals require company connection.');const {data:row,error}=await supabase.rpc('submit_qualification_card_request',{target_company_id:companyId,primary_qualification_id:primaryQualificationId,photo_path:photoPath});if(error)throw new Error(error.message);return fromRow(row as unknown as RequestRow)}
-export async function approveQualificationCard(requestId:string,signature:SavedSignature,cardPosition:string){if(!supabase)throw new Error('Qualification card approvals require company connection.');const {data:row,error}=await supabase.rpc('approve_qualification_card_request',{request_id:requestId,certifying_signature:signature,qualified_position:cardPosition});if(error)throw new Error(error.message);return fromRow(row as unknown as RequestRow)}
+export async function approveQualificationCard(requestId:string,cardPosition:string){if(!supabase)throw new Error('Qualification card approvals require company connection.');const {data:row,error}=await supabase.rpc('approve_qualification_card_request',{request_id:requestId,qualified_position:cardPosition});if(error)throw new Error(error.message);return fromRow(row as unknown as RequestRow)}
 export async function qualificationCardPhotoUrl(path:string){if(!supabase)throw new Error('Qualification card photo is unavailable.');const {data,error}=await supabase.storage.from('fleet-files').createSignedUrl(path,3600);if(error)throw new Error(error.message);return data.signedUrl}
