@@ -50,10 +50,10 @@ Deno.serve(async (request) => {
   if (!/^[0-9a-f-]{36}$/i.test(companyId) || !/^[0-9a-f-]{36}$/i.test(userId)) {
     return response(400, {error: 'Company or crew member is invalid.'});
   }
-  if (userId === actor.id) return response(403, {error: 'Company owners cannot remove themselves.'});
+  if (userId === actor.id) return response(403, {error: 'Company managers cannot remove themselves.'});
 
-  const [ownershipResult, actorAdminResult, targetResult, targetAdminResult, membershipCountResult, crewResult, assignedVehiclesResult] = await Promise.all([
-    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
+  const [managementResult, actorAdminResult, targetResult, targetAdminResult, membershipCountResult, crewResult, assignedVehiclesResult] = await Promise.all([
+    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).in('role', ['owner', 'admin']).maybeSingle(),
     admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).gt('expires_at', new Date().toISOString()).maybeSingle(),
     admin.from('company_members').select('role').eq('company_id', companyId).eq('user_id', userId).maybeSingle(),
     admin.from('system_admins').select('user_id').eq('user_id', userId).maybeSingle(),
@@ -61,12 +61,12 @@ Deno.serve(async (request) => {
     admin.from('fleet_crew').select('record_id,data').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
     admin.from('fleet_vehicles').select('record_id,data,version').eq('company_id', companyId).contains('data', {assignedTo: userId}),
   ]);
-  const lookupError = ownershipResult.error ?? actorAdminResult.error ?? targetResult.error ?? targetAdminResult.error ?? membershipCountResult.error ?? crewResult.error ?? assignedVehiclesResult.error;
+  const lookupError = managementResult.error ?? actorAdminResult.error ?? targetResult.error ?? targetAdminResult.error ?? membershipCountResult.error ?? crewResult.error ?? assignedVehiclesResult.error;
   if (lookupError) {
     console.error('Crew removal authorization lookup failed:', lookupError);
     return response(500, {error: 'Crew member could not be verified.'});
   }
-  if (!ownershipResult.data && !actorAdminResult.data) return response(403, {error: 'Company owner access required.'});
+  if (!managementResult.data && !actorAdminResult.data) return response(403, {error: 'Company management access required.'});
   if (!targetResult.data && !crewResult.data) return response(404, {error: 'Crew member was not found.'});
   if (targetResult.data?.role === 'owner') return response(403, {error: 'Company owner cannot be removed.'});
 
@@ -164,13 +164,19 @@ Deno.serve(async (request) => {
     }
   }
 
-  // Auth deletion cascades membership. Otherwise revoke only this company.
+  // Auth deletion cascades membership. Otherwise revoke this company's
+  // non-owner role and verify a row was removed instead of accepting a no-op.
   if (!accountDeleted) {
-    const {error: membershipError} = await admin.from('company_members').delete()
-      .eq('company_id', companyId).eq('user_id', userId).eq('role', 'member');
+    const {data: removedMembership, error: membershipError} = await admin.from('company_members').delete()
+      .eq('company_id', companyId).eq('user_id', userId).neq('role', 'owner')
+      .select('user_id').maybeSingle();
     if (membershipError) {
       console.error('Membership removal failed:', membershipError);
       return response(500, {error: 'Company access could not be revoked.'});
+    }
+    if (!removedMembership) {
+      console.error('Membership removal did not delete a row', {companyId, userId});
+      return response(409, {error: 'Company access changed. Refresh and retry crew removal.'});
     }
   }
 
