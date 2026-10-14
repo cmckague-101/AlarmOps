@@ -60,26 +60,52 @@ export function accountAccessErrorMessage(adminError:AccessCheckError,membership
     : 'Account access could not be verified. Check your connection and try again.';
 }
 
+const signedFileUrlLifetimeMs=23*60*60*1000;
+const signedFileUrlCache=new Map<string,{url:string;expiresAt:number}>();
+
+async function signedFileUrls(paths:string[]){
+  const now=Date.now();
+  const urls=new Map<string,string>();
+  const missing=[...new Set(paths)].filter(path=>{
+    const cached=signedFileUrlCache.get(path);
+    if(cached&&cached.expiresAt>now){urls.set(path,cached.url);return false}
+    signedFileUrlCache.delete(path);
+    return true;
+  });
+  if(!supabase||!missing.length)return urls;
+  const {data,error}=await supabase.storage.from('fleet-files').createSignedUrls(missing,86400);
+  if(error)return urls;
+  data.forEach(item=>{
+    if(!item.path||!item.signedUrl||item.error)return;
+    urls.set(item.path,item.signedUrl);
+    signedFileUrlCache.set(item.path,{url:item.signedUrl,expiresAt:now+signedFileUrlLifetimeMs});
+  });
+  return urls;
+}
+
 async function refreshFileUrl(file?:VehicleFile){
-  if(!supabase||!file?.path)return file;
-  const {data,error}=await supabase.storage.from('fleet-files').createSignedUrl(file.path,86400);
-  return error?{...file,dataUrl:''}:{...file,dataUrl:data.signedUrl};
+  if(!file?.path)return file;
+  const urls=await signedFileUrls([file.path]);
+  return {...file,dataUrl:urls.get(file.path)??''};
 }
 
 const vehicleFileKeys=['photo','contract','viprChecklist','registration','insurance','dotInspection'] as const;
 
 async function hydrateFileUrls(snapshot:FleetSnapshot){
   const next=structuredClone(snapshot);
-  await Promise.all(next.vehicles.flatMap(vehicle=>[
-    ...vehicleFileKeys.map(async key=>{vehicle[key]=await refreshFileUrl(vehicle[key])}),
-    ...(vehicle.documents??[]).map(async document=>{document.file=(await refreshFileUrl(document.file))!}),
-    ...(vehicle.inspections??[]).flatMap(inspection=>inspection.items.map(async item=>{if(item.photo)item.photo=(await refreshFileUrl(item.photo))!}))
-  ]));
-  await Promise.all(next.crew.map(async member=>{
-    member.credential=await refreshFileUrl(member.credential);
-    if(member.credentials)member.credentials=await Promise.all(member.credentials.map(async credential=>credential.file?{...credential,file:(await refreshFileUrl(credential.file))!}:credential));
-    if(member.experiences)member.experiences=await Promise.all(member.experiences.map(async experience=>experience.file?{...experience,file:(await refreshFileUrl(experience.file))!}:experience));
-  }));
+  const files:VehicleFile[]=[];
+  next.vehicles.forEach(vehicle=>{
+    vehicleFileKeys.forEach(key=>{if(vehicle[key]?.path)files.push(vehicle[key]!)});
+    vehicle.documents?.forEach(document=>{if(document.file.path)files.push(document.file)});
+    vehicle.inspections?.forEach(inspection=>inspection.items.forEach(item=>{if(item.photo?.path)files.push(item.photo)}));
+  });
+  next.crew.forEach(member=>{
+    if(member.credential?.path)files.push(member.credential);
+    member.credentials?.forEach(credential=>{if(credential.file?.path)files.push(credential.file)});
+    member.experiences?.forEach(experience=>{if(experience.file?.path)files.push(experience.file)});
+  });
+  const urls=await signedFileUrls(files.map(file=>file.path!));
+  files.forEach(file=>{file.dataUrl=urls.get(file.path!)??''});
   return next;
 }
 
@@ -575,6 +601,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const {data,error:urlError}=await supabase.storage.from('fleet-files').createSignedUrl(path,86400);
     if(urlError){await supabase.storage.from('fleet-files').remove([path]);throw urlError}
     pendingUploads.current.add(path);
+    signedFileUrlCache.set(path,{url:data.signedUrl,expiresAt:Date.now()+signedFileUrlLifetimeMs});
     return {name:file.name,type:file.type,dataUrl:data.signedUrl,path};
   },[companyId,session.user.id]);
 
@@ -582,7 +609,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     if(!supabase||!paths.length)return;
     const {error:deleteError}=await supabase.functions.invoke('delete-fleet-files',{body:{companyId,paths}});
     if(deleteError)throw deleteError;
-    paths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path);cleanupQueue.current.delete(path)});
+    paths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path);cleanupQueue.current.delete(path);signedFileUrlCache.delete(path)});
   },[companyId]);
 
   const commitFiles=useCallback((files:VehicleFile[])=>{

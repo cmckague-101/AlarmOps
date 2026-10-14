@@ -5,13 +5,13 @@ import type { FleetVehicleFile } from "@/lib/fleet-store";
 
 export function useFleetFileUrl(file: FleetVehicleFile | null | undefined) {
   const [result, setResult] = useState<{ path: string; url: string } | null>(null);
+  const path = file?.path;
 
   useEffect(() => {
     let active = true;
-    if (!file?.path) return;
-    const path = file.path;
+    if (!path) return;
 
-    void openFleetFile(file)
+    void openFleetFile({ path })
       .then((url) => {
         if (active) setResult({ path, url });
       })
@@ -22,8 +22,8 @@ export function useFleetFileUrl(file: FleetVehicleFile | null | undefined) {
     return () => {
       active = false;
     };
-  }, [file]);
+  }, [path]);
 
-  if (!result || result.path !== file?.path) return null;
+  if (!result || result.path !== path) return null;
   return result.url;
 }

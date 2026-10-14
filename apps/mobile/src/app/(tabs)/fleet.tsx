@@ -30,6 +30,7 @@ const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Out of servi
 
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
+  const [loadedPhotoUrl, setLoadedPhotoUrl] = useState<string | null>(null);
 
   return (
     <Pressable
@@ -40,16 +41,17 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
       style={({ pressed }) => [styles.vehicleRow, pressed && styles.vehicleRowPressed]}
     >
       <View style={styles.vehicleThumbnail}>
+        <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} color={styles.icon.color} size={24} />
         {photoUrl ? (
           <Image
             accessibilityLabel={`${vehicle.name} vehicle photo`}
+            fadeDuration={0}
+            onLoad={() => setLoadedPhotoUrl(photoUrl)}
             resizeMode="cover"
-            source={{ uri: photoUrl }}
-            style={styles.vehiclePhoto}
+            source={{ uri: photoUrl, cache: 'force-cache' }}
+            style={[styles.vehiclePhoto, loadedPhotoUrl !== photoUrl && styles.vehiclePhotoLoading]}
           />
-        ) : (
-          <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} color={styles.icon.color} size={24} />
-        )}
+        ) : null}
       </View>
       <View style={styles.vehicleMain}>
         <View style={styles.vehicleHeading}>
@@ -256,7 +258,8 @@ function createStyles(theme: FireOpsTheme) {
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 92, paddingVertical: 17, paddingHorizontal: 6, marginHorizontal: -6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 8 },
   vehicleRowPressed: { backgroundColor: theme.surfaceAlt },
   vehicleThumbnail: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: theme.surfaceAlt },
-  vehiclePhoto: { width: '100%', height: '100%' },
+  vehiclePhoto: { position: 'absolute', inset: 0, width: '100%', height: '100%' },
+  vehiclePhotoLoading: { opacity: 0 },
   vehicleMain: { flex: 1, minWidth: 0, gap: 4 },
   vehicleHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   vehicleName: { flexShrink: 1, color: theme.commandForeground, fontSize: 18, lineHeight: 23, fontWeight: '700' },

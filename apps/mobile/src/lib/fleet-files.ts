@@ -4,6 +4,43 @@ import { createFleetId, type FleetVehicleFile } from "@/lib/fleet-store";
 import { supabase } from "@/lib/supabase";
 
 const bucket = "fleet-files";
+const signedUrlLifetimeSeconds = 24 * 60 * 60;
+const signedUrlCacheLifetimeMs = 23 * 60 * 60 * 1000;
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const signedUrlQueue = new Map<string, { resolve: (url: string) => void; reject: (error: unknown) => void }[]>();
+let signedUrlFlush: ReturnType<typeof setTimeout> | null = null;
+
+async function flushSignedUrlQueue() {
+  signedUrlFlush = null;
+  const queued = new Map(signedUrlQueue);
+  signedUrlQueue.clear();
+  const paths = [...queued.keys()];
+  if (!supabase) {
+    const error = new Error("Attachment is unavailable.");
+    queued.forEach((requests) => requests.forEach(({ reject }) => reject(error)));
+    return;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrls(paths, signedUrlLifetimeSeconds);
+  if (error) {
+    queued.forEach((requests) => requests.forEach(({ reject }) => reject(error)));
+    return;
+  }
+
+  const urls = new Map(data.flatMap((item) => item.path ? [[item.path, item] as const] : []));
+  queued.forEach((requests, path) => {
+    const result = urls.get(path);
+    if (!result?.signedUrl || result.error) {
+      const requestError = new Error(result?.error ?? "Attachment is unavailable.");
+      requests.forEach(({ reject }) => reject(requestError));
+      return;
+    }
+    signedUrlCache.set(path, { url: result.signedUrl, expiresAt: Date.now() + signedUrlCacheLifetimeMs });
+    requests.forEach(({ resolve }) => resolve(result.signedUrl!));
+  });
+}
 
 export type LocalFleetFile = {
   uri: string;
@@ -40,13 +77,19 @@ export async function uploadFleetFile(
   return { name: file.name, type: file.type, path };
 }
 
-export async function openFleetFile(file: FleetVehicleFile) {
+export async function openFleetFile(file: FleetVehicleFile | { path: string }) {
   if (!supabase || !file.path) throw new Error("Attachment is unavailable.");
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(file.path, 60 * 60);
-  if (error) throw error;
-  return data.signedUrl;
+  const path = file.path;
+  const cached = signedUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  signedUrlCache.delete(path);
+
+  return new Promise<string>((resolve, reject) => {
+    const requests = signedUrlQueue.get(path) ?? [];
+    requests.push({ resolve, reject });
+    signedUrlQueue.set(path, requests);
+    if (!signedUrlFlush) signedUrlFlush = setTimeout(() => void flushSignedUrlQueue(), 0);
+  });
 }
 
 export async function removeFleetFiles(paths: (string | null | undefined)[]) {
@@ -57,4 +100,5 @@ export async function removeFleetFiles(paths: (string | null | undefined)[]) {
   if (!uniquePaths.length) return;
   const { error } = await supabase.storage.from(bucket).remove(uniquePaths);
   if (error) throw error;
+  uniquePaths.forEach((path) => signedUrlCache.delete(path));
 }
