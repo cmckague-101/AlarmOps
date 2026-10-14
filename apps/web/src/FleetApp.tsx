@@ -433,11 +433,12 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       client.from('communication_reads').select('thread_id,seen_at').eq('company_id',companyId).eq('user_id',session.user.id)
     ]);
     if(threadResult.error||replyResult.error||readResult.error){setCommunicationError('Communications could not be loaded. Apply latest database migration, then try again.');return}
-    const replies=(replyResult.data??[]) as CommunicationReplyRow[];
+    const repliesByThread=new Map<string,CommunicationReplyRow[]>();
+    for(const reply of (replyResult.data??[]) as CommunicationReplyRow[]){const replies=repliesByThread.get(reply.thread_id)??[];replies.push(reply);repliesByThread.set(reply.thread_id,replies)}
     const reads=new Map(((readResult.data??[]) as CommunicationReadRow[]).map(read=>[read.thread_id,read.seen_at]));
     setCommunicationThreads(((threadResult.data??[]) as CommunicationThreadRow[]).map(thread=>({
       id:thread.id,subject:thread.subject,description:thread.description,createdBy:thread.created_by_name,createdById:thread.created_by??'',createdByRole:thread.created_by_role,createdAt:thread.created_at,seenAt:reads.get(thread.id),
-      replies:replies.filter(reply=>reply.thread_id===thread.id).map(reply=>({id:reply.id,body:reply.body,createdBy:reply.created_by_name,createdById:reply.created_by??'',createdAt:reply.created_at}))
+      replies:(repliesByThread.get(thread.id)??[]).map(reply=>({id:reply.id,body:reply.body,createdBy:reply.created_by_name,createdById:reply.created_by??'',createdAt:reply.created_at}))
     })));
     setCommunicationError('');
   },[companyId,session.user.id]);
@@ -465,9 +466,10 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       client.from('company_training_reads').select('training_id,viewed_at').eq('company_id',companyId).eq('user_id',session.user.id)
     ]);
     if(trainingResult.error||signupResult.error||readResult.error){setTrainingError('Training could not be loaded. Apply latest database migration, then try again.');return}
-    const signups=(signupResult.data??[]) as TrainingSignupRow[];
+    const signupsByTraining=new Map<string,TrainingSignupRow[]>();
+    for(const signup of (signupResult.data??[]) as TrainingSignupRow[]){const signups=signupsByTraining.get(signup.training_id)??[];signups.push(signup);signupsByTraining.set(signup.training_id,signups)}
     const reads=new Map(((readResult.data??[]) as TrainingReadRow[]).map(read=>[read.training_id,read.viewed_at]));
-    setTrainings(((trainingResult.data??[]) as TrainingRow[]).map(row=>({id:row.id,courseCode:row.course_code,courseTitle:row.course_title,date:row.starts_at,location:row.location,instructor:row.instructor,capacity:row.capacity,information:row.course_information,createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id),signups:signups.filter(signup=>signup.training_id===row.id).map(signup=>({userId:signup.user_id,userName:signup.user_name,signedUpAt:signup.signed_up_at}))})));
+    setTrainings(((trainingResult.data??[]) as TrainingRow[]).map(row=>({id:row.id,courseCode:row.course_code,courseTitle:row.course_title,date:row.starts_at,location:row.location,instructor:row.instructor,capacity:row.capacity,information:row.course_information,createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id),signups:(signupsByTraining.get(row.id)??[]).map(signup=>({userId:signup.user_id,userName:signup.user_name,signedUpAt:signup.signed_up_at}))})));
     setTrainingError('');
   },[companyId,session.user.id]);
 
@@ -478,8 +480,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       client.from('company_inventory_checkouts').select('item_id,user_id,user_name,quantity,checked_out_at,updated_at').eq('company_id',companyId)
     ]);
     if(itemResult.error||checkoutResult.error){setInventoryError('Inventory could not be loaded. Apply latest database migration, then try again.');return}
-    const checkouts=(checkoutResult.data??[]) as InventoryCheckoutRow[];
-    setInventoryItems(((itemResult.data??[]) as InventoryItemRow[]).map(row=>({id:row.id,name:row.name,quantity:row.quantity,createdAt:row.created_at,updatedAt:row.updated_at,checkouts:checkouts.filter(checkout=>checkout.item_id===row.id).map(checkout=>({userId:checkout.user_id,userName:checkout.user_name,quantity:checkout.quantity,checkedOutAt:checkout.checked_out_at,updatedAt:checkout.updated_at}))})));setInventoryError('');
+    const checkoutsByItem=new Map<string,InventoryCheckoutRow[]>();
+    for(const checkout of (checkoutResult.data??[]) as InventoryCheckoutRow[]){const checkouts=checkoutsByItem.get(checkout.item_id)??[];checkouts.push(checkout);checkoutsByItem.set(checkout.item_id,checkouts)}
+    setInventoryItems(((itemResult.data??[]) as InventoryItemRow[]).map(row=>({id:row.id,name:row.name,quantity:row.quantity,createdAt:row.created_at,updatedAt:row.updated_at,checkouts:(checkoutsByItem.get(row.id)??[]).map(checkout=>({userId:checkout.user_id,userName:checkout.user_name,quantity:checkout.quantity,checkedOutAt:checkout.checked_out_at,updatedAt:checkout.updated_at}))})));setInventoryError('');
   },[companyId]);
 
   const loadVehicleTypes=useCallback(async()=>{

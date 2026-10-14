@@ -94,9 +94,14 @@ export function refreshTrainings() {
         emit({ ...snapshot, loading: false, refreshing: false, error: `Training could not load. ${failed.message}` });
         return;
       }
-      const signups = (signupResult.data ?? []) as SignupRow[];
+      const signupsByTraining = new Map<string, SignupRow[]>();
+      for (const signup of (signupResult.data ?? []) as SignupRow[]) {
+        const signups = signupsByTraining.get(signup.training_id) ?? [];
+        signups.push(signup);
+        signupsByTraining.set(signup.training_id, signups);
+      }
       const reads = new Map(((readResult.data ?? []) as ReadRow[]).map((read) => [read.training_id, read.viewed_at]));
-      const trainings = ((trainingResult.data ?? []) as TrainingRow[]).map((row) => fromRow(row, signups, reads.get(row.id)));
+      const trainings = ((trainingResult.data ?? []) as TrainingRow[]).map((row) => fromRow(row, signupsByTraining.get(row.id), reads.get(row.id)));
       emit({ trainings: orderTrainings(trainings), loading: false, refreshing: false, error: null });
     } catch (loadError) {
       if (version !== selectionVersion) return;

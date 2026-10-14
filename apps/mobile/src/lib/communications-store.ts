@@ -122,7 +122,12 @@ export function refreshCommunications() {
         return;
       }
 
-      const replies = (replyResult.data ?? []) as CommunicationReplyRow[];
+      const repliesByThread = new Map<string, CommunicationReplyRow[]>();
+      for (const reply of (replyResult.data ?? []) as CommunicationReplyRow[]) {
+        const replies = repliesByThread.get(reply.thread_id) ?? [];
+        replies.push(reply);
+        repliesByThread.set(reply.thread_id, replies);
+      }
       const reads = new Map(((readResult.data ?? []) as CommunicationReadRow[]).map((read) => [read.thread_id, read.seen_at]));
       const threads = ((threadResult.data ?? []) as CommunicationThreadRow[]).map((thread) => ({
         id: thread.id,
@@ -133,7 +138,7 @@ export function refreshCommunications() {
         createdByRole: thread.created_by_role,
         createdAt: thread.created_at,
         seenAt: reads.get(thread.id),
-        replies: replies.filter((reply) => reply.thread_id === thread.id).map(replyFromRow),
+        replies: (repliesByThread.get(thread.id) ?? []).map(replyFromRow),
       }));
       emit({ threads: orderThreads(threads), loading: false, refreshing: false, error: null });
     } catch (loadError) {

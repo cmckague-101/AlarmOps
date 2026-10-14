@@ -63,8 +63,13 @@ export function refreshInventory() {
         emit({ ...snapshot, loading: false, refreshing: false, error: `Inventory could not load. ${(itemResult.error ?? checkoutResult.error)?.message}` });
         return;
       }
-      const checkouts = (checkoutResult.data ?? []) as CheckoutRow[];
-      emit({ items: orderItems(((itemResult.data ?? []) as InventoryRow[]).map((row) => fromRow(row, checkouts))), loading: false, refreshing: false, error: null });
+      const checkoutsByItem = new Map<string, CheckoutRow[]>();
+      for (const checkout of (checkoutResult.data ?? []) as CheckoutRow[]) {
+        const checkouts = checkoutsByItem.get(checkout.item_id) ?? [];
+        checkouts.push(checkout);
+        checkoutsByItem.set(checkout.item_id, checkouts);
+      }
+      emit({ items: orderItems(((itemResult.data ?? []) as InventoryRow[]).map((row) => fromRow(row, checkoutsByItem.get(row.id)))), loading: false, refreshing: false, error: null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';
