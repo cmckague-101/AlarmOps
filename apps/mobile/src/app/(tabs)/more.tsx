@@ -36,7 +36,7 @@ export default function More(){
   const visible=sections.filter(section=>!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'));
   const singleColumn=width<360||fontScale>1.3;
 
-  return <SectionScreen title="More" description="Documents, training, and account settings" showTitle={false}>
+  return <SectionScreen title="More" showTitle={false}>
     <View style={styles.grid}>{visible.map(section=>{
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       return <Pressable

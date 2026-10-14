@@ -2,7 +2,7 @@ import {ScrollView,StyleSheet,Text,View} from 'react-native';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
-type Props={title:string;description:string;showTitle?:boolean;children?:React.ReactNode};
+type Props={title:string;description?:string;showTitle?:boolean;children?:React.ReactNode};
 export function SectionScreen({title,description,showTitle=true,children}:Props){
   const theme=useFireOpsTheme();
   const {access}=useSession();
@@ -10,7 +10,7 @@ export function SectionScreen({title,description,showTitle=true,children}:Props)
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
     <Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>
     {showTitle?<Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>:null}
-    <Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>
+    {description?<Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>:null}
     <View style={[styles.rule,{backgroundColor:theme.divider}]}/>
     {children??<Text style={[styles.pending,{color:theme.secondary}]}>Backend data connection comes in next feature pass.</Text>}
   </ScrollView>;
