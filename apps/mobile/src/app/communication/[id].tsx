@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isCompanyManager, isThreadUnread } from '@fireops/domain';
-import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { deleteCommunicationReply, deleteCommunicationThread, markCommunicationThreadSeen, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
+import { deleteCommunicationReply, deleteCommunicationThread, markCommunicationThreadSeen, refreshCommunications, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -25,7 +25,9 @@ export default function CommunicationThreadScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { threads, loading, error } = useCommunications(member?.company.id ?? null, member?.user.id ?? null);
+  const companyId = member?.company.id ?? null;
+  const userId = member?.user.id ?? null;
+  const { threads, loading, error } = useCommunications(companyId, userId);
   const thread = threads.find((item) => item.id === id);
   const joined = Boolean(thread && (thread.createdById === member?.user.id || thread.replies.some((item) => item.createdById === member?.user.id)));
   const [reply, setReply] = useState('');
@@ -34,6 +36,11 @@ export default function CommunicationThreadScreen() {
   const [deleting, setDeleting] = useState(false);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
+
+  useFocusEffect(useCallback(() => {
+    if (!companyId || !userId) return;
+    void refreshCommunications();
+  }, [companyId, userId]));
 
   useEffect(() => {
     if (thread && member && isThreadUnread(thread, member.user)) {

@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { refreshCommunications } from './communications-store';
 import { supabase } from './supabase';
 
 const DEFAULT_CHANNEL_ID = 'default';
@@ -110,6 +111,11 @@ function openNotification(response: Notifications.NotificationResponse) {
   if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) {
     return;
   }
+
+  // Realtime subscriptions may miss changes while the app is suspended.
+  // Start a fresh fetch before opening a communication notification so the
+  // destination updates even when it was already mounted with cached data.
+  if (path.startsWith('/communication/')) void refreshCommunications();
 
   void Linking.openURL(Linking.createURL(path));
 }
