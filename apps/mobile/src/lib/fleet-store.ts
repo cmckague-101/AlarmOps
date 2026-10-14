@@ -497,21 +497,47 @@ export async function updateCrewMemberDetails(companyId:string,member:CrewMember
 
 export async function removeCrewMember(companyId: string, userId: string) {
   if (!supabase) throw new Error("Crew removal service is unavailable.");
-  const { data, error } = await supabase.functions.invoke("remove-company-member", {
-    body: { companyId, userId },
-  });
-  if (error) {
-    const context = (error as { context?: Response }).context;
-    const body = context instanceof Response
-      ? await context.clone().json().catch(() => null) as { error?: string } | null
-      : null;
-    throw new Error(body?.error ?? "Crew member could not be removed.");
+  const { data: authData, error: authError } = await supabase.auth.refreshSession();
+  if (authError || !authData.session) {
+    throw new Error("Your session expired. Sign in again before removing a crew member.");
   }
-  if (!(data as { removed?: boolean } | null)?.removed) {
-    throw new Error("Crew removal service returned an invalid response.");
+  type RemovalResult = {
+    removed?: boolean;
+    accountDeleted?: boolean;
+    accountCleanupFailed?: boolean;
+    crewDeleted?: boolean;
+    attributionChanges?: { collection: FleetCollection; record: { id: string }; version: number }[];
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const { data, error } = await supabase.functions.invoke<RemovalResult>("remove-company-member", {
+      body: { companyId, userId },
+      headers: { Authorization: `Bearer ${authData.session.access_token}` },
+      signal: controller.signal,
+    });
+    if (error) {
+      const context = (error as { context?: Response }).context;
+      const body = context instanceof Response
+        ? await context.clone().json().catch(() => null) as { error?: string } | null
+        : null;
+      throw new Error(body?.error ?? "Crew member could not be removed.");
+    }
+    if (!data?.removed) {
+      throw new Error("Crew removal service returned an invalid response.");
+    }
+    for (const change of data.attributionChanges ?? []) {
+      if (change.record?.id) patchFleetRecord(change.collection, "upsert", change.record.id, change.record, change.version);
+    }
+    if (data.crewDeleted) patchFleetRecord("crew", "delete", userId);
+    void refreshFleet({ showIndicator: false });
+    return data;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Crew removal timed out. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  await refreshFleet({ showIndicator: false });
-  return data as { accountDeleted?: boolean; accountCleanupFailed?: boolean };
 }
 
 export async function loadCrewSeatsUsed(companyId: string) {

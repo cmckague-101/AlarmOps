@@ -990,18 +990,27 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 
   const deleteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
-    const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id}});
-    if(deleteError){
-      const context=(deleteError as {context?:Response}).context;
-      const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
-      throw new Error(body?.error||'Crew member could not be removed. Check your connection and try again.');
-    }
-    if(!data?.removed)throw new Error('Crew removal service returned an invalid response.');
-    for(const change of data.attributionChanges??[]){
-      if(change.record?.id)patchPersisted(change.collection,'upsert',change.record.id,change.record,change.version);
-    }
-    if(data.crewDeleted)patchPersisted('crew','delete',member.id);
-    return {accountDeleted:data.accountDeleted,accountCleanupFailed:data.accountCleanupFailed};
+    const {data:authData,error:authError}=await supabase.auth.refreshSession();
+    if(authError||!authData.session)throw new Error('Your session expired. Sign in again before removing a crew member.');
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),15000);
+    try{
+      const {data,error:deleteError}=await supabase.functions.invoke<{removed:boolean;accountDeleted:boolean;accountCleanupFailed:boolean;crewDeleted:boolean;attributionChanges:{collection:FleetCollection;record:{id:string};version:number}[]}>('remove-company-member',{body:{companyId,userId:member.id},headers:{Authorization:`Bearer ${authData.session.access_token}`},signal:controller.signal});
+      if(deleteError){
+        const context=(deleteError as {context?:Response}).context;
+        const body=context instanceof Response?await context.clone().json().catch(()=>null) as {error?:string}|null:null;
+        throw new Error(body?.error||'Crew member could not be removed. Check your connection and try again.');
+      }
+      if(!data?.removed)throw new Error('Crew removal service returned an invalid response.');
+      for(const change of data.attributionChanges??[]){
+        if(change.record?.id)patchPersisted(change.collection,'upsert',change.record.id,change.record,change.version);
+      }
+      if(data.crewDeleted)patchPersisted('crew','delete',member.id);
+      return {accountDeleted:data.accountDeleted,accountCleanupFailed:data.accountCleanupFailed};
+    }catch(error){
+      if(controller.signal.aborted)throw new Error('Crew removal timed out. Check your connection and try again.');
+      throw error;
+    }finally{window.clearTimeout(timeout)}
   },[companyId,patchPersisted]);
 
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
