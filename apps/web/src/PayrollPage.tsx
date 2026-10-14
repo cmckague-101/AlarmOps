@@ -65,11 +65,11 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
   }
   async function submit(){
     if(!selected||!supabase)return;if(saveTimer.current)clearTimeout(saveTimer.current);const saved=await save(selected);if(!saved)return;
-    const {data,error:failure}=await supabase.from('payroll_forms').update({status:'pending'}).eq('id',saved.id).eq('status','draft').select(columns).single<PayrollRow>();
+    const {data,error:failure}=await supabase.from('payroll_forms').update({status:'pending'}).eq('company_id',companyId).eq('id',saved.id).eq('status','draft').select(columns).single<PayrollRow>();
     if(failure){setError(`Payroll could not submit. ${failure.message}`);return}const submitted=fromRow(data);setSelected(null);setDraft(null);setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
   }
   async function approve(form:PayrollForm){
-    if(!supabase)return;const {data,error:failure}=await supabase.from('payroll_forms').update({status:'approved'}).eq('id',form.id).eq('status','pending').select(columns).single<PayrollRow>();
+    if(!supabase||!companyId)return;const {data,error:failure}=await supabase.from('payroll_forms').update({status:'approved'}).eq('company_id',companyId).eq('id',form.id).eq('status','pending').select(columns).single<PayrollRow>();
     if(failure){setError(`Payroll could not be approved. ${failure.message}`);return}const approved=fromRow(data);setSelected(null);setForms(current=>current.map(item=>item.id===approved.id?approved:item));
   }
   async function remove(){
