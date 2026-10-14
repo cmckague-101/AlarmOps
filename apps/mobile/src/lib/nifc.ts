@@ -42,7 +42,8 @@ function parseIncident(item: ArcGisFeature): NifcIncident | null {
 }
 
 export async function fetchNifcIncidents(signal: AbortSignal) {
-  const incidents: NifcIncident[] = [];
+  const incidents = new Map<string, NifcIncident>();
+  let offset = 0;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const params = new URLSearchParams({
       f: "json",
@@ -52,7 +53,7 @@ export async function fetchNifcIncidents(signal: AbortSignal) {
       returnGeometry: "true",
       outSR: "4326",
       orderByFields: "ModifiedOnDateTime_dt DESC",
-      resultOffset: String(page * PAGE_SIZE),
+      resultOffset: String(offset),
       resultRecordCount: String(PAGE_SIZE),
     });
     const response = await fetch(`${NIFC_QUERY}?${params}`, { signal });
@@ -61,16 +62,15 @@ export async function fetchNifcIncidents(signal: AbortSignal) {
     const body = (await response.json()) as ArcGisResponse;
     if (body.error)
       throw new Error(body.error.message ?? "NIFC returned an error");
-    incidents.push(
-      ...(body.features ?? [])
-        .map(parseIncident)
-        .filter((item): item is NifcIncident => Boolean(item)),
-    );
-    if (
-      !body.exceededTransferLimit ||
-      (body.features?.length ?? 0) < PAGE_SIZE
-    )
-      break;
+    const features = body.features ?? [];
+    features
+      .map(parseIncident)
+      .filter((item): item is NifcIncident => Boolean(item))
+      .forEach((item) => incidents.set(item.id, item));
+    if (!body.exceededTransferLimit || !features.length) break;
+    // Service page caps can be lower than requested. Continue while ArcGIS
+    // reports more data, and count invalid rows when advancing its cursor.
+    offset += features.length;
   }
-  return incidents;
+  return [...incidents.values()];
 }

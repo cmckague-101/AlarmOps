@@ -41,7 +41,7 @@ function parseIncident(item:ArcGisFeature):NifcIncident|null{
 }
 
 export async function fetchIncidents(signal:AbortSignal){
-  const incidents:NifcIncident[]=[];
+  const incidents=new Map<string,NifcIncident>();
   let offset=0;
   for(let page=0;page<5;page+=1){
     const params=new URLSearchParams({
@@ -58,12 +58,14 @@ export async function fetchIncidents(signal:AbortSignal){
     if(!response.ok)throw new Error(`NIFC request failed with ${response.status}`);
     const body=await response.json() as ArcGisResponse;
     if(body.error)throw new Error(body.error.message??'NIFC returned an error');
-    const pageItems=(body.features??[]).map(parseIncident).filter((item):item is NifcIncident=>Boolean(item));
-    incidents.push(...pageItems);
-    if(!body.exceededTransferLimit||!pageItems.length)break;
-    offset+=pageItems.length;
+    const features=body.features??[];
+    features.map(parseIncident).filter((item):item is NifcIncident=>Boolean(item)).forEach(item=>incidents.set(item.id,item));
+    if(!body.exceededTransferLimit||!features.length)break;
+    // ArcGIS offsets count every source feature, including rows discarded for
+    // invalid geometry. Advancing by parsed rows can fetch overlapping pages.
+    offset+=features.length;
   }
-  return incidents;
+  return [...incidents.values()];
 }
 
 const states=feature(statesTopology as unknown as Topology,'states') as unknown as FeatureCollection;
