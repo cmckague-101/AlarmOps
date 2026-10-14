@@ -7,6 +7,13 @@ export type PayrollDay = {
   notes: string;
 };
 
+export type PayrollAttachment = {
+  name: string;
+  mimeType: string;
+  byteSize: number;
+  storagePath: string;
+};
+
 export type PayrollForm = {
   id: string;
   companyId: string;
@@ -14,6 +21,7 @@ export type PayrollForm = {
   createdByName: string;
   engineNumber: string;
   incidents: string;
+  attachment: PayrollAttachment | null;
   rows: PayrollDay[];
   status: PayrollStatus;
   submittedAt: string | null;
