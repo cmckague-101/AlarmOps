@@ -70,7 +70,7 @@ Deno.serve(async (request) => {
   const redirectTo = `${appUrl.replace(/\/$/, '')}/accept-invite`;
   if (action === 'resend') {
     const [{data: membership, error: membershipError}, {data: crewRow, error: crewError}, userLookup] = await Promise.all([
-      admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', userId).eq('role', 'member').maybeSingle(),
+      admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', userId).neq('role', 'owner').maybeSingle(),
       admin.from('fleet_crew').select('data').eq('company_id', companyId).eq('record_id', userId).maybeSingle(),
       admin.auth.admin.getUserById(userId),
     ]);
