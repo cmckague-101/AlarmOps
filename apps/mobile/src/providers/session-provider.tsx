@@ -3,6 +3,8 @@ import type {Session} from '@supabase/supabase-js';
 import type {FireOpsUser,UserRole} from '@fireops/domain';
 import {supabase,supabaseConfigured} from '@/lib/supabase';
 import {unregisterFromPushNotifications} from '@/lib/notifications';
+import {loadAccountAccess,setOfflineCacheUser,storeAccountAccess} from '@/lib/offline-cache';
+import {checkIsOffline,isOffline} from './network-provider';
 
 export type CompanyAccess={
   kind:'member';
@@ -37,6 +39,7 @@ export function SessionProvider({children}:PropsWithChildren){
       .then(({data,error})=>{
         if(!active)return;
         if(error)console.error('Session restoration failed',error);
+        setOfflineCacheUser(data.session?.user.id??null);
         setSession(data.session);
         setLoading(false);
       })
@@ -46,7 +49,7 @@ export function SessionProvider({children}:PropsWithChildren){
         setSession(null);
         setLoading(false);
       });
-    const {data}=supabase.auth.onAuthStateChange((_event,nextSession)=>{setSession(nextSession);setLoading(false);if(!nextSession)setAccess({status:'idle',value:null,error:''})});
+    const {data}=supabase.auth.onAuthStateChange((_event,nextSession)=>{setOfflineCacheUser(nextSession?.user.id??null);setSession(nextSession);setLoading(false);if(!nextSession)setAccess({status:'idle',value:null,error:''})});
     return()=>{active=false;data.subscription.unsubscribe()};
   },[]);
 
@@ -59,6 +62,15 @@ export function SessionProvider({children}:PropsWithChildren){
       await Promise.resolve();
       if(!active)return;
       setAccess({status:'loading',value:null,error:''});
+      const cached=await loadAccountAccess<AccountAccess>(sessionUserId);
+      if(!active)return;
+      try{
+        if(await checkIsOffline()){
+          if(cached)setAccess({status:'ready',value:cached.value,error:''});
+          else setAccess({status:'error',value:null,error:'Connect once to verify your company access before using FireOps offline.'});
+          return;
+        }
+      }catch{/* Network request below provides final availability check. */}
       const [adminResult,profileResult,membershipResult]=await Promise.all([
         supabase.rpc('is_system_admin'),
         supabase.from('profiles').select('full_name').eq('user_id',sessionUserId).maybeSingle<{full_name:string}>(),
@@ -66,10 +78,16 @@ export function SessionProvider({children}:PropsWithChildren){
       ]);
       if(!active)return;
       const userName=profileResult.data?.full_name||sessionUserEmail||'FireOps user';
-      if(adminResult.data===true){setAccess({status:'ready',value:{kind:'admin',userName},error:''});return}
+      if(adminResult.data===true){
+        const value:AdminAccess={kind:'admin',userName};
+        setAccess({status:'ready',value,error:''});
+        void storeAccountAccess(sessionUserId,value);
+        return;
+      }
       if(adminResult.error||membershipResult.error){
         console.error('Account access check failed',adminResult.error??membershipResult.error);
-        setAccess({status:'error',value:null,error:'Account access could not be verified. Check your connection and try again.'});
+        if(cached)setAccess({status:'ready',value:cached.value,error:''});
+        else setAccess({status:'error',value:null,error:'Account access could not be verified. Check your connection and try again.'});
         return;
       }
       const membership=membershipResult.data;
@@ -78,10 +96,13 @@ export function SessionProvider({children}:PropsWithChildren){
       if(!active)return;
       if(companyResult.error){
         console.error('Company access check failed',companyResult.error);
-        setAccess({status:'error',value:null,error:'Company details could not be loaded. Check your connection and try again.'});
+        if(cached)setAccess({status:'ready',value:cached.value,error:''});
+        else setAccess({status:'error',value:null,error:'Company details could not be loaded. Check your connection and try again.'});
         return;
       }
-      setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logoPath:companyResult.data.logo_path,crewInviteLimit:companyResult.data.crew_invite_limit}},error:''});
+      const value:CompanyAccess={kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logoPath:companyResult.data.logo_path,crewInviteLimit:companyResult.data.crew_invite_limit}};
+      setAccess({status:'ready',value,error:''});
+      void storeAccountAccess(sessionUserId,value);
     })();
     return()=>{active=false};
   },[sessionUserId,sessionUserEmail,attempt]);
@@ -90,13 +111,15 @@ export function SessionProvider({children}:PropsWithChildren){
   const signOut=useCallback(async()=>{
     if(!supabase)return;
     try{await unregisterFromPushNotifications()}catch(error){console.warn('Push notification cleanup failed:',error)}
-    await supabase.auth.signOut();
+    await supabase.auth.signOut(isOffline()?{scope:'local'}:undefined);
   },[]);
   const selectCompany=useCallback(async(company:AdminCompany)=>{
     if(!supabase||access.value?.kind!=='admin')throw new Error('Administrator access is unavailable.');
     const {error}=await supabase.rpc('admin_access_company',{target_company_id:company.id});
     if(error)throw new Error(error.message);
-    setAccess({status:'ready',value:{kind:'member',user:{id:sessionUserId!,name:access.value.userName,role:'owner'},company,isAdmin:true},error:''});
+    const value:CompanyAccess={kind:'member',user:{id:sessionUserId!,name:access.value.userName,role:'owner'},company,isAdmin:true};
+    setAccess({status:'ready',value,error:''});
+    void storeAccountAccess(sessionUserId!,value);
   },[access.value,sessionUserId]);
   const clearCompany=useCallback(()=>setAttempt(value=>value+1),[]);
   const updateCompanyProfile=useCallback(async(profile:{name:string;phone:string;location:string;logoPath:string|null})=>{
@@ -105,8 +128,10 @@ export function SessionProvider({children}:PropsWithChildren){
     const {data,error}=await supabase.rpc('update_company_profile',{target_company_id:current.company.id,company_name:profile.name,company_phone:profile.phone,company_location:profile.location,company_logo_path:profile.logoPath});
     if(error)throw new Error(error.message);
     const row=data as {name:string;phone:string;location:string;logo_path:string|null};
-    setAccess({status:'ready',value:{...current,company:{...current.company,name:row.name,phone:row.phone,location:row.location,logoPath:row.logo_path}},error:''});
-  },[access.value]);
+    const value:CompanyAccess={...current,company:{...current.company,name:row.name,phone:row.phone,location:row.location,logoPath:row.logo_path}};
+    setAccess({status:'ready',value,error:''});
+    void storeAccountAccess(sessionUserId!,value);
+  },[access.value,sessionUserId]);
   const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile}),[loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
