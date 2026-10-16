@@ -78,6 +78,9 @@ styles.add(ParagraphStyle(name="Accent", parent=styles["Normal"], fontName="Helv
 styles.add(ParagraphStyle(name="Meta", parent=styles["Normal"], fontName="Helvetica", fontSize=9, leading=13, textColor=MID))
 styles.add(ParagraphStyle(name="BodySmall", parent=styles["Normal"], fontName="Helvetica", fontSize=8.4, leading=11.5, textColor=DARK))
 styles.add(ParagraphStyle(name="BodyTiny", parent=styles["Normal"], fontName="Helvetica", fontSize=6.8, leading=8.2, textColor=DARK))
+styles.add(ParagraphStyle(name="HeaderSmall", parent=styles["BodySmall"], fontName="Helvetica-Bold", textColor=colors.white))
+styles.add(ParagraphStyle(name="HeaderTiny", parent=styles["BodyTiny"], fontName="Helvetica-Bold", textColor=colors.white))
+styles.add(ParagraphStyle(name="TotalTiny", parent=styles["BodyTiny"], fontName="Helvetica-Bold", textColor=colors.white))
 styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=DARK, spaceBefore=4, spaceAfter=8))
 styles.add(ParagraphStyle(name="Amount", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=20, leading=24, textColor=colors.white, alignment=TA_RIGHT))
 styles.add(ParagraphStyle(name="AmountLabel", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#FFE8DE"), alignment=TA_RIGHT))
@@ -150,7 +153,7 @@ from_to.setStyle(TableStyle([
 ]))
 story += [from_to, Spacer(1, 0.22 * inch), Paragraph("Services summary", styles["Section"])]
 
-summary_data = [[cell("DESCRIPTION"), cell("HOURS"), cell("RATE"), cell("AMOUNT")]]
+summary_data = [[cell("DESCRIPTION", "HeaderSmall"), cell("HOURS", "HeaderSmall"), cell("RATE", "HeaderSmall"), cell("AMOUNT", "HeaderSmall")]]
 for description, hours in summary:
     summary_data.append([
         cell(description),
@@ -202,7 +205,7 @@ notes = Paragraph(
 story += [KeepTogether([Paragraph("Invoice notes", styles["Section"]), notes]), PageBreak()]
 
 story += [Paragraph("Detailed work log", styles["InvoiceTitle"]), Spacer(1, 0.08 * inch)]
-detail_data = [[cell("DATE", "BodyTiny"), cell("CATEGORY", "BodyTiny"), cell("WORK SUMMARY", "BodyTiny"), cell("HRS", "BodyTiny"), cell("AMOUNT", "BodyTiny")]]
+detail_data = [[cell("DATE", "HeaderTiny"), cell("CATEGORY", "HeaderTiny"), cell("WORK SUMMARY", "HeaderTiny"), cell("HRS", "HeaderTiny"), cell("AMOUNT", "HeaderTiny")]]
 for date, category, hours, description in entries:
     detail_data.append([
         cell(date, "BodyTiny"),
@@ -211,7 +214,7 @@ for date, category, hours, description in entries:
         cell(f"{hours:g}", "BodyTiny"),
         cell(money(Decimal(str(hours)) * RATE), "BodyTiny"),
     ])
-detail_data.append([cell("TOTAL", "BodyTiny"), "", "", cell(f"{total_hours:g}", "BodyTiny"), cell(money(total_due), "BodyTiny")])
+detail_data.append([cell("TOTAL", "TotalTiny"), "", "", cell(f"{total_hours:g}", "TotalTiny"), cell(money(total_due), "TotalTiny")])
 
 detail_table = Table(detail_data, colWidths=[0.84 * inch, 0.92 * inch, 4.12 * inch, 0.35 * inch, 0.57 * inch], repeatRows=1)
 detail_table.setStyle(TableStyle([
