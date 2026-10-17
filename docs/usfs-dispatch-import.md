@@ -17,9 +17,23 @@ Contact information is not collected or stored. Agreement PIID and CLIN remain i
 
 ## Schedule and reliability
 
-`.github/workflows/sync-usfs-dispatch.yml` runs daily at 10:17 UTC. New, incomplete, and failed lists run first through normal catalog ordering. Complete lists become eligible for reconciliation every seven days. Each scheduled run is capped at ten lists to limit upstream load; remaining work stays eligible for later runs.
+`.github/workflows/sync-usfs-dispatch.yml` runs daily at 10:17 UTC in incremental mode. It discovers the full catalog, then processes up to ten lists in this order: new or metadata-changed, partial or failed, then pending. Complete lists are skipped during scheduled runs, so historical reconciliation cannot delay new publications.
 
 List states are `pending`, `complete`, `partial`, or `failed`. Partial and failed lists retry on later runs. Unexpected empty parser output fails without replacing existing rows. Agreement rates are normalized and joined at read time, preventing copied rates from becoming stale.
+
+Run initial backfill locally in controlled batches without `--incremental-only`:
+
+```bash
+python jobs/usfs-dispatch/sync_supabase.py --limit 50
+```
+
+Run complete-list reconciliation manually when needed:
+
+```bash
+python jobs/usfs-dispatch/sync_supabase.py --limit 50 --recheck-days 30
+```
+
+USDA metadata exposes IDs and names, not a dependable content-modified timestamp. Incremental mode detects new IDs and changed names; silent replacement of a PDF under the same metadata requires reconciliation.
 
 ## Setup
 
@@ -45,7 +59,7 @@ python jobs/usfs-dispatch/sync_supabase.py \
   --dry-run --area-id 2 --center-id 14 --file-id 13105
 ```
 
-Manual initial backfills should use small `--limit` values. GitHub workflow failure indicates at least one list or agreement was incomplete and needs review.
+Manual initial backfills should use small `--limit` values. GitHub workflow failure indicates at least one list or agreement was incomplete and needs review. Manual workflow runs reconcile eligible complete lists by default; select `incremental_only` to reproduce scheduled behavior.
 
 ## Source notice
 

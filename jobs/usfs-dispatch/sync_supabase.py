@@ -34,6 +34,11 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, help="Maximum number of lists to process")
     parser.add_argument("--metadata-only", action="store_true", help="Update catalog without downloading PDFs")
     parser.add_argument(
+        "--incremental-only",
+        action="store_true",
+        help="Process new, metadata-changed, pending, partial, or failed lists; skip complete-list reconciliation",
+    )
+    parser.add_argument(
         "--recheck-days",
         type=int,
         default=7,
@@ -304,13 +309,24 @@ def process_list(client: ForestServiceClient, item: dict[str, Any]):
     return parsed, hashlib.sha256(dpl.content).hexdigest(), agreements, errors
 
 
-def should_process(item: dict[str, Any], previous: dict[str, Any] | None, args: argparse.Namespace) -> bool:
-    if args.force or args.file_id is not None or previous is None:
-        return True
-    if previous["name"] != item["name"] or previous["sync_status"] != "complete":
-        return True
+def selection_priority(
+    item: dict[str, Any], previous: dict[str, Any] | None, args: argparse.Namespace
+) -> int | None:
+    """Return processing priority; lower values run first and None means skip."""
+    if args.force or args.file_id is not None:
+        return 0
+    if previous is None or previous["name"] != item["name"]:
+        return 0
+    if previous["sync_status"] in ("partial", "failed"):
+        return 1
+    if previous["sync_status"] == "pending":
+        return 2
+    if args.incremental_only:
+        return None
     checked = previous["last_checked_at"]
-    return checked is None or checked <= datetime.now(timezone.utc) - timedelta(days=args.recheck_days)
+    if checked is None or checked <= datetime.now(timezone.utc) - timedelta(days=args.recheck_days):
+        return 3
+    return None
 
 
 def main() -> int:
@@ -334,7 +350,13 @@ def main() -> int:
         upsert_catalog(connection, areas, centers, lists, deactivate_missing=full_catalog)
         run_id = create_run(connection, len(lists))
 
-    targets = [item for item in lists if should_process(item, previous.get(int(item["id"])), args)]
+    prioritized_targets = [
+        (priority, position, item)
+        for position, item in enumerate(lists)
+        if (priority := selection_priority(item, previous.get(int(item["id"])), args)) is not None
+    ]
+    prioritized_targets.sort(key=lambda target: (target[0], target[1]))
+    targets = [item for _, _, item in prioritized_targets]
     if args.limit is not None:
         targets = targets[: args.limit]
     if args.metadata_only:

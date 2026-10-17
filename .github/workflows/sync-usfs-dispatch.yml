@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: "7"
+      incremental_only:
+        description: Skip reconciliation of already-complete lists
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Daily updates; complete lists are rechecked weekly by importer.
     - cron: "17 10 * * *"
@@ -50,7 +55,11 @@ jobs:
           FORCE: ${{ inputs.force }}
           LIMIT: ${{ inputs.limit }}
           RECHECK_DAYS: ${{ inputs.recheck_days }}
+          INCREMENTAL_ONLY: ${{ inputs.incremental_only }}
         run: |
           args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
           if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$INCREMENTAL_ONLY" == "true" ]]; then
+            args+=(--incremental-only)
+          fi
           python jobs/usfs-dispatch/sync_supabase.py "${args[@]}"
