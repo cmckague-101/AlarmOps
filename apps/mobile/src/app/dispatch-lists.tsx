@@ -68,7 +68,7 @@ export default function DispatchListsScreen(){
   },[listId,refresh]);
 
   const selectedList=lists.find(item=>String(item.file_id)===listId);
-  return <SectionScreen title="Dispatch Lists" description="USFS VIPR rankings with award rates matched by VIN.">
+  return <SectionScreen title="VIPR DPLs" description="USFS VIPR rankings with award rates matched by VIN.">
     <View style={styles.filters}>
       <View style={styles.field}><Text style={styles.fieldLabel}>Geographic area</Text><FilterSelect accessibilityLabel="Geographic area" value={areaId} onChange={setAreaId} options={areas.map(item=>({value:String(item.id),label:item.name}))}/></View>
       <View style={styles.field}><Text style={styles.fieldLabel}>Dispatch center</Text><FilterSelect accessibilityLabel="Dispatch center" value={centerId} onChange={setCenterId} options={centers.map(item=>({value:String(item.id),label:item.name}))}/></View>

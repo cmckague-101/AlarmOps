@@ -45,7 +45,7 @@ type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'q
 const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
   operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
-  dispatch:{label:'Dispatch Lists',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
+  dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},

@@ -69,7 +69,7 @@ export default function DispatchListsPage(){
 
   const selectedList=lists.find(item=>String(item.file_id)===listId);
   return <div className="page dispatch-page">
-    <div className="page-heading"><div><h1>Dispatch Lists</h1><p>USFS VIPR rankings with award rates matched by VIN.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
+    <div className="page-heading"><div><h1>VIPR DPLs</h1><p>USFS VIPR rankings with award rates matched by VIN.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
     <section className="dispatch-filters" aria-label="Dispatch list filters">
       <label><span>Geographic area</span><select value={areaId} onChange={event=>setAreaId(event.target.value)} disabled={!areas.length}>{areas.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
       <label><span>Dispatch center</span><select value={centerId} onChange={event=>setCenterId(event.target.value)} disabled={!centers.length}>{centers.map(center=><option key={center.id} value={center.id}>{center.name}</option>)}</select></label>
