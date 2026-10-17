@@ -110,7 +110,7 @@ for select to authenticated using (true);
 
 revoke all on public.usfs_geographic_areas, public.usfs_dispatch_centers,
   public.usfs_priority_lists, public.usfs_agreements, public.usfs_agreement_rates,
-  public.usfs_dpl_entries, public.usfs_sync_runs from anon;
+  public.usfs_dpl_entries, public.usfs_sync_runs from anon, authenticated;
 grant select on public.usfs_geographic_areas, public.usfs_dispatch_centers,
   public.usfs_priority_lists, public.usfs_agreements, public.usfs_agreement_rates,
   public.usfs_dpl_entries to authenticated;
