@@ -246,18 +246,22 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
         if not re.match(r"Table\s+\d+\s*-\s*SOI\s+for\s+", block, re.I):
             continue
         heading = re.search(
-            r"Table\s+(\d+)\s*-\s*SOI\s+for\s+(.+?)\s+(?:VIN|Serial Number):\s*([^\s]+)\s+for\s+(.+?)\s+Resource Information",
+            r"Table\s+(\d+)\s*-\s*SOI\s+for\s+(.+?)\s+(?:VIN|Serial Number|Unique ID):\s*(.+?)\s+for\s+(.+?)\s+Resource Information",
             block,
             re.I | re.S,
         )
         clin = re.search(r"(?:^|\n)CLIN\s+([^\s]+)", block, re.I)
-        vin = re.search(r"(?:^|\n)(?:VIN|Serial Number)\s+([^\s]+)", block, re.I)
+        vin = re.search(r"(?:^|\n)(?:VIN|Serial Number|Unique ID)\s+(.+?)\s*(?:\n|$)", block, re.I)
+        status = re.search(r"(?:^|\n)Status\s+(.+?)\s*(?:\n|$)", block, re.I)
         daily = re.search(
             r"(?:^|\n)(Min Daily Guarantee Rate|Daily Rate)\s+\$?([\d,]+(?:\.\d{2})?)\s*/\s*Day",
             block,
             re.I,
         )
         raw_vin = vin.group(1).strip() if vin else (heading.group(3).strip() if heading else "")
+        award_status = status.group(1).strip() if status else None
+        if award_status and award_status.lower() != "awarded":
+            continue
         if not (clin and daily and normalize_vin(raw_vin)):
             continue
         try:
@@ -270,6 +274,7 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
             "normalized_vin": normalize_vin(raw_vin),
             "daily_rate": amount,
             "rate_type": "minimum_daily_guarantee" if daily.group(1).lower().startswith("min ") else "daily_rate",
+            "award_status": award_status,
             "daily_rate_display": f"${amount:,.2f}/Day",
         }
         if heading:
@@ -282,7 +287,7 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
             )
         rates.append(record)
     if not rates:
-        raise ParseError("Agreement SOI did not contain VIN/serial-based daily rates")
+        raise ParseError("Agreement SOI did not contain awarded equipment identifiers with daily rates")
     return rates
 
 

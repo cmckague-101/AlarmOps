@@ -13,7 +13,7 @@ Dispatch results expose only:
 - CAFS;
 - VIN-matched daily rate from the agreement Schedule of Items.
 
-Contact information is not collected or stored. Agreement PIID and CLIN remain internal import keys. A rate is matched only when the dispatch row and agreement belong to the same PIID and have the same normalized equipment identifier. Award PDFs may label that identifier `VIN` or `Serial Number`; DPL PDFs place both forms in their VIN column. Conflicting rates for one identifier are marked ambiguous rather than guessed.
+Contact information is not collected or stored. Agreement PIID and CLIN remain internal import keys. A rate is matched only when the dispatch row and agreement belong to the same PIID and have the same normalized equipment identifier. Award PDFs may label that identifier `VIN`, `Serial Number`, or `Unique ID`; DPL PDFs place all forms in their VIN column. Only items with `Status Awarded` (or legacy items without a status) are imported. Conflicting rates for one identifier are marked ambiguous rather than guessed.
 
 ## Schedule and reliability
 

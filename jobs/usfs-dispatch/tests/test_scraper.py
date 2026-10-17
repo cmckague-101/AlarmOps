@@ -72,6 +72,35 @@ Section B - Introduction
     assert rates[0]["daily_rate"] == Decimal("6800.00")
 
 
+def test_agreement_accepts_unique_id_and_excludes_non_awarded_items():
+    agreement = """Schedule of Items (SOI)
+Table 1 - SOI for Faller Module (FMOD)
+Unique ID: ADAMS FALLER MOD2 for
+(ID-CDC) Coeur d'Alene Interagency Dispatch Center
+Resource Information Attribute Values & Rates
+Status Awarded
+CLIN 0002
+Unique ID ADAMS FALLER MOD2
+Daily Rate $2,550.00/Day
+Table 2 - SOI for Faller Module (FMOD)
+Unique ID: SUSPENDED MOD for
+(ID-CDC) Coeur d'Alene Interagency Dispatch Center
+Resource Information Attribute Values & Rates
+Status Suspended
+CLIN 0003
+Unique ID SUSPENDED MOD
+Daily Rate $9,999.00/Day
+Section B - Introduction
+"""
+
+    rates = parse_agreement_text(agreement)
+    assert len(rates) == 1
+    assert rates[0]["vin"] == "ADAMS FALLER MOD2"
+    assert rates[0]["normalized_vin"] == "ADAMSFALLERMOD2"
+    assert rates[0]["daily_rate"] == Decimal("2550.00")
+    assert rates[0]["award_status"] == "Awarded"
+
+
 def test_agreement_accepts_minimum_daily_guarantee_rate():
     agreement = """Schedule of Items (SOI)
 Table 1 - SOI for Crew Carrier Bus (BUCC)
