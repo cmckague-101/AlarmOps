@@ -72,6 +72,25 @@ Section B - Introduction
     assert rates[0]["daily_rate"] == Decimal("6800.00")
 
 
+def test_agreement_accepts_minimum_daily_guarantee_rate():
+    agreement = """Schedule of Items (SOI)
+Table 1 - SOI for Crew Carrier Bus (BUCC)
+VIN: 1BAKCCPAX8F250929 for
+(ID-GVC) Grangeville Interagency Dispatch Center
+Resource Information Attribute Values & Rates
+Status Awarded
+CLIN 0001
+VIN 1BAKCCPAX8F250929
+Min Daily Guarantee Rate $1,335.00/Day
+Per Mile Rate $7.75/Mile
+Section B - Introduction
+"""
+
+    rate = parse_agreement_text(agreement)[0]
+    assert rate["daily_rate"] == Decimal("1335.00")
+    assert rate["rate_type"] == "minimum_daily_guarantee"
+
+
 def test_join_does_not_fall_back_to_clin_when_vin_differs():
     row = {"agreement_piid": "12024B26T7074", "clin": "0002", "vin": "VIN-1"}
     rates = [{"clin": "0002", "normalized_vin": "VIN2", "daily_rate": Decimal("1.00")}]

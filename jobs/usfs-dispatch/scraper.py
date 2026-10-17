@@ -252,12 +252,16 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
         )
         clin = re.search(r"(?:^|\n)CLIN\s+([^\s]+)", block, re.I)
         vin = re.search(r"(?:^|\n)(?:VIN|Serial Number)\s+([^\s]+)", block, re.I)
-        daily = re.search(r"(?:^|\n)Daily Rate\s+\$?([\d,]+(?:\.\d{2})?)\s*/\s*Day", block, re.I)
+        daily = re.search(
+            r"(?:^|\n)(Min Daily Guarantee Rate|Daily Rate)\s+\$?([\d,]+(?:\.\d{2})?)\s*/\s*Day",
+            block,
+            re.I,
+        )
         raw_vin = vin.group(1).strip() if vin else (heading.group(3).strip() if heading else "")
         if not (clin and daily and normalize_vin(raw_vin)):
             continue
         try:
-            amount = Decimal(daily.group(1).replace(",", "")).quantize(Decimal("0.01"))
+            amount = Decimal(daily.group(2).replace(",", "")).quantize(Decimal("0.01"))
         except InvalidOperation:
             continue
         record: dict[str, Any] = {
@@ -265,6 +269,7 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
             "vin": raw_vin,
             "normalized_vin": normalize_vin(raw_vin),
             "daily_rate": amount,
+            "rate_type": "minimum_daily_guarantee" if daily.group(1).lower().startswith("min ") else "daily_rate",
             "daily_rate_display": f"${amount:,.2f}/Day",
         }
         if heading:
