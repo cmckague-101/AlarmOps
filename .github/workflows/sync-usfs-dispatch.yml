@@ -22,9 +22,6 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    # Daily updates; complete lists are rechecked weekly by importer.
-    - cron: "17 10 * * *"
 
 permissions:
   contents: read
@@ -59,7 +56,5 @@ jobs:
         run: |
           args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
           if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
-          if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$INCREMENTAL_ONLY" == "true" ]]; then
-            args+=(--incremental-only)
-          fi
+          if [[ "$INCREMENTAL_ONLY" == "true" ]]; then args+=(--incremental-only); fi
           python jobs/usfs-dispatch/sync_supabase.py "${args[@]}"

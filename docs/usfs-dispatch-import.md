@@ -17,7 +17,7 @@ Contact information is not collected or stored. Agreement PIID and CLIN remain i
 
 ## Schedule and reliability
 
-`.github/workflows/sync-usfs-dispatch.yml` runs daily at 10:17 UTC in incremental mode. It discovers the full catalog, then processes up to ten lists in this order: new or metadata-changed, partial or failed, then pending. Complete lists are skipped during scheduled runs, so historical reconciliation cannot delay new publications.
+`.github/workflows/sync-usfs-dispatch.yml` is temporarily manual-only while initial backfill runs locally. When daily scheduling is restored, incremental mode discovers the full catalog, then processes up to ten lists in this order: new or metadata-changed, partial or failed, then pending. Complete lists are skipped during incremental runs, so historical reconciliation cannot delay new publications.
 
 List states are `pending`, `complete`, `partial`, or `failed`. Partial and failed lists retry on later runs. Unexpected empty parser output fails without replacing existing rows. Agreement rates are normalized and joined at read time, preventing copied rates from becoming stale.
 

@@ -22,6 +22,10 @@ expo-env.d.ts
 .env.*
 !.env.example
 
+# Scheduled importer working data
+jobs/usfs-dispatch/data/
+*.pid
+
 # Logs
 *.log
 npm-debug.log*
