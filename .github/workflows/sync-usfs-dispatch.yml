@@ -1,0 +1,56 @@
+name: Sync USFS dispatch data
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Reprocess selected lists regardless of current status
+        required: false
+        type: boolean
+        default: false
+      limit:
+        description: Maximum lists to process (blank defaults to 10)
+        required: false
+        type: string
+      recheck_days:
+        description: Days before rechecking complete lists
+        required: false
+        type: string
+        default: "7"
+  schedule:
+    # Daily updates; complete lists are rechecked weekly by importer.
+    - cron: "17 10 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usfs-dispatch-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: jobs/usfs-dispatch/requirements.txt
+      - run: pip install -r jobs/usfs-dispatch/requirements.txt
+      - name: Test PDF parser
+        run: pytest jobs/usfs-dispatch/tests
+      - name: Import new, incomplete, and due lists
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          FS_USER_AGENT: ${{ secrets.FS_USER_AGENT }}
+          FS_REQUEST_INTERVAL: "3"
+          FORCE: ${{ inputs.force }}
+          LIMIT: ${{ inputs.limit }}
+          RECHECK_DAYS: ${{ inputs.recheck_days }}
+        run: |
+          args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
+          if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
+          python jobs/usfs-dispatch/sync_supabase.py "${args[@]}"
