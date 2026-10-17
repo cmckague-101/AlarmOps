@@ -55,6 +55,23 @@ def test_agreement_rate_joins_by_agreement_and_normalized_vin():
     assert rows[0]["rate"]["daily_rate"] == Decimal("3450.00")
 
 
+def test_agreement_accepts_serial_number_used_as_dpl_vin():
+    agreement = """Schedule of Items (SOI)
+Table 1 - SOI for Chipper Type 1 (CHP1)
+Serial Number: 4S8SZ190XNW052886 for
+(ID-CDC) Coeur d'Alene Interagency Dispatch Center
+Resource Information Attribute Values & Rates
+CLIN 0003
+Serial Number 4S8SZ190XNW052886
+Daily Rate $6,800.00/Day
+Section B - Introduction
+"""
+
+    rates = parse_agreement_text(agreement)
+    assert rates[0]["normalized_vin"] == "4S8SZ190XNW052886"
+    assert rates[0]["daily_rate"] == Decimal("6800.00")
+
+
 def test_join_does_not_fall_back_to_clin_when_vin_differs():
     row = {"agreement_piid": "12024B26T7074", "clin": "0002", "vin": "VIN-1"}
     rates = [{"clin": "0002", "normalized_vin": "VIN2", "daily_rate": Decimal("1.00")}]

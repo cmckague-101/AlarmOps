@@ -246,12 +246,12 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
         if not re.match(r"Table\s+\d+\s*-\s*SOI\s+for\s+", block, re.I):
             continue
         heading = re.search(
-            r"Table\s+(\d+)\s*-\s*SOI\s+for\s+(.+?)\s+VIN:\s*([^\s]+)\s+for\s+(.+?)\s+Resource Information",
+            r"Table\s+(\d+)\s*-\s*SOI\s+for\s+(.+?)\s+(?:VIN|Serial Number):\s*([^\s]+)\s+for\s+(.+?)\s+Resource Information",
             block,
             re.I | re.S,
         )
         clin = re.search(r"(?:^|\n)CLIN\s+([^\s]+)", block, re.I)
-        vin = re.search(r"(?:^|\n)VIN\s+([^\s]+)", block, re.I)
+        vin = re.search(r"(?:^|\n)(?:VIN|Serial Number)\s+([^\s]+)", block, re.I)
         daily = re.search(r"(?:^|\n)Daily Rate\s+\$?([\d,]+(?:\.\d{2})?)\s*/\s*Day", block, re.I)
         raw_vin = vin.group(1).strip() if vin else (heading.group(3).strip() if heading else "")
         if not (clin and daily and normalize_vin(raw_vin)):
@@ -277,7 +277,7 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
             )
         rates.append(record)
     if not rates:
-        raise ParseError("Agreement SOI did not contain VIN-based daily rates")
+        raise ParseError("Agreement SOI did not contain VIN/serial-based daily rates")
     return rates
 
 
