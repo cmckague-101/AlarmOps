@@ -168,7 +168,10 @@ def _key(label: str) -> str:
     aliases = {
         "agreement piid": "agreement_piid",
         "company name, dba": "company_name",
+        "dispatch priority ranking": "rank",
         "equipment location": "equipment_location",
+        "equipment city/municipality": "equipment_city",
+        "equipment state/province": "equipment_state",
     }
     normalized = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
     return aliases.get(label.lower(), normalized)
@@ -190,7 +193,17 @@ def parse_dpl_text(text: str) -> dict[str, Any]:
     rows: list[dict[str, str]] = []
     columns: list[tuple[str, int]] = []
     current: dict[str, str] | None = None
-    kept_fields = {"rank", "agreement_piid", "company_name", "equipment_location", "vin", "clin", "cafs"}
+    kept_fields = {
+        "rank",
+        "agreement_piid",
+        "company_name",
+        "equipment_location",
+        "equipment_city",
+        "equipment_state",
+        "vin",
+        "clin",
+        "cafs",
+    }
 
     for line in lines:
         if "Rank" in line and "Agreement PIID" in line and "CLIN" in line:
@@ -205,6 +218,11 @@ def parse_dpl_text(text: str) -> dict[str, Any]:
             if key in kept_fields:
                 values[key] = line[start:end].strip()
 
+        city = values.pop("equipment_city", "")
+        state = values.pop("equipment_state", "")
+        if city or state:
+            values["equipment_location"] = ", ".join(value for value in (city, state) if value)
+
         rank = values.get("rank", "")
         piid = values.get("agreement_piid", "").upper()
         if rank.isdigit() and PIID_RE.fullmatch(piid):
@@ -216,8 +234,8 @@ def parse_dpl_text(text: str) -> dict[str, Any]:
         elif current:
             for key in ("company_name", "equipment_location", "cafs"):
                 value = values.get(key)
-                if value:
-                    current[key] = f"{current.get(key, '')}\n{value}".strip()
+                if value and not current.get(key):
+                    current[key] = value
     if current:
         rows.append(current)
 

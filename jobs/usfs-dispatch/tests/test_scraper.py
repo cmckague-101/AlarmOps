@@ -44,6 +44,34 @@ def test_parse_dpl_keeps_only_display_fields_and_internal_join_keys():
     }
 
 
+def test_parse_new_dpl_ranking_header_and_combines_equipment_location():
+    labels = [
+        "Dispatch Priority Ranking", "Agreement PIID", "Company Name, DBA",
+        "Contact", "Equipment City/Municipality", "Equipment State/Province", "VIN", "CLIN",
+    ]
+    values = [
+        "1", "12024B26T7290", "RESPONSE LLC", "Private Contact",
+        "LEIGH HIGH ACRES", "Florida", "EMTB-ERL-008", "0042",
+    ]
+    widths = [32, 22, 28, 24, 36, 34, 22, 8]
+    header = "".join(label.ljust(width) for label, width in zip(labels, widths))
+    row_text = "".join(value.ljust(width) for value, width in zip(values, widths))
+    text = "\n".join([
+        "Mid-Atlantic Interagency Coordination Center",
+        "Emergency Medical Technician Basic (EMTB)",
+        "Published On: 07/20/2026 06:06 PM GMT",
+        header,
+        row_text,
+    ])
+
+    row = parse_dpl_text(text)["rows"][0]
+    assert row["rank"] == "1"
+    assert row["company_name"] == "RESPONSE LLC"
+    assert row["equipment_location"] == "LEIGH HIGH ACRES, Florida"
+    assert row["vin"] == "EMTB-ERL-008"
+    assert "contact" not in str(row).lower()
+
+
 def test_agreement_rate_joins_by_agreement_and_normalized_vin():
     parsed = parse_dpl_text(DPL_TEXT)
     rates = parse_agreement_text(AGREEMENT_TEXT)
