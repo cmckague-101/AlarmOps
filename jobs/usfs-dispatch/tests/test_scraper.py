@@ -50,7 +50,7 @@ def test_parse_new_dpl_ranking_header_and_combines_equipment_location():
         "Contact", "Equipment City/Municipality", "Equipment State/Province", "VIN", "CLIN",
     ]
     values = [
-        "1", "12024B26T7290", "RESPONSE LLC", "Private Contact",
+        "13", "12024B26T7290", "RESPONSE LLC", "Private Contact",
         "LEIGH HIGH ACRES", "Florida", "EMTB-ERL-008", "0042",
     ]
     widths = [32, 22, 28, 24, 36, 34, 22, 8]
@@ -65,7 +65,7 @@ def test_parse_new_dpl_ranking_header_and_combines_equipment_location():
     ])
 
     row = parse_dpl_text(text)["rows"][0]
-    assert row["rank"] == "1"
+    assert row["rank"] == "13"
     assert row["company_name"] == "RESPONSE LLC"
     assert row["equipment_location"] == "LEIGH HIGH ACRES, Florida"
     assert row["vin"] == "EMTB-ERL-008"

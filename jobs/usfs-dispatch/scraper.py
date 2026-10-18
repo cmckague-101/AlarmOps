@@ -223,7 +223,8 @@ def parse_dpl_text(text: str) -> dict[str, Any]:
         if city or state:
             values["equipment_location"] = ", ".join(value for value in (city, state) if value)
 
-        rank = values.get("rank", "")
+        leading_rank = re.match(r"^\s*(\d+)\s+", line)
+        rank = leading_rank.group(1) if leading_rank else values.get("rank", "")
         piid = values.get("agreement_piid", "").upper()
         if rank.isdigit() and PIID_RE.fullmatch(piid):
             if current:
