@@ -1,4 +1,4 @@
-import StoredDocumentsPage from './StoredDocumentsPage';
+import InvoicesPage from './InvoicesPage';
 import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
 import {OwnerDashboard} from './OwnerDashboard';
@@ -51,7 +51,7 @@ const navigationMeta = {
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
   qualifications:{label:'Qualifications',description:'Credentials, licenses, and expiration dates',Icon:ShieldCheck},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
-  invoices:{label:'Invoices',description:'Upload and review invoices',Icon:FileText},
+  invoices:{label:'Invoices',description:'Submit and review invoices',Icon:FileText},
   payroll:{label:'Payroll',description:'Create, submit, and approve payroll forms',Icon:CircleDollarSign},
   availability:{label:'Availability',description:'Crew assignment availability',Icon:CircleUserRound},
   receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:CircleDollarSign},
@@ -588,7 +588,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
-        {page === 'invoices' && <StoredDocumentsPage isCompanyOwner={currentUser.role === 'owner'} companyLogoUrl={companyDetails.logo?.dataUrl} kind="invoices" companyId={companyId} user={currentUser} crew={crew}/>}
+        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser}/>}
         {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}

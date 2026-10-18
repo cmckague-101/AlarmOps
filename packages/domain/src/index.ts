@@ -4,5 +4,6 @@ export * from './qualification-card';
 export * from './qualification-positions';
 export * from './phone-number';
 export * from './payroll';
+export * from './invoices';
 
 export * from './command-center';
