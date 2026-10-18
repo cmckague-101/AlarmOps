@@ -1,4 +1,4 @@
-export type PayrollStatus = 'draft' | 'pending' | 'approved';
+export type PayrollStatus = 'draft' | 'pending' | 'rejected' | 'approved' | 'paid';
 
 export type PayrollDay = {
   date: string;
@@ -27,6 +27,9 @@ export type PayrollForm = {
   submittedAt: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
+  rejectionNotes: string | null;
+  rejectedAt: string | null;
+  rejectedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
