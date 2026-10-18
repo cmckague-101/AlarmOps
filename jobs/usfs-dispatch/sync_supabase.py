@@ -89,6 +89,16 @@ def discover(client: ForestServiceClient, args: argparse.Namespace):
     return areas, centers, lists
 
 
+def acquire_sync_lock(connection) -> None:
+    """Prevent local, manual, and scheduled importers from writing concurrently."""
+    with connection.cursor() as cursor:
+        cursor.execute("select pg_try_advisory_lock(%s)", (73_185_422_390_455_611,))
+        acquired = bool(cursor.fetchone()[0])
+    if not acquired:
+        connection.close()
+        raise SystemExit("Another USFS dispatch sync is already running")
+
+
 def existing_lists(connection) -> dict[int, dict[str, Any]]:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -345,6 +355,7 @@ def main() -> int:
     previous: dict[int, dict[str, Any]] = {}
     run_id = None
     if connection:
+        acquire_sync_lock(connection)
         previous = existing_lists(connection)
         full_catalog = args.area_id is None and args.center_id is None and args.file_id is None
         upsert_catalog(connection, areas, centers, lists, deactivate_missing=full_catalog)

@@ -125,9 +125,12 @@ class ForestServiceClient:
         if not body.startswith(b"%PDF"):
             raise UpstreamError(f"Expected PDF for {cache_key}")
 
-        temporary = path.with_suffix(".tmp")
-        temporary.write_bytes(body)
-        temporary.replace(path)
+        temporary = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            temporary.write_bytes(body)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
         path.with_suffix(".sha256").write_text(hashlib.sha256(body).hexdigest() + "\n")
         return CachedFile(body, path, False)
 
