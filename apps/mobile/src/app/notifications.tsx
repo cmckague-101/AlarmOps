@@ -21,6 +21,7 @@ function formatDate(value: string) {
 }
 
 function iconFor(notification: InboxNotification) {
+  if (notification.groupKey.startsWith('app-feedback:')) return {ios: 'bubble.left.and.bubble.right.fill', android: 'feedback'} as const;
   switch (notification.entityType) {
     case 'communication': return {ios: 'message.fill', android: 'chat_bubble'} as const;
     case 'document': return {ios: 'doc.fill', android: 'description'} as const;
