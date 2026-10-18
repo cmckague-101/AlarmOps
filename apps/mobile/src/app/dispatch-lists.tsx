@@ -33,7 +33,7 @@ export default function DispatchListsScreen(){
     setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_geographic_areas').select('id,name').eq('is_active',true).order('name');
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as Area[];setAreas(next);setAreaId(current=>next.some(item=>String(item.id)===current)?current:String(next[0]?.id??''));
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as Area[];setAreas(next);setAreaId(current=>next.some(item=>String(item.id)===current)?current:'');
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
   },[refresh]);
@@ -43,7 +43,7 @@ export default function DispatchListsScreen(){
     if(!supabase||!areaId)return()=>{active=false};setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_dispatch_centers').select('id,name').eq('geographic_area_id',Number(areaId)).eq('is_active',true).order('name');
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as Center[];setCenters(next);setCenterId(String(next[0]?.id??''));
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as Center[];setCenters(next);
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
   },[areaId,refresh]);
@@ -53,7 +53,7 @@ export default function DispatchListsScreen(){
     if(!supabase||!centerId)return()=>{active=false};setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_priority_lists').select('file_id,name,resource_type,published_at,sync_status').eq('dispatch_center_id',Number(centerId)).eq('is_active',true).in('sync_status',['complete','partial']).order('published_at',{ascending:false});
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as PriorityList[];setLists(next);setListId(String(next[0]?.file_id??''));
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as PriorityList[];setLists(next);
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
   },[centerId,refresh]);
@@ -77,7 +77,7 @@ export default function DispatchListsScreen(){
     <Pressable accessibilityRole="button" disabled={loading} onPress={()=>setRefresh(value=>value+1)} style={({pressed})=>[styles.refresh,pressed&&styles.pressed,loading&&styles.disabled]}><AppSymbol name={{ios:'arrow.clockwise',android:'refresh'}} size={17} color={theme.green}/><Text style={styles.refreshText}>Refresh dispatch data</Text>{loading?<ActivityIndicator size="small" color={theme.green}/>:null}</Pressable>
     {error?<View accessibilityRole="alert" style={[styles.state,styles.errorState]}><Text style={styles.stateTitle}>Dispatch data unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
     {!error&&!supabase?<View style={styles.state}><Text style={styles.stateTitle}>Supabase connection required</Text></View>:null}
-    {!error&&supabase&&!loading&&!selectedList?<View style={styles.state}><Text style={styles.stateTitle}>No published lists found</Text><Text style={styles.stateCopy}>Try another dispatch center or check after scheduled import.</Text></View>:null}
+    {!error&&supabase&&!loading&&!selectedList?<View style={styles.state}><Text style={styles.stateTitle}>{centerId&&!lists.length?'No published lists found':'Select a dispatch list'}</Text><Text style={styles.stateCopy}>{centerId&&!lists.length?'Try another dispatch center or check after scheduled import.':'Choose a geographic area, dispatch center, and priority list to view rankings.'}</Text></View>:null}
     {selectedList?<View style={styles.results}>
       <View style={styles.resultsHeader}><View style={styles.headerCopy}><Text style={styles.resultsTitle}>{selectedList.resource_type||selectedList.name}</Text><Text style={styles.resultsMeta}>{selectedList.published_at?`Published ${new Date(selectedList.published_at).toLocaleString()}`:'Publish date unavailable'} · {entries.length} resources</Text></View>{selectedList.sync_status==='partial'?<Text style={styles.warning}>Rates updating</Text>:null}</View>
       {entries.map(entry=><View key={entry.rank} style={styles.entry}>
