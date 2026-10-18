@@ -101,6 +101,22 @@ Section B - Introduction
     assert rates[0]["award_status"] == "Awarded"
 
 
+def test_agreement_with_only_canceled_items_is_valid_without_rates():
+    agreement = """Schedule of Items (SOI)
+Table 1 - SOI for Faller Module (FMOD)
+Unique ID: CANCELED MOD for
+(CA-CCCC) Central California Communications Center
+Resource Information Attribute Values & Rates
+Status Canceled
+CLIN 0001
+Unique ID CANCELED MOD
+Daily Rate $2,998.99/Day
+Section B - Introduction
+"""
+
+    assert parse_agreement_text(agreement) == []
+
+
 def test_agreement_accepts_minimum_daily_guarantee_rate():
     agreement = """Schedule of Items (SOI)
 Table 1 - SOI for Crew Carrier Bus (BUCC)

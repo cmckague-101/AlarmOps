@@ -244,6 +244,7 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
     soi = text[start:end]
     blocks = re.split(r"(?=Table\s+\d+\s*-\s*SOI\s+for\s+)", soi, flags=re.I)
     rates: list[dict[str, Any]] = []
+    saw_priced_item = False
 
     for block in blocks:
         if not re.match(r"Table\s+\d+\s*-\s*SOI\s+for\s+", block, re.I):
@@ -263,9 +264,10 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
         )
         raw_vin = vin.group(1).strip() if vin else (heading.group(3).strip() if heading else "")
         award_status = status.group(1).strip() if status else None
-        if award_status and award_status.lower() != "awarded":
-            continue
         if not (clin and daily and normalize_vin(raw_vin)):
+            continue
+        saw_priced_item = True
+        if award_status and award_status.lower() != "awarded":
             continue
         try:
             amount = Decimal(daily.group(2).replace(",", "")).quantize(Decimal("0.01"))
@@ -289,8 +291,8 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
                 }
             )
         rates.append(record)
-    if not rates:
-        raise ParseError("Agreement SOI did not contain awarded equipment identifiers with daily rates")
+    if not rates and not saw_priced_item:
+        raise ParseError("Agreement SOI did not contain equipment identifiers with daily rates")
     return rates
 
 
