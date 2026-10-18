@@ -312,7 +312,18 @@ def parse_agreement_text(text: str) -> list[dict[str, Any]]:
         rates.append(record)
     if not rates and not saw_priced_item:
         raise ParseError("Agreement SOI did not contain equipment identifiers with daily rates")
-    return rates
+
+    unique_rates: dict[tuple[str, str], dict[str, Any]] = {}
+    for rate in rates:
+        key = (rate["clin"], rate["normalized_vin"])
+        existing = unique_rates.get(key)
+        if existing and existing["daily_rate"] != rate["daily_rate"]:
+            raise ParseError(
+                f"Agreement has conflicting daily rates for CLIN {rate['clin']} and identifier {rate['vin']}"
+            )
+        if not existing:
+            unique_rates[key] = rate
+    return list(unique_rates.values())
 
 
 def enrich_rows(rows: list[dict[str, Any]], rates_by_piid: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

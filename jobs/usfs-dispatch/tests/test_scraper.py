@@ -164,6 +164,52 @@ Section B - Introduction
     assert rate["rate_type"] == "minimum_daily_guarantee"
 
 
+def test_agreement_collapses_exact_duplicate_soi_tables():
+    table = """Table {table} - SOI for Skidder Type 1 (SKD1)
+Serial Number: 6101103 for
+(CA-STCC) Stanislaus Communications Center
+Resource Information Attribute Values & Rates
+Status Awarded
+CLIN 0005
+Serial Number 6101103
+Daily Rate $2,500.00/Day
+"""
+    agreement = "Schedule of Items (SOI)\n" + table.format(table=1) + table.format(table=2) + "Section B - Introduction\n"
+
+    rates = parse_agreement_text(agreement)
+    assert len(rates) == 1
+    assert rates[0]["daily_rate"] == Decimal("2500.00")
+
+
+def test_agreement_rejects_conflicting_duplicate_soi_rates():
+    agreement = """Schedule of Items (SOI)
+Table 1 - SOI for Skidder Type 1 (SKD1)
+Serial Number: 6101103 for
+(CA-STCC) Stanislaus Communications Center
+Resource Information Attribute Values & Rates
+Status Awarded
+CLIN 0005
+Serial Number 6101103
+Daily Rate $2,500.00/Day
+Table 2 - SOI for Skidder Type 1 (SKD1)
+Serial Number: 6101103 for
+(CA-STCC) Stanislaus Communications Center
+Resource Information Attribute Values & Rates
+Status Awarded
+CLIN 0005
+Serial Number 6101103
+Daily Rate $2,600.00/Day
+Section B - Introduction
+"""
+
+    try:
+        parse_agreement_text(agreement)
+    except ParseError as exc:
+        assert "conflicting daily rates" in str(exc)
+    else:
+        raise AssertionError("Expected ParseError")
+
+
 def test_join_does_not_fall_back_to_clin_when_vin_differs():
     row = {"agreement_piid": "12024B26T7074", "clin": "0002", "vin": "VIN-1"}
     rates = [{"clin": "0002", "normalized_vin": "VIN2", "daily_rate": Decimal("1.00")}]
