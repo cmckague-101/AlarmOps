@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sync_supabase import selection_priority
+import sync_supabase
+from scraper import UpstreamNotFoundError
+from sync_supabase import process_list, selection_priority
 
 
 def args(**overrides):
@@ -46,3 +48,38 @@ def test_incremental_mode_skips_complete_list_reconciliation():
 
 def test_recent_complete_list_is_not_selected():
     assert selection_priority(item(), previous(checked_days_ago=1), args()) is None
+
+
+def test_missing_agreement_pdf_is_warning_not_retryable_error(monkeypatch):
+    class Client:
+        @staticmethod
+        def dpl_pdf(file_id):
+            return SimpleNamespace(content=b"dpl")
+
+        @staticmethod
+        def agreement_pdf(piid):
+            raise UpstreamNotFoundError("missing")
+
+    monkeypatch.setattr(
+        sync_supabase,
+        "parse_dpl",
+        lambda content: {
+            "dispatch_center": "Test Center",
+            "resource_type": "Test Type",
+            "published_on": None,
+            "rows": [
+                {
+                    "rank": "1",
+                    "agreement_piid": "12024B26T8994",
+                    "company_name": "Test Company",
+                    "vin": "TEST-VIN",
+                }
+            ],
+        },
+    )
+
+    parsed, _, agreements, errors, warnings = process_list(Client(), {"id": 1})
+    assert agreements == {}
+    assert errors == []
+    assert warnings == ["12024B26T8994: agreement PDF unavailable from USDA (404)"]
+    assert parsed["rows"][0]["rate_status"] == "not_found"

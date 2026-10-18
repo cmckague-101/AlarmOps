@@ -19,7 +19,7 @@ Contact information is not collected or stored. Agreement PIID and CLIN remain i
 
 `.github/workflows/sync-usfs-dispatch.yml` is temporarily manual-only while initial backfill runs locally. When daily scheduling is restored, incremental mode discovers the full catalog, then processes up to ten lists in this order: new or metadata-changed, partial or failed, then pending. Complete lists are skipped during incremental runs, so historical reconciliation cannot delay new publications.
 
-List states are `pending`, `complete`, `partial`, or `failed`. Partial and failed lists retry on later runs. Unexpected empty parser output fails without replacing existing rows. Agreement rates are normalized and joined at read time, preventing copied rates from becoming stale.
+List states are `pending`, `complete`, `partial`, or `failed`. Partial and failed lists retry on later runs. A confirmed USDA agreement-PDF 404 is stored as a warning on a complete DPL, with affected rates exposed as `not_found`; it does not consume a retry slot forever. Other upstream, network, and parser errors remain retryable. Unexpected empty parser output fails without replacing existing rows. Agreement rates are normalized and joined at read time, preventing copied rates from becoming stale.
 
 Run initial backfill locally in controlled batches without `--incremental-only`:
 

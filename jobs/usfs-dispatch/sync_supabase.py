@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from scraper import (  # noqa: E402
     ForestServiceClient,
+    UpstreamNotFoundError,
     enrich_rows,
     normalize_vin,
     parse_agreement_rates,
@@ -198,9 +199,18 @@ def parse_published_at(value: str | None) -> datetime | None:
     return None
 
 
-def write_list(connection, item, parsed, dpl_sha: str, agreement_data, errors: list[str]) -> None:
+def write_list(
+    connection,
+    item,
+    parsed,
+    dpl_sha: str,
+    agreement_data,
+    errors: list[str],
+    warnings: list[str],
+) -> None:
     file_id = int(item["id"])
     status = "partial" if errors else "complete"
+    messages = errors + warnings
     with connection.cursor() as cursor:
         for piid, agreement in agreement_data.items():
             cursor.execute(
@@ -271,7 +281,7 @@ def write_list(connection, item, parsed, dpl_sha: str, agreement_data, errors: l
                 parse_published_at(parsed.get("published_on")),
                 dpl_sha,
                 status,
-                "\n".join(errors) or None,
+                "\n".join(messages) or None,
                 len(parsed["rows"]),
                 status,
                 file_id,
@@ -299,6 +309,7 @@ def process_list(client: ForestServiceClient, item: dict[str, Any]):
     rates_by_piid: dict[str, list[dict[str, Any]]] = {}
     agreements: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
+    warnings: list[str] = []
 
     for row in parsed["rows"]:
         row["normalized_vin"] = normalize_vin(row.get("vin"))
@@ -311,12 +322,15 @@ def process_list(client: ForestServiceClient, item: dict[str, Any]):
                 "rates": rates,
                 "sha256": hashlib.sha256(agreement.content).hexdigest(),
             }
+        except UpstreamNotFoundError:
+            rates_by_piid[piid] = []
+            warnings.append(f"{piid}: agreement PDF unavailable from USDA (404)")
         except Exception as exc:
             rates_by_piid[piid] = []
             errors.append(f"{piid}: {exc}")
 
     parsed["rows"] = enrich_rows(parsed["rows"], rates_by_piid)
-    return parsed, hashlib.sha256(dpl.content).hexdigest(), agreements, errors
+    return parsed, hashlib.sha256(dpl.content).hexdigest(), agreements, errors, warnings
 
 
 def selection_priority(
@@ -381,11 +395,13 @@ def main() -> int:
         file_id = int(item["id"])
         print(f"[{number}/{len(targets)}] DPL {file_id}: {item['name']}", flush=True)
         try:
-            parsed, dpl_sha, agreements, errors = process_list(client, item)
+            parsed, dpl_sha, agreements, errors, warnings = process_list(client, item)
             total_entries += len(parsed["rows"])
             all_errors.extend(f"DPL {file_id} {error}" for error in errors)
+            for warning in warnings:
+                print(f"  WARNING: {warning}", flush=True)
             if connection:
-                write_list(connection, item, parsed, dpl_sha, agreements, errors)
+                write_list(connection, item, parsed, dpl_sha, agreements, errors, warnings)
             else:
                 matched = sum(row["rate_status"] == "matched" for row in parsed["rows"])
                 print(f"  dry-run: {len(parsed['rows'])} rows, {matched} VIN rates matched")

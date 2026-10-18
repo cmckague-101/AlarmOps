@@ -27,6 +27,10 @@ class UpstreamError(RuntimeError):
     pass
 
 
+class UpstreamNotFoundError(UpstreamError):
+    pass
+
+
 class ParseError(RuntimeError):
     pass
 
@@ -81,6 +85,8 @@ class ForestServiceClient:
                     self._last_request = time.monotonic()
                     last_error = exc
             time.sleep(max(server_wait, (2**attempt) + random.random()))
+        if isinstance(last_error, HTTPError) and last_error.code == 404:
+            raise UpstreamNotFoundError(f"USDA source not found: {url}") from last_error
         raise UpstreamError(f"USDA request failed: {last_error}") from last_error
 
     @staticmethod
