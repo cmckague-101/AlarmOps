@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Engine 701 wildfire engine</title>
+  <desc id="desc">Fictional red Type 3 wildfire engine parked on a forest road</desc>
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#8eb6ca"/><stop offset="1" stop-color="#e8d6b4"/></linearGradient>
+    <linearGradient id="ground" x2="0" y2="1"><stop stop-color="#9a815f"/><stop offset="1" stop-color="#4b4538"/></linearGradient>
+    <linearGradient id="red" x2="0" y2="1"><stop stop-color="#d63e2b"/><stop offset=".52" stop-color="#a91f18"/><stop offset="1" stop-color="#771813"/></linearGradient>
+    <linearGradient id="glass" x2="0" y2="1"><stop stop-color="#b9d8df"/><stop offset="1" stop-color="#334b50"/></linearGradient>
+    <filter id="grain"><feTurbulence baseFrequency=".65" numOctaves="3" seed="17" type="fractalNoise"/><feColorMatrix values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 .09 0"/></filter>
+    <filter id="shadow"><feGaussianBlur stdDeviation="16"/></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <path d="M0 350 120 225l80 66 105-141 112 135 115-181 129 188 89-113 121 124 102-151 157 199v164H0Z" fill="#536a5b"/>
+  <path d="M0 391 119 294l77 71 92-115 98 120 95-91 113 99 109-136 102 136 105-94 104 104 86-55v199H0Z" fill="#304a3a"/>
+  <g fill="#1e382b"><path d="m44 454 71-279 70 279Z"/><path d="m125 460 57-223 58 223Z"/><path d="m976 454 69-276 72 276Z"/><path d="m1061 460 52-218 61 218Z"/></g>
+  <path d="M0 458c229-25 392-19 598 7 203-21 405-27 602-2v337H0Z" fill="url(#ground)"/>
+  <path d="M0 602c260-55 567-66 1200-26v224H0Z" fill="#6f6752"/>
+  <path d="M0 664c300-78 686-89 1200-36" fill="none" stroke="#b7a278" stroke-width="10" opacity=".38"/>
+  <ellipse cx="617" cy="665" rx="449" ry="69" fill="#1c211d" opacity=".42" filter="url(#shadow)"/>
+  <g transform="translate(129 247)">
+    <path d="M86 300h70l47-133c10-28 33-46 62-46h160c32 0 51 14 67 42l34 60h352c42 0 70 28 70 69v168H86Z" fill="url(#red)" stroke="#681a16" stroke-width="7"/>
+    <path d="M196 287 238 174c6-17 19-25 38-25h63v138Z" fill="url(#glass)" stroke="#243638" stroke-width="7"/>
+    <path d="M356 149h67c18 0 29 8 38 25l61 113H356Z" fill="url(#glass)" stroke="#243638" stroke-width="7"/>
+    <path d="M527 240h353c26 0 45 18 45 43v96H527Z" fill="#b8261d"/>
+    <path d="M548 260h96v99h-96Zm112 0h96v99h-96Zm112 0h126v99H772Z" fill="#d7d8d1" stroke="#777b75" stroke-width="5"/>
+    <path d="M559 276h73m-73 20h73m-73 20h73m112-40h-73m73 20h-73m73 20h-73m112-40h-98m98 20h-98m98 20h-98" stroke="#969991" stroke-width="4"/>
+    <path d="M113 328h83v81h-83Z" fill="#e03629"/><path d="M98 363h38v30H98Z" fill="#f5d69a" stroke="#704f35" stroke-width="5"/>
+    <path d="M83 420h870v48H83Z" fill="#292d2c"/><path d="M506 394h430v32H506Z" fill="#e9e8df" stroke="#7c7f79" stroke-width="5"/>
+    <path d="M176 300h334v15H176Z" fill="#f5d437"/><path d="M525 377h397v13H525Z" fill="#f5d437"/>
+    <path d="M430 126h68v20h-68Z" fill="#222b2d"/><rect x="444" y="105" width="42" height="22" rx="7" fill="#f1b32d"/>
+    <circle cx="286" cy="455" r="78" fill="#202423" stroke="#121514" stroke-width="12"/><circle cx="286" cy="455" r="35" fill="#a3a59f" stroke="#565b58" stroke-width="9"/>
+    <circle cx="791" cy="455" r="78" fill="#202423" stroke="#121514" stroke-width="12"/><circle cx="791" cy="455" r="35" fill="#a3a59f" stroke="#565b58" stroke-width="9"/>
+    <path d="M370 306v110M222 315v65" stroke="#681a16" stroke-width="6"/><path d="M387 327h44" stroke="#ddd" stroke-width="8" stroke-linecap="round"/>
+    <text x="399" y="369" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-weight="800" font-size="42">701</text>
+    <text x="716" y="232" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-weight="700" font-size="24" letter-spacing="4">NORTH RIDGE WILDFIRE</text>
+  </g>
+  <rect width="1200" height="800" filter="url(#grain)" opacity=".42"/>
+</svg>

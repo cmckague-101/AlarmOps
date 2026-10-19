@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Dozer 4 wildland bulldozer</title>
+  <desc id="desc">Fictional yellow Caterpillar-style bulldozer on a forest firebreak</desc>
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#8caeb7"/><stop offset="1" stop-color="#e4c797"/></linearGradient>
+    <linearGradient id="ground" x2="0" y2="1"><stop stop-color="#987d54"/><stop offset="1" stop-color="#4c4131"/></linearGradient>
+    <linearGradient id="yellow" x2="0" y2="1"><stop stop-color="#f2bb27"/><stop offset=".55" stop-color="#cf8611"/><stop offset="1" stop-color="#8e5310"/></linearGradient>
+    <linearGradient id="blade" x2="0" y2="1"><stop stop-color="#d1d0c5"/><stop offset="1" stop-color="#656a66"/></linearGradient>
+    <linearGradient id="glass" x2="0" y2="1"><stop stop-color="#a9ccd0"/><stop offset="1" stop-color="#233b3e"/></linearGradient>
+    <filter id="grain"><feTurbulence baseFrequency=".72" numOctaves="3" seed="41"/><feColorMatrix values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 .1 0"/></filter>
+    <filter id="shadow"><feGaussianBlur stdDeviation="16"/></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <path d="M0 354 127 227l91 93 114-165 133 179 123-143 126 154 110-177 147 173 103-108 126 126v180H0Z" fill="#5d6c5b"/>
+  <path d="M0 415 130 324l87 76 91-113 114 123 103-106 105 111 97-126 103 126 111-97 96 97 63-42v171H0Z" fill="#334936"/>
+  <g fill="#203526"><path d="m35 500 66-263 69 263Z"/><path d="m132 505 49-202 53 202Z"/><path d="m1011 498 69-269 68 269Z"/><path d="m1097 503 45-195 51 195Z"/></g>
+  <path d="M0 489c214-23 391-11 563 26 187-43 404-49 637-27v312H0Z" fill="url(#ground)"/>
+  <path d="M0 675c329-99 740-106 1200-27" fill="none" stroke="#b99b65" stroke-width="15" opacity=".38"/>
+  <ellipse cx="612" cy="670" rx="445" ry="70" fill="#151914" opacity=".43" filter="url(#shadow)"/>
+  <g transform="translate(126 210)">
+    <path d="M301 382h483l92 75-56 114H257l-51-90Z" fill="#343a36" stroke="#171b19" stroke-width="10"/>
+    <path d="M290 417h487l56 54-33 64H278l-31-58Z" fill="#171b19"/>
+    <g fill="#6e746e"><circle cx="330" cy="477" r="45"/><circle cx="429" cy="477" r="45"/><circle cx="528" cy="477" r="45"/><circle cx="627" cy="477" r="45"/><circle cx="726" cy="477" r="45"/></g>
+    <g fill="#a8aaa2"><circle cx="330" cy="477" r="22"/><circle cx="429" cy="477" r="22"/><circle cx="528" cy="477" r="22"/><circle cx="627" cy="477" r="22"/><circle cx="726" cy="477" r="22"/></g>
+    <path d="M339 193h316l127 219H281Z" fill="url(#yellow)" stroke="#80500f" stroke-width="8"/>
+    <path d="M405 40h212l58 168H370Z" fill="#d99717" stroke="#80500f" stroke-width="8"/>
+    <path d="M423 63h78v122H393Z" fill="url(#glass)" stroke="#293d3e" stroke-width="7"/><path d="M520 63h78l45 122H520Z" fill="url(#glass)" stroke="#293d3e" stroke-width="7"/>
+    <path d="M378 27h248v34H378Z" fill="#262e2a"/><path d="M395 2h29v29h-29Zm184 0h29v29h-29Z" fill="#2a312e"/><rect x="399" y="-11" width="21" height="14" rx="4" fill="#f2b62c"/><rect x="583" y="-11" width="21" height="14" rx="4" fill="#f2b62c"/>
+    <path d="M661 218h101l76 186H701Z" fill="#bd7410"/><path d="M323 218h337v172H280Z" fill="#df9817"/>
+    <path d="M328 252h283v67H309Z" fill="#272e2b"/><path d="M345 266h235v16H342Zm-8 30h251" stroke="#555c57" stroke-width="10"/>
+    <path d="M275 342h481v57H275Z" fill="#b66f10"/><text x="646" y="374" fill="#232925" font-family="Arial,sans-serif" font-size="34" font-weight="900">D7R</text>
+    <path d="m289 342-106 52-69 114" fill="none" stroke="#d18a16" stroke-width="29"/><path d="m761 343 83 50 42 111" fill="none" stroke="#d18a16" stroke-width="29"/>
+    <path d="M57 374h127l53 198H45C23 513 18 449 57 374Z" fill="url(#blade)" stroke="#555b57" stroke-width="9"/>
+    <path d="M45 546h197v32H48Z" fill="#555a56"/>
+    <path d="M877 389h40v130h-40Z" fill="#383e3a"/>
+    <text x="498" y="238" text-anchor="middle" fill="#2c302c" font-family="Arial,sans-serif" font-size="27" font-weight="900" letter-spacing="2">NORTH RIDGE</text>
+    <text x="498" y="369" text-anchor="middle" fill="#fff1c1" font-family="Arial,sans-serif" font-size="30" font-weight="900">DOZER 4</text>
+  </g>
+  <rect width="1200" height="800" filter="url(#grain)" opacity=".42"/>
+</svg>
