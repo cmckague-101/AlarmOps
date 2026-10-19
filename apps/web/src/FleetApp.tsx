@@ -170,7 +170,7 @@ export default function FleetApp() {
   const enterDemo=()=>setDemoMode(true);
   const exitDemo=()=>setDemoMode(false);
   if(demoMode)return <App demoMode onSignOut={exitDemo}/>;
-  if(loginPreview)return <FleetLogin onDemo={enterDemo}/>;
+  if(loginPreview||new URLSearchParams(window.location.search).get('info')==='1')return <FleetLogin onDemo={enterDemo}/>;
   if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'
     ? <App demoMode/>
     : <FleetConfigurationError/>;
@@ -180,6 +180,9 @@ export default function FleetApp() {
 }
 
 function FleetLogin({onDemo}:{onDemo:()=>void}){
+  useEffect(()=>{
+    if(window.location.hash==='#pricing')document.getElementById('pricing')?.scrollIntoView();
+  },[]);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [error,setError]=useState('');
