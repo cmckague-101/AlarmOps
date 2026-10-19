@@ -11,6 +11,7 @@ import { AppSymbol } from '@/components/app-symbol';
 import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
 import { getTimeOfDayGreeting } from '@/lib/time-of-day-greeting';
+import { usePayroll } from '@/lib/payroll-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -41,6 +42,7 @@ export default function DashboardScreen() {
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, crew, activities, loading, refreshing, error } = useFleetVehicles(companyId);
+  const {forms:payrolls,refreshing:payrollRefreshing}=usePayroll(companyId);
   const { notifications: inboxNotifications, unreadCount: unreadNotifications, refreshing: notificationsRefreshing } = useNotificationInbox(companyId, user?.id ?? null, user?.role ?? null);
 
   const attention = vehicles.filter((vehicle) => ATTENTION_STATUSES.includes(normalized(vehicle.status))).length;
@@ -68,7 +70,7 @@ export default function DashboardScreen() {
     void refreshNotificationInbox();
   };
 
-  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || notificationsRefreshing} error={error}/>;
+  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} payrolls={payrolls} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || payrollRefreshing || notificationsRefreshing} error={error}/>;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>

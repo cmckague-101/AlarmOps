@@ -12,7 +12,7 @@ const PAYROLL_FILE_LIMIT = 10 * 1024 * 1024;
 function payrollFileType(file:File){return file.type||(/\.pdf$/i.test(file.name)?'application/pdf':/\.hei[cf]$/i.test(file.name)?'image/heic':'')}
 function safePayrollFileName(name:string){return name.trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'attachment'}
 
-export default function PayrollPage({companyId,user,crew}:{companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
+export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void}) {
   const manager = isCompanyManager(user.role);
   const [forms,setForms] = useState<PayrollForm[]>([]);
   const [selected,setSelected] = useState<PayrollForm|null>(null);
@@ -35,6 +35,7 @@ export default function PayrollPage({companyId,user,crew}:{companyId?:string;use
     const loaded=((data??[]) as PayrollRow[]).map(fromRow);setForms(loaded);setDraft(loaded.find(form=>(form.status==='draft'||form.status==='rejected')&&form.createdBy===user.id)??null);setError('');setLoading(false);
   },[companyId,user.id]);
   useEffect(()=>{void load();if(!supabase||!companyId)return;const client=supabase;const channel=client.channel(`payroll:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'payroll_forms',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{void client.removeChannel(channel)}},[companyId,load]);
+  useEffect(()=>{if(!requestedPayrollId||loading)return;const requested=forms.find(form=>form.id===requestedPayrollId);if(requested)setSelected(requested);onPayrollOpened?.()},[forms,loading,onPayrollOpened,requestedPayrollId]);
   useEffect(()=>()=>{if(saveTimer.current)clearTimeout(saveTimer.current)},[]);
 
   function newForm(){

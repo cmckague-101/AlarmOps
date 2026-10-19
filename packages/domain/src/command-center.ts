@@ -1,7 +1,22 @@
 import type {CrewMember, FleetIssue, NifcIncident} from './models';
 
 export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>};
-export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:{type:'vehicle'|'crew'|'issue'|'incident';id:string}};
+export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll';id:string};
+export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:CommandTarget};
+export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'};
+export type CommandPayroll = {id:string;createdByName:string;engineNumber:string;incidents:string;status:string};
+
+export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payrolls:CommandPayroll[]):CommandAlert[] {
+  const rank={Critical:0,High:1,Medium:2,Low:3};
+  const vehicleAlerts=vehicles.flatMap(vehicle=>{
+    const open=issues.filter(issue=>issue.vehicleId===vehicle.id&&issue.status==='Open').sort((a,b)=>rank[a.priority]-rank[b.priority]);
+    if(!open.length)return [];
+    const highest=open[0];
+    return [{id:`vehicle-${vehicle.id}`,kind:'vehicle' as const,title:`${vehicle.unit} has ${open.length} open ${open.length===1?'issue':'issues'}`,detail:open.map(issue=>issue.title).join(' · '),badge:highest.priority,urgent:highest.priority==='Critical'||highest.priority==='High',lines:[],target:{type:'vehicle' as const,id:vehicle.id}}];
+  });
+  const payrollAlerts=payrolls.filter(form=>form.status==='pending').map(form=>({id:`payroll-${form.id}`,kind:'payroll' as const,title:`${form.createdByName}'s payroll needs approval`,detail:[form.engineNumber&&`Resource ${form.engineNumber}`,form.incidents].filter(Boolean).join(' · ')||'Submitted payroll',badge:'Approval',urgent:false,lines:[],target:{type:'payroll' as const,id:form.id}}));
+  return [...vehicleAlerts,...payrollAlerts];
+}
 export function commandCenter(vehicles:CommandVehicle[],crew:CrewMember[],issues:FleetIssue[]) {
   const assigned=vehicles.filter(vehicle=>Boolean(vehicle.assignedTo));
   const fires=new Map<string,CommandVehicle[]>();

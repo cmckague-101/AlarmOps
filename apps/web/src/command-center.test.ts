@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {commandCenter,type CrewMember,type FleetIssue} from '@fireops/domain';
+import {commandAlerts,commandCenter,type CrewMember,type FleetIssue} from '@fireops/domain';
 const crew:CrewMember[]=[{id:'a',name:'Alex',email:'',phone:'',role:'fire_fighter',status:'Active'},{id:'b',name:'Blair',email:'',phone:'',role:'shop_tech',status:'Active'}];
 const fire={id:'fire',name:'Walker Fire',state:'OR'};
 describe('owner command center',()=>{
@@ -19,5 +19,13 @@ describe('owner command center',()=>{
     expect(attention.rows.map(r=>r.id)).toEqual(['critical','low']);
     expect(attention.summary).toBe('1 critical alerts');
     expect(attention.rows[0].target).toEqual({type:'issue',id:'critical'});
+  });
+  it('builds vehicle and pending payroll alerts with detail destinations',()=>{
+    const vehicle={id:'truck',unit:'Engine 4',status:'Ready'};
+    const issue={id:'issue',vehicleId:'truck',title:'Pump leak',description:'Review',priority:'High',status:'Open',updates:[],createdBy:'Alex',createdAt:'2026-01-01'} as FleetIssue;
+    const alerts=commandAlerts([vehicle],[issue],[{id:'payroll',createdByName:'Alex',engineNumber:'E-4',incidents:'Walker Fire',status:'pending'},{id:'done',createdByName:'Blair',engineNumber:'',incidents:'',status:'approved'}]);
+    expect(alerts.map(alert=>alert.target)).toEqual([{type:'vehicle',id:'truck'},{type:'payroll',id:'payroll'}]);
+    expect(alerts[0].title).toBe('Engine 4 has 1 open issue');
+    expect(alerts[1].title).toBe("Alex's payroll needs approval");
   });
 });
