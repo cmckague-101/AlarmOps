@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {crewCredentials,isCompanyManager,type AssignableUserRole} from '@fireops/domain';
-import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, ReceiptText, ShieldCheck, Smartphone, Truck } from 'lucide-react';
+import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, ShieldCheck, Smartphone, Truck } from 'lucide-react';
 import App, { type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewCredential, type CrewExperience, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveAuthorization, type MotiveConnection, type UserRole, type VehicleFile, type VehicleNote, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
@@ -157,6 +157,7 @@ export function snapshotFilePaths(snapshot:FleetSnapshot){
 export default function FleetApp() {
   const [session,setSession]=useState<Session|null>(null);
   const [checking,setChecking]=useState(true);
+  const [demoMode,setDemoMode]=useState(false);
 
   useEffect(()=>{
     if(!supabase){setChecking(false);return}
@@ -166,16 +167,19 @@ export default function FleetApp() {
   },[]);
 
   const loginPreview=import.meta.env.DEV&&typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('login-preview')==='1';
-  if(loginPreview)return <FleetLogin/>;
+  const enterDemo=()=>setDemoMode(true);
+  const exitDemo=()=>setDemoMode(false);
+  if(demoMode)return <App demoMode onSignOut={exitDemo}/>;
+  if(loginPreview)return <FleetLogin onDemo={enterDemo}/>;
   if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'
-    ? <App/>
+    ? <App demoMode/>
     : <FleetConfigurationError/>;
   if(checking)return <FleetMessage text="Checking your session..."/>;
-  if(!session)return <FleetLogin/>;
+  if(!session)return <FleetLogin onDemo={enterDemo}/>;
   return <AuthenticatedFleet session={session}/>;
 }
 
-function FleetLogin(){
+function FleetLogin({onDemo}:{onDemo:()=>void}){
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [error,setError]=useState('');
@@ -200,7 +204,7 @@ function FleetLogin(){
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
-        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps"/></div>
+        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a></nav></div>
         <div className="login-intro">
           <p className="login-eyebrow">Wildland operations, connected</p>
           <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
@@ -225,6 +229,9 @@ function FleetLogin(){
           </div>
           {error&&<div className="admin-error" role="alert">{error}</div>}
           <button className="login-submit" disabled={busy}>{busy?'Signing in...':'Sign in to FireOps'}</button>
+          <div className="login-demo-divider"><span>or</span></div>
+          <button type="button" className="login-demo" disabled={busy} onClick={onDemo}><Gauge aria-hidden="true"/> Explore demo</button>
+          <p className="login-demo-note">No account required. Changes disappear when demo ends.</p>
           <p className="login-access-note"><ShieldCheck aria-hidden="true"/> Authorized personnel only</p>
         </form>
       </section>
@@ -267,6 +274,21 @@ function FleetLogin(){
         </div>
       </section>
 
+      <section className="login-pricing" id="pricing" aria-labelledby="pricing-title">
+        <div className="login-section-heading">
+          <p className="login-section-kicker">Plans for every operation</p>
+          <h2 id="pricing-title">Start lean. Scale when fire season demands it.</h2>
+          <p>Choose individual career tools or a shared operating workspace for your company.</p>
+        </div>
+        <div className="pricing-grid">
+          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em></article>
+          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em></article>
+          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em></article>
+          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p></article>
+          <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p></article>
+        </div>
+      </section>
+
       <section className="login-mobile" aria-labelledby="mobile-title">
         <div className="login-mobile-copy">
           <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> FireOps mobile</p>
@@ -301,9 +323,14 @@ function FleetLogin(){
         <p>FireOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</p>
       </section>
 
-      <section className="login-contact" aria-labelledby="contact-title">
+      <section className="login-contact" id="contact" aria-labelledby="contact-title">
+        <p className="login-section-kicker">Talk with Fireco</p>
         <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
-        <a href="mailto:thetinykings@icloud.com"><Mail aria-hidden="true"/> Contact us</a>
+        <div className="contact-card">
+          <div><span>CM</span><p><b>Clint McKague</b><small>General Manager</small></p></div>
+          <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>
+          <a href="mailto:Clint@firecollc.com"><Mail aria-hidden="true"/> Clint@firecollc.com</a>
+        </div>
       </section>
     </main>
 

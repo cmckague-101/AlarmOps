@@ -35,7 +35,7 @@ Users work from offices and field environments. Mobile primarily serves crew mem
 - Owners assign crewed vehicles to active NIFC fires from vehicle details. Fire assignments appear in Fleet and Operations.
 - Supabase provides authentication and company data shared by web, iOS, and Android.
 - Mobile uses existing invited accounts with email/password login and no public signup.
-- Demo mode uses browser storage and remains web-only.
+- Demo mode remains web-only, uses in-memory sample data, and discards changes when user exits.
 
 ## Brand commitments
 

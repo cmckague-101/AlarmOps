@@ -99,7 +99,10 @@ const seedCrew: CrewMember[] = [
   {id:'u3',name:'Cole Bennett',email:'cole@northridgewildfire.com',phone:'(530) 555-0117',role:'shop_tech',status:'Active',joinedAt:'2025-02-02'}
 ];
 
+let suppressLocalPersistence=false;
+
 function saveLocal(key: string, value: unknown) {
+  if(suppressLocalPersistence)return true;
   try { localStorage.setItem(key, JSON.stringify(value)); return true; }
   catch { return false; }
 }
@@ -111,18 +114,22 @@ function binderDocument(vehicle:Vehicle,key:VehicleDocumentKey,label:string):Nam
 }
 
 function loadDemoMotiveConnection():MotiveConnection {
+  if(suppressLocalPersistence)return {connected:false,mock:true};
   try {const stored=localStorage.getItem('fireops-motive-demo');return stored?JSON.parse(stored) as MotiveConnection:{connected:false,mock:true}}
   catch{return {connected:false,mock:true}}
 }
 function loadVehicles() {
+  if(suppressLocalPersistence)return normalizeVehicles(seed);
   try { const stored = localStorage.getItem('fireops-vehicles'); return normalizeVehicles(stored ? JSON.parse(stored) as Vehicle[] : seed); }
   catch { return seed; }
 }
 function loadCrew() {
+  if(suppressLocalPersistence)return seedCrew;
   try { const stored = localStorage.getItem('fireops-crew'); return stored ? JSON.parse(stored) as CrewMember[] : seedCrew; }
   catch { return seedCrew; }
 }
 function loadActivities() {
+  if(suppressLocalPersistence)return seed.map(vehicle=>({id:`vehicle-${vehicle.id}`,action:`${vehicle.unit} added to fleet`,detail:'Vehicle record created',createdBy:'Ryan Mitchell',createdAt:vehicle.createdAt,targetType:'vehicle' as const,targetId:vehicle.id,tone:'complete' as const}));
   try {
     const stored = localStorage.getItem('fireops-activities');
     if (stored) return JSON.parse(stored) as Activity[];
@@ -134,26 +141,32 @@ function loadActivities() {
   } catch { return []; }
 }
 function loadCommunicationThreads() {
+  if(suppressLocalPersistence)return [];
   try {const stored=localStorage.getItem('fireops-communication-threads');return stored?JSON.parse(stored) as CommunicationThread[]:[]}
   catch{return []}
 }
 function loadCompanyDocuments() {
+  if(suppressLocalPersistence)return [];
   try {const stored=localStorage.getItem('fireops-company-documents');return stored?JSON.parse(stored) as CompanyDocument[]:[]}
   catch{return []}
 }
 function loadTrainings() {
+  if(suppressLocalPersistence)return [];
   try {const stored=localStorage.getItem('fireops-trainings');return stored?JSON.parse(stored) as Training[]:[]}
   catch{return []}
 }
 function loadInventory() {
+  if(suppressLocalPersistence)return [];
   try {const stored=localStorage.getItem('fireops-inventory');return stored?(JSON.parse(stored) as InventoryItem[]).map(item=>({...item,checkouts:item.checkouts??[]})):[]}
   catch{return []}
 }
 function loadVehicleTypes() {
+  if(suppressLocalPersistence)return defaultVehicleTypes;
   try {const stored=localStorage.getItem('fireops-vehicle-types');const parsed=stored?JSON.parse(stored) as VehicleTypeOption[]:defaultVehicleTypes;return parsed.length?parsed:defaultVehicleTypes}
   catch{return defaultVehicleTypes}
 }
 function loadIssues() {
+  if(suppressLocalPersistence)return [];
   try {
     const stored = localStorage.getItem('fireops-issues');
     const parsed = stored ? JSON.parse(stored) as Partial<FleetIssue>[] : [];
@@ -177,13 +190,14 @@ type AppProps={
   onListVehicleNotes?:(vehicleId:string)=>Promise<VehicleNote[]>;onSaveVehicleNote?:(vehicleId:string,note:{id?:string;subject:string;body:string})=>Promise<VehicleNote>;onDeleteVehicleNote?:(noteId:string)=>Promise<void>;
   onCreateVehicleType?:(name:string)=>Promise<VehicleTypeOption>;onDeleteVehicleType?:(type:VehicleTypeOption)=>Promise<void>;onCreateCredential?:(credential:CrewCredential)=>Promise<CrewMember>;onUpdateCredential?:(credential:CrewCredential)=>Promise<CrewMember>;onDeleteCredential?:(credential:CrewCredential)=>Promise<CrewMember>;onCreateExperience?:(experience:CrewExperience)=>Promise<CrewMember>;onUpdateExperience?:(experience:CrewExperience)=>Promise<CrewMember>;onDeleteExperience?:(experience:CrewExperience)=>Promise<CrewMember>;onUpdateAnnualRecord?:(annualRecord:AnnualQualificationRecord)=>Promise<CrewMember>;
   onSubmitFeedback?:(category:AppFeedbackCategory,message:string)=>Promise<void>;
-  onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;
+  onSignOut?:()=>void;onSwitchCompany?:()=>void;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;demoMode?:boolean;
 };
 
-export default function App({user=demoUser,company=demoCompany,companyId,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,vehicleTypeOptions:vehicleTypeData,vehicleTypeError,onDataChange,onInviteCrew,onResendCrewInvite,onUpdateCrewRole,onUpdateCrewDetails,onDeleteCrew,onUpdateCompany,onConnectMotive,onDisconnectMotive,onCaptureMotiveImage,onCreateThread,onDeleteThread,onReplyToThread,onDeleteReply,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onCheckoutInventoryItem,onCheckinInventoryItem,onListVehicleNotes,onSaveVehicleNote,onDeleteVehicleNote,onCreateVehicleType,onDeleteVehicleType,onCreateCredential,onUpdateCredential,onDeleteCredential,onCreateExperience,onUpdateExperience,onDeleteExperience,onUpdateAnnualRecord,onSubmitFeedback,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles}:AppProps) {
+export default function App({user=demoUser,company=demoCompany,companyId,initialData,remoteChanges,motiveConnection,communicationThreads,communicationError,companyDocuments,documentError,trainings:trainingData,trainingError,inventoryItems:inventoryData,inventoryError,vehicleTypeOptions:vehicleTypeData,vehicleTypeError,onDataChange,onInviteCrew,onResendCrewInvite,onUpdateCrewRole,onUpdateCrewDetails,onDeleteCrew,onUpdateCompany,onConnectMotive,onDisconnectMotive,onCaptureMotiveImage,onCreateThread,onDeleteThread,onReplyToThread,onDeleteReply,onMarkThreadSeen,onCreateDocument,onUpdateDocument,onDeleteDocument,onMarkDocumentViewed,onCreateTraining,onUpdateTraining,onDeleteTraining,onSignupTraining,onCancelTrainingSignup,onMarkTrainingViewed,onCreateInventoryItem,onUpdateInventoryItem,onDeleteInventoryItem,onCheckoutInventoryItem,onCheckinInventoryItem,onListVehicleNotes,onSaveVehicleNote,onDeleteVehicleNote,onCreateVehicleType,onDeleteVehicleType,onCreateCredential,onUpdateCredential,onDeleteCredential,onCreateExperience,onUpdateExperience,onDeleteExperience,onUpdateAnnualRecord,onSubmitFeedback,onSignOut,onSwitchCompany,uploadFile,onCommitFiles,onDiscardFiles,demoMode=false}:AppProps) {
+  suppressLocalPersistence=demoMode;
   const currentUser = user;
   const dashboardInbox=useDashboardInbox(companyId,currentUser);
-  const [companyDetails,setCompanyDetails]=useState<CompanyInfo>(()=>{if(onUpdateCompany)return company;try{const stored=localStorage.getItem('fireops-company-profile');return stored?{...company,...JSON.parse(stored) as Partial<CompanyInfo>}:company}catch{return company}});
+  const [companyDetails,setCompanyDetails]=useState<CompanyInfo>(()=>{if(onUpdateCompany||demoMode)return company;try{const stored=localStorage.getItem('fireops-company-profile');return stored?{...company,...JSON.parse(stored) as Partial<CompanyInfo>}:company}catch{return company}});
   useEffect(()=>{if(onUpdateCompany)setCompanyDetails(company)},[company,onUpdateCompany]);
   const updateCompany=async(profile:{name:string;phone:string;location:string;logo?:VehicleFile})=>{
     const next=onUpdateCompany?await onUpdateCompany(profile):{...companyDetails,...profile};
@@ -191,7 +205,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
     setCompanyDetails(next);
     return next;
   };
-  const inspectionTemplate=useInspectionTemplate(companyId??'demo-company');
+  const inspectionTemplate=useInspectionTemplate(companyId??'demo-company',demoMode);
   const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
   const connectDemoMotive=async(clientId:string,_clientSecret:string)=>{const next:MotiveConnection={connected:true,configured:true,clientIdLastFour:clientId.slice(-4),connectedAt:new Date().toISOString(),lastVerifiedAt:new Date().toISOString(),mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return {authorizationUrl:''}};
@@ -579,8 +593,9 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
-      <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?.filter(item=>item.unread).length??unreadThreadCount+unreadTrainingCount):undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany}/>
+      <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?.filter(item=>item.unread).length??unreadThreadCount+unreadTrainingCount):undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany} demoMode={demoMode}/>
       <main>
+        {demoMode&&<div className="demo-mode-banner" role="status"><b>Demo mode</b><span>Explore freely. Changes stay in this session and disappear when you exit.</span></div>}
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
@@ -608,7 +623,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} requestedVehicleId={requestedVehicleId} onVehicleOpened={()=>setRequestedVehicleId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined}))} onAssignVehicle={(vehicleId,fire)=>updateFireAssignment(vehicleId,fire)} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
 
-        {page === 'settings' && <SettingsPage company={companyDetails} userId={currentUser.id} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive} onSubmitFeedback={onSubmitFeedback??(async(category,message)=>{const stored=JSON.parse(localStorage.getItem('fireops-app-feedback')??'[]') as unknown[];localStorage.setItem('fireops-app-feedback',JSON.stringify([...stored,{category,message,createdAt:new Date().toISOString()}]))})}/>}
+        {page === 'settings' && <SettingsPage company={companyDetails} userId={currentUser.id} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive} onSubmitFeedback={onSubmitFeedback??(demoMode?async()=>undefined:async(category,message)=>{const stored=JSON.parse(localStorage.getItem('fireops-app-feedback')??'[]') as unknown[];localStorage.setItem('fireops-app-feedback',JSON.stringify([...stored,{category,message,createdAt:new Date().toISOString()}]))})}/>}
         </div>
       </main>
       <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
@@ -639,9 +654,9 @@ function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTraini
 function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
   return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{icon}<span>{label}</span>{notificationCount>0&&<span className="sidebar-nav-badge" aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>}</button>
 }
-function Topbar({saveState,notificationCount,onNotifications,onSignOut,onSwitchCompany}:{saveState:SaveState;notificationCount?:number;onNotifications?:()=>void;onSignOut?:()=>void;onSwitchCompany?:()=>void}) {
-  const saveLabel=saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
-  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}{notificationCount!==undefined&&<button className="notification-button" onClick={onNotifications} aria-label={notificationCount?`Open notifications, ${notificationCount} unread`:'Open notifications'}><Bell/>{notificationCount>0&&<b>{notificationCount>99?'99+':notificationCount}</b>}</button>}{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>Sign out</span></button>}</div></header>
+function Topbar({saveState,notificationCount,onNotifications,onSignOut,onSwitchCompany,demoMode=false}:{saveState:SaveState;notificationCount?:number;onNotifications?:()=>void;onSignOut?:()=>void;onSwitchCompany?:()=>void;demoMode?:boolean}) {
+  const saveLabel=demoMode?'':saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
+  return <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="topbar-right">{demoMode&&<span className="demo-topbar-label">Demo</span>}{saveLabel&&<div className={`save-status ${saveState}`} role="status" aria-live="polite">{saveState==='saving'?<Clock3/>:saveState==='error'?<CircleAlert/>:null}<span>{saveLabel}</span></div>}{notificationCount!==undefined&&<button className="notification-button" onClick={onNotifications} aria-label={notificationCount?`Open notifications, ${notificationCount} unread`:'Open notifications'}><Bell/>{notificationCount>0&&<b>{notificationCount>99?'99+':notificationCount}</b>}</button>}{onSwitchCompany&&<button className="topbar-signout" onClick={onSwitchCompany}><Building2/><span>Switch company</span></button>}{onSignOut&&<button className="topbar-signout" onClick={onSignOut}><LogOut/><span>{demoMode?'Exit demo':'Sign out'}</span></button>}</div></header>
 }
 
 function InspectionsPage({vehicles,template}:{vehicles:Vehicle[];template:{items:VehicleInspectionTemplateItem[];loading:boolean;error:string;add:(label:string)=>Promise<void>;update:(item:VehicleInspectionTemplateItem,label:string)=>Promise<void>;remove:(item:VehicleInspectionTemplateItem)=>Promise<void>}}) {
@@ -1098,7 +1113,7 @@ function VehicleNotesSection({vehicle,user,onList,onSave,onDelete}:{vehicle:Vehi
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const sorted=[...notes].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
-  useEffect(()=>{let active=true;setLoading(true);setError('');const request=onList?onList(vehicle.id):Promise.resolve((()=>{try{return JSON.parse(localStorage.getItem(storageKey)??'[]') as VehicleNote[]}catch{return []}})());void request.then(items=>{if(active)setNotes(items)}).catch(()=>{if(active)setError('Vehicle notes could not be loaded.')}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[onList,storageKey,vehicle.id]);
+  useEffect(()=>{let active=true;setLoading(true);setError('');const request=onList?onList(vehicle.id):Promise.resolve((()=>{if(suppressLocalPersistence)return [];try{return JSON.parse(localStorage.getItem(storageKey)??'[]') as VehicleNote[]}catch{return []}})());void request.then(items=>{if(active)setNotes(items)}).catch(()=>{if(active)setError('Vehicle notes could not be loaded.')}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[onList,storageKey,vehicle.id]);
   const begin=(note?:VehicleNote)=>{setEditing(note??null);setSubject(note?.subject??'');setBody(note?.body??'');setError('')};
   const save=async(event:React.FormEvent)=>{event.preventDefault();if(!subject.trim()||!body.trim()||saving)return;setSaving(true);setError('');try{const now=new Date().toISOString();const note=onSave?await onSave(vehicle.id,{id:editing?.id,subject:subject.trim(),body:body.trim()}):{id:editing?.id??crypto.randomUUID(),vehicleId:vehicle.id,subject:subject.trim(),body:body.trim(),createdBy:editing?.createdBy??user.name,createdById:editing?.createdById??user.id,createdAt:editing?.createdAt??now,updatedAt:now};const next=[note,...notes.filter(item=>item.id!==note.id)];setNotes(next);if(!onSave)saveLocal(storageKey,next);setEditing(undefined)}catch{setError('Vehicle note could not be saved. Try again.')}finally{setSaving(false)}};
   const remove=async(note:VehicleNote)=>{if(!window.confirm(`Delete “${note.subject}”? This cannot be undone.`))return;setError('');try{await onDelete?.(note.id);const next=notes.filter(item=>item.id!==note.id);setNotes(next);if(!onDelete)saveLocal(storageKey,next)}catch{setError('Vehicle note could not be deleted. Try again.')}};
