@@ -325,7 +325,6 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
         <p className="login-section-kicker">Talk with Fireco</p>
         <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
         <div className="contact-card">
-          <div><span>CM</span><p><b>Clint McKague</b><small>General Manager</small></p></div>
           <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>
           <a href="mailto:Clint@firecollc.com"><Mail aria-hidden="true"/> Clint@firecollc.com</a>
         </div>
