@@ -235,7 +235,6 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
           <div className="login-demo-divider"><span>or</span></div>
           <button type="button" className="login-demo" disabled={busy} onClick={onDemo}><Gauge aria-hidden="true"/> Explore demo</button>
           <p className="login-demo-note">No account required. Changes disappear when demo ends.</p>
-          <p className="login-access-note"><ShieldCheck aria-hidden="true"/> Authorized personnel only</p>
         </form>
       </section>
 
