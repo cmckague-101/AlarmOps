@@ -119,11 +119,16 @@ export type Activity = {
 
 export type FireOpsUser = {id:string;name:string;role:UserRole};
 export type CompanyInfo = {name:string;code:string;industry:string;phone?:string;location?:string;logo?:VehicleFile;crewInviteLimit:number;crewInvitedCount:number};
+export type MotiveDiagnosticCode = {
+  id:string;code:string;label:string;description?:string;status:'open'|'closed';type?:'constant'|'intermittent';
+  firstObservedAt?:string;lastObservedAt?:string;occurrenceCount?:number;severity?:string;network?:string;
+};
 export type MotiveVehicleSnapshot = {
   vin:string;location:string;speed:string;updatedAt:string;fleetVehicleId?:string;motiveId?:string;entityType?:'vehicle'|'asset';latitude?:number;longitude?:number;
+  diagnostics?:MotiveDiagnosticCode[];
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
 };
-export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;syncedAt?:string;matched?:number;unmatched?:number;duplicateVins?:string[];mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
+export type MotiveConnection = {connected:boolean;configured?:boolean;clientIdLastFour?:string;connectedAt?:string;lastVerifiedAt?:string;tokenExpiresAt?:string;syncedAt?:string;matched?:number;unmatched?:number;duplicateVins?:string[];diagnosticsAvailable?:boolean;mock?:boolean;vehicles?:MotiveVehicleSnapshot[]};
 export type MotiveCameraCapture = {imageUrl:string;capturedAt:string;expiresAt?:string;position:string};
 export type MotiveCameraCaptureRequest =
   | {status:'pending';requestId:string;cameraType:'dashcam'|'omnicam';position:string;capturedAt?:string}

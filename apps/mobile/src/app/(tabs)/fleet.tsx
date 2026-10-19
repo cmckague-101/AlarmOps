@@ -61,9 +61,9 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
         <Text style={styles.vehicleMeta} numberOfLines={1}>
           {[vehicle.type, vehicle.detail].filter(Boolean).join(' · ')}
         </Text>
-        {assignedName || vehicle.location || issueCount > 0 ? (
-          <Text style={[styles.location, issueCount > 0 && styles.issueCount]} numberOfLines={1}>
-            {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null].filter(Boolean).join(' · ')}
+        {assignedName || vehicle.location || issueCount > 0 || vehicle.motive?.diagnostics?.length ? (
+          <Text style={[styles.location, (issueCount > 0 || Boolean(vehicle.motive?.diagnostics?.length)) && styles.issueCount]} numberOfLines={1}>
+            {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null, vehicle.motive?.diagnostics?.length ? `${vehicle.motive.diagnostics.length} diagnostic ${vehicle.motive.diagnostics.length === 1 ? 'code' : 'codes'}` : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
       </View>

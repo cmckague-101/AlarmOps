@@ -11,6 +11,7 @@ const motiveScopes = [
   'locations.vehicle_locations_list',
   'locations.vehicle_locations_single',
   'locations.asset_locations',
+  'fault_codes.read',
   'camera_connections.read',
 ].join(' ');
 
@@ -22,7 +23,11 @@ type MotiveIntegration = {
   encrypted_access_token:string|null;access_token_iv:string|null;encrypted_refresh_token:string|null;refresh_token_iv:string|null;token_expires_at:string|null;
   last_sync_at:string|null;sync_snapshot:Record<string,unknown>|null;
 };
-type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number};
+type MotiveDiagnosticCode = {
+  id:string;code:string;label:string;description?:string;status:'open'|'closed';type?:'constant'|'intermittent';
+  firstObservedAt?:string;lastObservedAt?:string;occurrenceCount?:number;severity?:string;network?:string;
+};
+type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number;diagnostics?:MotiveDiagnosticCode[]};
 type MotiveCaptureResponse = {
   request_id?:string|number;camera_type?:string;position?:string;status?:string;failure_reason?:string;created_at?:string;
   error?:string|{message?:string};message?:string;errors?:Array<string|{message?:string}>;
@@ -145,6 +150,29 @@ async function motivePages(path:string,token:string,key:'vehicles'|'assets'){
 
 function normalizedVin(value:unknown){return typeof value==='string'?value.trim().toUpperCase():'';}
 function finiteNumber(value:unknown){const parsed=Number(value);return Number.isFinite(parsed)?parsed:undefined;}
+function optionalText(value:unknown){return typeof value==='string'&&value.trim()?value.trim():undefined;}
+async function motiveFaultCodes(token:string){
+  const records:unknown[]=[];
+  for(let page=1;page<=100;page+=1){
+    const url=new URL('https://api.gomotive.com/v1/fault_codes');url.searchParams.set('status','open');url.searchParams.set('per_page','100');url.searchParams.set('page_no',String(page));
+    const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal:AbortSignal.timeout(15000)});
+    if(!response.ok){const error=new Error(response.status===403?'Motive diagnostic-code permission missing. Reconnect Motive to authorize fault codes.':`Motive diagnostic-code request failed (${response.status}).`) as Error&{status?:number};error.status=response.status;throw error;}
+    const body=await response.json() as Record<string,unknown>;const pageRecords=Array.isArray(body.fault_codes)?body.fault_codes:[];records.push(...pageRecords);
+    if(!pageRecords.length||records.length>=Number(body.total??records.length))break;
+  }
+  return records;
+}
+function diagnosticsByVehicle(rows:unknown[]){
+  const byVehicleId=new Map<string,MotiveDiagnosticCode[]>();const byVin=new Map<string,MotiveDiagnosticCode[]>();
+  for(const row of rows){
+    const fault=(row as {fault_code?:Record<string,unknown>})?.fault_code;if(!fault||fault.status!=='open')continue;
+    const vehicle=fault.vehicle as Record<string,unknown>|null|undefined;const vehicleId=vehicle?.id==null?'':String(vehicle.id);const vin=normalizedVin(vehicle?.vin);const code=optionalText(fault.code)??optionalText(fault.code_label);if(!code||(!vehicleId&&!vin))continue;
+    const type=fault.type==='constant'||fault.type==='intermittent'?fault.type:undefined;const occurrenceCount=finiteNumber(fault.occurrence_count)??finiteNumber(fault.num_observations);
+    const diagnostic:MotiveDiagnosticCode={id:String(fault.id??`${vehicleId}:${code}`),code,label:optionalText(fault.code_label)??code,status:'open',...(optionalText(fault.code_description)?{description:optionalText(fault.code_description)}:{}),...(type?{type}:{}),...(optionalText(fault.first_observed_at)?{firstObservedAt:optionalText(fault.first_observed_at)}:{}),...(optionalText(fault.last_observed_at)?{lastObservedAt:optionalText(fault.last_observed_at)}:{}),...(occurrenceCount===undefined?{}:{occurrenceCount}),...(optionalText(fault.dtc_severity)?{severity:optionalText(fault.dtc_severity)}:{}),...(optionalText(fault.network)?{network:optionalText(fault.network)}:{})};
+    if(vehicleId)byVehicleId.set(vehicleId,[...(byVehicleId.get(vehicleId)??[]),diagnostic]);if(vin)byVin.set(vin,[...(byVin.get(vin)??[]),diagnostic]);
+  }
+  return {byVehicleId,byVin};
+}
 function motiveEntities(vehicleRows:unknown[],assetRows:unknown[]):MotiveEntity[]{
   const vehicles=vehicleRows.flatMap(row=>{const vehicle=(row as {vehicle?:Record<string,unknown>})?.vehicle;if(!vehicle)return[];const vin=normalizedVin(vehicle.vin);if(!vin)return[];const location=vehicle.current_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const speed=finiteNumber(location?.speed);return [{id:String(vehicle.id),type:'vehicle' as const,vin,location:typeof location?.description==='string'&&location.description.trim()?location.description:'Location unavailable',speed:speed===undefined?'Speed unavailable':`${Math.round(speed)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:String(vehicle.updated_at??new Date().toISOString()),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
   const assets=assetRows.flatMap(row=>{const asset=(row as {asset?:Record<string,unknown>})?.asset;if(!asset)return[];const vin=normalizedVin(asset.vin);if(!vin)return[];const gateway=asset.asset_gateway as Record<string,unknown>|null|undefined;const location=gateway?.last_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const kph=finiteNumber(location?.ground_speed_kph);return [{id:String(asset.id),type:'asset' as const,vin,location:typeof location?.address==='string'&&location.address.trim()?location.address:'Location unavailable',speed:kph===undefined?'Speed unavailable':`${Math.round(kph*0.621371)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:new Date().toISOString(),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
@@ -221,7 +249,14 @@ async function syncFleet(admin:AdminClient,companyId:string,encryptionSecret:str
   let rows:[unknown[],unknown[]];
   try{rows=await Promise.all([motivePages('/v1/vehicle_locations',token,'vehicles'),motivePages('/v1/asset_locations',token,'assets')]);}
   catch(error){if((error as {status?:number}).status!==401)throw error;token=await refreshAccessToken(admin,companyId,integration as MotiveIntegration,encryptionSecret,redirectUri);rows=await Promise.all([motivePages('/v1/vehicle_locations',token,'vehicles'),motivePages('/v1/asset_locations',token,'assets')]);}
-  const entities=motiveEntities(rows[0],rows[1]);
+  let faultRows:unknown[]=[];let diagnosticsAvailable=true;let faultError:unknown;
+  try{faultRows=await motiveFaultCodes(token);}catch(error){
+    if((error as {status?:number}).status===401){token=await refreshAccessToken(admin,companyId,integration as MotiveIntegration,encryptionSecret,redirectUri);try{faultRows=await motiveFaultCodes(token);}catch(retryError){faultError=retryError;}}
+    else faultError=error;
+  }
+  if(faultError){if((faultError as {status?:number}).status===403){diagnosticsAvailable=false;console.warn('Motive fault-code scope is unavailable; reconnect integration to grant fault_codes.read.');}else throw faultError;}
+  const diagnostics=diagnosticsByVehicle(faultRows);
+  const entities=motiveEntities(rows[0],rows[1]).map(entity=>entity.type==='vehicle'?{...entity,diagnostics:diagnostics.byVehicleId.get(entity.id)??diagnostics.byVin.get(entity.vin)??[]}:entity);
   const {data:fleetRows,error:fleetError}=await admin.from('fleet_vehicles').select('record_id,data').eq('company_id',companyId);
   if(fleetError)throw new Error('FireOps vehicles could not be matched.');
   const fleetByVin=new Map<string,{record_id:string;data:Record<string,unknown>}[]>();
@@ -235,7 +270,7 @@ async function syncFleet(admin:AdminClient,companyId:string,encryptionSecret:str
     await admin.from('company_motive_vehicle_mappings').delete().eq('company_id',companyId).not('fleet_vehicle_id','in',`(${mappings.map(item=>item.fleet_vehicle_id).join(',')})`);
   }else await admin.from('company_motive_vehicle_mappings').delete().eq('company_id',companyId);
   const syncedAt=new Date().toISOString();
-  const snapshot={connected:true,vehicles:snapshots,matched:snapshots.length,unmatched:[...fleetByVin.values()].reduce((sum,items)=>sum+items.length,0)-snapshots.length,duplicateVins,syncedAt};
+  const snapshot={connected:true,vehicles:snapshots,matched:snapshots.length,unmatched:[...fleetByVin.values()].reduce((sum,items)=>sum+items.length,0)-snapshots.length,duplicateVins,diagnosticsAvailable,syncedAt};
   await admin.from('company_motive_integrations').update({last_verified_at:syncedAt,last_sync_at:syncedAt,sync_snapshot:snapshot}).eq('company_id',companyId);
   return snapshot;
 }

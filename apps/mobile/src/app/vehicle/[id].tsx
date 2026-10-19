@@ -662,6 +662,22 @@ export default function VehicleDetailScreen() {
                     <Text style={styles.motiveValue}>{formatSpeed(vehicle.motive.speed)}</Text>
                   </View>
                 </View>
+                {vehicle.motive.diagnostics?.length ? (
+                  <View accessibilityLabel={`${vehicle.motive.diagnostics.length} open diagnostic codes`} style={styles.diagnostics}>
+                    <View style={styles.diagnosticsHeading}>
+                      <AppSymbol name={{ ios: "exclamationmark.triangle.fill", android: "warning" } as never} color="#FFB4AB" size={17} />
+                      <Text style={styles.diagnosticsTitle}>Open diagnostic codes</Text>
+                      <Text style={styles.diagnosticsCount}>{vehicle.motive.diagnostics.length}</Text>
+                    </View>
+                    {vehicle.motive.diagnostics.map(code => (
+                      <View key={code.id} style={styles.diagnosticRow}>
+                        <Text style={styles.diagnosticCode}>{code.label}</Text>
+                        <Text style={styles.diagnosticDescription}>{code.description || "Description unavailable"}</Text>
+                        <Text style={styles.diagnosticDate}>Last observed {formattedDate(code.lastObservedAt ?? null) ?? "unknown"}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Motive camera capture unavailable"
@@ -1491,6 +1507,14 @@ function createStyles(theme: FireOpsTheme) {
     motiveReadingCopy: { flex: 1, gap: 2 },
     motiveLabel: { color: "#BFC9C2", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
     motiveValue: { color: theme.commandText, fontSize: 15, lineHeight: 21, fontWeight: "700" },
+    diagnostics: { gap: 8, borderTopWidth: 1, borderTopColor: "#526158", paddingTop: 12 },
+    diagnosticsHeading: { flexDirection: "row", alignItems: "center", gap: 7 },
+    diagnosticsTitle: { flex: 1, color: "#FFB4AB", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+    diagnosticsCount: { minWidth: 24, borderRadius: 12, backgroundColor: "#5B302E", color: "#FFB4AB", paddingHorizontal: 7, paddingVertical: 2, textAlign: "center", fontSize: 11, fontWeight: "800" },
+    diagnosticRow: { gap: 2, borderRadius: 8, backgroundColor: "#29372F", padding: 10 },
+    diagnosticCode: { color: "#FFB4AB", fontSize: 13, fontWeight: "800" },
+    diagnosticDescription: { color: theme.commandText, fontSize: 12, lineHeight: 17 },
+    diagnosticDate: { color: "#BFC9C2", fontSize: 10 },
     cameraButton: {
       minHeight: 46,
       flexDirection: "row",

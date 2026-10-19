@@ -14,7 +14,7 @@ Credentials and tokens are scoped by FireOps `company_id`, encrypted with AES-25
 ## Motive developer application setup
 
 1. Create an application in [Motive Developer Portal](https://developer.gomotive.com/portal).
-2. Enable required permissions for companies, vehicles, assets, locations, camera connections, and camera media/image capture.
+2. Enable required permissions for companies, vehicles, assets, locations, fault codes (`fault_codes.read`), camera connections, and camera media/image capture.
 3. Set **Success Redirect URI** to the deployed Edge Function callback:
 
    `https://<supabase-project-ref>.supabase.co/functions/v1/motive-integration`
@@ -63,8 +63,11 @@ Authenticated company members can request a fleet sync. The Edge Function:
 2. Loads all pages from Motive vehicle-location and asset-location endpoints.
 3. Matches normalized VINs only when unique in both FireOps and Motive.
 4. Stores durable Motive entity IDs in `company_motive_vehicle_mappings`.
-5. Returns sanitized location, speed, coordinates, and freshness metadata—never credentials or tokens.
-6. Displays matched live data on web and mobile vehicle cards/details.
+5. Loads currently open vehicle fault codes and attaches them to matched Motive vehicles. Assets do not expose vehicle fault codes.
+6. Returns sanitized location, speed, coordinates, diagnostics, and freshness metadata—never credentials or tokens.
+7. Displays matched live data and open diagnostic codes on web and mobile vehicle cards/details.
+
+Connections authorized before diagnostic support keep location sync working but report diagnostics unavailable. Reconnect Motive once to grant `fault_codes.read`.
 
 Missing and duplicate VINs stay unmatched rather than using unreliable make, model, plate, or unit-name guesses.
 
@@ -87,4 +90,5 @@ Sources:
 - https://developer-docs.gomotive.com/docs/oauth-scopes
 - https://developer-docs.gomotive.com/reference/list-all-the-company-assets
 - https://developer-docs.gomotive.com/reference/list-all-the-company-vehicles
+- https://developer-docs.gomotive.com/reference/fetch-a-list-of-all-the-vehicles-fault-codes
 - https://developer-docs.gomotive.com/reference/fetch-the-available-timelines-for-an-asset
