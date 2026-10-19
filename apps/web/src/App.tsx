@@ -74,9 +74,9 @@ type UndoAction = { vehicle: Vehicle; label: string };
 type AppFeedbackCategory = 'idea' | 'issue' | 'other';
 
 const seed: Vehicle[] = [
-  {id:'v1',unit:'Engine 701',type:'Type 3 Engine',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',plate:'CA 8F701',status:'Ready',photo:{name:'engine-701.svg',type:'image/svg+xml',dataUrl:'/demo-vehicles/engine-701.svg'},createdAt:'2025-02-04'},
-  {id:'v2',unit:'Tender 12',type:'Water Tender',year:2017,make:'Peterbilt',model:'367',vin:'1XPTD4EX8HD397122',plate:'CA 8T012',status:'Assigned',photo:{name:'tender-12.svg',type:'image/svg+xml',dataUrl:'/demo-vehicles/tender-12.svg'},createdAt:'2025-01-18'},
-  {id:'v3',unit:'Dozer 4',type:'Dozer',year:2014,make:'Caterpillar',model:'D7R',vin:'CAT00D7RJLGP01234',plate:'',status:'Out of service',photo:{name:'dozer-4.svg',type:'image/svg+xml',dataUrl:'/demo-vehicles/dozer-4.svg'},createdAt:'2024-12-11'}
+  {id:'v1',unit:'Engine 701',type:'Type 3 Engine',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',plate:'CA 8F701',status:'Ready',photo:{name:'engine-701.webp',type:'image/webp',dataUrl:'/demo-vehicles/engine-701.webp'},createdAt:'2025-02-04'},
+  {id:'v2',unit:'Tender 12',type:'Water Tender',year:2017,make:'Peterbilt',model:'367',vin:'1XPTD4EX8HD397122',plate:'CA 8T012',status:'Assigned',photo:{name:'tender-12.webp',type:'image/webp',dataUrl:'/demo-vehicles/tender-12.webp'},createdAt:'2025-01-18'},
+  {id:'v3',unit:'Dozer 4',type:'Dozer',year:2014,make:'Caterpillar',model:'D7R',vin:'CAT00D7RJLGP01234',plate:'',status:'Out of service',photo:{name:'dozer-4.webp',type:'image/webp',dataUrl:'/demo-vehicles/dozer-4.webp'},createdAt:'2024-12-11'}
 ];
 const defaultVehicleTypeNames = ['Type 3 Engine','Type 4 Engine','Type 6 Engine','Water Tender','Crew Carrier','Crew Transport','Command Vehicle','Dozer','Transport','Support Vehicle','Other'];
 const defaultVehicleTypes:VehicleTypeOption[]=defaultVehicleTypeNames.map((name,index)=>({id:`default-${index}`,name}));
