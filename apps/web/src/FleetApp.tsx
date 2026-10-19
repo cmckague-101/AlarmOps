@@ -277,31 +277,6 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
         </div>
       </section>
 
-      <section className="login-pricing" id="pricing" aria-labelledby="pricing-title">
-        <div className="login-section-heading">
-          <p className="login-section-kicker">Plans for every operation</p>
-          <h2 id="pricing-title">Start lean. Scale when fire season demands it.</h2>
-          <p>Choose individual career tools or a shared operating workspace for your company.</p>
-        </div>
-        <div className="pricing-grid">
-          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em></article>
-          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em></article>
-          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em></article>
-          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p></article>
-          <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p></article>
-        </div>
-      </section>
-
-      <section className="login-contact" id="contact" aria-labelledby="contact-title">
-        <p className="login-section-kicker">Talk with Fireco</p>
-        <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
-        <div className="contact-card">
-          <div><span>CM</span><p><b>Clint McKague</b><small>General Manager</small></p></div>
-          <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>
-          <a href="mailto:Clint@firecollc.com"><Mail aria-hidden="true"/> Clint@firecollc.com</a>
-        </div>
-      </section>
-
       <section className="login-mobile" aria-labelledby="mobile-title">
         <div className="login-mobile-copy">
           <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> FireOps mobile</p>
@@ -328,6 +303,31 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
               <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><MapPinned/>Operations</span><span className="active"><Truck/>Fleet</span></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="login-pricing" id="pricing" aria-labelledby="pricing-title">
+        <div className="login-section-heading">
+          <p className="login-section-kicker">Plans for every operation</p>
+          <h2 id="pricing-title">Start lean. Scale when fire season demands it.</h2>
+          <p>Choose individual career tools or a shared operating workspace for your company.</p>
+        </div>
+        <div className="pricing-grid">
+          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em></article>
+          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em></article>
+          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em></article>
+          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p></article>
+          <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p></article>
+        </div>
+      </section>
+
+      <section className="login-contact" id="contact" aria-labelledby="contact-title">
+        <p className="login-section-kicker">Talk with Fireco</p>
+        <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
+        <div className="contact-card">
+          <div><span>CM</span><p><b>Clint McKague</b><small>General Manager</small></p></div>
+          <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>
+          <a href="mailto:Clint@firecollc.com"><Mail aria-hidden="true"/> Clint@firecollc.com</a>
         </div>
       </section>
 
