@@ -9,21 +9,41 @@ type DispatchEntry={rank:number;company_name:string|null;equipment_location:stri
 
 const sourceUrl='https://www.fs.usda.gov/business/incident/vipr.php';
 const message=(error:unknown)=>error instanceof Error?error.message:'Dispatch data could not be loaded.';
+const demoAreas:Area[]=[{id:1,name:'Northern California'}];
+const demoCenters:Center[]=[{id:101,name:'Redding Interagency Command Center'}];
+const demoLists:PriorityList[]=[
+  {file_id:1001,name:'2026 Type 3 Engines',resource_type:'Type 3 Engines',published_at:'2026-05-14T16:00:00Z',synced_at:'2026-05-14T16:15:00Z',sync_status:'complete'},
+  {file_id:1002,name:'2026 Water Tenders',resource_type:'Water Tenders',published_at:'2026-05-12T16:00:00Z',synced_at:'2026-05-12T16:12:00Z',sync_status:'complete'},
+];
+const demoEntries:Record<string,DispatchEntry[]>={
+  '1001':[
+    {rank:1,company_name:'North Ridge Wildfire',equipment_location:'Redding, CA',vin:'1HTMMMML9KH483201',cafs:'Yes',daily_rate:2840,rate_status:'matched'},
+    {rank:2,company_name:'Summit Fire Resources',equipment_location:'Medford, OR',vin:'1FVACWDT7GHGX4821',cafs:'Yes',daily_rate:2715,rate_status:'matched'},
+    {rank:3,company_name:'Cascade Response LLC',equipment_location:'Red Bluff, CA',vin:'3ALACWDT4HDJG5192',cafs:'No',daily_rate:2495,rate_status:'matched'},
+    {rank:4,company_name:'Sierra Wildland Services',equipment_location:'Chico, CA',vin:'1HTMMMML2LH219847',cafs:'Yes',daily_rate:null,rate_status:'ambiguous'},
+  ],
+  '1002':[
+    {rank:1,company_name:'North Ridge Wildfire',equipment_location:'Redding, CA',vin:'1XPTD4EX8HD397122',cafs:'Not reported',daily_rate:3180,rate_status:'matched'},
+    {rank:2,company_name:'Shasta Water Support',equipment_location:'Anderson, CA',vin:'1NPXLP0X4KD612483',cafs:'Not reported',daily_rate:3060,rate_status:'matched'},
+    {rank:3,company_name:'Pacific Fire Logistics',equipment_location:'Yreka, CA',vin:'2FZHAZCV8YAJ84721',cafs:'Not reported',daily_rate:null,rate_status:'not_found'},
+  ],
+};
 
-export default function DispatchListsPage(){
-  const [areas,setAreas]=useState<Area[]>([]);
-  const [centers,setCenters]=useState<Center[]>([]);
-  const [lists,setLists]=useState<PriorityList[]>([]);
-  const [entries,setEntries]=useState<DispatchEntry[]>([]);
-  const [areaId,setAreaId]=useState('');
-  const [centerId,setCenterId]=useState('');
-  const [listId,setListId]=useState('');
-  const [loading,setLoading]=useState(true);
+export default function DispatchListsPage({demoMode=false}:{demoMode?:boolean}){
+  const [areas,setAreas]=useState<Area[]>(demoMode?demoAreas:[]);
+  const [centers,setCenters]=useState<Center[]>(demoMode?demoCenters:[]);
+  const [lists,setLists]=useState<PriorityList[]>(demoMode?demoLists:[]);
+  const [entries,setEntries]=useState<DispatchEntry[]>(demoMode?demoEntries['1001']:[]);
+  const [areaId,setAreaId]=useState(demoMode?'1':'');
+  const [centerId,setCenterId]=useState(demoMode?'101':'');
+  const [listId,setListId]=useState(demoMode?'1001':'');
+  const [loading,setLoading]=useState(!demoMode);
   const [error,setError]=useState('');
   const [refresh,setRefresh]=useState(0);
 
   useEffect(()=>{
     let active=true;
+    if(demoMode){setLoading(false);return}
     if(!supabase){setLoading(false);return}
     setLoading(true);setError('');
     void (async()=>{try{
@@ -32,10 +52,10 @@ export default function DispatchListsPage(){
       const next=(data??[]) as Area[];setAreas(next);setAreaId(current=>next.some(item=>String(item.id)===current)?current:'');
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[refresh]);
+  },[demoMode,refresh]);
 
   useEffect(()=>{
-    let active=true;setCenters([]);setCenterId('');setLists([]);setListId('');setEntries([]);
+    let active=true;if(demoMode)return()=>{active=false};setCenters([]);setCenterId('');setLists([]);setListId('');setEntries([]);
     if(!supabase||!areaId)return()=>{active=false};
     setLoading(true);setError('');
     void (async()=>{try{
@@ -43,10 +63,10 @@ export default function DispatchListsPage(){
       if(!active)return;if(failure)throw failure;const next=(data??[]) as Center[];setCenters(next);
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[areaId,refresh]);
+  },[areaId,demoMode,refresh]);
 
   useEffect(()=>{
-    let active=true;setLists([]);setListId('');setEntries([]);
+    let active=true;if(demoMode)return()=>{active=false};setLists([]);setListId('');setEntries([]);
     if(!supabase||!centerId)return()=>{active=false};
     setLoading(true);setError('');
     void (async()=>{try{
@@ -54,10 +74,12 @@ export default function DispatchListsPage(){
       if(!active)return;if(failure)throw failure;const next=(data??[]) as PriorityList[];setLists(next);
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[centerId,refresh]);
+  },[centerId,demoMode,refresh]);
 
   useEffect(()=>{
-    let active=true;setEntries([]);
+    let active=true;
+    if(demoMode){setEntries(demoEntries[listId]??[]);setLoading(false);return()=>{active=false}}
+    setEntries([]);
     if(!supabase||!listId)return()=>{active=false};
     setLoading(true);setError('');
     void (async()=>{try{
@@ -65,24 +87,24 @@ export default function DispatchListsPage(){
       if(!active)return;if(failure)throw failure;setEntries((data??[]) as DispatchEntry[]);
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[listId,refresh]);
+  },[demoMode,listId,refresh]);
 
   const selectedList=lists.find(item=>String(item.file_id)===listId);
   return <div className="page dispatch-page">
-    <div className="page-heading"><div><h1>VIPR DPLs</h1><p>USFS VIPR rankings with award rates matched by VIN.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
+    <div className="page-heading"><div><h1>VIPR DPLs</h1><p>USFS VIPR rankings with award rates matched by VIN.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
     <section className="dispatch-filters" aria-label="Dispatch list filters">
-      <label><span>Geographic area</span><select value={areaId} onChange={event=>setAreaId(event.target.value)} disabled={!areas.length}><option value=""></option>{areas.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
-      <label><span>Dispatch center</span><select value={centerId} onChange={event=>setCenterId(event.target.value)} disabled={!centers.length}><option value=""></option>{centers.map(center=><option key={center.id} value={center.id}>{center.name}</option>)}</select></label>
+      <label><span>Geographic area</span><select value={areaId} onChange={event=>setAreaId(event.target.value)} disabled={demoMode||!areas.length}><option value=""></option>{areas.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
+      <label><span>Dispatch center</span><select value={centerId} onChange={event=>setCenterId(event.target.value)} disabled={demoMode||!centers.length}><option value=""></option>{centers.map(center=><option key={center.id} value={center.id}>{center.name}</option>)}</select></label>
       <label><span>Priority list</span><select value={listId} onChange={event=>setListId(event.target.value)} disabled={!lists.length}><option value=""></option>{lists.map(list=><option key={list.file_id} value={list.file_id}>{list.resource_type||list.name}</option>)}</select></label>
     </section>
     {error?<div className="dispatch-state error" role="alert"><b>Dispatch data unavailable</b><span>{error}</span></div>:null}
-    {!error&&!supabase?<div className="dispatch-state"><b>Dispatch data unavailable in demo mode</b><span>Connect FireOps to Supabase to browse imported lists.</span></div>:null}
-    {!error&&supabase&&!loading&&!selectedList?<div className="dispatch-state"><b>{centerId&&!lists.length?'No published lists found':'Select a dispatch list'}</b><span>{centerId&&!lists.length?'Try another dispatch center or check again after scheduled import.':'Choose a geographic area, dispatch center, and priority list to view rankings.'}</span></div>:null}
+    {!error&&!supabase&&!demoMode?<div className="dispatch-state"><b>Dispatch data unavailable</b><span>Connect FireOps to Supabase to browse imported lists.</span></div>:null}
+    {!error&&(supabase||demoMode)&&!loading&&!selectedList?<div className="dispatch-state"><b>{centerId&&!lists.length?'No published lists found':'Select a dispatch list'}</b><span>{centerId&&!lists.length?'Try another dispatch center or check again after scheduled import.':'Choose a geographic area, dispatch center, and priority list to view rankings.'}</span></div>:null}
     {selectedList?<section className="dispatch-results" aria-busy={loading}>
-      <header><div><h2>{selectedList.resource_type||selectedList.name}</h2><p>{selectedList.published_at?`Published ${new Date(selectedList.published_at).toLocaleString()}`:'Publish date unavailable'} · {entries.length} ranked resources</p></div>{selectedList.sync_status==='partial'?<span className="dispatch-warning">Rates updating</span>:null}</header>
+      <header><div><h2>{selectedList.resource_type||selectedList.name}</h2><p>{selectedList.published_at?`Published ${new Date(selectedList.published_at).toLocaleString()}`:'Publish date unavailable'} · {entries.length} ranked resources</p></div>{demoMode?<span className="dispatch-warning">Demo data</span>:selectedList.sync_status==='partial'?<span className="dispatch-warning">Rates updating</span>:null}</header>
       <div className="dispatch-table-wrap"><table><thead><tr><th>Rank</th><th>Company</th><th>Equipment location</th><th>VIN</th><th>CAFS</th><th>Daily rate</th></tr></thead><tbody>{entries.map(entry=><tr key={entry.rank}><td className="dispatch-rank">#{entry.rank}</td><td><b>{entry.company_name||'Not reported'}</b></td><td>{entry.equipment_location||'Not reported'}</td><td className="dispatch-vin">{entry.vin||'Not reported'}</td><td>{entry.cafs||'Not reported'}</td><td className="dispatch-rate">{entry.rate_status==='matched'&&entry.daily_rate!==null?Number(entry.daily_rate).toLocaleString(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2}):entry.rate_status==='ambiguous'?'Needs review':'Not matched'}</td></tr>)}</tbody></table></div>
       {!entries.length&&!loading?<div className="dispatch-empty"><Truck/><b>No ranked resources found</b></div>:null}
-      <footer>Source: USDA Forest Service VIPR public records. <a href={sourceUrl} target="_blank" rel="noreferrer">Verify official source</a>. FireOps is not affiliated with or endorsed by USDA or Forest Service.</footer>
+      <footer>{demoMode?'Fictional sample records for product demonstration. Not official VIPR data. ':<>Source: USDA Forest Service VIPR public records. </>}<a href={sourceUrl} target="_blank" rel="noreferrer">Verify official source</a>. FireOps is not affiliated with or endorsed by USDA or Forest Service.</footer>
     </section>:null}
   </div>;
 }
