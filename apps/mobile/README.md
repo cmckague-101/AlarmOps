@@ -15,6 +15,14 @@ npm run android
 
 Run commands from repository root. Supabase anon key is publishable; never place service-role credentials in Expo environment variables.
 
+## Sign-in landing and demo
+
+Sign-in includes a bottom down-arrow button and scrollable feature previews, followed by pricing and phone/email contact links. The web-only FireOps mobile promotion is omitted.
+
+Set `EXPO_PUBLIC_WEB_URL` to the deployed FireOps web origin in `.env.local` and the EAS build environment. Deploy the matching web version with `?demo=1` support before releasing mobile. Explore demo opens that same interactive, account-free demo in the system browser; it does not sign in or alter native company records. Exiting the web demo removes the demo query flag. Without a configured web origin, the app reports a configuration error instead of guessing a hostname.
+
+Feature screenshots are bundled copies of `apps/web/public/landing/`; see `assets/landing/README.md`.
+
 ## Push notifications
 
 1. Apply `supabase/migrations/20260906161500_add_push_notification_tokens.sql` and `supabase/migrations/20260909000100_notification_inbox_and_delivery.sql`.

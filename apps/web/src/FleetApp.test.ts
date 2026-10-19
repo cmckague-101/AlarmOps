@@ -4,7 +4,17 @@ import {
   canInspectVehicle,canOpenVehicleIssue,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
 } from '@fireops/domain';
-import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+import {accountAccessErrorMessage, demoRequested, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+
+describe('mobile demo entry',()=>{
+  it('opens demo only with explicit demo flag',()=>{
+    expect(demoRequested('?demo=1')).toBe(true);
+    expect(demoRequested('?info=1&demo=1')).toBe(true);
+    expect(demoRequested('')).toBe(false);
+    expect(demoRequested('?demo=0')).toBe(false);
+    expect(demoRequested('?demo=true')).toBe(false);
+  });
+});
 
 const storedFile = (path:string):VehicleFile => ({name:'document.pdf',type:'application/pdf',dataUrl:'https://signed.example/file',path});
 

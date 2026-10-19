@@ -154,10 +154,14 @@ export function snapshotFilePaths(snapshot:FleetSnapshot){
   return paths;
 }
 
+export function demoRequested(search:string){
+  return new URLSearchParams(search).get('demo')==='1';
+}
+
 export default function FleetApp() {
   const [session,setSession]=useState<Session|null>(null);
   const [checking,setChecking]=useState(true);
-  const [demoMode,setDemoMode]=useState(false);
+  const [demoMode,setDemoMode]=useState(()=>typeof window!=='undefined'&&demoRequested(window.location.search));
 
   useEffect(()=>{
     if(!supabase){setChecking(false);return}
@@ -168,7 +172,12 @@ export default function FleetApp() {
 
   const loginPreview=import.meta.env.DEV&&typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('login-preview')==='1';
   const enterDemo=()=>setDemoMode(true);
-  const exitDemo=()=>setDemoMode(false);
+  const exitDemo=()=>{
+    const url=new URL(window.location.href);
+    url.searchParams.delete('demo');
+    window.history.replaceState(null,'',url);
+    setDemoMode(false);
+  };
   if(demoMode)return <App demoMode onSignOut={exitDemo}/>;
   if(loginPreview||new URLSearchParams(window.location.search).get('info')==='1')return <FleetLogin onDemo={enterDemo}/>;
   if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'

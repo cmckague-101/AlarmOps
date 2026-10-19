@@ -270,6 +270,12 @@ Controls use compact 8–9px corners. Work panels use 12–14px corners. Statuse
 - **Don't** introduce new literal colors when a semantic token exists.
 - **Don't** use animation without state, feedback, or spatial meaning.
 
+## Native Sign-in Landing
+
+Native iOS and Android sign-in keeps the auth form first, with Explore demo below it and a bottom down-arrow affordance labeled “Tap or scroll down.” The arrow scrolls to the feature list. On small screens or with larger text, the hero grows rather than clipping controls. Features follow web order and copy, then all five pricing plans and tappable phone/email contact details; the FireOps mobile promotion is omitted. Existing theme tokens cover light/dark surfaces and text. Bundled preview images reuse existing web product screenshots; provenance is in `apps/mobile/assets/landing/README.md`.
+
+Explore demo opens the existing web demo in the system browser, using the configured `EXPO_PUBLIC_WEB_URL` and explicit `?demo=1` entry. Native authentication and company records stay untouched. Static finish review: native scroll/keyboard handling, accessible headings and link/button labels, minimum 44px action targets, and explicit link/configuration errors. Verdict: type checks and targeted demo tests pass; visual/device review intentionally deferred to user.
+
 ## Owner Command Center
 
 The owner dashboard on web and mobile uses the supplied command-center reference: a personalized greeting, Command Center heading with the local date, and four large disclosure cards in red, green, blue, and amber. Cards use two columns, with native mobile falling back to one column for narrow screens or enlarged text. Existing light and dark themes remain supported. Detail views show incident resource groups, personnel with all their vehicle assignments, vehicle fire assignments, and unresolved reported issues ordered by priority. Record titles open existing crew, vehicle, or issue details. Empty and mobile loading/error states use explicit text. Crew dashboards retain their existing behavior.
