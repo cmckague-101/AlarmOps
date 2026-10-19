@@ -22,7 +22,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppSymbol } from "@/components/app-symbol";
 import { openFleetFile, removeFleetFiles, uploadFleetFile } from "@/lib/fleet-files";
 import {
-  captureMotiveCameraImage,
   deleteFleetVehicle,
   refreshFleet,
   updateFleetVehicle,
@@ -192,9 +191,6 @@ export default function VehicleDetailScreen() {
   const [crewQuery, setCrewQuery] = useState("");
   const [fileError, setFileError] = useState("");
   const [photoSaving, setPhotoSaving] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const [cameraCapture, setCameraCapture] = useState<{imageUrl:string;capturedAt:string} | null>(null);
-  const [cameraError, setCameraError] = useState("");
   const [firePickerOpen, setFirePickerOpen] = useState(false);
   const [fireQuery, setFireQuery] = useState("");
   const [incidents, setIncidents] = useState<NifcIncident[]>([]);
@@ -236,20 +232,6 @@ export default function VehicleDetailScreen() {
   }, [firePickerOpen, incidentRequest]);
 
   if (!session || access.status === "error") return <Redirect href="/" />;
-
-  const captureCameraImage = async () => {
-    if (!vehicle?.motive || !companyId || capturing) return;
-    setCapturing(true);
-    setCameraError("");
-    try {
-      const capture=await captureMotiveCameraImage(companyId,vehicle.id);
-      setCameraCapture({imageUrl:capture.imageUrl,capturedAt:capture.capturedAt});
-    } catch (captureError) {
-      setCameraError(captureError instanceof Error?captureError.message:"Motive camera image could not be captured.");
-    } finally {
-      setCapturing(false);
-    }
-  };
 
   const changePhoto = async () => {
     if (!vehicle || !user || !companyId || !canManage || photoSaving) return;
@@ -678,21 +660,6 @@ export default function VehicleDetailScreen() {
                     ))}
                   </View>
                 ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Motive camera capture unavailable"
-                  accessibilityHint="Camera capture requires Motive API key support"
-                  accessibilityState={{ disabled: true }}
-                  disabled
-                  onPress={() => void captureCameraImage()}
-                  style={[styles.cameraButton, styles.disabled]}
-                >
-                  <AppSymbol name={{ ios: "camera.fill", android: "photo_camera" } as never} color={theme.commandText} size={18} />
-                  <Text style={styles.cameraButtonLabel}>
-                    Camera capture unavailable
-                  </Text>
-                </Pressable>
-                {cameraError ? <Text accessibilityRole="alert" style={styles.cameraError}>{cameraError}</Text> : null}
                 </View>
                 {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
                   <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
@@ -1096,31 +1063,6 @@ export default function VehicleDetailScreen() {
       </ScrollView>
 
       <Modal
-        animationType="fade"
-        onRequestClose={() => setCameraCapture(null)}
-        presentationStyle="fullScreen"
-        visible={Boolean(cameraCapture)}
-      >
-        <SafeAreaView style={styles.cameraViewer} edges={["top", "bottom"]}>
-          <View style={styles.cameraViewerHeader}>
-            <View style={styles.cameraViewerCopy}>
-              <Text style={styles.cameraViewerTitle}>{vehicle?.name ?? "Vehicle"} camera image</Text>
-              <Text style={styles.cameraViewerTime}>Captured {formattedDate(cameraCapture?.capturedAt ?? null)}</Text>
-            </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close camera image" hitSlop={10} onPress={() => setCameraCapture(null)} style={styles.cameraClose}>
-              <AppSymbol name={{ ios: "xmark", android: "close" } as never} color="#FFFFFF" size={22} />
-            </Pressable>
-          </View>
-          <Image
-            accessibilityLabel={`Forward camera capture from ${vehicle?.name ?? "vehicle"}`}
-            resizeMode="contain"
-            source={cameraCapture ? { uri: cameraCapture.imageUrl } : undefined}
-            style={styles.cameraImage}
-          />
-        </SafeAreaView>
-      </Modal>
-
-      <Modal
         animationType="slide"
         onRequestClose={() => {
           if (!saving) {
@@ -1516,19 +1458,6 @@ function createStyles(theme: FireOpsTheme) {
     diagnosticCode: { color: "#FFB4AB", fontSize: 13, fontWeight: "800" },
     diagnosticDescription: { color: theme.commandText, fontSize: 12, lineHeight: 17 },
     diagnosticDate: { color: "#BFC9C2", fontSize: 10 },
-    cameraButton: {
-      minHeight: 46,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      borderWidth: 1,
-      borderColor: "#526158",
-      borderRadius: 10,
-      paddingHorizontal: 12,
-    },
-    cameraButtonLabel: { color: theme.commandText, fontSize: 13, fontWeight: "800" },
-    cameraError: { color: "#FFB4AB", fontSize: 12, lineHeight: 17, fontWeight: "700" },
     locationMap: {
       height: 210,
       overflow: "hidden",
@@ -1860,21 +1789,6 @@ function createStyles(theme: FireOpsTheme) {
     },
     retryButtonPressed: { opacity: 0.82 },
     retryLabel: { color: theme.commandText, fontSize: 15, fontWeight: "700" },
-    cameraViewer: { flex: 1, backgroundColor: "#080B0A" },
-    cameraViewerHeader: {
-      minHeight: 78,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-      paddingHorizontal: 20,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: "#344039",
-    },
-    cameraViewerCopy: { flex: 1, gap: 3 },
-    cameraViewerTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
-    cameraViewerTime: { color: "#AEB8B1", fontSize: 12 },
-    cameraClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-    cameraImage: { flex: 1, width: "100%" },
     modalSafeArea: { flex: 1, backgroundColor: theme.canvas },
     modalHeader: {
       minHeight: 74,
