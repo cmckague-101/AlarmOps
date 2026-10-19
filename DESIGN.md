@@ -274,7 +274,7 @@ Controls use compact 8–9px corners. Work panels use 12–14px corners. Statuse
 
 Native iOS and Android sign-in keeps the auth form first, with Explore demo below it and a bottom down-arrow affordance labeled “Tap or scroll down.” The arrow scrolls to the feature list. On small screens or with larger text, the hero grows rather than clipping controls. Features follow web order and copy, then all five pricing plans and tappable phone/email contact details; the FireOps mobile promotion is omitted. Existing theme tokens cover light/dark surfaces and text. Bundled preview images reuse existing web product screenshots; provenance is in `apps/mobile/assets/landing/README.md`.
 
-Explore demo opens the existing web demo in the system browser, using the configured `EXPO_PUBLIC_WEB_URL` and explicit `?demo=1` entry. Native authentication and company records stay untouched. Static finish review: native scroll/keyboard handling, accessible headings and link/button labels, minimum 44px action targets, and explicit link/configuration errors. Verdict: type checks and targeted demo tests pass; visual/device review intentionally deferred to user.
+Explore demo opens the existing web demo in an in-app browser (iOS Safari view / Android Custom Tab), with native dismissal returning to sign-in, using the configured `EXPO_PUBLIC_WEB_URL` and explicit `?demo=1` entry. Native authentication and company records stay untouched. Static finish review: native scroll/keyboard handling, accessible headings and link/button labels, minimum 44px action targets, and explicit link/configuration errors. Verdict: type checks and targeted demo tests pass; visual/device review intentionally deferred to user.
 
 ## Owner Command Center
 
