@@ -256,7 +256,7 @@ async function syncFleet(admin:AdminClient,companyId:string,encryptionSecret:str
   }
   if(faultError){if((faultError as {status?:number}).status===403){diagnosticsAvailable=false;console.warn('Motive fault-code scope is unavailable; reconnect integration to grant fault_codes.read.');}else throw faultError;}
   const diagnostics=diagnosticsByVehicle(faultRows);
-  const entities=motiveEntities(rows[0],rows[1]).map(entity=>entity.type==='vehicle'?{...entity,diagnostics:diagnostics.byVehicleId.get(entity.id)??diagnostics.byVin.get(entity.vin)??[]}:entity);
+  const entities=motiveEntities(rows[0],rows[1]).map(entity=>entity.type==='vehicle'&&diagnosticsAvailable?{...entity,diagnostics:diagnostics.byVehicleId.get(entity.id)??diagnostics.byVin.get(entity.vin)??[]}:entity);
   const {data:fleetRows,error:fleetError}=await admin.from('fleet_vehicles').select('record_id,data').eq('company_id',companyId);
   if(fleetError)throw new Error('FireOps vehicles could not be matched.');
   const fleetByVin=new Map<string,{record_id:string;data:Record<string,unknown>}[]>();

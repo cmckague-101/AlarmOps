@@ -662,12 +662,12 @@ export default function VehicleDetailScreen() {
                     <Text style={styles.motiveValue}>{formatSpeed(vehicle.motive.speed)}</Text>
                   </View>
                 </View>
-                {vehicle.motive.diagnostics?.length ? (
-                  <View accessibilityLabel={`${vehicle.motive.diagnostics.length} open diagnostic codes`} style={styles.diagnostics}>
+                {vehicle.motive.diagnostics !== undefined ? (
+                  <View accessibilityLabel={vehicle.motive.diagnostics.length ? `${vehicle.motive.diagnostics.length} open diagnostic codes` : "No open diagnostic codes"} style={styles.diagnostics}>
                     <View style={styles.diagnosticsHeading}>
-                      <AppSymbol name={{ ios: "exclamationmark.triangle.fill", android: "warning" } as never} color="#FFB4AB" size={17} />
-                      <Text style={styles.diagnosticsTitle}>Open diagnostic codes</Text>
-                      <Text style={styles.diagnosticsCount}>{vehicle.motive.diagnostics.length}</Text>
+                      <AppSymbol name={vehicle.motive.diagnostics.length ? ({ ios: "exclamationmark.triangle.fill", android: "warning" } as never) : ({ ios: "checkmark.circle.fill", android: "check_circle" } as never)} color={vehicle.motive.diagnostics.length ? "#FFB4AB" : "#52D394"} size={17} />
+                      <Text style={[styles.diagnosticsTitle, !vehicle.motive.diagnostics.length && styles.diagnosticsClear]}>{vehicle.motive.diagnostics.length ? "Open diagnostic codes" : "No open diagnostic codes"}</Text>
+                      {vehicle.motive.diagnostics.length ? <Text style={styles.diagnosticsCount}>{vehicle.motive.diagnostics.length}</Text> : null}
                     </View>
                     {vehicle.motive.diagnostics.map(code => (
                       <View key={code.id} style={styles.diagnosticRow}>
@@ -1510,6 +1510,7 @@ function createStyles(theme: FireOpsTheme) {
     diagnostics: { gap: 8, borderTopWidth: 1, borderTopColor: "#526158", paddingTop: 12 },
     diagnosticsHeading: { flexDirection: "row", alignItems: "center", gap: 7 },
     diagnosticsTitle: { flex: 1, color: "#FFB4AB", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+    diagnosticsClear: { color: "#52D394" },
     diagnosticsCount: { minWidth: 24, borderRadius: 12, backgroundColor: "#5B302E", color: "#FFB4AB", paddingHorizontal: 7, paddingVertical: 2, textAlign: "center", fontSize: 11, fontWeight: "800" },
     diagnosticRow: { gap: 2, borderRadius: 8, backgroundColor: "#29372F", padding: 10 },
     diagnosticCode: { color: "#FFB4AB", fontSize: 13, fontWeight: "800" },
