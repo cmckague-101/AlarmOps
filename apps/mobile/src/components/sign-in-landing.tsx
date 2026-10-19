@@ -28,6 +28,7 @@ export function SignInLanding({children}:PropsWithChildren){
   const scroll=useRef<ScrollView>(null);
   const [height,setHeight]=useState(0);
   const [featuresY,setFeaturesY]=useState(0);
+  const [showBackToTop,setShowBackToTop]=useState(false);
   const [linkError,setLinkError]=useState('');
   const open=async(url:string)=>{
     setLinkError('');
@@ -38,7 +39,7 @@ export function SignInLanding({children}:PropsWithChildren){
   const copy={color:theme.secondary};
   return <SafeAreaView style={[styles.safe,{backgroundColor:theme.canvas}]} edges={['bottom']}>
     <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':'height'}>
-      <ScrollView ref={scroll} onLayout={event=>setHeight(event.nativeEvent.layout.height)} automaticallyAdjustKeyboardInsets keyboardDismissMode={Platform.OS==='ios'?'interactive':'on-drag'} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <ScrollView ref={scroll} onLayout={event=>setHeight(event.nativeEvent.layout.height)} onScroll={event=>setShowBackToTop(event.nativeEvent.contentOffset.y>120)} scrollEventThrottle={100} automaticallyAdjustKeyboardInsets keyboardDismissMode={Platform.OS==='ios'?'interactive':'on-drag'} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <View style={[styles.hero,{minHeight:height}]}>
           <View style={styles.heroContent}>
             <BrandWordmark/>
@@ -87,9 +88,13 @@ export function SignInLanding({children}:PropsWithChildren){
           <Text style={[styles.footer,copy]}>© {new Date().getFullYear()} FireOps · Built for teams who answer the call.</Text>
         </View>
       </ScrollView>
+      {showBackToTop&&<Pressable accessibilityRole="button" accessibilityLabel="Back to top" accessibilityHint="Returns to the sign-in form" onPress={()=>scroll.current?.scrollTo({y:0,animated:true})} style={({pressed})=>[styles.backToTop,{backgroundColor:pressed?theme.emberPressed:theme.ember}]}>
+        <Text accessible={false} style={styles.backToTopArrow}>↑</Text>
+      </Pressable>}
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
 const styles=StyleSheet.create({
-  safe:{flex:1},content:{flexGrow:1},hero:{padding:20,justifyContent:'space-between',gap:20},heroContent:{flexGrow:1,justifyContent:'center',alignItems:'center',gap:20},panel:{width:'100%',maxWidth:440,borderWidth:1,borderRadius:16,padding:22},discover:{alignItems:'center',padding:8,minHeight:80},discoverLabel:{fontSize:15,fontWeight:'700'},arrow:{fontSize:32,lineHeight:36},small:{fontSize:12},section:{padding:20,paddingVertical:40,gap:16,width:'100%',maxWidth:760,alignSelf:'center'},kicker:{fontSize:12,fontWeight:'800',letterSpacing:1,textTransform:'uppercase'},title:{fontSize:28,lineHeight:34,fontWeight:'800',letterSpacing:-.5},body:{fontSize:16,lineHeight:24},card:{borderWidth:1,borderRadius:16,padding:20,gap:12},cardTitle:{fontSize:22,lineHeight:28,fontWeight:'700'},highlight:{fontSize:15,lineHeight:23},preview:{width:'100%',height:240,borderRadius:8},price:{fontSize:36,fontWeight:'800'},note:{fontSize:14,lineHeight:21,fontStyle:'italic'},contact:{minHeight:48,justifyContent:'center'},contactLabel:{fontSize:17,fontWeight:'700'},footer:{fontSize:12,lineHeight:20,marginTop:24},
+  backToTop:{position:'absolute',right:20,bottom:16,width:52,height:52,borderRadius:26,alignItems:'center',justifyContent:'center'},backToTopArrow:{color:'#FFFFFF',fontSize:30,lineHeight:36},
+  safe:{flex:1},content:{flexGrow:1,paddingBottom:80},hero:{padding:20,justifyContent:'space-between',gap:20},heroContent:{flexGrow:1,justifyContent:'center',alignItems:'center',gap:20},panel:{width:'100%',maxWidth:440,borderWidth:1,borderRadius:16,padding:22},discover:{alignItems:'center',padding:8,minHeight:80},discoverLabel:{fontSize:15,fontWeight:'700'},arrow:{fontSize:32,lineHeight:36},small:{fontSize:12},section:{padding:20,paddingVertical:40,gap:16,width:'100%',maxWidth:760,alignSelf:'center'},kicker:{fontSize:12,fontWeight:'800',letterSpacing:1,textTransform:'uppercase'},title:{fontSize:28,lineHeight:34,fontWeight:'800',letterSpacing:-.5},body:{fontSize:16,lineHeight:24},card:{borderWidth:1,borderRadius:16,padding:20,gap:12},cardTitle:{fontSize:22,lineHeight:28,fontWeight:'700'},highlight:{fontSize:15,lineHeight:23},preview:{width:'100%',height:240,borderRadius:8},price:{fontSize:36,fontWeight:'800'},note:{fontSize:14,lineHeight:21,fontStyle:'italic'},contact:{minHeight:48,justifyContent:'center'},contactLabel:{fontSize:17,fontWeight:'700'},footer:{fontSize:12,lineHeight:20,marginTop:24},
 });
