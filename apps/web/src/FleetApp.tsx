@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {crewCredentials,isCompanyManager,type AssignableUserRole} from '@fireops/domain';
-import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, LogOut, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, ShieldCheck, Smartphone, Truck } from 'lucide-react';
+import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, ListOrdered, LogOut, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, ShieldCheck, Smartphone, Truck, Users } from 'lucide-react';
 import App, { type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewCredential, type CrewExperience, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveAuthorization, type MotiveConnection, type UserRole, type VehicleFile, type VehicleNote, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
@@ -243,7 +243,7 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
         <div className="login-section-heading">
           <p className="login-section-kicker">Inside FireOps</p>
           <h2 id="features-title">One view of your whole operation.</h2>
-          <p>Fleet status, incidents, crew updates, and field records stay in one company workspace.</p>
+          <p>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</p>
         </div>
         <div className="login-feature-list">
           <article className="login-feature-card login-feature-card--dashboard">
@@ -254,8 +254,32 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
             <div className="login-feature-copy"><span><MapPinned aria-hidden="true"/> Operations</span><h3>Active fires on one map</h3><p>Review NIFC incidents by location, then connect crews and vehicles to assignments.</p></div>
             <figure><img src="/landing/operations.webp" width="1600" height="996" loading="lazy" decoding="async" alt="FireOps operations map showing active wildfire incidents across the United States"/></figure>
           </article>
+          <article className="login-feature-card">
+            <div className="login-feature-copy">
+              <span><Users aria-hidden="true"/> Crew management</span>
+              <h3>Know who’s ready to deploy</h3>
+              <p>Keep personnel, roles, qualifications, and resource assignments connected to your operation.</p>
+              <ul className="login-feature-highlights">
+                <li><Check aria-hidden="true"/> Crew profiles and company roles</li>
+                <li><Check aria-hidden="true"/> Qualifications and certificates</li>
+                <li><Check aria-hidden="true"/> Crew-to-resource assignments</li>
+              </ul>
+            </div>
+          </article>
+          <article className="login-feature-card">
+            <div className="login-feature-copy">
+              <span><ListOrdered aria-hidden="true"/> VIPR DPLs</span>
+              <h3>See where resources rank</h3>
+              <p>Browse USFS VIPR dispatch priority lists with award rates matched by VIN.</p>
+              <ul className="login-feature-highlights">
+                <li><Check aria-hidden="true"/> Filter by geographic area and dispatch center</li>
+                <li><Check aria-hidden="true"/> Review resource rankings and daily rates</li>
+                <li><Check aria-hidden="true"/> Verify records against official USFS sources</li>
+              </ul>
+            </div>
+          </article>
           <article className="login-feature-card login-feature-card--fleet">
-            <div className="login-feature-copy"><span><Truck aria-hidden="true"/> Fleet</span><h3>Know what can roll</h3><p>Track unit status, assignments, issues, photos, and records from one fleet list.</p></div>
+            <div className="login-feature-copy"><span><Truck aria-hidden="true"/> Fleet</span><h3>Know what can roll</h3><p>Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.</p></div>
             <figure><img src="/landing/fleet.webp" width="874" height="1183" loading="lazy" decoding="async" alt="FireOps fleet screen showing ready vehicles and current issues"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--training">
