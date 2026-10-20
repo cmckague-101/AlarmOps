@@ -299,8 +299,8 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
             <figure><img src="/landing/inventory.webp" width="1522" height="1033" loading="lazy" decoding="async" alt="FireOps inventory screen showing equipment and supply counts"/></figure>
           </article>
           <article className="login-feature-card">
-            <div className="login-feature-copy"><span><MessageSquareText aria-hidden="true"/> Communications</span><h3>Keep updates with your crew</h3><p>Post company threads and keep replies tied to each operational update.</p></div>
-            <figure><img src="/landing/communications.webp" width="1387" height="1134" loading="lazy" decoding="async" alt="FireOps communications screen showing company threads and crew replies"/></figure>
+            <div className="login-feature-copy"><span><MessageSquareText aria-hidden="true"/> Chat</span><h3>Keep updates with your crew</h3><p>Post company threads and keep replies tied to each operational update.</p></div>
+            <figure><img src="/landing/communications.webp" width="1387" height="1134" loading="lazy" decoding="async" alt="FireOps chat screen showing company threads and crew replies"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--receipts">
             <div className="login-feature-copy"><span><ReceiptText aria-hidden="true"/> Receipts</span><h3>Review field expenses</h3><p>Crew can upload receipts while owners filter, review, and maintain expense records.</p></div>

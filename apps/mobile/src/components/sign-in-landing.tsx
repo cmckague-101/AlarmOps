@@ -12,7 +12,7 @@ const features=[
   {name:'Fleet',title:'Know what can roll',description:'Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.',image:require('../../assets/landing/fleet.webp')},
   {name:'Training',title:'Keep qualifications moving',description:'Publish courses, monitor capacity, and manage crew registration.',image:require('../../assets/landing/training.webp')},
   {name:'Inventory',title:'Count field supplies',description:'Update equipment quantities as stock moves in or out.',image:require('../../assets/landing/inventory.webp')},
-  {name:'Communications',title:'Keep updates with your crew',description:'Post company threads and keep replies tied to each operational update.',image:require('../../assets/landing/communications.webp')},
+  {name:'Chat',title:'Keep updates with your crew',description:'Post company threads and keep replies tied to each operational update.',image:require('../../assets/landing/communications.webp')},
   {name:'Receipts',title:'Review field expenses',description:'Crew can upload receipts while owners filter, review, and maintain expense records.',image:require('../../assets/landing/receipts.webp')},
 ];
 const plans=[
