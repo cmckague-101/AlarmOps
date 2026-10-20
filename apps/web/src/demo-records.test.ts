@@ -42,6 +42,20 @@ describe('session-only demo records',()=>{
     expect(record.annualRecord?.wctCurrencyDate).toBe('2029-03-10');
   });
 
+  it('populates training, inventory, failed inspections, and recent audit activity',()=>{
+    const now=new Date('2028-04-10T12:00:00Z');
+    const data=createDemoRecords(user,now);
+    expect(data.trainings).toHaveLength(1);
+    expect(Date.parse(data.trainings[0].date)).toBeGreaterThan(now.getTime());
+    expect(data.inventory).toHaveLength(4);
+    expect(data.inventory.every(item=>item.quantity>0)).toBe(true);
+    expect(data.inventory[0].checkouts[0].quantity).toBe(2);
+    expect(data.inspections).toHaveLength(2);
+    expect(data.inspections.every(inspection=>inspection.items.some(item=>item.result==='Fail'&&item.defectNotes))).toBe(true);
+    expect(data.auditLogs.length).toBeGreaterThan(2);
+    expect(data.auditLogs.every(entry=>Date.parse(entry.created_at)<=now.getTime()&&Date.parse(entry.created_at)>now.getTime()-30*86400000)).toBe(true);
+  });
+
   it('creates fresh data when a new demo session starts',()=>{
     const first=createDemoRecords(user);
     first.invoices.splice(0);

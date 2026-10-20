@@ -5,7 +5,7 @@ import './AuditLogPage.css';
 type AuditEntry = {id:string;created_at:string;actor_name:string;description:string};
 const pageSize=100;
 
-export default function AuditLogPage({companyId}:{companyId?:string}){
+export default function AuditLogPage({companyId,demoEntries}:{companyId?:string;demoEntries?:AuditEntry[]}){
   const [entries,setEntries]=useState<AuditEntry[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
@@ -15,6 +15,7 @@ export default function AuditLogPage({companyId}:{companyId?:string}){
   const newestAt=useRef<string|null>(null);
   useEffect(()=>{
     let active=true;
+    if(demoEntries){setEntries(demoEntries);setLoading(false);setError('');setHasMore(false);return;}
     setLoading(true);setError('');
     if(page===0)setEntries([]);
     const load=async()=>{
@@ -35,7 +36,7 @@ export default function AuditLogPage({companyId}:{companyId?:string}){
     };
     void load().catch(error=>{if(active){setError(error instanceof Error?error.message:'Audit log could not be loaded.');setLoading(false);}});
     return()=>{active=false;};
-  },[companyId,page,reload]);
+  },[companyId,demoEntries,page,reload]);
   return <div className="page audit-log-page">
     <div className="page-heading"><div><h1>Audit log</h1><p>Company activity from the last 30 days. Latest first.</p></div><button className="secondary" disabled={loading} onClick={()=>{setPage(0);setReload(value=>value+1);}}>Refresh</button></div>
     {error&&<p role="alert">{error} <button className="secondary" onClick={()=>setReload(value=>value+1)}>Retry</button></p>}

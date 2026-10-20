@@ -1,5 +1,5 @@
-import {FileInput, UploadButton} from './demo-uploads';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
+import { useCallback, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
 import { isCompanyManager, type CrewMember, type FireOpsUser } from '@fireops/domain';
 import { supabase } from './supabase';
@@ -89,6 +89,7 @@ function startFor(timespan: Timespan) {
 }
 
 export default function ReceiptsPage({ companyId, user, crew }: { companyId?: string; user: FireOpsUser; crew: CrewMember[] }) {
+  const demoMode=useContext(DemoModeContext);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(Boolean(companyId));
   const [error, setError] = useState('');
@@ -260,7 +261,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
         <label className="receipt-file-field"><span>Receipt file</span><FileInput id="receipt-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" onChange={(event) => setFile(event.target.files?.[0] ?? null)} aria-invalid={attempted && !file}/><em>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'JPG, PNG, WebP, HEIC, or PDF · 10 MB maximum'}</em>{attempted && !file && <small>Choose receipt file.</small>}</label>
         <UploadButton className="primary" disabled={saving || !companyId} type="submit"><Upload/>{saving ? 'Uploading…' : 'Upload receipt'}</UploadButton>
       </form>
-      {!companyId && <p className="receipt-error" role="alert">Connect Supabase and select company before uploading receipts.</p>}
+      {!demoMode && !companyId && <p className="receipt-error" role="alert">Connect Supabase and select company before uploading receipts.</p>}
       {error && <p className="receipt-error" role="alert">{error}</p>}
     </section>
 
