@@ -6,6 +6,7 @@ import {feature} from 'topojson-client';
 import type {Topology} from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
 import {ArrowLeft, CalendarDays, ChevronRight, Flame, Gauge, MapPin, RefreshCw, Search, Truck, Users, X} from 'lucide-react';
+import {constrainMapFrame, zoomMapFrame, type MapFrame} from './map-navigation';
 import {useDialogA11y} from './useDialogA11y';
 import type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
 export type {FireResourceVehicle,NifcIncident} from '@fireops/domain';
@@ -90,7 +91,7 @@ function frameBounds(bounds:[[number,number],[number,number]]){
   return [centerX-width/2,centerY-height/2,width,height];
 }
 
-function useAnimatedViewBox(target:number[]){
+function useAnimatedViewBox(target:number[], immediate=false){
   const [current,setCurrent]=useState<number[]>([...MAP_FRAME]);
   const currentRef=useRef(current);
   currentRef.current=current;
@@ -98,7 +99,7 @@ function useAnimatedViewBox(target:number[]){
   useEffect(()=>{
     const destination=targetKey.split(',').map(Number);
     const start=[...currentRef.current];
-    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){setCurrent(destination);return}
+    if(immediate||window.matchMedia('(prefers-reduced-motion: reduce)').matches){setCurrent(destination);return}
     let frame=0;
     const started=performance.now();
     const animate=(now:number)=>{
@@ -109,7 +110,7 @@ function useAnimatedViewBox(target:number[]){
     };
     frame=requestAnimationFrame(animate);
     return()=>cancelAnimationFrame(frame);
-  },[targetKey]);
+  },[targetKey,immediate]);
   return current;
 }
 
@@ -164,7 +165,15 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,req
     if(point)return frameBounds([[point[0]-25,point[1]-25],[point[0]+25,point[1]+25]]);
     return [...MAP_FRAME];
   },[focusedVehicleId,resources,selected]);
-  const viewBox=useAnimatedViewBox(targetViewBox);
+  const [manualView,setManualView]=useState<{key:string;frame:MapFrame}|null>(null);
+  const navigationKey=`${selected?.id??''}:${focusedVehicleId??''}:${targetViewBox.join(',')}`;
+  const manualFrame=manualView?.key===navigationKey?manualView.frame:null;
+  const animatedViewBox=useAnimatedViewBox(manualFrame??targetViewBox,Boolean(manualFrame));
+  const viewBox=(manualFrame??animatedViewBox) as MapFrame;
+  const drag=useRef<{id:number;x:number;y:number;frame:MapFrame;matrix:DOMMatrix;moved:boolean}|null>(null);
+  const suppressClick=useRef(false);
+  const navigateMap=(frame:MapFrame)=>{hideMapTip();setManualView({key:navigationKey,frame})};
+  const zoomMap=(factor:number,anchor?:[number,number])=>navigateMap(zoomMapFrame(viewBox,factor,anchor));
   const markerScale=viewBox[2]/MAP_FRAME[2];
   const latestUpdate=incidents.reduce<number|null>((latest,incident)=>incident.updated&&(!latest||incident.updated>latest)?incident.updated:latest,null);
   const showFireTip=(incident:NifcIncident)=>{
@@ -206,8 +215,43 @@ export default function OperationsPage({requestedIncidentId,onIncidentOpened,req
       <div className="fire-map-panel">
         <header><div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
         <div className="fire-map" ref={mapRef} onMouseLeave={hideMapTip} aria-label={`Map showing ${visible.length} wildfire incidents`}>
-          <svg viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc">
-            <desc id="fire-map-desc">Select a fire marker to open incident details.</desc>
+          <div className="fire-map-controls" role="group" aria-label="Map navigation">
+            <button type="button" aria-label="Zoom in" disabled={viewBox[2]<=900/16} onClick={()=>zoomMap(.5)}>+</button>
+            <button type="button" aria-label="Zoom out" disabled={viewBox[2]>=900} onClick={()=>zoomMap(2)}>−</button>
+            <button type="button" onClick={()=>{setSelected(null);setFocusedVehicleId(null);hideMapTip();setManualView({key:`::${MAP_FRAME.join(',')}`,frame:[...MAP_FRAME]})}}>Reset</button>
+          </div>
+          <svg className="navigable-fire-map" viewBox={viewBox.join(' ')} role="img" aria-label="United States active wildfire map" aria-describedby="fire-map-desc"
+            onDoubleClick={event=>{
+              event.preventDefault();
+              const matrix=event.currentTarget.getScreenCTM()?.inverse();
+              if(!matrix)return;
+              const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix);
+              zoomMap(.5,[point.x,point.y]);
+            }}
+            onPointerDown={event=>{
+              if(event.button!==0||!event.isPrimary)return;
+              const matrix=event.currentTarget.getScreenCTM()?.inverse();
+              if(!matrix)return;
+              suppressClick.current=false;
+              drag.current={id:event.pointerId,x:event.clientX,y:event.clientY,frame:[...viewBox],matrix,moved:false};
+            }}
+            onPointerMove={event=>{
+              const start=drag.current;
+              if(!start||start.id!==event.pointerId)return;
+              if(!start.moved&&Math.hypot(event.clientX-start.x,event.clientY-start.y)<5)return;
+              start.moved=true;
+              suppressClick.current=true;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              const origin=new DOMPoint(start.x,start.y).matrixTransform(start.matrix);
+              const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(start.matrix);
+              navigateMap(constrainMapFrame([start.frame[0]+origin.x-point.x,start.frame[1]+origin.y-point.y,start.frame[2],start.frame[3]]));
+            }}
+            onPointerLeave={()=>{if(!drag.current?.moved)drag.current=null}}
+            onPointerUp={()=>{drag.current=null}}
+            onPointerCancel={()=>{drag.current=null}}
+            onLostPointerCapture={()=>{drag.current=null}}
+            onClickCapture={event=>{if(suppressClick.current){event.stopPropagation();suppressClick.current=false}}}>
+            <desc id="fire-map-desc">Select a fire marker to open incident details. Double-click to zoom in, drag to pan, or use the map navigation buttons.</desc>
             <g className="us-states">{states.features.map((state,index)=><path key={String(state.id??index)} d={path(state)??undefined}/>)}</g>
             <g className="fire-markers">{visible.map((incident,index)=>{
               const point=projection([incident.longitude,incident.latitude]);
