@@ -20,8 +20,9 @@
     "build": "npm run build --workspace=fireops-web",
     "build:web": "npm run build --workspace=fireops-web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test:db-grants && npm run test --workspaces --if-present",
-    "test:db-grants": "node --test supabase/tests/data-api-grants.test.mjs"
+    "test": "npm run test:db-grants && npm run test:db-audit && npm run test --workspaces --if-present",
+    "test:db-grants": "node --test supabase/tests/data-api-grants.test.mjs",
+    "test:db-audit": "node --test supabase/tests/company-audit-log.test.mjs"
   },
   "devDependencies": {
     "patch-package": "^8.0.1"

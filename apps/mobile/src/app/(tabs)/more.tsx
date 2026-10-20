@@ -19,6 +19,7 @@ const sections=[
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
   {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
+  {label:'Audit log',path:'/audit-log',ios:'clock.fill',android:'history',color:'#3F6478',ownerOnly:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
 ] as const;
 

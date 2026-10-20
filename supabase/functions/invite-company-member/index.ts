@@ -33,12 +33,18 @@ Deno.serve(async (request) => {
   const token = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
   if (!token) return response(401, {error: 'Authentication required.'});
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
+  const authClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: {autoRefreshToken: false, persistSession: false},
   });
-  const {data: userResult, error: userError} = await admin.auth.getUser(token);
+  const {data: userResult, error: userError} = await authClient.auth.getUser(token);
   const actor = userResult.user;
   if (userError || !actor) return response(401, {error: 'Session is invalid or expired.'});
+  // Forward only the verified identity; audit triggers trust this header solely
+  // on service-role requests, never on requests from app clients.
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {autoRefreshToken: false, persistSession: false},
+    global: {headers: {'x-fireops-actor-id': actor.id}},
+  });
 
   let input: {action?: 'invite' | 'resend'; companyId?: string; userId?: string; email?: string; name?: string; phone?: string};
   try {

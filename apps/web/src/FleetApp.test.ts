@@ -33,15 +33,15 @@ function snapshot():FleetSnapshot {
 }
 
 describe('responsive navigation',()=>{
-  it('shows roster to all roles and reserves inspections for managers',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
+  it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
     expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['dispatch','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['dispatch','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['dispatch','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 });

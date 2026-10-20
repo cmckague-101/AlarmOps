@@ -1,3 +1,4 @@
+import AuditLogPage from './AuditLogPage';
 import InvoicesPage from './InvoicesPage';
 import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
@@ -39,7 +40,7 @@ import {
   BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'settings';
+type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 const navigationMeta = {
@@ -58,13 +59,14 @@ const navigationMeta = {
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
   inventory:{label:'Inventory',description:'Company supplies and equipment counts',Icon:Package},
   inspections:{label:'Inspections',description:'Failed vehicle inspection history',Icon:ClipboardCheck},
+  'audit-log':{label:'Audit log',description:'Company activity from the last 30 days',Icon:Clock3},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
-  const desktop=navigationOrder.filter(page=>page!=='inspections'||isCompanyManager(role));
+  const desktop=navigationOrder.filter(page=>(page!=='inspections'&&page!=='audit-log')||isCompanyManager(role));
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
 }
@@ -632,6 +634,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} requestedVehicleId={requestedVehicleId} onVehicleOpened={()=>setRequestedVehicleId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined}))} onAssignVehicle={(vehicleId,fire)=>updateFireAssignment(vehicleId,fire)} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
 
+        {page === 'audit-log' && canManageFleet && <AuditLogPage key={companyId??'demo'} companyId={demoMode?undefined:companyId}/>}
         {page === 'settings' && <SettingsPage company={companyDetails} userId={currentUser.id} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive} onSubmitFeedback={onSubmitFeedback??(async(category,message)=>{const stored=JSON.parse(localStorage.getItem('fireops-app-feedback')??'[]') as unknown[];localStorage.setItem('fireops-app-feedback',JSON.stringify([...stored,{category,message,createdAt:new Date().toISOString()}]))})} demoMode={demoMode}/>}
         </div>
       </main>
