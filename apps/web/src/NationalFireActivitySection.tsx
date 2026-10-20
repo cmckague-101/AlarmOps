@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useState} from 'react';
 import {ExternalLink, RefreshCw} from 'lucide-react';
-import type {NationalFireActivity} from '@fireops/domain';
+import {createDemoNationalFireActivity,type NationalFireActivity} from '@fireops/domain';
 import {supabase} from './supabase';
 
 const number = new Intl.NumberFormat('en-US');
@@ -26,13 +26,14 @@ const gaccNames: Record<string,string> = {
   SACC:'Southern Area Coordination Center',
 };
 
-export default function NationalFireActivitySection() {
-  const [activity,setActivity] = useState<NationalFireActivity|null>(null);
-  const [loading,setLoading] = useState(true);
+export default function NationalFireActivitySection({demoMode=false}:{demoMode?:boolean}) {
+  const [activity,setActivity] = useState<NationalFireActivity|null>(()=>demoMode?createDemoNationalFireActivity():null);
+  const [loading,setLoading] = useState(!demoMode);
   const [error,setError] = useState('');
   const load = useCallback(async () => {
     setLoading(true);setError('');
     try {
+      if(demoMode){setActivity(createDemoNationalFireActivity());return}
       if (!supabase) throw new Error('FireOps data service is not configured.');
       const {data,error:failure} = await supabase.functions.invoke<NationalFireActivity>('national-fire-activity');
       if (failure) throw failure;
@@ -41,12 +42,12 @@ export default function NationalFireActivitySection() {
     } catch (failure) {
       setError((failure as {message?:string}).message ?? 'National fire activity could not be loaded.');
     } finally {setLoading(false);}
-  },[]);
+  },[demoMode]);
   useEffect(()=>{void load();},[load]);
   return <section className="national-fire-panel" aria-labelledby="national-fire-title">
     <header>
       <div><h2 id="national-fire-title">National Fire Activity</h2><p>{activity?`Active Incident Resource Summary · ${activity.reportDate}`:'Active Incident Resource Summary'}</p></div>
-      <div className="national-fire-actions">{activity&&<a href={activity.sourceUrl} target="_blank" rel="noreferrer">Source PDF <ExternalLink/></a>}<button className="secondary" disabled={loading} onClick={()=>void load()}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
+      <div className="national-fire-actions">{activity&&!demoMode&&<a href={activity.sourceUrl} target="_blank" rel="noreferrer">Source PDF <ExternalLink/></a>}<button className="secondary" disabled={loading} onClick={()=>void load()}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
     </header>
     {loading&&!activity&&<p className="national-fire-state">Loading latest NIFC situation report…</p>}
     {error&&<div className="national-fire-error" role="alert"><b>Activity unavailable</b><span>{error}</span><button className="secondary" onClick={()=>void load()}>Try again</button></div>}
@@ -56,7 +57,7 @@ export default function NationalFireActivitySection() {
         <h3>Incidents by GACC</h3>
         <ul>{activity.areas.map(area=><li key={area.gacc}><span className="national-fire-area-name"><b>{area.gacc}</b><small>{gaccNames[area.gacc]}</small></span><strong>{number.format(area.incidents)}</strong></li>)}</ul>
       </div>
-      <footer>Data extracted from current National Interagency Coordination Center situation report.</footer>
+      <footer>{demoMode?'Fictional sample data for demonstration. Not a current NIFC situation report.':'Data extracted from current National Interagency Coordination Center situation report.'}</footer>
     </>}
   </section>;
 }

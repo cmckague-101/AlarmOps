@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {RefreshCw,Truck} from 'lucide-react';
 import {supabase} from './supabase';
+import {createDemoDispatchData} from '@fireops/domain';
 
 type Area={id:number;name:string};
 type Center={id:number;name:string};
@@ -9,25 +10,7 @@ type DispatchEntry={rank:number;company_name:string|null;equipment_location:stri
 
 const sourceUrl='https://www.fs.usda.gov/business/incident/vipr.php';
 const message=(error:unknown)=>error instanceof Error?error.message:'Dispatch data could not be loaded.';
-const demoAreas:Area[]=[{id:1,name:'Northern California'}];
-const demoCenters:Center[]=[{id:101,name:'Redding Interagency Command Center'}];
-const demoLists:PriorityList[]=[
-  {file_id:1001,name:'2026 Type 3 Engines',resource_type:'Type 3 Engines',published_at:'2026-05-14T16:00:00Z',synced_at:'2026-05-14T16:15:00Z',sync_status:'complete'},
-  {file_id:1002,name:'2026 Water Tenders',resource_type:'Water Tenders',published_at:'2026-05-12T16:00:00Z',synced_at:'2026-05-12T16:12:00Z',sync_status:'complete'},
-];
-const demoEntries:Record<string,DispatchEntry[]>={
-  '1001':[
-    {rank:1,company_name:'North Ridge Wildfire',equipment_location:'Redding, CA',vin:'1HTMMMML9KH483201',cafs:'Yes',daily_rate:2840,rate_status:'matched'},
-    {rank:2,company_name:'Summit Fire Resources',equipment_location:'Medford, OR',vin:'1FVACWDT7GHGX4821',cafs:'Yes',daily_rate:2715,rate_status:'matched'},
-    {rank:3,company_name:'Cascade Response LLC',equipment_location:'Red Bluff, CA',vin:'3ALACWDT4HDJG5192',cafs:'No',daily_rate:2495,rate_status:'matched'},
-    {rank:4,company_name:'Sierra Wildland Services',equipment_location:'Chico, CA',vin:'1HTMMMML2LH219847',cafs:'Yes',daily_rate:null,rate_status:'ambiguous'},
-  ],
-  '1002':[
-    {rank:1,company_name:'North Ridge Wildfire',equipment_location:'Redding, CA',vin:'1XPTD4EX8HD397122',cafs:'Not reported',daily_rate:3180,rate_status:'matched'},
-    {rank:2,company_name:'Shasta Water Support',equipment_location:'Anderson, CA',vin:'1NPXLP0X4KD612483',cafs:'Not reported',daily_rate:3060,rate_status:'matched'},
-    {rank:3,company_name:'Pacific Fire Logistics',equipment_location:'Yreka, CA',vin:'2FZHAZCV8YAJ84721',cafs:'Not reported',daily_rate:null,rate_status:'not_found'},
-  ],
-};
+const {areas:demoAreas,centers:demoCenters,lists:demoLists,entries:demoEntries}=createDemoDispatchData();
 
 export default function DispatchListsPage({demoMode=false}:{demoMode?:boolean}){
   const [areas,setAreas]=useState<Area[]>(demoMode?demoAreas:[]);

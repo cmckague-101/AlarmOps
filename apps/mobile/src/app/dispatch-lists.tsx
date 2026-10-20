@@ -4,6 +4,7 @@ import {AppSymbol} from '@/components/app-symbol';
 import {FilterSelect} from '@/components/filter-select';
 import {SectionScreen} from '@/components/section-screen';
 import {supabase} from '@/lib/supabase';
+import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
 type Area={id:number;name:string};
@@ -16,6 +17,7 @@ const failureMessage=(error:unknown)=>error instanceof Error?error.message:'Disp
 
 export default function DispatchListsScreen(){
   const theme=useFireOpsTheme();
+  const {demoMode}=useSession();
   const styles=useMemo(()=>createStyles(theme),[theme]);
   const [areas,setAreas]=useState<Area[]>([]);
   const [centers,setCenters]=useState<Center[]>([]);
@@ -33,30 +35,30 @@ export default function DispatchListsScreen(){
     setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_geographic_areas').select('id,name').eq('is_active',true).order('name');
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as Area[];setAreas(next);setAreaId(current=>next.some(item=>String(item.id)===current)?current:'');
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as Area[];setAreas(next);setAreaId(current=>next.some(item=>String(item.id)===current)?current:demoMode&&next.length?String(next[0].id):'');
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[refresh]);
+  },[demoMode,refresh]);
 
   useEffect(()=>{
     let active=true;setCenters([]);setCenterId('');setLists([]);setListId('');setEntries([]);
     if(!supabase||!areaId)return()=>{active=false};setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_dispatch_centers').select('id,name').eq('geographic_area_id',Number(areaId)).eq('is_active',true).order('name');
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as Center[];setCenters(next);
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as Center[];setCenters(next);if(demoMode&&next.length)setCenterId(String(next[0].id));
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[areaId,refresh]);
+  },[areaId,demoMode,refresh]);
 
   useEffect(()=>{
     let active=true;setLists([]);setListId('');setEntries([]);
     if(!supabase||!centerId)return()=>{active=false};setLoading(true);setError('');
     void (async()=>{try{
       const {data,error:failure}=await supabase.from('usfs_priority_lists').select('file_id,name,resource_type,published_at,sync_status').eq('dispatch_center_id',Number(centerId)).eq('is_active',true).in('sync_status',['complete','partial']).order('published_at',{ascending:false});
-      if(!active)return;if(failure)throw failure;const next=(data??[]) as PriorityList[];setLists(next);
+      if(!active)return;if(failure)throw failure;const next=(data??[]) as PriorityList[];setLists(next);if(demoMode&&next.length)setListId(String(next[0].file_id));
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[centerId,refresh]);
+  },[centerId,demoMode,refresh]);
 
   useEffect(()=>{
     let active=true;setEntries([]);if(!supabase||!listId)return()=>{active=false};setLoading(true);setError('');
@@ -79,12 +81,12 @@ export default function DispatchListsScreen(){
     {!error&&!supabase?<View style={styles.state}><Text style={styles.stateTitle}>Supabase connection required</Text></View>:null}
     {!error&&supabase&&!loading&&!selectedList?<View style={styles.state}><Text style={styles.stateTitle}>{centerId&&!lists.length?'No published lists found':'Select a dispatch list'}</Text><Text style={styles.stateCopy}>{centerId&&!lists.length?'Try another dispatch center or check after scheduled import.':'Choose a geographic area, dispatch center, and priority list to view rankings.'}</Text></View>:null}
     {selectedList?<View style={styles.results}>
-      <View style={styles.resultsHeader}><View style={styles.headerCopy}><Text style={styles.resultsTitle}>{selectedList.resource_type||selectedList.name}</Text><Text style={styles.resultsMeta}>{selectedList.published_at?`Published ${new Date(selectedList.published_at).toLocaleString()}`:'Publish date unavailable'} · {entries.length} resources</Text></View>{selectedList.sync_status==='partial'?<Text style={styles.warning}>Rates updating</Text>:null}</View>
+      <View style={styles.resultsHeader}><View style={styles.headerCopy}><Text style={styles.resultsTitle}>{selectedList.resource_type||selectedList.name}</Text><Text style={styles.resultsMeta}>{selectedList.published_at?`Published ${new Date(selectedList.published_at).toLocaleString()}`:'Publish date unavailable'} · {entries.length} resources</Text></View>{demoMode?<Text style={styles.warning}>Demo data</Text>:selectedList.sync_status==='partial'?<Text style={styles.warning}>Rates updating</Text>:null}</View>
       {entries.map(entry=><View key={entry.rank} style={styles.entry}>
         <View style={styles.rank}><Text style={styles.rankLabel}>RANK</Text><Text style={styles.rankValue}>{entry.rank}</Text></View>
         <View style={styles.entryCopy}><Text style={styles.company}>{entry.company_name||'Not reported'}</Text><Text style={styles.detail}>{entry.equipment_location||'Location not reported'}</Text><Text style={styles.vin}>VIN {entry.vin||'Not reported'}</Text><View style={styles.entryFooter}><Text style={styles.cafs}>CAFS {entry.cafs||'Not reported'}</Text><Text style={[styles.rate,entry.rate_status!=='matched'&&styles.unmatched]}>{entry.rate_status==='matched'&&entry.daily_rate!==null?Number(entry.daily_rate).toLocaleString(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2}):entry.rate_status==='ambiguous'?'Rate needs review':'Rate not matched'}</Text></View></View>
       </View>)}
-      <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL(sourceUrl)} style={({pressed})=>[styles.source,pressed&&styles.pressed]}><Text style={styles.sourceText}>Source: USDA Forest Service VIPR public records. Verify official source. FireOps is not affiliated with or endorsed by USDA or Forest Service.</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'}} size={16} color={theme.green}/></Pressable>
+      <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL(sourceUrl)} style={({pressed})=>[styles.source,pressed&&styles.pressed]}><Text style={styles.sourceText}>{demoMode?'Fictional sample records for demonstration. Not official VIPR data. ':'Source: USDA Forest Service VIPR public records. '}Verify official source. FireOps is not affiliated with or endorsed by USDA or Forest Service.</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'}} size={16} color={theme.green}/></Pressable>
     </View>:null}
   </SectionScreen>;
 }

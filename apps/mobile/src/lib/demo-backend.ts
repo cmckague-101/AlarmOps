@@ -1,4 +1,4 @@
-import {createPayrollRows} from '@fireops/domain';
+import {createDemoDispatchData,createDemoNationalFireActivity,createPayrollRows} from '@fireops/domain';
 
 // Session-only PostgREST adapter. Never delegates to fetch or writes to device storage.
 export const demoUser={id:'demo-owner',name:'Jordan Mitchell',role:'owner' as const};
@@ -13,8 +13,14 @@ function seed():Record<string,Row[]>{
   const currencyDate=`${year+1}-03-10`;
   const record=(id:string,data:Row)=>({record_id:id,data:{id,...data},version:1,updated_at:now});
   const crew=[{...demoUser,email:'jordan@example.com',phone:'(530) 555-0100'},{id:'demo-crew-2',name:'Maya Torres',role:'fire_fighter',email:'maya@example.com',phone:'(530) 555-0102'},{id:'demo-crew-3',name:'Cole Bennett',role:'fire_fighter',email:'cole@example.com',phone:'(530) 555-0103'}];
+  const dispatch=createDemoDispatchData();
+  const photo=(name:string)=>({name,type:'image/webp',path:`demo-fleet/${name}`});
   const rows:Record<string,Row[]>={
-    fleet_vehicles:[record('demo-engine',{unit:'Engine 701',type:'Type 3 Engine',status:'Ready',year:2019,make:'International',model:'HV',vin:'DEMOENGINE701',plate:'DEMO 701',location:'Redding, CA',inspections:[],documents:[],notes:'Sample engine — explore and edit freely.'}),record('demo-tender',{unit:'Tender 12',type:'Water Tender',status:'Assigned',year:2017,make:'Peterbilt',model:'367',assignedTo:'Maya Torres',inspections:[],documents:[]}),record('demo-dozer',{unit:'Dozer 4',type:'Dozer',status:'Out of service',year:2014,make:'Caterpillar',model:'D7R',inspections:[],documents:[]})],
+    usfs_geographic_areas:dispatch.areas.map(row=>({...row,is_active:true})),
+    usfs_dispatch_centers:dispatch.centers.map(row=>({...row,geographic_area_id:1,is_active:true})),
+    usfs_priority_lists:dispatch.lists.map(row=>({...row,dispatch_center_id:101,is_active:true})),
+    usfs_dispatch_entries:Object.entries(dispatch.entries).flatMap(([listId,entries])=>entries.map(row=>({...row,priority_list_file_id:Number(listId)}))),
+    fleet_vehicles:[record('demo-engine',{unit:'Engine 701',type:'Type 3 Engine',status:'Ready',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',photo:photo('engine-701.webp'),plate:'DEMO 701',location:'Redding, CA',inspections:[],documents:[],notes:'Sample engine — explore and edit freely.'}),record('demo-tender',{unit:'Tender 12',type:'Water Tender',status:'Assigned',year:2017,make:'Peterbilt',model:'367',vin:'1XPTD4EX8HD397122',photo:photo('tender-12.webp'),assignedTo:'Maya Torres',inspections:[],documents:[]}),record('demo-dozer',{unit:'Dozer 4',type:'Dozer',status:'Out of service',year:2014,make:'Caterpillar',model:'D7R',vin:'CAT00D7RJLGP01234',photo:photo('dozer-4.webp'),inspections:[],documents:[]})],
     fleet_crew:crew.map(member=>record(member.id,{...member,status:'Active',credentials:[{id:`${member.id}-fft2`,name:'Firefighter Type 2',recordType:'Qualification',courseCode:'FFT2',completionDate,provider:'North Ridge Training Center'}],experiences:[{id:`${member.id}-experience`,incident:'Pine Valley Fire (Demo)',position:'FFT2',days:'14'}],annualRecord:{rt130CompletionDate:completionDate,rt130CurrencyDate:currencyDate,wctCompletionDate:completionDate,wctCurrencyDate:currencyDate}})),
     fleet_issues:[record('demo-issue',{vehicleId:'demo-dozer',vehicleName:'Dozer 4',title:'Replace hydraulic hose',description:'Sample maintenance issue. Inspect the hose before returning to service.',priority:'High',status:'Open',updates:[],createdBy:demoUser.name,createdById:demoUser.id,createdAt:now})],
     fleet_activities:[record('demo-activity',{action:'Engine 701 ready for dispatch',detail:'Pre-season readiness check complete (Demo)',createdBy:demoUser.name,createdById:demoUser.id,createdAt:now,tone:'complete'})],
@@ -51,6 +57,7 @@ export function createDemoBackend(companyId=demoCompany.id){
     const headers=new Headers(init?.headers??request?.headers);
     if(url.pathname.startsWith('/functions/v1/')){
       const name=url.pathname.split('/').pop();
+      if(name==='national-fire-activity')return response(createDemoNationalFireActivity());
       if(name==='motive-integration'&&['sync','status','disconnect'].includes(body.action))return response({connected:false,configured:false,mock:true});
       return error('This external action is disabled in demo mode. No invitations, feedback, or service requests are sent.');
     }

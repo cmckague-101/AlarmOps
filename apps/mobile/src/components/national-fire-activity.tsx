@@ -3,6 +3,7 @@ import type {NationalFireActivity} from '@fireops/domain';
 import {Linking, Pressable, StyleSheet, Text, View} from 'react-native';
 import {AppSymbol} from './app-symbol';
 import {supabase} from '@/lib/supabase';
+import {useSession} from '@/providers/session-provider';
 import {type FireOpsTheme, useFireOpsTheme} from '@/theme';
 
 const formatter = new Intl.NumberFormat('en-US');
@@ -29,6 +30,7 @@ const gaccNames: Record<string,string> = {
 
 export function NationalFireActivitySection(){
   const theme=useFireOpsTheme();
+  const {demoMode}=useSession();
   const styles=useMemo(()=>createStyles(theme),[theme]);
   const [activity,setActivity]=useState<NationalFireActivity|null>(null);
   const [isLoading,setLoading]=useState(true);
@@ -50,7 +52,7 @@ export function NationalFireActivitySection(){
         <Text accessibilityRole="header" style={styles.panelTitle}>National Fire Activity</Text>
         <Text style={styles.reportDate}>{activity?`Active Incident Resource Summary · ${activity.reportDate}`:'Active Incident Resource Summary'}</Text>
       </View>
-      <Pressable accessibilityRole="link" onPress={()=>activity&&void Linking.openURL(activity.sourceUrl)} disabled={!activity} style={styles.source}><Text style={styles.sourceText}>Source PDF</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.ember} size={16}/></Pressable>
+      {!demoMode&&<Pressable accessibilityRole="link" onPress={()=>activity&&void Linking.openURL(activity.sourceUrl)} disabled={!activity} style={styles.source}><Text style={styles.sourceText}>Source PDF</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.ember} size={16}/></Pressable>}
     </View>
     {loading&&!activity?<Text style={styles.state}>Loading latest NIFC situation report…</Text>:null}
     {error?<View style={styles.error}><Text accessibilityRole="alert" style={styles.errorTitle}>Activity unavailable</Text><Text style={styles.copy}>{error}</Text><Pressable accessibilityRole="button" onPress={retry} style={({pressed})=>[styles.retry,pressed&&styles.pressed]}><Text style={styles.retryText}>Try again</Text></Pressable></View>:null}
@@ -60,7 +62,7 @@ export function NationalFireActivitySection(){
         <Text style={styles.areasHeading}>Incidents by GACC</Text>
         {activity.areas.map((area,index)=><View key={area.gacc} style={[styles.areaRow,index===activity.areas.length-1&&styles.areaRowLast]}><View style={styles.areaNameGroup}><Text style={styles.areaName}>{area.gacc}</Text><Text style={styles.areaFullName}>{gaccNames[area.gacc]}</Text></View><Text style={styles.areaValue}>{formatter.format(area.incidents)}</Text></View>)}
       </View>
-      <Text style={styles.footnote}>Data extracted from current National Interagency Coordination Center situation report.</Text>
+      <Text style={styles.footnote}>{demoMode?'Fictional sample data for demonstration. Not a current NIFC situation report.':'Data extracted from current National Interagency Coordination Center situation report.'}</Text>
     </>:null}
   </View>;
 }

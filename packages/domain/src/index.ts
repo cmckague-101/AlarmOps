@@ -8,3 +8,4 @@ export * from './invoices';
 export * from './tasks';
 
 export * from './command-center';
+export * from './demo-data';

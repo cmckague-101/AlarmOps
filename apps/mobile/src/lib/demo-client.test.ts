@@ -1,5 +1,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createClient} from '@supabase/supabase-js';
+import {readFileSync} from 'node:fs';
+import {createDemoDispatchData,createDemoNationalFireActivity} from '@fireops/domain';
 import {createDemoClient} from './demo-client';
 import {demoUser} from './demo-backend';
 
@@ -25,6 +27,43 @@ describe('native demo client',()=>{
     const motive=await client.functions.invoke('motive-integration',{body:{action:'sync'}});
     expect(motive.data).toMatchObject({connected:false,mock:true});
     expect(network).not.toHaveBeenCalled();
+  });
+
+  it('serves static national fire activity and both VIPR lists without network',async()=>{
+    const network=vi.fn(()=>{throw new Error('Demo must not access the network')});
+    vi.stubGlobal('fetch',network);
+    const {client}=demo();
+    const activity=await client.functions.invoke('national-fire-activity');
+    expect(activity.error).toBeNull();
+    expect(activity.data).toEqual(createDemoNationalFireActivity());
+    const areas=await client.from('usfs_geographic_areas').select('id,name').eq('is_active',true).order('name');
+    expect(areas.data).toMatchObject([{id:1,name:'Northern California'}]);
+    const centers=await client.from('usfs_dispatch_centers').select('*').eq('geographic_area_id',1).eq('is_active',true);
+    expect(centers.data).toHaveLength(1);
+    const lists=await client.from('usfs_priority_lists').select('*').eq('dispatch_center_id',101).eq('is_active',true).in('sync_status',['complete','partial']).order('published_at',{ascending:false});
+    expect(lists.data?.map(row=>row.file_id)).toEqual([1001,1002]);
+    const fixtures=createDemoDispatchData();
+    for(const list of lists.data??[]){
+      const entries=await client.from('usfs_dispatch_entries').select('*').eq('priority_list_file_id',list.file_id).order('rank');
+      expect(entries.error).toBeNull();
+      expect(entries.data).toMatchObject(fixtures.entries[String(list.file_id)]);
+    }
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('bundles identical web fleet photos and seeds resolvable local photo paths',async()=>{
+    const {client}=demo();
+    const vehicles=await client.from('fleet_vehicles').select('*');
+    const mapping=readFileSync(new URL('./demo-fleet-images.ts',import.meta.url),'utf8');
+    for(const row of vehicles.data??[]){
+      const {name,path,type}=row.data.photo;
+      expect(type).toBe('image/webp');
+      expect(path).toBe(`demo-fleet/${name}`);
+      expect(mapping).toContain(`'${path}':require('../../assets/demo-vehicles/${name}')`);
+      const bundled=readFileSync(new URL(`../../assets/demo-vehicles/${name}`,import.meta.url));
+      const web=readFileSync(new URL(`../../../web/public/demo-vehicles/${name}`,import.meta.url));
+      expect(bundled.equals(web)).toBe(true);
+    }
   });
 
   it('supports fleet edits, optimistic versions, local subscriptions, and deletes',async()=>{
