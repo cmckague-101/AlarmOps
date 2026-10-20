@@ -45,7 +45,7 @@ class CachedFile:
 class ForestServiceClient:
     """Rate-limited USDA client. Requests are serialized within each worker."""
 
-    def __init__(self, cache_dir: Path | str = "data/cache") -> None:
+    def __init__(self, cache_dir: Path | str = "data/cache", *, fresh_pdfs: bool = False) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.user_agent = os.getenv(
@@ -57,6 +57,10 @@ class ForestServiceClient:
         self.cache_max_age = float(os.getenv("FS_CACHE_MAX_AGE", "86400"))
         self._lock = threading.Lock()
         self._last_request = 0.0
+        self.fresh_pdfs = fresh_pdfs
+        self._checked_pdfs: set[str] = set()
+        self.pdf_downloads = 0
+        self.pdf_cache_hits = 0
 
     def _request(self, url: str, attempts: int = 3) -> tuple[bytes, dict[str, str]]:
         last_error: Exception | None = None
@@ -117,7 +121,12 @@ class ForestServiceClient:
     def _cached_pdf(self, cache_key: str, service_name: str, legacy_url: str | None = None) -> CachedFile:
         safe_key = re.sub(r"[^A-Za-z0-9_.-]", "_", cache_key)
         path = self.cache_dir / f"{safe_key}.pdf"
-        if path.exists() and path.stat().st_size > 4 and time.time() - path.stat().st_mtime <= self.cache_max_age:
+        reusable = path.exists() and (
+            cache_key in self._checked_pdfs
+            or (not self.fresh_pdfs and time.time() - path.stat().st_mtime <= self.cache_max_age)
+        )
+        if reusable and path.stat().st_size > 4:
+            self.pdf_cache_hits += 1
             return CachedFile(path.read_bytes(), path, True)
 
         try:
@@ -138,6 +147,8 @@ class ForestServiceClient:
         finally:
             temporary.unlink(missing_ok=True)
         path.with_suffix(".sha256").write_text(hashlib.sha256(body).hexdigest() + "\n")
+        self._checked_pdfs.add(cache_key)
+        self.pdf_downloads += 1
         return CachedFile(body, path, False)
 
     def dpl_pdf(self, file_id: int) -> CachedFile:

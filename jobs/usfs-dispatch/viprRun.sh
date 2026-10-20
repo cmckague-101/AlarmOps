@@ -19,7 +19,7 @@
        printf '\n=== VIPR sync started: %s ===\n' "$(date)"
 
        "$VENV/bin/python" jobs/usfs-dispatch/sync_supabase.py \
-         --limit 50 --recheck-days 7
+         --force --recheck-days 1 --fresh-pdfs --cleanup --retention-days 30
 
        result=$?
        printf '\n=== Finished: exit code %s; %s ===\n' "$result" "$(date)"
