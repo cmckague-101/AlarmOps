@@ -5,5 +5,6 @@ export * from './qualification-positions';
 export * from './phone-number';
 export * from './payroll';
 export * from './invoices';
+export * from './tasks';
 
 export * from './command-center';

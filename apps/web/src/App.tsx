@@ -2,6 +2,7 @@ import AuditLogPage from './AuditLogPage';
 import InvoicesPage from './InvoicesPage';
 import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
+import {TaskListPage} from './TaskListPage';
 import {OwnerDashboard} from './OwnerDashboard';
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -40,7 +41,7 @@ import {
   BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 
-type Page = 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 const navigationMeta = {
@@ -54,6 +55,7 @@ const navigationMeta = {
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
   invoices:{label:'Invoices',description:'Submit and review invoices',Icon:FileText},
   payroll:{label:'Payroll',description:'Create, submit, and approve payroll forms',Icon:CircleDollarSign},
+  tasks:{label:'Task List',description:'Your personal tasks and due dates',Icon:ClipboardCheck},
   availability:{label:'Availability',description:'Crew assignment availability',Icon:CircleUserRound},
   receipts:{label:'Receipts',description:'Upload and review expense receipts',Icon:CircleDollarSign},
   training:{label:'Training',description:'Courses, registration, and attendance',Icon:GraduationCap},
@@ -614,6 +616,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'crew' && <CrewPage crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
+        {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={()=>setPage('overview')}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} companyLogoUrl={companyDetails.logo?.dataUrl}/>}
         {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
