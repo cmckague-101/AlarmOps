@@ -116,6 +116,10 @@ create policy "users update own profile" on public.profiles
 for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 revoke update on public.profiles from authenticated;
 grant update (full_name) on public.profiles to authenticated;
+-- Data API access must not depend on Supabase's default table privileges.
+grant select on public.profiles, public.companies, public.company_members to authenticated;
+grant select on public.profiles, public.companies, public.system_admins to service_role;
+grant select, insert, delete on public.company_members to service_role;
 create policy "members read company" on public.companies
 for select to authenticated using (public.is_company_member(id, auth.uid()));
 create policy "members read memberships" on public.company_members

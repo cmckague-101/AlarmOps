@@ -16,6 +16,8 @@ create index if not exists push_tokens_user_id_idx
 
 alter table public.push_tokens enable row level security;
 
+grant select, delete on public.push_tokens to authenticated;
+
 create policy "Users can read their own push tokens"
   on public.push_tokens
   for select

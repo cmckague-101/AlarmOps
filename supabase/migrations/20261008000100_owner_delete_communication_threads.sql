@@ -1,3 +1,5 @@
+grant delete on public.communication_threads to authenticated;
+
 create policy "owners delete communication threads"
 on public.communication_threads
 for delete

@@ -18,6 +18,8 @@ create table if not exists public.system_admin_audit_log (
 alter table public.system_admins enable row level security;
 alter table public.system_admin_audit_log enable row level security;
 revoke all on public.system_admins from anon, authenticated;
+-- This table is recreated after the original admin tables are dropped.
+grant select on public.system_admins to service_role;
 revoke all on public.system_admin_audit_log from anon, authenticated;
 
 create or replace function public.is_system_admin()

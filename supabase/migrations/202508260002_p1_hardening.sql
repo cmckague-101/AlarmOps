@@ -11,6 +11,7 @@ create table public.system_admin_company_access (
 
 alter table public.system_admin_company_access enable row level security;
 revoke all on public.system_admin_company_access from public, anon, authenticated;
+grant select on public.system_admin_company_access to service_role;
 
 create or replace function public.has_system_admin_company_access(target_company_id uuid)
 returns boolean

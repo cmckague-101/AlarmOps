@@ -107,6 +107,11 @@ using (public.is_company_owner(company_id, auth.uid()));
 
 revoke all on public.fleet_vehicles, public.fleet_issues, public.fleet_crew, public.fleet_activities from anon;
 grant select, insert, update, delete on public.fleet_vehicles, public.fleet_issues, public.fleet_crew, public.fleet_activities to authenticated;
+-- Edge Functions invite/remove crew, reassign vehicles, and transfer attribution.
+grant select, update on public.fleet_vehicles to service_role;
+grant select, insert, delete on public.fleet_crew to service_role;
+grant select on public.fleet_issues, public.fleet_activities to service_role;
+grant update (updated_by) on public.fleet_crew, public.fleet_issues, public.fleet_activities to service_role;
 
 -- Copy existing snapshots once. Invalid legacy IDs are skipped rather than blocking deployment.
 insert into public.fleet_vehicles (company_id, record_id, data, updated_by, updated_at)

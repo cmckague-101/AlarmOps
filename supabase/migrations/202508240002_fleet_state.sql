@@ -35,6 +35,8 @@ with check (
 
 revoke all on public.fleet_state from anon;
 grant select, insert, update on public.fleet_state to authenticated;
+grant select on public.fleet_state to service_role;
+grant update (updated_by) on public.fleet_state to service_role;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
