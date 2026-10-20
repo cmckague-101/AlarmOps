@@ -119,8 +119,8 @@ function binderDocument(vehicle:Vehicle,key:VehicleDocumentKey,label:string):Nam
     ??(vehicle[key]?{id:`legacy-${key}`,name:label,file:vehicle[key]!}:undefined);
 }
 
-function loadDemoMotiveConnection():MotiveConnection {
-  if(suppressLocalPersistence)return {connected:false,mock:true};
+export function loadDemoMotiveConnection(demoMode=false):MotiveConnection {
+  if(demoMode)return {connected:true,configured:true,mock:true};
   try {const stored=localStorage.getItem('fireops-motive-demo');return stored?JSON.parse(stored) as MotiveConnection:{connected:false,mock:true}}
   catch{return {connected:false,mock:true}}
 }
@@ -216,7 +216,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     return next;
   };
   const inspectionTemplate=useInspectionTemplate(companyId??'demo-company',demoMode);
-  const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(loadDemoMotiveConnection);
+  const [demoMotiveConnection,setDemoMotiveConnection]=useState<MotiveConnection>(()=>loadDemoMotiveConnection(demoMode));
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
   const connectDemoMotive=async(clientId:string,_clientSecret:string)=>{const next:MotiveConnection={connected:true,configured:true,clientIdLastFour:clientId.slice(-4),connectedAt:new Date().toISOString(),lastVerifiedAt:new Date().toISOString(),mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return {authorizationUrl:''}};
   const disconnectDemoMotive=async()=>{const next:MotiveConnection={connected:false,mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return next};
@@ -1078,8 +1078,12 @@ function motiveDemoFor(vehicle:Vehicle) {
   return feeds[Math.abs(vehicle.id.split('').reduce((sum,char)=>sum+char.charCodeAt(0),0))%feeds.length];
 }
 
-function motiveSnapshotFor(vehicle:Vehicle,connection:MotiveConnection){
-  if(connection.mock){const feed=motiveDemoFor(vehicle);return {location:feed.location,speed:feed.speed,updatedAt:`Updated ${feed.ago}`,latitude:feed.latitude,longitude:feed.longitude}}
+export function motiveSnapshotFor(vehicle:Vehicle,connection:MotiveConnection){
+  if(connection.mock){
+    const feed=motiveDemoFor(vehicle);
+    const diagnostics:MotiveDiagnosticCode[]=vehicle.status==='Out of service'?[{id:`demo-${vehicle.id}-P0117`,code:'P0117',label:'P0117',description:'Engine coolant temperature sensor circuit low',status:'open',lastObservedAt:new Date(Date.now()-60_000).toISOString()}]:[];
+    return {location:feed.location,speed:feed.speed,updatedAt:`Updated ${feed.ago}`,latitude:feed.latitude,longitude:feed.longitude,diagnostics};
+  }
   const vin=vehicle.vin.trim().toUpperCase();
   const snapshot=vin?connection.vehicles?.find(item=>item.vin.trim().toUpperCase()===vin):undefined;
   if(!snapshot)return undefined;

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {navigationLayout} from './App';
+import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
@@ -13,6 +13,33 @@ describe('mobile demo entry',()=>{
     expect(demoRequested('')).toBe(false);
     expect(demoRequested('?demo=0')).toBe(false);
     expect(demoRequested('?demo=true')).toBe(false);
+  });
+});
+
+describe('demo Motive telemetry',()=>{
+  it('starts connected with simulated data without reading saved integration settings',()=>{
+    expect(loadDemoMotiveConnection(true)).toEqual({connected:true,configured:true,mock:true});
+  });
+
+  it('provides distinct map locations and detail telemetry for all three demo vehicles',()=>{
+    const connection=loadDemoMotiveConnection(true);
+    const feeds=['v1','v2','v3'].map((id,index)=>motiveSnapshotFor({
+      ...snapshot().vehicles[0],id,status:index===2?'Out of service':'Ready',
+    },connection)!);
+    expect(new Set(feeds.map(feed=>`${feed.latitude},${feed.longitude}`)).size).toBe(3);
+    for(const feed of feeds){
+      expect(Number.isFinite(feed.latitude)).toBe(true);
+      expect(Number.isFinite(feed.longitude)).toBe(true);
+      expect(feed.location).toContain('CA');
+      expect(feed.speed).toContain('mph');
+      expect(feed.updatedAt).toContain('Updated');
+    }
+    expect(feeds[0].diagnostics).toEqual([]);
+    expect(feeds[2].diagnostics).toEqual([expect.objectContaining({code:'P0117',status:'open'})]);
+  });
+
+  it('never substitutes simulated data for an unmatched live vehicle',()=>{
+    expect(motiveSnapshotFor(snapshot().vehicles[0],{connected:true,vehicles:[]})).toBeUndefined();
   });
 });
 
