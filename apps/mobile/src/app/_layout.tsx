@@ -6,13 +6,14 @@ FIRST VIEWPORT: Native auth form leads; authenticated users enter Dashboard with
 FORM: Direct adaptation of approved web information architecture; user-pinned parity.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
-import {DarkTheme,DefaultTheme,Stack,ThemeProvider} from 'expo-router';
+import {DarkTheme,DefaultTheme,router,Stack,ThemeProvider} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
-import {StyleSheet,Text,View} from 'react-native';
+import {Pressable,StyleSheet,Text,View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppProviders} from '@/providers/app-providers';
 import {useNetworkStatus} from '@/providers/network-provider';
+import {useSession} from '@/providers/session-provider';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
 export default function RootLayout(){return <AppProviders><RootNavigator/></AppProviders>}
@@ -21,11 +22,16 @@ function RootNavigator(){
   const theme=useFireOpsTheme();
   const {colorScheme}=useFireOpsColorScheme();
   const {isOffline}=useNetworkStatus();
+  const {demoMode,signOut}=useSession();
   const insets=useSafeAreaInsets();
   return <ThemeProvider value={colorScheme==='dark'?DarkTheme:DefaultTheme}>
     <View style={styles.root}>
-      <StatusBar style={isOffline?'light':colorScheme==='dark'?'light':'dark'}/>
-      {isOffline?<View accessibilityRole="alert" style={[styles.offlineNotice,{paddingTop:insets.top,backgroundColor:theme.warning}]}><Text style={styles.offlineText}>Offline · Read-only mode · Showing saved data</Text></View>:null}
+      <StatusBar style={isOffline&&!demoMode?'light':colorScheme==='dark'?'light':'dark'}/>
+      {demoMode?<View style={[styles.demoNotice,{paddingTop:insets.top,backgroundColor:theme.paper,borderBottomColor:theme.divider}]}>
+        <View style={styles.demoCopy}><Text style={[styles.demoTitle,{color:theme.ember}]}>Demo mode · Sample data</Text><Text style={{color:theme.secondary,fontSize:12}}>Session only · External services disabled</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Exit demo and discard changes" onPress={()=>void signOut().then(()=>{router.dismissAll();router.replace('/sign-in')})} style={styles.exitDemo}><Text style={{color:theme.ember,fontWeight:'700'}}>Exit demo</Text></Pressable>
+      </View>:null}
+      {isOffline&&!demoMode?<View accessibilityRole="alert" style={[styles.offlineNotice,{paddingTop:insets.top,backgroundColor:theme.warning}]}><Text style={styles.offlineText}>Offline · Read-only mode · Showing saved data</Text></View>:null}
       <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
         <Stack.Screen name="index"/>
         <Stack.Screen name="sign-in"/>
@@ -39,6 +45,10 @@ function RootNavigator(){
 
 const styles=StyleSheet.create({
   root:{flex:1},
+  demoNotice:{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingBottom:6,borderBottomWidth:1},
+  demoCopy:{flex:1,gap:2},
+  demoTitle:{fontWeight:'800',fontSize:13},
+  exitDemo:{minHeight:44,justifyContent:'center',paddingLeft:12},
   offlineNotice:{paddingBottom:7,paddingHorizontal:16},
   offlineText:{color:'#FFFFFF',fontSize:12,fontWeight:'700',letterSpacing:.2,textAlign:'center'},
 });

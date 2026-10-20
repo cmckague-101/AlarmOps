@@ -4,7 +4,7 @@ import {useSession} from '@/providers/session-provider';
 
 export default function Index(){
   const {configured,loading,session,access,retryAccess,signOut}=useSession();
-  if(!configured)return <ScreenState title="Setup required" message="Add this environment's Supabase URL and publishable key to apps/mobile/.env.local."/>;
+  if(!configured)return <Redirect href="/sign-in"/>;
   if(loading)return <ScreenState title="FireOps" message="Restoring secure session…" busy/>;
   if(!session)return <Redirect href="/sign-in"/>;
   if(access.status==='idle'||access.status==='loading')return <ScreenState title="Checking access" message="Confirming company membership…" busy/>;

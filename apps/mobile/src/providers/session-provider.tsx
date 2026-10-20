@@ -1,7 +1,8 @@
 import {createContext,useCallback,useContext,useEffect,useMemo,useState,type PropsWithChildren} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import type {FireOpsUser,UserRole} from '@fireops/domain';
-import {supabase,supabaseConfigured} from '@/lib/supabase';
+import {supabase,supabaseConfigured,startDemoClient,stopDemoClient} from '@/lib/supabase';
+import {demoCompany,demoUser} from '@/lib/demo-backend';
 import {unregisterFromPushNotifications} from '@/lib/notifications';
 import {loadAccountAccess,setOfflineCacheUser,storeAccountAccess} from '@/lib/offline-cache';
 import {checkIsOffline,isOffline} from './network-provider';
@@ -19,6 +20,7 @@ type AccessState={status:'idle'|'loading'|'ready'|'error';value:null|AccountAcce
 
 type SessionContextValue={
   configured:boolean;loading:boolean;session:Session|null;access:AccessState;
+  demoMode:boolean;startDemo:()=>void;
   retryAccess:()=>void;signOut:()=>Promise<void>;
   selectCompany:(company:AdminCompany)=>Promise<void>;clearCompany:()=>void;
   updateCompanyProfile:(profile:{name:string;phone:string;location:string;logoPath:string|null})=>Promise<void>;
@@ -31,6 +33,14 @@ export function SessionProvider({children}:PropsWithChildren){
   const [loading,setLoading]=useState(supabaseConfigured);
   const [access,setAccess]=useState<AccessState>({status:'idle',value:null,error:''});
   const [attempt,setAttempt]=useState(0);
+  const [demoAccess,setDemoAccess]=useState<CompanyAccess|null>(null);
+  useEffect(()=>()=>stopDemoClient(),[]);
+  const startDemo=useCallback(()=>{
+    if(session||loading||demoAccess)return;
+    const company={...demoCompany,id:`demo-company-${Date.now()}`};
+    startDemoClient(company.id);
+    setDemoAccess({kind:'member',user:{...demoUser},company});
+  },[session,loading,demoAccess]);
 
   useEffect(()=>{
     if(!supabase)return;
@@ -109,10 +119,15 @@ export function SessionProvider({children}:PropsWithChildren){
 
   const retryAccess=useCallback(()=>setAttempt(value=>value+1),[]);
   const signOut=useCallback(async()=>{
+    if(demoAccess){
+      setDemoAccess(null);
+      stopDemoClient();
+      return;
+    }
     if(!supabase)return;
     try{await unregisterFromPushNotifications()}catch(error){console.warn('Push notification cleanup failed:',error)}
     await supabase.auth.signOut(isOffline()?{scope:'local'}:undefined);
-  },[]);
+  },[demoAccess]);
   const selectCompany=useCallback(async(company:AdminCompany)=>{
     if(!supabase||access.value?.kind!=='admin')throw new Error('Administrator access is unavailable.');
     const {error}=await supabase.rpc('admin_access_company',{target_company_id:company.id});
@@ -123,6 +138,7 @@ export function SessionProvider({children}:PropsWithChildren){
   },[access.value,sessionUserId]);
   const clearCompany=useCallback(()=>setAttempt(value=>value+1),[]);
   const updateCompanyProfile=useCallback(async(profile:{name:string;phone:string;location:string;logoPath:string|null})=>{
+    if(demoAccess){setDemoAccess({...demoAccess,company:{...demoAccess.company,...profile,logoPath:null}});return}
     if(!supabase||access.value?.kind!=='member')throw new Error('Company is unavailable.');
     const current=access.value;
     const {data,error}=await supabase.rpc('update_company_profile',{target_company_id:current.company.id,company_name:profile.name,company_phone:profile.phone,company_location:profile.location,company_logo_path:profile.logoPath});
@@ -131,8 +147,10 @@ export function SessionProvider({children}:PropsWithChildren){
     const value:CompanyAccess={...current,company:{...current.company,name:row.name,phone:row.phone,location:row.location,logoPath:row.logo_path}};
     setAccess({status:'ready',value,error:''});
     void storeAccountAccess(sessionUserId!,value);
-  },[access.value,sessionUserId]);
-  const value=useMemo(()=>({configured:supabaseConfigured,loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile}),[loading,session,access,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile]);
+  },[access.value,sessionUserId,demoAccess]);
+  // This session is a UI access marker only; it is never installed in Supabase auth.
+  const demoSession=useMemo<Session|null>(()=>demoAccess?{access_token:'demo-only',refresh_token:'',expires_in:0,token_type:'bearer',user:{id:demoUser.id,aud:'demo',role:'demo',email:'jordan@example.com',app_metadata:{},user_metadata:{},created_at:''}}:null,[demoAccess]);
+  const value=useMemo(()=>({configured:supabaseConfigured||Boolean(demoAccess),loading,session:demoSession??session,access:demoAccess?{status:'ready' as const,value:demoAccess,error:''}:access,demoMode:Boolean(demoAccess),startDemo,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile}),[loading,session,access,demoAccess,demoSession,startDemo,retryAccess,signOut,selectCompany,clearCompany,updateCompanyProfile]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

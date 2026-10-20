@@ -19,7 +19,13 @@ Run commands from repository root. Supabase anon key is publishable; never place
 
 Sign-in includes a bottom down-arrow button and scrollable feature previews, followed by pricing and phone/email contact links. The web-only FireOps mobile promotion is omitted.
 
-Set `EXPO_PUBLIC_WEB_URL` to the deployed FireOps web origin in `.env.local` and the EAS build environment. Deploy the matching web version with `?demo=1` support before releasing mobile. Explore demo opens that same interactive, account-free demo in an in-app browser (Safari view on iOS, Custom Tab on Android); closing it returns to sign-in. It does not sign in or alter native company records. The `expo-web-browser` native dependency requires a new iOS/Android build, not only a JavaScript update. Exiting the web demo removes the demo query flag. Without a configured web origin, the app reports a configuration error instead of guessing a hostname.
+**Explore demo** opens the existing native iOS/Android screens with a sample North Ridge company, fleet, crew/qualifications, maintenance issue, chat, training, inventory, payroll, and invoice. No account, deployed website, or Supabase configuration is required. Demo records live only in memory; the persistent banner's **Exit demo** action discards changes and returns to sign-in. Restarting the app also discards the demo. Each entry uses a fresh company scope so cached native screen state cannot restore a previous demo's edits.
+
+The demo uses an isolated local Supabase-compatible adapter, including local change subscriptions; it never uses production database, storage, auth, realtime, or offline-cache persistence. Fleet edits/inspections/issues, crew details/qualifications, chat replies/read markers, training signups, inventory checkout/check-in, and invoice/payroll workflows operate on session data. Uploads/downloads, invitations/removal, feedback submission, qualification-card approval services, and Motive authorization/camera actions report explicit demo-only restrictions instead of contacting services. Public live fire/map data and user-opened contact links remain separate from sample company records and may need a connection. The web demo is unchanged.
+
+Targeted validation: `npm run test --workspace=@fireops/mobile -- src/lib/demo-client.test.ts` and `npm run typecheck --workspace=@fireops/mobile`.
+
+Device review (run by the user): enter demo from sign-in; navigate all five tabs; edit a vehicle and create/resolve an issue; add a chat reply; check inventory out/in; inspect sample payroll/invoice; verify upload/invite restrictions; exit from a detail screen; enter again and confirm changes reset; then sign in normally and verify real company data is unaffected. Repeat on iOS/Android, including offline entry and app restart.
 
 Feature screenshots are bundled copies of `apps/web/public/landing/`; see `assets/landing/README.md`.
 

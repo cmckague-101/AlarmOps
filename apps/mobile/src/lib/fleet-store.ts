@@ -18,7 +18,7 @@ import type {
 } from "@fireops/domain";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
-import { supabase } from "@/lib/supabase";
+import { isDemoActive, supabase } from "@/lib/supabase";
 
 export type FleetVehicleFile = {
   name: string;
@@ -496,6 +496,7 @@ export async function updateCrewMemberDetails(companyId:string,member:CrewMember
 }
 
 export async function removeCrewMember(companyId: string, userId: string) {
+  if (isDemoActive()) throw new Error('Crew removal is disabled in demo mode. No real members were removed.');
   if (!supabase) throw new Error("Crew removal service is unavailable.");
   const { data: authData, error: authError } = await supabase.auth.refreshSession();
   if (authError || !authData.session) {

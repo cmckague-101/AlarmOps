@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { refreshCommunications } from './communications-store';
-import { supabase } from './supabase';
+import { isDemoActive, supabase } from './supabase';
 
 const DEFAULT_CHANNEL_ID = 'default';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,6 +21,7 @@ function getProjectId(): string | undefined {
 }
 
 async function syncUnreadBadge() {
+  if (isDemoActive()) return;
   if (Platform.OS === 'web' || !supabase) return;
   const { count, error } = await supabase
     .from('user_notifications')
@@ -45,6 +46,7 @@ async function configureAndroidChannel() {
  * assigns it to the current Supabase user. Safe to call more than once.
  */
 export async function registerForPushNotifications(userId?: string) {
+  if (isDemoActive()) return null;
   const client = supabase;
   if (Platform.OS === 'web' || !Device.isDevice || !client) return null;
 
@@ -83,6 +85,7 @@ export async function registerForPushNotifications(userId?: string) {
 
 /** Call before signing out so this device stops receiving this user's pushes. */
 export async function unregisterFromPushNotifications() {
+  if (isDemoActive()) return;
   const client = supabase;
   if (Platform.OS === 'web' || !Device.isDevice || !client) return;
 
