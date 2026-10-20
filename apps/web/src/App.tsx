@@ -1,5 +1,6 @@
 import AuditLogPage from './AuditLogPage';
 import InvoicesPage from './InvoicesPage';
+import {createDemoRecords,demoQualifications} from './demo-records';
 import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
 import {TaskListPage} from './TaskListPage';
@@ -216,7 +217,8 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
   const disconnectDemoMotive=async()=>{const next:MotiveConnection={connected:false,mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return next};
   const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? normalizeVehicles(initialData.vehicles) : loadVehicles());
   const [issues, setIssues] = useState<FleetIssue[]>(()=>initialData?.issues??loadIssues());
-  const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??loadCrew());
+  const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??(demoMode?seedCrew.map(member=>({...member,...demoQualifications()})):loadCrew()));
+  const [demoRecords,setDemoRecords]=useState(()=>createDemoRecords(user));
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
   const [page, setPage] = useState<Page>(()=>new URLSearchParams(window.location.search).has('motive')?'settings':'overview');
   const [selectedCredential,setSelectedCredential]=useState<CrewCredential>();
@@ -618,8 +620,8 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={()=>setPage('overview')}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
-        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} companyLogoUrl={companyDetails.logo?.dataUrl}/>}
-        {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
+        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} companyLogoUrl={companyDetails.logo?.dataUrl} demoData={demoMode?demoRecords:undefined} onDemoChange={records=>setDemoRecords(current=>({...current,...records}))}/>}
+        {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} demoForms={demoMode?demoRecords.payroll:undefined} onDemoChange={payroll=>setDemoRecords(current=>({...current,payroll}))} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
         {page === 'inventory' && <InventoryPage canManage={canManageFleet} currentUserId={currentUser.id} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem} onCheckout={checkoutInventoryItem} onCheckin={checkinInventoryItem}/>}

@@ -12,11 +12,11 @@ const PAYROLL_FILE_LIMIT = 10 * 1024 * 1024;
 function payrollFileType(file:File){return file.type||(/\.pdf$/i.test(file.name)?'application/pdf':/\.hei[cf]$/i.test(file.name)?'image/heic':'')}
 function safePayrollFileName(name:string){return name.trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'attachment'}
 
-export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void}) {
+export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened,demoForms,onDemoChange}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void;demoForms?:PayrollForm[];onDemoChange?:(forms:PayrollForm[])=>void}) {
   const manager = isCompanyManager(user.role);
-  const [forms,setForms] = useState<PayrollForm[]>([]);
+  const [forms,setForms] = useState<PayrollForm[]>(demoForms??[]);
   const [selected,setSelected] = useState<PayrollForm|null>(null);
-  const [draft,setDraft] = useState<PayrollForm|null>(null);
+  const [draft,setDraft] = useState<PayrollForm|null>(()=>demoForms?.find(form=>(form.status==='draft'||form.status==='rejected')&&form.createdBy===user.id)??null);
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
   const [saving,setSaving] = useState(false);
@@ -28,13 +28,15 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   const eligibleCrew = useMemo(()=>formCrew.filter(person=>person.status==='Active'),[formCrew]);
   const crewNames = useMemo(()=>new Map(formCrew.map(person=>[person.id,person.name])),[formCrew]);
 
+  const demoCallback=useRef(onDemoChange);demoCallback.current=onDemoChange;
+  useEffect(()=>{if(demoForms)demoCallback.current?.(forms)},[forms,Boolean(demoForms)]);
   const load = useCallback(async()=>{
-    if(!supabase||!companyId){setLoading(false);return}
+    if(demoForms||!supabase||!companyId){setLoading(false);return}
     const {data,error:failure}=await supabase.from('payroll_forms').select(columns).eq('company_id',companyId).order('created_at',{ascending:false});
     if(failure){setError(`Payroll could not load. ${failure.message}`);setLoading(false);return}
     const loaded=((data??[]) as PayrollRow[]).map(fromRow);setForms(loaded);setDraft(loaded.find(form=>(form.status==='draft'||form.status==='rejected')&&form.createdBy===user.id)??null);setError('');setLoading(false);
-  },[companyId,user.id]);
-  useEffect(()=>{void load();if(!supabase||!companyId)return;const client=supabase;const channel=client.channel(`payroll:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'payroll_forms',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{void client.removeChannel(channel)}},[companyId,load]);
+  },[companyId,user.id,Boolean(demoForms)]);
+  useEffect(()=>{void load();if(demoForms||!supabase||!companyId)return;const client=supabase;const channel=client.channel(`payroll:${companyId}`).on('postgres_changes',{event:'*',schema:'public',table:'payroll_forms',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();return()=>{void client.removeChannel(channel)}},[companyId,load]);
   useEffect(()=>{if(!requestedPayrollId||loading)return;const requested=forms.find(form=>form.id===requestedPayrollId);if(requested)setSelected(requested);onPayrollOpened?.()},[forms,loading,onPayrollOpened,requestedPayrollId]);
   useEffect(()=>()=>{if(saveTimer.current)clearTimeout(saveTimer.current)},[]);
 
@@ -47,6 +49,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
     saveTimer.current=setTimeout(()=>void save(form),650);
   }
   async function save(form:PayrollForm){
+    if(demoForms){const saved={...form,updatedAt:new Date().toISOString()};setDraft(saved);setSelected(saved);setForms(current=>[saved,...current.filter(item=>item.id!==saved.id)]);return saved}
     if(!supabase||!companyId||(form.status!=='draft'&&form.status!=='rejected'))return null;setSaving(true);setError('');
     const payload={id:form.id,company_id:companyId,created_by:user.id,created_by_name:user.name,engine_number:form.engineNumber,incidents:form.incidents,attachment:form.attachment,rows:form.rows,status:form.status};
     const query=form.status==='rejected'?supabase.from('payroll_forms').update(payload).eq('company_id',companyId).eq('id',form.id):supabase.from('payroll_forms').upsert(payload);
@@ -66,11 +69,12 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
     if(!form.attachment||!supabase)return;const tab=window.open('about:blank','_blank');if(tab)tab.opener=null;const {data,error:failure}=await supabase.storage.from(PAYROLL_BUCKET).createSignedUrl(form.attachment.storagePath,3600);if(failure){tab?.close();setError(`Attachment could not open. ${failure.message}`);return}if(tab)tab.location.href=data.signedUrl;else setError('Allow pop-ups to open attachment, then try again.');
   }
   async function submit(){
-    if(!selected||!supabase)return;if(saveTimer.current)clearTimeout(saveTimer.current);const saved=await save(selected);if(!saved)return;
+    if(!selected)return;if(demoForms){if(saveTimer.current)clearTimeout(saveTimer.current);const submitted:PayrollForm={...selected,status:'pending',submittedAt:new Date().toISOString()};setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);setSelected(null);setDraft(null);return}if(!supabase)return;if(saveTimer.current)clearTimeout(saveTimer.current);const saved=await save(selected);if(!saved)return;
     const {data,error:failure}=await supabase.from('payroll_forms').update({status:'pending'}).eq('company_id',companyId).eq('id',saved.id).in('status',['draft','rejected']).select(columns).single<PayrollRow>();
     if(failure){setError(`Payroll could not submit. ${failure.message}`);return}const submitted=fromRow(data);setSelected(null);setDraft(null);setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
   }
   async function setManagerStatus(form:PayrollForm,status:'approved'|'rejected'|'paid',notes?:string){
+    if(demoForms){const timestamp=new Date().toISOString();const updated:PayrollForm={...form,status,updatedAt:timestamp,...(status==='approved'?{approvedAt:timestamp,approvedBy:user.id}:{}),...(status==='rejected'?{rejectionNotes:notes??'',rejectedAt:timestamp,rejectedBy:user.id}:{})};setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));return}
     if(!supabase||!companyId)return;setSaving(true);setError('');const payload=status==='rejected'?{status,rejection_notes:notes}:{status};const {data,error:failure}=await supabase.from('payroll_forms').update(payload).eq('company_id',companyId).eq('id',form.id).select(columns).single<PayrollRow>();setSaving(false);
     if(failure){setError(`Payroll could not be ${status}. ${failure.message}`);return}const updated=fromRow(data);setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));
   }
@@ -78,7 +82,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   async function remove(){
     if(!selected||((selected.status!=='draft'&&selected.status!=='rejected')&&!manager)||!window.confirm('Delete this payroll form? This cannot be undone.'))return;
     if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);setError('');
-    if(supabase&&companyId){const {error:failure}=await supabase.from('payroll_forms').delete().eq('company_id',companyId).eq('id',selected.id);if(failure){setError(`Payroll form could not be deleted. ${failure.message}`);setSaving(false);return}if(selected.attachment){const {error:storageFailure}=await supabase.storage.from(PAYROLL_BUCKET).remove([selected.attachment.storagePath]);if(storageFailure)setError(`Payroll form was deleted, but attachment could not be removed. ${storageFailure.message}`)}}
+    if(!demoForms&&supabase&&companyId){const {error:failure}=await supabase.from('payroll_forms').delete().eq('company_id',companyId).eq('id',selected.id);if(failure){setError(`Payroll form could not be deleted. ${failure.message}`);setSaving(false);return}if(selected.attachment){const {error:storageFailure}=await supabase.storage.from(PAYROLL_BUCKET).remove([selected.attachment.storagePath]);if(storageFailure)setError(`Payroll form was deleted, but attachment could not be removed. ${storageFailure.message}`)}}
     const id=selected.id;setForms(current=>current.filter(item=>item.id!==id));setDraft(current=>current?.id===id?null:current);setSelected(null);setSaving(false);
   }
   const years=useMemo(()=>[...new Set([currentYear,...forms.map(form=>new Date(form.createdAt).getFullYear())])].sort((a,b)=>b-a),[forms,currentYear]);
