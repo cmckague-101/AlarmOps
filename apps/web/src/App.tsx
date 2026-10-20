@@ -613,7 +613,7 @@ export default function App({user=demoUser,company=demoCompany,companyId,initial
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
-        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser}/>}
+        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} companyLogoUrl={companyDetails.logo?.dataUrl}/>}
         {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
