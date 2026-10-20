@@ -1,3 +1,4 @@
+import {FileInput, UploadButton} from './demo-uploads';
 import { useState as useInvoiceGeneratorState } from 'react';
 import { InvoiceGenerator } from './InvoiceGenerator';
 import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
@@ -74,10 +75,10 @@ function StoredDocumentsContent({kind, companyId, user, crew}: {kind:'invoices'|
     <section className="receipt-upload-card"><div className="receipt-card-heading"><FileText/><div><h2>Add {kind === 'invoices' ? 'invoice' : 'payroll document'}</h2><p>Photograph a document or upload an image or PDF. Maximum 10 MB.</p></div></div>
       <form ref={form} className="receipt-form stored-document-form" onSubmit={event=>void upload(event)}>
         <label><span>Name</span><input required maxLength={160} value={name} onChange={event=>setName(event.target.value)} placeholder="Document name" disabled={busy}/></label>
-        <label className="receipt-file-field"><span>Document file</span><input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" disabled={busy} onChange={event=>setFile(event.target.files?.[0] ?? null)}/></label>
-        <label className="document-camera"><Camera/><span>Take photo</span><input type="file" accept="image/*" capture="environment" disabled={busy} onChange={event=>setFile(event.target.files?.[0] ?? null)}/></label>
+        <label className="receipt-file-field"><span>Document file</span><FileInput type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" disabled={busy} onChange={event=>setFile(event.target.files?.[0] ?? null)}/></label>
+        <label className="document-camera"><Camera/><span>Take photo</span><FileInput type="file" accept="image/*" capture="environment" disabled={busy} onChange={event=>setFile(event.target.files?.[0] ?? null)}/></label>
         {file && <p className="selected-document-file">Selected: {file.name}</p>}
-        <button className="primary" disabled={busy || !companyId || !file || !name.trim()}><Upload/>{busy ? 'Uploading…' : 'Upload document'}</button>
+        <UploadButton className="primary" disabled={busy || !companyId || !file || !name.trim()}><Upload/>{busy ? 'Uploading…' : 'Upload document'}</UploadButton>
       </form>
       {!companyId && <p className="receipt-error">Connect a company account to upload documents.</p>}
     </section>

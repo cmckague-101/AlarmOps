@@ -1,3 +1,4 @@
+import {FileInput, UploadButton} from './demo-uploads';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
 import { isCompanyManager, type CrewMember, type FireOpsUser } from '@fireops/domain';
@@ -256,8 +257,8 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
       <form className="receipt-form" onSubmit={submit}>
         <label><span>Name</span><input maxLength={160} placeholder="Fuel at Station 12" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={attempted && !name.trim()}/>{attempted && !name.trim() && <small>Enter receipt name.</small>}</label>
         <label><span>Amount</span><div className="receipt-money-input"><b>$</b><input inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-invalid={attempted && amountCents === null}/></div>{attempted && amountCents === null && <small>Enter valid amount.</small>}</label>
-        <label className="receipt-file-field"><span>Receipt file</span><input id="receipt-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" onChange={(event) => setFile(event.target.files?.[0] ?? null)} aria-invalid={attempted && !file}/><em>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'JPG, PNG, WebP, HEIC, or PDF · 10 MB maximum'}</em>{attempted && !file && <small>Choose receipt file.</small>}</label>
-        <button className="primary" disabled={saving || !companyId} type="submit"><Upload/>{saving ? 'Uploading…' : 'Upload receipt'}</button>
+        <label className="receipt-file-field"><span>Receipt file</span><FileInput id="receipt-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" onChange={(event) => setFile(event.target.files?.[0] ?? null)} aria-invalid={attempted && !file}/><em>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'JPG, PNG, WebP, HEIC, or PDF · 10 MB maximum'}</em>{attempted && !file && <small>Choose receipt file.</small>}</label>
+        <UploadButton className="primary" disabled={saving || !companyId} type="submit"><Upload/>{saving ? 'Uploading…' : 'Upload receipt'}</UploadButton>
       </form>
       {!companyId && <p className="receipt-error" role="alert">Connect Supabase and select company before uploading receipts.</p>}
       {error && <p className="receipt-error" role="alert">{error}</p>}

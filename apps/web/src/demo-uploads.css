@@ -1,0 +1,13 @@
+label:has(> input[type="file"]:disabled) {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+label:has(> input[type="file"]:disabled) input[type="file"] {
+  cursor: not-allowed;
+}
+
+.qualification-photo-picker:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
