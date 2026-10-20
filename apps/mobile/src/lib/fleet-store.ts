@@ -746,6 +746,38 @@ export async function saveFleetInspection(
   ]);
 }
 
+export async function deleteFleetInspection(
+  vehicle: FleetVehicle,
+  inspectionId: string,
+  user: FireOpsUser,
+) {
+  if (user.role !== "owner" && user.role !== "admin")
+    throw new Error("Only owners and admins can delete inspections.");
+  const inspection = vehicle.inspections.find((item) => item.id === inspectionId);
+  if (!inspection?.items.some((item) => item.result === "Fail"))
+    throw new Error("Failed inspection could not be found. Refresh and try again.");
+  const record = {
+    ...vehicle.source,
+    id: vehicle.id,
+    inspections: vehicle.inspections.filter((item) => item.id !== inspectionId),
+  };
+  const activityRecord: Activity = {
+    id: createFleetId(),
+    action: `${vehicle.name} failed inspection deleted`,
+    detail: `Inspection by ${inspection.inspectorName} · ${inspection.assignmentIncident || "No assignment / incident"}`,
+    createdBy: user.name,
+    createdById: user.id,
+    createdAt: new Date().toISOString(),
+    targetType: "vehicle",
+    targetId: vehicle.id,
+    tone: "urgent",
+  };
+  await saveFleetRecords([
+    { collection: "vehicles", record },
+    { collection: "activities", record: activityRecord },
+  ]);
+}
+
 export async function updateFleetVehicleFiles(
   vehicle: FleetVehicle,
   patch: {
