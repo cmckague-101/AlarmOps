@@ -56,12 +56,38 @@ describe('session-only demo records',()=>{
     expect(data.auditLogs.every(entry=>Date.parse(entry.created_at)<=now.getTime()&&Date.parse(entry.created_at)>now.getTime()-30*86400000)).toBe(true);
   });
 
+  it('provides two fictional crew conversations with recent, chronological replies',()=>{
+    const now=new Date('2028-04-10T12:00:00Z');
+    const {threads}=createDemoRecords(user,now);
+    expect(threads).toHaveLength(2);
+    expect(new Set(threads.map(thread=>thread.subject)).size).toBe(2);
+    const ids:string[]=[];
+    for(const thread of threads){
+      ids.push(thread.id);
+      expect(thread.createdById).toBe(user.id);
+      expect(thread.description.toLowerCase()).toContain('demo');
+      expect(thread.replies).toHaveLength(2);
+      let previous=Date.parse(thread.createdAt);
+      for(const reply of thread.replies){
+        ids.push(reply.id);
+        expect(reply.body).not.toBe('');
+        expect(reply.createdById).not.toBe(user.id);
+        expect(Date.parse(reply.createdAt)).toBeGreaterThan(previous);
+        expect(Date.parse(reply.createdAt)).toBeLessThanOrEqual(now.getTime());
+        previous=Date.parse(reply.createdAt);
+      }
+    }
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('creates fresh data when a new demo session starts',()=>{
     const first=createDemoRecords(user);
     first.invoices.splice(0);
+    first.threads[0].replies.splice(0);
     first.payroll[0].rows[0].hoursWorked=0;
     const next=createDemoRecords(user);
     expect(next.invoices).toHaveLength(2);
+    expect(next.threads[0].replies).toHaveLength(2);
     expect(next.payroll[0].rows[0].hoursWorked).toBe(12);
   });
 });

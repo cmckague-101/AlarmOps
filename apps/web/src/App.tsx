@@ -231,7 +231,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [requestedIncidentId,setRequestedIncidentId]=useState<string|null>(null);
   const [requestedVehicleId,setRequestedVehicleId]=useState<string|null>(null);
   const [requestedPayrollId,setRequestedPayrollId]=useState<string|null>(null);
-  const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??loadCommunicationThreads());
+  const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??(demoMode?demoRecords.threads:loadCommunicationThreads()));
   useEffect(()=>{if(communicationThreads)setThreads(communicationThreads)},[communicationThreads]);
   const unreadThreadCount=threads.filter(thread=>isThreadUnread(thread,currentUser)).length;
   const [documents,setDocuments]=useState<CompanyDocument[]>(()=>companyDocuments??loadCompanyDocuments());
