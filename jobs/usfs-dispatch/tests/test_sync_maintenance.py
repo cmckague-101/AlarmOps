@@ -77,10 +77,10 @@ def test_prune_only_old_managed_cache_files(tmp_path):
     }
 
 
-@pytest.mark.parametrize("flag", ["--dry-run", "--metadata-only", "--incremental-only", "--limit=1", "--area-id=1"])
+@pytest.mark.parametrize("flag", ["--dry-run", "--metadata-only", "--incremental-only", "--area-id=1"])
 def test_cleanup_rejects_incomplete_scopes(monkeypatch, flag):
     monkeypatch.setattr(sys, "argv", ["sync", "--cleanup", flag])
-    with pytest.raises(SystemExit, match="full, uncapped"):
+    with pytest.raises(SystemExit, match="full database catalog"):
         sync.main()
 
 
@@ -145,6 +145,15 @@ def test_cap_reports_backlog(monkeypatch, tmp_path, capsys):
     setup_run(monkeypatch, tmp_path, limit=1)
     assert sync.main() == 0
     assert "Selected: 1; deferred: 1" in capsys.readouterr().out
+
+
+def test_cleanup_allows_capped_work_after_full_catalog_discovery(monkeypatch, tmp_path):
+    setup_run(monkeypatch, tmp_path, limit=1)
+    monkeypatch.setattr(sys, "argv", ["sync", "--force", "--limit=1", "--cleanup"])
+    calls = []
+    monkeypatch.setattr(sync, "cleanup_obsolete", lambda *a: calls.append(a) or {})
+    assert sync.main() == 0
+    assert len(calls) == 1
 
 
 def test_cap_selects_oldest_check_first(monkeypatch, tmp_path):

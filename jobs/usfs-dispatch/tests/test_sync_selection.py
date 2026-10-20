@@ -50,7 +50,7 @@ def test_recent_complete_list_is_not_selected():
     assert selection_priority(item(), previous(checked_days_ago=1), args()) is None
 
 
-def test_missing_agreement_pdf_is_warning_not_retryable_error(monkeypatch):
+def test_missing_agreement_pdf_is_reported_as_warning(monkeypatch):
     class Client:
         @staticmethod
         def dpl_pdf(file_id):

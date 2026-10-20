@@ -1,65 +1,92 @@
-# VIPR daily sync
+# VIPR weekly refresh, daily discovery
 
 Run `bash jobs/usfs-dispatch/viprRun.sh` and supply the database URL and monitored
 contact email. Restart an already-running loop after changing the script.
 
-The runner now checks **all published lists every run**, without a 50-list cap.
-It downloads each distinct PDF fresh once per run (shared agreement PDFs are
-reused within that run), and refreshes equipment rows and agreement rates even
-when a DPL is unchanged. This detects changes to pricing as well as list content.
+The runner uses `--weekly --fresh-pdfs --cleanup --retention-days 30`. Web and
+mobile both read this same Supabase dataset; no UI changes or migration are needed.
 
-The runner uses `--force --recheck-days 1 --fresh-pdfs --cleanup
---retention-days 30`. `--force` avoids a timing edge where a check late in yesterday's
-run is not yet 24 hours old at the start of today's run. The sync starts roughly
-every 24 hours; if a run exceeds that, the next starts 60 seconds after it finishes.
-Keep USDA's request interval enabled. A full refresh may take substantially longer
-than the previous capped run; it is a periodic snapshot, not a real-time guarantee.
-Web and mobile both read this same Supabase dataset.
+## Daily work, rolling seven-day coverage
+
+Every run discovers the **entire published catalog**, so newly published lists
+are found daily and missing lists are marked inactive immediately. PDF work is
+split into independent buckets:
+
+- **New or renamed lists:** process immediately, in addition to the normal quota.
+  A first-ever import with no existing catalog can therefore be a large run.
+- **Regular rotation/backfill:** baseline `ceil(total published lists / 7)`, oldest
+  successful sync first. For 700 lists this starts at 100 lists per day.
+- **Deadline catch-up:** expand the quota to include healthy lists whose previous
+  successful sync will expire within the next day. After missed runs or clustered
+  previous syncs, this can be substantially larger than the baseline. Pending
+  never-successful lists retain backfill capacity even during deadline catch-up.
+- **Retries:** separate budget `max(1, ceil(baseline / 4))`, oldest last attempt
+  first. For 700 lists this permits up to 25 retries in addition to regular work.
+  Persistent failures cannot consume the regular rotation quota.
+
+Selected DPLs and their agreements are fetched fresh, with each distinct PDF
+reused within the run. Pricing is checked even if its DPL content is unchanged.
+An agreement 404 remains a warning, but now marks its list partial rather than
+fully current. Prior successful data/rates remain available where possible.
+
+The baseline is **not a hard cap**: new lists, retries and deadline catch-up are
+extra. PDF count is selected DPLs plus their distinct referenced agreements, not
+equipment row count. Keep USDA's request interval enabled. Runs start roughly
+every 24 hours; a run longer than 24 hours is followed by a 60-second pause.
+The weekly deadline calculation assumes daily runs. This is a monitored target,
+not a guarantee during upstream failures, missed runs or very long runtimes.
 
 ## Reading the output
 
-- **Eligible**: total backlog before applying any cap, grouped by processing priority.
-- **Selected / deferred / not due**: how much this run covers and what is left.
-  The daily runner should report zero deferred and zero not due.
-- **DPL / Agreement PDFs**: unique successfully parsed PDFs that are new to the
-  database, changed in content, or unchanged, using stored SHA-256 hashes.
-  Agreements shared by multiple lists are counted only once. These are content
-  checks, not a count of equipment changes or proof that every PDF was written
-  successfully; check errors too.
-- **PDF reads**: successful downloads versus local cache reuses.
-- **Equipment rows written**: all rows replaced for successfully written lists,
+- **Weekly plan:** baseline, selected rotation, deadline catch-up, new/renamed,
+  retry budget, and deferred retry/rotation work. Deferred rotation is expected.
+- **Weekly coverage before/after:** counts from the database for the current
+  catalog. `current_7_days`, `overdue`, and `never_successful` partition the total.
+  `never_checked` and `failed_or_partial` are additional overlapping indicators.
+  A recent failed attempt does not count as a successful refresh. Neither does a
+  missing agreement PDF or a list renamed since its last sync.
+- **DPL / Agreement PDFs:** unique successfully parsed PDFs new to the database,
+  changed in content, or unchanged, compared with stored SHA-256 hashes.
+  These are content checks, not counts of equipment changes or proof every write
+  succeeded. Check errors and coverage too.
+- **PDF reads:** successful downloads versus cache reuses.
+- **Equipment rows written:** rows replaced for successfully written lists,
   not the number of new PDFs or newly added equipment records.
-- **Errors / warnings**: warnings include USDA agreement PDF 404s. A missing
-  agreement PDF can mean current pricing was unavailable even if there are no
-  errors. Existing stored rates are retained when a download fails, so warnings
-  must not be interpreted as proof that all pricing is current.
+- **Errors / warnings:** current pricing may be unavailable on USDA agreement
+  404s. Existing stored rates are retained when a download fails; partial lists
+  remain visible but must not be interpreted as fully current.
 
-For manual incremental runs, omit `--force`; `--recheck-days` defaults to seven.
-A manual `--limit N` reports the deferred backlog and checks the oldest lists
-first within each priority. `--fresh-pdfs` is required to bypass the default
-24-hour disk cache. `--dry-run` still downloads/caches files, but does not write
-the database or perform cleanup; without a database baseline it cannot identify
-which PDFs are actually new or changed.
+If coverage is incomplete, inspect the failure messages and next day's plan.
+To force an exceptional full catch-up, use `--force --fresh-pdfs` **instead of**
+`--weekly`. Weekly mode always uses seven days and fresh PDFs, and rejects force,
+limit, filters, metadata-only, incremental-only and dry-run combinations.
+
+Without `--weekly`, the existing incremental options still work:
+`--recheck-days` defaults to seven; `--limit N` reports the deferred backlog;
+`--fresh-pdfs` bypasses the default 24-hour disk cache. `--dry-run` downloads/caches
+files but does not write the database or clean up; without a database baseline
+it cannot identify which PDFs are actually new or changed.
 
 ## Conservative cleanup
 
-Cleanup is opt-in for manual runs and enabled in the daily runner:
+Cleanup is opt-in for manual runs and enabled in the daily runner. It requires
+successful **full catalog discovery**, not a refresh of every PDF that day:
 
-1. A complete catalog discovery marks missing lists inactive immediately, hiding
-   them from the shared app-facing view. An empty catalog aborts without writes.
-2. After a successful full sync **with no errors or warnings**, inactive lists
+1. Missing lists are marked inactive immediately, hiding them from the shared
+   app-facing view. An empty catalog aborts without writes.
+2. After selected work finishes **with no errors or warnings**, inactive lists
    unseen for 30 days are deleted, including their equipment rows.
 3. Agreement records/rates are deleted only when no retained equipment rows
-   reference them and they have not been checked for 30 days.
+   reference them and they have not been checked for 30 days. Unprocessed active
+   lists and retained inactive lists still protect their referenced agreements.
 4. Only managed `dpl-*` / `agreement-*` PDF files and SHA-256 sidecars older than
    30 days in `jobs/usfs-dispatch/data/cache/` are removed. Recent files, unrelated
    files and symlinks are left alone. Old active PDFs can be downloaded again.
 
-Cleanup rejects filtered, capped, metadata-only, incremental-only, and dry runs.
-Errors or warnings skip all cleanup, retaining last-known data/files for recovery.
-Inactive geographic-area and dispatch-center metadata is retained. There are no
-schema migrations or UI changes. Retention is configurable with `--retention-days`;
-keep database backups before enabling deletion against production data.
+Cleanup allows weekly batches and manual capped runs but rejects filtered,
+metadata-only, incremental-only and dry runs. Errors or warnings skip all cleanup.
+Inactive geographic-area and dispatch-center metadata is retained. Retention is
+configurable with `--retention-days`; keep database backups before deletion.
 
 ## Targeted tests
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -47,8 +48,9 @@ def arguments() -> argparse.Namespace:
         default=7,
         help="Reprocess complete lists after this many days to detect replaced PDFs and award changes",
     )
+    parser.add_argument("--weekly", action="store_true", help="Spread fresh full-catalog checks across seven daily runs")
     parser.add_argument("--fresh-pdfs", action="store_true", help="Bypass disk cache once per PDF per run")
-    parser.add_argument("--cleanup", action="store_true", help="After a successful full sync, prune obsolete data and old cached PDFs")
+    parser.add_argument("--cleanup", action="store_true", help="After a successful full catalog discovery and selected sync, prune obsolete data and old cached PDFs")
     parser.add_argument("--retention-days", type=int, default=30, help="Cleanup grace period (default: 30 days)")
     return parser.parse_args()
 
@@ -108,7 +110,8 @@ def acquire_sync_lock(connection) -> None:
 def existing_lists(connection) -> dict[int, dict[str, Any]]:
     with connection.cursor() as cursor:
         cursor.execute(
-            "select file_id, name, sync_status, last_checked_at, pdf_sha256 from public.usfs_priority_lists"
+            "select file_id, name, sync_status, last_checked_at, pdf_sha256, synced_at, last_error "
+            "from public.usfs_priority_lists"
         )
         return {
             int(row[0]): {
@@ -116,6 +119,8 @@ def existing_lists(connection) -> dict[int, dict[str, Any]]:
                 "sync_status": row[2],
                 "last_checked_at": row[3],
                 "pdf_sha256": row[4],
+                "synced_at": row[5],
+                "last_error": row[6],
             }
             for row in cursor.fetchall()
         }
@@ -132,7 +137,11 @@ def pdf_change(old_sha: str | None, new_sha: str) -> str:
 
 
 def cleanup_obsolete(connection, cache_dir: Path, retention_days: int) -> dict[str, int]:
-    """Only called following a successful, unfiltered, uncapped catalog reconciliation."""
+    """Only called after full catalog discovery and error/warning-free selected work.
+
+    PDF coverage is independent: inactive lists and unreferenced agreements only
+    are retired; references from unprocessed lists remain protected.
+    """
     counts: dict[str, int] = {}
     with connection.cursor() as cursor:
         # Keep recently missing lists for recovery if USDA temporarily omits them.
@@ -260,7 +269,7 @@ def write_list(
     warnings: list[str],
 ) -> None:
     file_id = int(item["id"])
-    status = "partial" if errors else "complete"
+    status = "partial" if errors or warnings else "complete"
     messages = errors + warnings
     with connection.cursor() as cursor:
         for piid, agreement in agreement_data.items():
@@ -404,6 +413,76 @@ def selection_priority(
     return None
 
 
+def weekly_plan(lists, previous, now: datetime):
+    """Reserve rotation capacity independently of retries; catch deadlines a day early."""
+    minimum = datetime.min.replace(tzinfo=timezone.utc)
+    baseline = max(1, math.ceil(len(lists) / 7))
+    immediate, rotation, retries = [], [], []
+    for item in lists:
+        old = previous.get(int(item["id"]))
+        if old is None or old["name"] != item["name"]:
+            immediate.append(item)
+        elif old["sync_status"] in ("partial", "failed") or old.get("last_error"):
+            retries.append(item)
+        else:
+            rotation.append(item)
+
+    rotation.sort(key=lambda item: (
+        previous[int(item["id"])].get("synced_at") or minimum, int(item["id"]),
+    ))
+    retries.sort(key=lambda item: (
+        previous[int(item["id"])].get("last_checked_at") or minimum, int(item["id"]),
+    ))
+    # Complete every healthy list whose last success expires before tomorrow.
+    # Never-synced pending backfill is spread over the baseline rather than all at once.
+    deadline = now - timedelta(days=6)
+    at_risk = sum(
+        1 for item in rotation
+        if (synced := previous[int(item["id"])].get("synced_at")) is not None
+        and synced <= deadline
+    )
+    # Reserve backfill capacity too, so early deadline refreshes cannot starve
+    # lists that have never succeeded during the initial seven-day rollout.
+    pending_count = sum(previous[int(item["id"])].get("synced_at") is None for item in rotation)
+    quota = max(baseline, at_risk + min(baseline, pending_count))
+    # Pending lists must not push imminent deadlines out of the catch-up quota.
+    urgent = [item for item in rotation
+              if (synced := previous[int(item["id"])].get("synced_at")) is not None
+              and synced <= deadline]
+    urgent_ids = {int(item["id"]) for item in urgent}
+    remaining = [item for item in rotation if int(item["id"]) not in urgent_ids]
+    selected_rotation = urgent + remaining[:max(0, quota - len(urgent))]
+    retry_budget = max(1, math.ceil(baseline / 4))
+    targets = immediate + selected_rotation + retries[:retry_budget]
+    return targets, {
+        "baseline": baseline, "rotation": len(selected_rotation),
+        "deadline_catchup": at_risk, "new_or_renamed": len(immediate),
+        "retries": min(len(retries), retry_budget), "retry_budget": retry_budget,
+        "retries_deferred": max(0, len(retries) - retry_budget),
+        "rotation_deferred": len(rotation) - len(selected_rotation),
+    }
+
+
+def weekly_coverage(lists, previous, now: datetime) -> dict[str, int]:
+    counts = {"total": len(lists), "current_7_days": 0, "overdue": 0,
+              "never_successful": 0, "never_checked": 0, "failed_or_partial": 0}
+    for item in lists:
+        old = previous.get(int(item["id"]), {})
+        synced = old.get("synced_at")
+        if old.get("last_checked_at") is None:
+            counts["never_checked"] += 1
+        if old.get("sync_status") in ("failed", "partial") or old.get("last_error"):
+            counts["failed_or_partial"] += 1
+        if synced is None:
+            counts["never_successful"] += 1
+        elif (synced > now - timedelta(days=7) and old.get("sync_status") == "complete"
+              and not old.get("last_error") and old.get("name") == item["name"]):
+            counts["current_7_days"] += 1
+        else:
+            counts["overdue"] += 1
+    return counts
+
+
 def main() -> int:
     args = arguments()
     if args.recheck_days < 1 or args.retention_days < 1:
@@ -411,13 +490,15 @@ def main() -> int:
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1")
     full_catalog = args.area_id is None and args.center_id is None and args.file_id is None
-    if args.cleanup and (not full_catalog or args.limit is not None or args.metadata_only
-                         or args.incremental_only or args.dry_run):
-        raise SystemExit("--cleanup requires a full, uncapped database sync (no filters or incremental-only)")
+    if args.weekly and (not full_catalog or args.force or args.limit is not None
+                        or args.incremental_only or args.metadata_only or args.dry_run):
+        raise SystemExit("--weekly requires a full database catalog (no force, limit, filters, dry-run or incremental-only)")
+    if args.cleanup and (not full_catalog or args.metadata_only or args.incremental_only or args.dry_run):
+        raise SystemExit("--cleanup requires a full database catalog (no filters, dry-run or incremental-only)")
     if not args.dry_run and not os.getenv("FS_USER_AGENT"):
         raise SystemExit("FS_USER_AGENT is required; include FireOps and a monitored contact")
 
-    client = ForestServiceClient(ROOT / "data" / "cache", fresh_pdfs=args.fresh_pdfs)
+    client = ForestServiceClient(ROOT / "data" / "cache", fresh_pdfs=args.fresh_pdfs or args.weekly)
     print("Discovering USDA catalog…", flush=True)
     areas, centers, lists = discover(client, args)
     print(f"Found {len(areas)} areas, {len(centers)} centers, {len(lists)} lists", flush=True)
@@ -449,18 +530,26 @@ def main() -> int:
         target[1],
     ))
     reasons = Counter(priority for priority, _, _ in prioritized_targets)
-    print(
-        f"Eligible: {len(prioritized_targets)} lists "
-        f"(new/renamed/forced: {reasons[0]}, partial/failed: {reasons[1]}, "
-        f"pending: {reasons[2]}, due: {reasons[3]})", flush=True,
-    )
+    if not args.weekly:
+        print(
+            f"Eligible: {len(prioritized_targets)} lists "
+            f"(new/renamed/forced: {reasons[0]}, partial/failed: {reasons[1]}, "
+            f"pending: {reasons[2]}, due: {reasons[3]})", flush=True,
+        )
     targets = [item for _, _, item in prioritized_targets]
+    if args.weekly:
+        print(f"Weekly coverage before: {json.dumps(weekly_coverage(lists, previous, datetime.now(timezone.utc)))}", flush=True)
+        targets, plan = weekly_plan(lists, previous, datetime.now(timezone.utc))
+        print(f"Weekly plan: {json.dumps(plan)}", flush=True)
     if args.limit is not None:
         targets = targets[: args.limit]
     if args.metadata_only:
         targets = []
-    print(f"Selected: {len(targets)}; deferred: {len(prioritized_targets) - len(targets)}; "
-          f"not due: {len(lists) - len(prioritized_targets)}", flush=True)
+    if args.weekly:
+        print(f"Selected: {len(targets)}; deferred by weekly rotation: {len(lists) - len(targets)}", flush=True)
+    else:
+        print(f"Selected: {len(targets)}; deferred: {len(prioritized_targets) - len(targets)}; "
+              f"not due: {len(lists) - len(prioritized_targets)}", flush=True)
 
     total_entries = 0
     completed = 0
@@ -511,6 +600,12 @@ def main() -> int:
             message = f"DPL {file_id}: {exc}"
             all_errors.append(message)
             print(f"  ERROR: {message}", file=sys.stderr, flush=True)
+
+    if args.weekly and connection:
+        coverage = weekly_coverage(lists, existing_lists(connection), datetime.now(timezone.utc))
+        print(f"Weekly coverage after: {json.dumps(coverage)}", flush=True)
+        if coverage["overdue"] or coverage["never_successful"]:
+            print("Weekly coverage incomplete: overdue/never-successful lists remain; inspect failures and the next plan.", flush=True)
 
     if args.cleanup and connection:
         if all_errors or warning_count:
