@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage, normalized native fleet reads with pending overlays, and a provider-owned atomic detail-edit boundary are implemented. Native legacy writes have pending-work/stale-read guards. Feature save handlers are not connected to offline enqueue; stale web online writers must be hardened before enablement. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage, normalized native fleet reads with pending overlays, and a provider-owned atomic detail-edit boundary are implemented. Native legacy writes have pending-work/stale-read guards. Web online fleet saves now retain captured revisions and immutable retry requests without overwriting pending local work from realtime. Feature save handlers are not connected to native offline enqueue yet. Web remains online-only. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -258,9 +258,27 @@ Native vehicle/issue read objects retain private scope/revision/pending stamps. 
 
 The detail-edit boundary now reserves records before enqueue and publishes successful verified downloads through the worker. Verified downloads also race abort/timeouts explicitly, so a stuck session restoration cannot leave preparation waiting indefinitely. No screen/form calls its offline prepare/save methods yet; the read-only banner and unsupported-action request guard remain unchanged.
 
-**Rollout blocker found:** main web `App.tsx`/`FleetApp.tsx` still have whole-snapshot/debounced saves that can take expected revisions from a newer mutable map after a form captured older values. That can overwrite newly synced fields even though revision triggers are active. Harden those online writers and their pending-versus-realtime behavior before enabling native detail-save UI. Web remains online-only; no web offline behavior was added.
+**Rollout blocker found (addressed by the following slice):** main web `App.tsx`/`FleetApp.tsx` had whole-snapshot/debounced saves that could take expected revisions from a newer mutable map after a form captured older values. That can overwrite newly synced fields even though revision triggers are active. Harden those online writers and their pending-versus-realtime behavior before enabling native detail-save UI. Web remains online-only; no web offline behavior was added.
 
 Targeted checks: **132 native tests** (outbox/native storage, worker, protocol/transport, scoped read-model/gate, production fleet repository with injected SDK/hooks, sign-out, conflict-review hooks and inspection confirmation), plus mobile typecheck and diff whitespace checks. No UI/server launch, server migration change or deployment occurred.
+
+### Online web writer safeguards (implemented; no web offline mode)
+
+These changes protect mobile-synced fields from stale browser writes. **Offline editing remains mobile-only.** Web gets no SQLite/outbox, offline read cache, persistent retry queue, background replay or offline-save claim. Pending browser requests/drafts below are ordinary in-memory online form state, lost on page exit; navigation/sign-out and browser-unload warnings make that limitation explicit.
+
+`apps/web/src/online-fleet-writes.ts` binds issued UI records to their original collection/identity/revision and wire values. `FleetApp.tsx` issues tokens for normalized initial reads and hydrated realtime rows. Whole-record mutations/deletes use the captured token, never the mutable latest version map. Unseen remote inserts are not inferred deletions; an old update never becomes an insert after deletion/recreation. Unknown, modified or foreign-scope bases fail closed. A role-only receipt no longer promotes an old whole crew object to a newer revision. Complete batch acknowledgments are validated before promoting matching submitted UI values.
+
+Each online batch has immutable wire data, expected revisions and an operation UUID. It uses `apply_fleet_changes_once` when available, with the original actor's verified bearer token, scope checks and bounded request timeout. Only a definitive missing-function `PGRST202` can select the legacy `apply_fleet_changes` endpoint, before that endpoint has been attempted. Uncertain delivery never changes endpoints, operation identity or values. The legacy path remains protected by original CAS versions/IDs but cannot prove receipt-based replay after a lost response; it may require checking refreshed server data rather than receiving a successful retry. Permissions, stale writes, internal setup errors and timeouts do not trigger mutation fallback.
+
+`online-fleet-edit-session.ts` preserves the first displayed base and captures the submitted snapshot **before** debounce. It does not read a newer `latestSnapshot` when a request/retry eventually executes. Concurrent retries share the same request. Further generic fleet edits wait until the current save finishes; failed/unconfirmed values remain on the open page and retries reuse the original snapshot. Incoming realtime rows/deletions are buffered, not copied over local work or echoed back to persistence, then applied after acknowledgment. Same-account updates from another device are no longer hidden as presumed local echoes. Component identity, async hydration, deletion markers and late acknowledgments are scope/version fenced.
+
+Stale vehicle and issue forms keep entered values and reject submission instead of rebasing old values onto a newer live prop. Photo replacement rechecks its original vehicle after upload. Vehicle editing preserves unrelated inspections/custom documents. Assignment Undo merges only its status/assignment fields onto the current vehicle, preserving newer mobile notes/files, and refuses to undo a superseding assignment. Save status/toasts distinguish an online save in progress from confirmed completion. Discarding a page is explicit; no browser draft is represented as durable offline work.
+
+File cleanup runs only after validated acknowledgment, excludes still-referenced paths, and no longer deletes another open editor's unused pending uploads. Failed, uncertain or invalid acknowledgments retain ownership of uploaded files. Completed cleanup failures do not turn committed business writes into failed saves.
+
+Targeted validation: **76 web tests** covering pure plans/transport, actual production workspace/form/debounce callbacks with injected dependencies, and existing fleet contracts; web typecheck; **21 embedded PostgreSQL fleet batch/revision/RLS tests**; diff whitespace check. No UI/server launch or visual testing. Server migrations are unchanged and nothing was deployed. PGlite remains no substitute for target-Supabase migration and real multi-session validation.
+
+This hardens the existing online fleet boundary; it does not complete every workflow's permission/invariant/attachment adapter or enable native saves by itself. Native vehicle/issue detail UI and per-record verified-download availability are next.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
@@ -273,7 +291,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
-The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: the worker and notices are connected, but save handlers, attachment persistence, full catch-up and main-web online-writer concurrency guards are not complete. Deploying these review screens is not an announcement that all-feature offline mode is complete.
+The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: the worker and notices are connected, but native save handlers, attachment persistence, full catch-up and remaining workflow adapters are not complete. Deploying these review screens is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
@@ -299,8 +317,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Harden main-web online fleet writers (`App.tsx`, `FleetApp.tsx`) before native detail-save rollout: retain original edit bases/revisions, preserve local work across realtime updates and debounce/queue boundaries, and do not substitute latest revision tokens for stale form values. Add focused stale-form, pending-write/realtime and retry tests. Web stays online-only.
-- Then wire vehicle/issue detail editors through the provider-owned `detailEditor` prepare/save methods, retaining the original draft throughout editing. Native normalized reads, pending overlays and legacy write guards now exist; keep unsupported fields/workflows online-only. Add truthful per-record download availability and end-to-end logic tests before changing the read-only banner. Do not create competing `activate()` handles per save.
+- Wire native vehicle/issue detail editors through the provider-owned `detailEditor` prepare/save methods, retaining the original draft throughout editing. Native normalized reads, pending overlays and legacy write guards now exist; keep unsupported fields/workflows online-only. Add truthful per-record download availability and end-to-end logic tests before changing the read-only banner. Do not create competing `activate()` handles per save.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.

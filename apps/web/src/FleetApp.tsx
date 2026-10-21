@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import {crewCredentials,isCompanyManager,type AssignableUserRole} from '@fireops/domain';
+import {crewCredentials,isCompanyManager,normalizeVehicles,type AssignableUserRole} from '@fireops/domain';
 import { ArrowDown, BellRing, Boxes, Building2, Check, Download, Gauge, GraduationCap, ListOrdered, LogOut, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, ShieldCheck, Smartphone, Truck, Users } from 'lucide-react';
 import App, { type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo, type CrewCredential, type CrewExperience, type CrewMember, type FireOpsUser, type FleetRemoteChange, type FleetSnapshot, type MotiveAuthorization, type MotiveConnection, type UserRole, type VehicleFile, type VehicleNote, type VehicleTypeOption } from './App';
 import type { Training, TrainingSignup } from './TrainingPage';
 import type { InventoryItem } from './InventoryPage';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
+import {createOnlineFleetWrites,createOnlineFleetTransport,fleetRecordsEqual} from './online-fleet-writes';
+export {fleetRecordsEqual} from './online-fleet-writes';
 
 type Membership = { company_id: string; role: UserRole };
 type Profile = { full_name: string };
@@ -25,8 +27,6 @@ type InventoryCheckoutRow = {item_id:string;user_id:string;user_name:string;quan
 type VehicleTypeRow = {id:string;name:string};
 type CompanyRow = { id: string; name: string; company_code: string; industry: string; phone: string; location: string; logo_path: string|null; crew_invite_limit: number };
 type Access = {kind:'admin';userName:string}|{kind:'member';userName:string;companyId:string;role:UserRole};
-type FleetChange = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;data?:unknown;expectedVersion?:number};
-type FleetChangeResult = {collection:keyof FleetSnapshot;event:'insert'|'update'|'delete';recordId:string;version:number};
 type AccessCheckError = {code?:string;message?:string}|null;
 type MotiveCaptureRequest =
   | {status:'pending';requestId:string;cameraType:'dashcam'|'omnicam';position:string;capturedAt?:string}
@@ -122,21 +122,6 @@ export function stripSignedFileUrls(snapshot:FleetSnapshot){
     member.experiences?.forEach(experience=>{if(experience.file?.path)experience.file.dataUrl=''});
   });
   return next;
-}
-
-function canonicalJsonValue(value:unknown):unknown{
-  if(Array.isArray(value))return value.map(canonicalJsonValue);
-  if(value&&typeof value==='object')return Object.fromEntries(
-    Object.entries(value as Record<string,unknown>)
-      .filter(([,entry])=>entry!==undefined)
-      .sort(([left],[right])=>left.localeCompare(right))
-      .map(([key,entry])=>[key,canonicalJsonValue(entry)])
-  );
-  return value;
-}
-
-export function fleetRecordsEqual(left:unknown,right:unknown){
-  return JSON.stringify(canonicalJsonValue(left))===JSON.stringify(canonicalJsonValue(right));
 }
 
 export function snapshotFilePaths(snapshot:FleetSnapshot){
@@ -415,7 +400,7 @@ function AuthenticatedFleet({session}:{session:Session}){
   if(!loaded)return <FleetMessage text="Checking account access..."/>;
   if(error||!access)return <FleetError text={error} onRetry={retry}/>;
   if(access.kind==='admin')return <AdminCompanyAccess session={session} userName={access.userName}/>;
-  return <CompanyWorkspace session={session} userName={access.userName} companyId={access.companyId} role={access.role}/>;
+  return <CompanyWorkspace key={`${session.user.id}:${access.companyId}:${access.role}`} session={session} userName={access.userName} companyId={access.companyId} role={access.role}/>;
 }
 
 function AdminCompanyAccess({session,userName}:{session:Session;userName:string}){
@@ -451,7 +436,7 @@ function AdminCompanyAccess({session,userName}:{session:Session;userName:string}
 
   if(selectedId.startsWith('open:')){
     const companyId=selectedId.slice(5);
-    return <CompanyWorkspace session={session} userName={userName} companyId={companyId} role="owner" isAdmin onSwitchCompany={()=>setSelectedId('')}/>;
+    return <CompanyWorkspace key={`${session.user.id}:${companyId}:system-admin`} session={session} userName={userName} companyId={companyId} role="owner" isAdmin onSwitchCompany={()=>setSelectedId('')}/>;
   }
   if(loading)return <FleetMessage text="Loading companies..."/>;
   return <div className="admin-auth admin-company-access"><form onSubmit={openCompany}><span className="admin-access-icon"><ShieldCheck/></span><h1>Administrator access</h1><p>Choose company to troubleshoot with company owner permissions. Access is recorded.</p><label>Company<select required value={selectedId} onChange={event=>setSelectedId(event.target.value)}><option value="">Select company</option>{companies.map(company=><option key={company.id} value={company.id}>{company.name} · {company.company_code}</option>)}</select></label>{!companies.length&&!error&&<div className="admin-empty">No companies found.</div>}{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy||!selectedId}><Building2/>{busy?'Opening...':'Access company'}</button><button type="button" className="admin-secondary" onClick={()=>supabase?.auth.signOut()}><LogOut/>Sign out</button></form></div>;
@@ -479,6 +464,11 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [loaded,setLoaded]=useState(false);
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
+  const workspaceActive=useRef(true);const saveEpoch=useRef(0);
+  const [writeModel]=useState(()=>createOnlineFleetWrites({companyId,userId:session.user.id,wire:stripSignedFileUrls,id:()=>crypto.randomUUID()}));
+  const [deliver]=useState(()=>supabase?createOnlineFleetTransport(supabase,{companyId,userId:session.user.id},()=>workspaceActive.current):null);
+  const deletedVersions=useRef(new Map<string,number>());
+  useEffect(()=>{workspaceActive.current=true;return()=>{workspaceActive.current=false;saveEpoch.current++}},[]);
   const pendingUploads=useRef(new Set<string>());
   const committedUploads=useRef(new Set<string>());
   const cleanupQueue=useRef(new Set<string>());
@@ -555,13 +545,17 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 
   const patchPersisted=useCallback((collection:FleetCollection,event:'upsert'|'delete',id:string,record?:unknown,version?:number)=>{
     const currentVersion=versions.current[collection].get(id)??0;
-    if(version!==undefined&&version<currentVersion)return false;
-    if(event==='delete')versions.current[collection].delete(id);else if(version!==undefined)versions.current[collection].set(id,version);
+    if(version!==undefined&&(version<currentVersion||event==='upsert'&&version<=(deletedVersions.current.get(`${collection}:${id}`)??0)))return false;
+    const existing=(persisted.current[collection] as {id:string}[]).find(record=>record.id===id);
+    if(event==='upsert'&&version===currentVersion&&existing&&!fleetRecordsEqual(existing,record))return false;
+    if(event==='delete'){
+      deletedVersions.current.set(`${collection}:${id}`,version??currentVersion);versions.current[collection].set(id,version??currentVersion);
+    }else if(version!==undefined){versions.current[collection].set(id,version);deletedVersions.current.delete(`${collection}:${id}`);if(record&&typeof record==='object')writeModel.issue(collection,record as {id:string},version)}
     const list=persisted.current[collection] as {id:string}[];
     const next=event==='delete'?list.filter(item=>item.id!==id):[record as {id:string},...list.filter(item=>item.id!==id)];
     persisted.current={...persisted.current,[collection]:next};
     return true;
-  },[]);
+  },[writeModel]);
 
   useEffect(()=>{
     const client=supabase;
@@ -569,6 +563,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     let active=true;
     let fleetEventSequence=0;
     const handleChange=async(collection:FleetCollection,payload:{eventType:string;new:Record<string,unknown>;old:Record<string,unknown>})=>{
+      if(!active)return;
       fleetEventSequence+=1;
       const row=(payload.eventType==='DELETE'?payload.old:payload.new) as unknown as Partial<FleetRecordRow>;
       const id=row.record_id;
@@ -579,12 +574,13 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
         return;
       }
       if(!row.data||row.version===undefined)return;
-      if(!patchPersisted(collection,'upsert',id,row.data,row.version)||row.updated_by===session.user.id)return;
+      if(!patchPersisted(collection,'upsert',id,row.data,row.version))return;
       const shell=emptySnapshot();
       (shell[collection] as unknown[]).push(row.data);
       const hydrated=await hydrateFileUrls(shell);
-      if(!active||versions.current[collection].get(id)!==row.version)return;
-      const record=(hydrated[collection] as {id:string}[])[0];
+      if(!active||versions.current[collection].get(id)!==row.version||deletedVersions.current.has(`${collection}:${id}`))return;
+      const record=collection==='vehicles'?normalizeVehicles(hydrated.vehicles)[0]:(hydrated[collection] as {id:string}[])[0];
+      writeModel.issue(collection,record,row.version);
       const change={collection,event:'upsert',record,sequence:++remoteSequence.current} as FleetRemoteChange&{sequence:number};
       setRemoteChanges(changes=>[...changes.slice(-99),change]);
     };
@@ -636,9 +632,12 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       });
       if(!snapshot.crew.length&&!isAdmin)snapshot.crew=[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active'}];
       persisted.current=snapshot;
+      const capturedVersions=Object.fromEntries(collections.map(([collection])=>[collection,new Map(versions.current[collection])])) as Record<FleetCollection,Map<string,number>>;
       const hydrated=await hydrateFileUrls(snapshot);
       if(!active)return;
       if(fleetSequenceAtStart!==fleetEventSequence){void load();return}
+      hydrated.vehicles=normalizeVehicles(hydrated.vehicles);
+      collections.forEach(([collection])=>(hydrated[collection] as {id:string}[]).forEach(record=>{const version=capturedVersions[collection].get(record.id);if(version!==undefined)writeModel.issue(collection,record,version)}));
       setInitialData(hydrated);
       const logo=companyResult.data.logo_path?await refreshFileUrl({name:'Company logo',type:'image/*',dataUrl:'',path:companyResult.data.logo_path}):undefined;
       if(!active)return;
@@ -654,7 +653,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     void loadInventory();
     void loadVehicleTypes();
     return()=>{active=false;void client.removeChannel(channel);void client.removeChannel(communicationChannel);void client.removeChannel(documentChannel);void client.removeChannel(trainingChannel);void client.removeChannel(inventoryChannel);void client.removeChannel(vehicleTypeChannel)};
-  },[companyId,isAdmin,loadCommunications,loadDocuments,loadInventory,loadTrainings,loadVehicleTypes,patchPersisted,role,session.user.email,session.user.id,userName]);
+  },[companyId,isAdmin,loadCommunications,loadDocuments,loadInventory,loadTrainings,loadVehicleTypes,patchPersisted,role,session.user.email,session.user.id,userName,writeModel]);
 
   const upload=useCallback(async(file:File)=>{
     if(!supabase)throw new Error('Company is unavailable');
@@ -686,53 +685,33 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     try{await deleteFiles(paths)}catch{/* Retry queued cleanup on next save. */}
   },[deleteFiles]);
 
-  const save=useCallback(async(data:FleetSnapshot)=>{
-    const client=supabase;
-    if(!client)throw new Error('Company is unavailable');
-    const beforeSnapshot=persisted.current;
-    const beforePaths=snapshotFilePaths(beforeSnapshot);
-    const next=stripSignedFileUrls(data);
-    const nextPaths=snapshotFilePaths(next);
-    const collections=(Object.keys(fleetTables) as FleetCollection[]);
-    const changes:FleetChange[]=[];
-    const records=new Map<string,{collection:FleetCollection;record:{id:string}}>();
-
-    collections.forEach(collection=>{
-      const before=new Map((beforeSnapshot[collection] as {id:string}[]).map(record=>[record.id,record]));
-      const after=new Map((next[collection] as {id:string}[]).map(record=>[record.id,record]));
-      after.forEach((record,id)=>{
-        const previous=before.get(id);
-        if(previous&&fleetRecordsEqual(previous,record))return;
-        const expectedVersion=versions.current[collection].get(id);
-        changes.push({collection,event:expectedVersion===undefined?'insert':'update',recordId:id,data:record,...(expectedVersion===undefined?{}:{expectedVersion})});
-        records.set(`${collection}:${id}`,{collection,record});
-      });
-      before.forEach((_record,id)=>{
-        if(after.has(id))return;
-        const expectedVersion=versions.current[collection].get(id);
-        if(expectedVersion!==undefined)changes.push({collection,event:'delete',recordId:id,expectedVersion});
-      });
-    });
-
-    let results:FleetChangeResult[]=[];
-    if(changes.length){
-      const {data:changed,error:changeError}=await client.rpc('apply_fleet_changes',{target_company_id:companyId,changes});
-      if(changeError)throw new Error(changeError.code==='40001'||changeError.code==='PT409'?'Record changed elsewhere. Latest changes are syncing; retry once they appear.':changeError.message);
-      results=(changed??[]) as FleetChangeResult[];
-      results.forEach(result=>{
-        const saved=records.get(`${result.collection}:${result.recordId}`);
-        patchPersisted(result.collection,result.event==='delete'?'delete':'upsert',result.recordId,saved?.record,result.version);
-      });
+  const save=useCallback(async(data:FleetSnapshot,before:FleetSnapshot)=>{
+    if(!deliver||!workspaceActive.current)throw new Error('Company is unavailable.');
+    const epoch=saveEpoch.current;
+    const request=writeModel.prepare(data,before);
+    if(!request.changes.length)return;
+    const response=await deliver(request);
+    if(!workspaceActive.current||epoch!==saveEpoch.current)throw new Error('Fleet workspace changed. Check the original account before retrying.');
+    const results=writeModel.acknowledge(request,response);
+    const changes:(FleetRemoteChange&{sequence:number})[]=[];
+    for(const result of results){
+      const sent=request.changes.find(change=>change.collection===result.collection&&change.recordId===result.recordId)!;
+      if(!patchPersisted(result.collection,result.event==='delete'?'delete':'upsert',result.recordId,sent.data,result.version))continue;
+      if(result.event==='delete')changes.push({collection:result.collection,event:'delete',id:result.recordId,sequence:++remoteSequence.current} as FleetRemoteChange&{sequence:number});
+      else{
+        const record=(data[result.collection] as {id:string}[]).find(record=>record.id===result.recordId)!;
+        changes.push({collection:result.collection,event:'upsert',record,sequence:++remoteSequence.current} as FleetRemoteChange&{sequence:number});
+      }
     }
-
-    beforePaths.forEach(path=>{if(!nextPaths.has(path))cleanupQueue.current.add(path)});
-    pendingUploads.current.forEach(path=>{if(!nextPaths.has(path))cleanupQueue.current.add(path)});
+    if(changes.length)setRemoteChanges(previous=>[...previous,...changes].slice(-100));
+    const beforePaths=snapshotFilePaths(request.before);const nextPaths=snapshotFilePaths(request.after);
+    const livePaths=snapshotFilePaths(persisted.current);
+    beforePaths.forEach(path=>{if(!nextPaths.has(path)&&!livePaths.has(path))cleanupQueue.current.add(path)});
+    // Other open editors may own pending uploads. Never delete them as incidental save cleanup.
     nextPaths.forEach(path=>{pendingUploads.current.delete(path);committedUploads.current.delete(path)});
-    const cleanup=[...cleanupQueue.current];
-    // Fleet changes already committed. Upload cleanup is best-effort and stays
-    // queued for a later save; it must not report committed data as failed.
-    if(cleanup.length){try{await deleteFiles(cleanup)}catch{/* Retry queued cleanup on next save. */}}
-  },[companyId,deleteFiles,patchPersisted]);
+    const cleanup=[...cleanupQueue.current].filter(path=>!livePaths.has(path));
+    if(cleanup.length){try{await deleteFiles(cleanup)}catch{/* Committed save remains successful; cleanup retries later. */}}
+  },[deliver,writeModel,deleteFiles,patchPersisted]);
 
   const inviteCrew=useCallback(async(member:CrewMember)=>{
     if(!supabase)throw new Error('Company is unavailable.');
@@ -760,12 +739,11 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
 
   const updateCrewRole=useCallback(async(member:CrewMember,nextRole:AssignableUserRole)=>{
     if(!supabase)throw new Error('Company is unavailable.');
-    const data=await requestCrewRoleUpdate(companyId,member.id,nextRole);
-    const updated={...member,role:nextRole};
-    const version=Number((data as {version?:number}|null)?.version);
-    if(version)patchPersisted('crew','upsert',updated.id,updated,version);
-    return updated;
-  },[companyId,patchPersisted]);
+    await requestCrewRoleUpdate(companyId,member.id,nextRole);
+    // A role-only receipt cannot prove other fields of this old UI record at its new revision.
+    // Current-user realtime events now refresh the complete canonical row.
+    return {...member,role:nextRole};
+  },[companyId]);
 
   const updateCrewDetails=useCallback(async(member:CrewMember,details:{name:string;email:string;phone:string})=>{
     if(!supabase)throw new Error('Company is unavailable.');
@@ -774,7 +752,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const result=data as {member?:CrewMember;version?:number}|null;
     const updated=result?.member??{...member,...details};
     const version=Number(result?.version);
-    if(version)patchPersisted('crew','upsert',updated.id,updated,version);
+    if(version&&result?.member)patchPersisted('crew','upsert',updated.id,updated,version);
     return updated;
   },[companyId,patchPersisted]);
 
@@ -1113,7 +1091,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   if(!loaded)return <FleetMessage text="Loading company fleet..."/>;
   if(error||!company)return <FleetError text={error}/>;
   const user:FireOpsUser={id:session.user.id,name:userName,role};
-  return <App user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onResendCrewInvite={resendCrewInvite} onUpdateCrewRole={updateCrewRole} onUpdateCrewDetails={updateCrewDetails} onDeleteCrew={deleteCrew} onUpdateCompany={updateCompany} onConnectMotive={connectMotive} onDisconnectMotive={disconnectMotive} onCaptureMotiveImage={captureMotiveImage} onCreateThread={createCommunicationThread} onDeleteThread={deleteCommunicationThread} onReplyToThread={replyToCommunicationThread} onDeleteReply={deleteCommunicationReply} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onListVehicleNotes={listVehicleNotes} onSaveVehicleNote={saveVehicleNote} onDeleteVehicleNote={deleteVehicleNote} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onUpdateCredential={updateCredential} onDeleteCredential={deleteCredential} onCreateExperience={createExperience} onUpdateExperience={updateExperience} onDeleteExperience={deleteExperience} onUpdateAnnualRecord={updateAnnualRecord} onSubmitFeedback={submitFeedback} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
+  return <App key={`${session.user.id}:${companyId}:${role}:${isAdmin}`} user={user} company={company} companyId={companyId} initialData={initialData} remoteChanges={remoteChanges} motiveConnection={motiveConnection} communicationThreads={communicationThreads} communicationError={communicationError} companyDocuments={companyDocuments} documentError={documentError} trainings={trainings} trainingError={trainingError} inventoryItems={inventoryItems} inventoryError={inventoryError} vehicleTypeOptions={vehicleTypes} vehicleTypeError={vehicleTypeError} onDataChange={save} onInviteCrew={inviteCrew} onResendCrewInvite={resendCrewInvite} onUpdateCrewRole={updateCrewRole} onUpdateCrewDetails={updateCrewDetails} onDeleteCrew={deleteCrew} onUpdateCompany={updateCompany} onConnectMotive={connectMotive} onDisconnectMotive={disconnectMotive} onCaptureMotiveImage={captureMotiveImage} onCreateThread={createCommunicationThread} onDeleteThread={deleteCommunicationThread} onReplyToThread={replyToCommunicationThread} onDeleteReply={deleteCommunicationReply} onMarkThreadSeen={markCommunicationThreadSeen} onCreateDocument={createDocument} onUpdateDocument={updateDocument} onDeleteDocument={deleteDocument} onMarkDocumentViewed={markDocumentViewed} onCreateTraining={createTraining} onUpdateTraining={updateTraining} onDeleteTraining={deleteTraining} onSignupTraining={signupTraining} onCancelTrainingSignup={cancelTrainingSignup} onMarkTrainingViewed={markTrainingViewed} onCreateInventoryItem={createInventoryItem} onUpdateInventoryItem={updateInventoryItem} onDeleteInventoryItem={deleteInventoryItem} onCheckoutInventoryItem={checkoutInventoryItem} onCheckinInventoryItem={checkinInventoryItem} onListVehicleNotes={listVehicleNotes} onSaveVehicleNote={saveVehicleNote} onDeleteVehicleNote={deleteVehicleNote} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} onCreateCredential={createCredential} onUpdateCredential={updateCredential} onDeleteCredential={deleteCredential} onCreateExperience={createExperience} onUpdateExperience={updateExperience} onDeleteExperience={deleteExperience} onUpdateAnnualRecord={updateAnnualRecord} onSubmitFeedback={submitFeedback} uploadFile={upload} onCommitFiles={commitFiles} onDiscardFiles={discardFiles} onSwitchCompany={onSwitchCompany} onSignOut={()=>supabase?.auth.signOut()}/>;
 }
 
 function FleetConfigurationError(){return <div className="admin-auth"><div className="admin-message" role="alert"><ShieldCheck/><h1>FireOps is not configured</h1><p>Supabase connection settings are missing. Contact FireOps support before entering fleet data.</p></div></div>}

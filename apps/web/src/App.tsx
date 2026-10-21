@@ -1,3 +1,4 @@
+import {createOnlineFleetEditSession,restoreFleetAssignment,type SequencedFleetChange} from './online-fleet-edit-session';
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import AuditLogPage from './AuditLogPage';
 import InvoicesPage from './InvoicesPage';
@@ -79,7 +80,7 @@ export function navigationLayout(role:UserRole){
 }
 type VehicleDocumentKey = 'contract' | 'viprChecklist' | 'registration' | 'insurance' | 'dotInspection';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type UndoAction = { vehicle: Vehicle; label: string };
+type UndoAction = { vehicle: Vehicle; applied:Vehicle; label: string };
 type AppFeedbackCategory = 'idea' | 'issue' | 'other';
 
 const seed: Vehicle[] = [
@@ -190,7 +191,7 @@ function loadIssues() {
 type AppProps={
   user?:FireOpsUser;company?:CompanyInfo;companyId?:string;initialData?:FleetSnapshot;remoteChanges?:(FleetRemoteChange&{sequence:number})[];motiveConnection?:MotiveConnection;
   communicationThreads?:CommunicationThread[];communicationError?:string;companyDocuments?:CompanyDocument[];documentError?:string;trainings?:Training[];trainingError?:string;inventoryItems?:InventoryItem[];inventoryError?:string;vehicleTypeOptions?:VehicleTypeOption[];vehicleTypeError?:string;
-  onDataChange?:(data:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onResendCrewInvite?:(member:CrewMember)=>Promise<void>;onUpdateCrewRole?:(member:CrewMember,role:AssignableUserRole)=>Promise<CrewMember>;onUpdateCrewDetails?:(member:CrewMember,details:{name:string;email:string;phone:string})=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;
+  onDataChange?:(data:FleetSnapshot,before:FleetSnapshot)=>Promise<void>|void;onInviteCrew?:(member:CrewMember)=>Promise<CrewMember>;onResendCrewInvite?:(member:CrewMember)=>Promise<void>;onUpdateCrewRole?:(member:CrewMember,role:AssignableUserRole)=>Promise<CrewMember>;onUpdateCrewDetails?:(member:CrewMember,details:{name:string;email:string;phone:string})=>Promise<CrewMember>;onDeleteCrew?:(member:CrewMember)=>Promise<{accountDeleted?:boolean;accountCleanupFailed?:boolean}|void>;
   onUpdateCompany?:(profile:{name:string;phone:string;location:string;logo?:VehicleFile})=>Promise<CompanyInfo>;
   onConnectMotive?:(clientId:string,clientSecret:string)=>Promise<MotiveAuthorization>;onDisconnectMotive?:()=>Promise<MotiveConnection>;onCaptureMotiveImage?:(fleetVehicleId:string)=>Promise<MotiveCameraCapture>;onCreateThread?:(subject:string,description:string)=>Promise<CommunicationThread>;onDeleteThread?:(threadId:string)=>Promise<void>;onReplyToThread?:(threadId:string,body:string)=>Promise<CommunicationReply>;onDeleteReply?:(threadId:string,replyId:string)=>Promise<void>;onMarkThreadSeen?:(threadId:string)=>Promise<string>;
   onCreateDocument?:(name:string,file:VehicleFile)=>Promise<CompanyDocument>;onUpdateDocument?:(document:CompanyDocument,name:string,file?:VehicleFile)=>Promise<CompanyDocument>;onDeleteDocument?:(document:CompanyDocument)=>Promise<void>;onMarkDocumentViewed?:(documentId:string)=>Promise<string>;
@@ -223,7 +224,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const activeMotiveConnection=motiveConnection??demoMotiveConnection;
   const connectDemoMotive=async(clientId:string,_clientSecret:string)=>{const next:MotiveConnection={connected:true,configured:true,clientIdLastFour:clientId.slice(-4),connectedAt:new Date().toISOString(),lastVerifiedAt:new Date().toISOString(),mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return {authorizationUrl:''}};
   const disconnectDemoMotive=async()=>{const next:MotiveConnection={connected:false,mock:true};saveLocal('fireops-motive-demo',next);setDemoMotiveConnection(next);return next};
-  const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? normalizeVehicles(initialData.vehicles) : demoMode ? normalizeVehicles(seed.map((vehicle,index)=>({...vehicle,inspections:createDemoRecords(user).inspections.slice(index,index+1)}))) : loadVehicles());
+  const [vehicles, setVehicles] = useState<Vehicle[]>(()=>initialData?.vehicles ? onDataChange?initialData.vehicles:normalizeVehicles(initialData.vehicles) : demoMode ? normalizeVehicles(seed.map((vehicle,index)=>({...vehicle,inspections:createDemoRecords(user).inspections.slice(index,index+1)}))) : loadVehicles());
   const [issues, setIssues] = useState<FleetIssue[]>(()=>initialData?.issues??loadIssues());
   const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??(demoMode?seedCrew.map(member=>({...member,...demoQualifications()})):loadCrew()));
   const [demoRecords,setDemoRecords]=useState(()=>createDemoRecords(user));
@@ -270,7 +271,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveAttempt, setSaveAttempt] = useState(0);
   const [localRevision, setLocalRevision] = useState(0);
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const [onlineEdits]=useState(createOnlineFleetEditSession);
   const latestSnapshot = useRef<FleetSnapshot>({vehicles,issues,crew,activities});
   latestSnapshot.current={vehicles,issues,crew,activities};
   const lastRemoteSequence = useRef(0);
@@ -283,8 +284,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const invitedCrewCount = Math.max(0,companyDetails.crewInvitedCount+visibleCrewCount-initialVisibleCrewCount);
   const invitesAvailable = Math.max(0,companyDetails.crewInviteLimit-invitedCrewCount);
   const canInviteCrew = canManageFleet&&invitesAvailable>0;
-  useEffect(() => {
-    remoteChanges?.filter(change=>change.sequence>lastRemoteSequence.current).forEach(remoteChange=>{
+  const applyRemoteChange=(remoteChange:SequencedFleetChange)=>{
       if(remoteChange.collection==='vehicles'){
         setVehicles(items=>remoteChange.event==='delete'?items.filter(item=>item.id!==remoteChange.id):[remoteChange.record,...items.filter(item=>item.id!==remoteChange.record.id)]);
         setSelected(current=>current ? remoteChange.event==='delete'&&current.id===remoteChange.id?null:remoteChange.event==='upsert'&&current.id===remoteChange.record.id?remoteChange.record:current : null);
@@ -297,36 +297,48 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
       } else {
         setActivities(items=>remoteChange.event==='delete'?items.filter(item=>item.id!==remoteChange.id):[remoteChange.record,...items.filter(item=>item.id!==remoteChange.record.id)]);
       }
-      lastRemoteSequence.current=remoteChange.sequence;
+  };
+  useEffect(() => {
+    remoteChanges?.filter(change=>change.sequence>lastRemoteSequence.current).forEach(change=>{
+      if(!onlineEdits.buffer(change))applyRemoteChange(change);
+      lastRemoteSequence.current=change.sequence;
     });
-  },[remoteChanges]);
+  },[remoteChanges,onlineEdits]);
+  useEffect(()=>{
+    if(!onDataChange)return;
+    const warn=(event:BeforeUnloadEvent)=>{if(onlineEdits.pending){event.preventDefault();event.returnValue=''}};
+    window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
+  },[onlineEdits,onDataChange]);
   useEffect(()=>{if(!canInviteCrew)setInviteOpen(false)},[canInviteCrew]);
   useEffect(() => {
     // Every local fleet mutation records an activity and increments localRevision.
     // Realtime state updates intentionally do neither, so they must never echo
     // back through snapshot persistence and race the originating client.
-    if(localRevision===0&&saveAttempt===0)return;
+    if(localRevision===0&&saveAttempt===0||onDataChange&&!onlineEdits.pending)return;
+    // Capture before debounce, not after another request or realtime changes latestSnapshot.
+    if(onDataChange)onlineEdits.capture(latestSnapshot.current);
+    const localSnapshot=latestSnapshot.current;
     let active=true;
     const timer=window.setTimeout(async()=>{
       setSaveState('saving');
       if (onDataChange) {
         try {
-          const saveRequest=saveQueue.current.then(()=>onDataChange(latestSnapshot.current));
-          saveQueue.current=saveRequest.catch(()=>undefined);
-          await saveRequest;
-          if(active){setStorageError('');setSaveState('saved')}
+          await onlineEdits.run(async request=>{await onDataChange(request.after,request.before)});
+          if(active){onlineEdits.finish().forEach(applyRemoteChange);setStorageError('');setSaveState('saved')}
         } catch (error) {
-          if(active){setStorageError(error instanceof Error&&error.message.startsWith('Record changed by another user')?`${error.message} Refresh before making more changes.`:'Check your connection or remove large uploads.');setSaveState('error')}
+          if(active){setStorageError(error instanceof Error?error.message:'Save could not be confirmed. Keep this page open and retry the original save.');setSaveState('error')}
         }
       } else {
-        const snapshot=latestSnapshot.current;
+        const snapshot=localSnapshot;
         const saved=[saveLocal('fireops-vehicles',snapshot.vehicles),saveLocal('fireops-issues',snapshot.issues),saveLocal('fireops-crew',snapshot.crew),saveLocal('fireops-activities',snapshot.activities)].every(Boolean);
         if(active){setStorageError(saved?'':'Browser storage may be full.');setSaveState(saved?'saved':'error')}
       }
     },300);
     return()=>{active=false;window.clearTimeout(timer)};
-  },[localRevision,onDataChange,saveAttempt]);
+  },[localRevision,onDataChange,saveAttempt,onlineEdits]);
   const logActivity = (activity: Omit<Activity,'id'|'createdAt'|'createdBy'|'createdById'>) => {
+    if(onDataChange&&!onlineEdits.begin(latestSnapshot.current))return;
+    setStorageError('');setSaveState('saving');
     setActivities(items => [{...activity,id:crypto.randomUUID(),createdBy:currentUser.name,createdById:currentUser.id,createdAt:new Date().toISOString()},...items]);
     setLocalRevision(revision=>revision+1);
   };
@@ -334,13 +346,18 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     setNotice(message);setUndoAction(undo);
     window.setTimeout(()=>{setNotice(current=>current===message?'':current);setUndoAction(current=>current===undo?null:current)},undo?7000:3200);
   };
+  const allowLocalChange=()=>{if(onDataChange&&onlineEdits.pending){showNotice('Finish or retry the current save before another fleet change.');return false}return true};
+  const leaveWorkspace=(action:(()=>void)|undefined)=>action?()=>{if(!onlineEdits.pending||window.confirm('Fleet changes are not confirmed and exist only on this open page. A pending server request may still complete. Leave this workspace?'))action()}:undefined;
   const undoLastAction = () => {
-    if(!undoAction)return;
-    const previous=undoAction.vehicle;
+    if(!undoAction||!allowLocalChange())return;
+    const original=undoAction.vehicle;
+    const current=latestSnapshot.current.vehicles.find(item=>item.id===original.id);
+    const previous=current?restoreFleetAssignment(current,original,undoAction.applied):null;
+    if(!previous){showNotice('Assignment changed elsewhere. Undo is no longer available.');return}
     setVehicles(items=>items.map(item=>item.id===previous.id?previous:item));
     setSelected(item=>item?.id===previous.id?previous:item);
     logActivity({action:`Change undone for ${previous.unit}`,detail:'Vehicle status and assignment restored',targetType:'vehicle',targetId:previous.id,tone:'complete'});
-    showNotice(`${previous.unit} restored`);
+    showNotice(onDataChange?'Saving assignment undo…':`${previous.unit} restored`);
   };
   const filtered = useMemo(() => vehicles.filter(v => {
     const text = `${v.unit} ${v.type} ${v.make} ${v.model} ${v.year} ${v.plate} ${v.assignedFire?.name??''}`.toLowerCase();
@@ -349,94 +366,103 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const visibleIssues=useMemo(()=>visibleVehicleIssues(issues,currentUser),[currentUser,issues]);
   const operationsVehicles=useMemo(()=>canManageFleet?vehicles:vehicles.filter(vehicle=>vehicle.assignedTo===currentUser.id),[canManageFleet,currentUser.id,vehicles]);
   const addVehicle = (vehicle: Vehicle) => {
-    if (!canManageFleet) return;
+    if (!canManageFleet||!allowLocalChange()) return false;
     const next=normalizeVehicle(vehicle);
-    setVehicles(v => [next, ...v]); logActivity({action:`${next.unit} added to fleet`,detail:'Vehicle record created',targetType:'vehicle',targetId:next.id,tone:'complete'}); setFormOpen(false); showNotice(`${next.unit} added to inventory`);
+    setVehicles(v => [next, ...v]); logActivity({action:`${next.unit} added to fleet`,detail:'Vehicle record created',targetType:'vehicle',targetId:next.id,tone:'complete'}); setFormOpen(false); showNotice(onDataChange?'Saving vehicle…':`${next.unit} added to inventory`);return true;
   };
   const addIssue = (issue: FleetIssue) => {
-    if (!canOpenIssues) return;
-    const vehicle=vehicles.find(item=>item.id===issue.vehicleId);setIssues(items => [issue, ...items]); logActivity({action:`Issue reported: ${issue.title}`,detail:`${vehicle?.unit??'Unknown vehicle'} · ${issue.priority} priority`,targetType:'issue',targetId:issue.id,tone:'urgent'}); setIssueFormOpen(false); showNotice('Issue created');
+    if (!canOpenIssues||!allowLocalChange()) return false;
+    const vehicle=vehicles.find(item=>item.id===issue.vehicleId);setIssues(items => [issue, ...items]); logActivity({action:`Issue reported: ${issue.title}`,detail:`${vehicle?.unit??'Unknown vehicle'} · ${issue.priority} priority`,targetType:'issue',targetId:issue.id,tone:'urgent'}); setIssueFormOpen(false); showNotice(onDataChange?'Saving issue…':'Issue created');
   };
-  const updateIssue = (issue: FleetIssue) => {
+  const updateIssue = (issue: FleetIssue,base?:FleetIssue) => {
+    if(!allowLocalChange())return false;
     const previous=issues.find(item=>item.id===issue.id);
+    if(onDataChange&&base!==previous){showNotice('Issue changed. Your values remain in the editor; reopen against current data.');return false}
     const vehicle=vehicles.find(item=>item.id===issue.vehicleId);
     const statusChanged=previous?.status!==issue.status;
     const changedDetails=[previous?.title!==issue.title?'title':'',previous?.description!==issue.description?'description':'',previous?.priority!==issue.priority?'priority':''].filter(Boolean);
     const action=statusChanged?(issue.status==='Resolved'?`Issue resolved: ${issue.title}`:`Issue reopened: ${issue.title}`):changedDetails.length?`Issue details updated: ${issue.title}`:`Issue updated: ${issue.title}`;
     const detail=changedDetails.length?`${vehicle?.unit??'Unknown vehicle'} · Changed ${changedDetails.join(', ')}`:`${vehicle?.unit??'Unknown vehicle'} · ${issue.updates[0]?.text??'Issue record updated'}`;
     setIssues(items => items.map(item => item.id === issue.id ? issue : item));
-    logActivity({action,detail,targetType:'issue',targetId:issue.id,tone:issue.status==='Resolved'?'complete':'urgent'}); setSelectedIssue(issue); showNotice(changedDetails.length?'Issue details saved':'Issue updated');
+    logActivity({action,detail,targetType:'issue',targetId:issue.id,tone:issue.status==='Resolved'?'complete':'urgent'}); setSelectedIssue(issue); showNotice(onDataChange?'Saving issue…':changedDetails.length?'Issue details saved':'Issue updated');return true;
   };
   const addInspection = (vehicle:Vehicle,inspection:VehicleInspection) => {
-    if (!canInspectFleet) return;
+    if (!canInspectFleet||!allowLocalChange()) return;
+    if(onDataChange&&latestSnapshot.current.vehicles.find(item=>item.id===vehicle.id)!==vehicle){showNotice('Vehicle changed. Reopen inspection against current data.');return}
     const next={...vehicle,inspections:[inspection,...(vehicle.inspections??[])]};
     setVehicles(items=>items.map(item=>item.id===vehicle.id?next:item));
     logActivity({action:`${vehicle.unit} inspection completed`,detail:`${inspection.items.filter(item=>item.result==='Fail').length} failed checks · ${inspection.assignmentIncident||'No assignment / incident'}`,targetType:'vehicle',targetId:vehicle.id,tone:inspection.items.some(item=>item.result==='Fail')?'urgent':'complete'});
-    setInspectionVehicle(null);showNotice('Inspection saved');
+    setInspectionVehicle(null);showNotice(onDataChange?'Saving inspection…':'Inspection saved');
   };
   const deleteInspection = (vehicleId:string,inspectionId:string) => {
-    if(!canManageFleet)return;
+    if(!canManageFleet||!allowLocalChange())return;
     const vehicle=vehicles.find(item=>item.id===vehicleId);
     const inspection=vehicle?.inspections?.find(item=>item.id===inspectionId);
     if(!vehicle||!inspection?.items.some(item=>item.result==='Fail'))return;
     setVehicles(items=>items.map(item=>item.id===vehicleId?{...item,inspections:(item.inspections??[]).filter(entry=>entry.id!==inspectionId)}:item));
     logActivity({action:`${vehicle.unit} failed inspection deleted`,detail:`Inspection by ${inspection.inspectorName} · ${inspection.assignmentIncident||'No assignment / incident'}`,targetType:'vehicle',targetId:vehicle.id,tone:'urgent'});
-    showNotice('Inspection deleted');
+    showNotice(onDataChange?'Saving inspection deletion…':'Inspection deleted');
   };
   const updateVehicle = (vehicle: Vehicle) => {
-    if (!canManageFleet) return;
+    if (!canManageFleet||!allowLocalChange()) return false;
+    if(onDataChange&&editing!==latestSnapshot.current.vehicles.find(item=>item.id===vehicle.id)){showNotice('Vehicle changed. Your values remain in the editor; reopen against current data.');return false}
     const next=normalizeVehicle(vehicle);
     setVehicles(v => v.map(item => item.id === next.id ? next : item));
-    logActivity({action:`${next.unit} details updated`,detail:'Vehicle record changed',targetType:'vehicle',targetId:next.id,tone:'complete'}); setEditing(null); setSelected(next); showNotice(`${next.unit} details updated`);
+    logActivity({action:`${next.unit} details updated`,detail:'Vehicle record changed',targetType:'vehicle',targetId:next.id,tone:'complete'}); setEditing(null); setSelected(next); showNotice(onDataChange?'Saving vehicle…':`${next.unit} details updated`);return true;
   };
   const updateVehiclePhoto = async (vehicle:Vehicle,file:File) => {
     if(!canManageFleet)return;
+    if(!allowLocalChange())throw new Error('Finish the current fleet save before replacing a photo.');
     const photo=uploadFile?await uploadFile(file):await new Promise<VehicleFile>((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Photo could not be read.'));reader.onload=()=>resolve({name:file.name,type:file.type,dataUrl:String(reader.result)});reader.readAsDataURL(file)});
+    if(!allowLocalChange()||onDataChange&&latestSnapshot.current.vehicles.find(item=>item.id===vehicle.id)!==vehicle)throw new Error('Vehicle changed while uploading. Reopen it before replacing the photo.');
     const next=normalizeVehicle({...vehicle,photo});
     setVehicles(items=>items.map(item=>item.id===next.id?next:item));
     setSelected(current=>current?.id===next.id?next:current);
     onCommitFiles?.([photo]);
     logActivity({action:`${next.unit} photo updated`,detail:'Vehicle photo changed',targetType:'vehicle',targetId:next.id,tone:'complete'});
-    showNotice(`${next.unit} photo updated`);
+    showNotice(onDataChange?'Saving vehicle photo…':`${next.unit} photo updated`);
   };
   const deleteVehicle = (vehicle: Vehicle) => {
-    if (!canManageFleet) return;
+    if (!canManageFleet||!allowLocalChange()) return;
+    if(onDataChange&&latestSnapshot.current.vehicles.find(item=>item.id===vehicle.id)!==vehicle){showNotice('Vehicle changed. Reopen deletion review.');return}
     const issueCount=issues.filter(issue=>issue.vehicleId===vehicle.id).length;
     setVehicles(items=>items.filter(item=>item.id!==vehicle.id));
     setIssues(items=>items.filter(issue=>issue.vehicleId!==vehicle.id));
     logActivity({action:`${vehicle.unit} deleted from fleet`,detail:issueCount?`${issueCount} linked ${issueCount===1?'issue':'issues'} also deleted`:'Vehicle record deleted',tone:'urgent'});
     setDeleteCandidate(null);
-    showNotice(`${vehicle.unit} deleted from inventory`);
+    showNotice(onDataChange?'Saving vehicle deletion…':`${vehicle.unit} deleted from inventory`);
   };
   const updateStatus = (id: string, status: Status) => {
-    if (!canManageFleet) return;
+    if (!canManageFleet||!allowLocalChange()) return;
     const vehicle=vehicles.find(item=>item.id===id);if(!vehicle||vehicle.status===status)return;
     const next={...vehicle,status,assignedTo:undefined,assignedFire:undefined};
     setVehicles(items=>items.map(item=>item.id===id?next:item));
     logActivity({action:`${vehicle.unit} status changed to ${status}`,detail:`Previous status: ${vehicle.status}`,targetType:'vehicle',targetId:id,tone:status==='Out of service'?'urgent':'complete'});
     setSelected(item=>item?.id===id?next:item);
-    showNotice(`${vehicle.unit} changed to ${status}`,{vehicle,label:`Undo status change for ${vehicle.unit}`});
+    showNotice(onDataChange?'Saving vehicle status…':`${vehicle.unit} changed to ${status}`,{vehicle,applied:next,label:`Undo status change for ${vehicle.unit}`});
   };
   const updateAssignment = (id: string, assignedTo?: string) => {
-    if (!canManageFleet) return;
+    if (!canManageFleet||!allowLocalChange()) return;
     const vehicle=vehicles.find(item=>item.id===id);if(!vehicle||vehicle.assignedTo===assignedTo)return;
     const next={...vehicle,assignedTo,assignedFire:assignedTo?vehicle.assignedFire:undefined,status:assignedTo?'Assigned' as Status:vehicle.status==='Assigned'?'Ready' as Status:vehicle.status};
     const member=crew.find(item=>item.id===assignedTo);
     setVehicles(items=>items.map(item=>item.id===id?next:item));
     logActivity({action:`${vehicle.unit} assignment updated`,detail:member?`Assigned to ${member.name}`:'No crew member assigned',targetType:'vehicle',targetId:id,tone:'complete'});
     setSelected(item=>item?.id===id?next:item);
-    showNotice(member?`${vehicle.unit} assigned to ${member.name}`:`${vehicle.unit} assignment cleared`,{vehicle,label:`Undo assignment change for ${vehicle.unit}`});
+    showNotice(onDataChange?'Saving crew assignment…':member?`${vehicle.unit} assigned to ${member.name}`:`${vehicle.unit} assignment cleared`,{vehicle,applied:next,label:`Undo assignment change for ${vehicle.unit}`});
   };
   const updateFireAssignment = (id:string, assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>) => {
+    if(!allowLocalChange())return;
     const vehicle=vehicles.find(item=>item.id===id);if(!vehicle||(!canManageFleet&&vehicle.assignedTo!==currentUser.id))return;
     if(!vehicle.assignedTo||vehicle.assignedFire?.id===assignedFire?.id)return;
     const next={...vehicle,assignedFire,status:'Assigned' as Status};
     setVehicles(items=>items.map(item=>item.id===id?next:item));
     logActivity({action:`${vehicle.unit} fire assignment updated`,detail:assignedFire?`Assigned to ${assignedFire.name}`:'Fire assignment cleared',targetType:'vehicle',targetId:id,tone:'complete'});
     setSelected(item=>item?.id===id?next:item);
-    showNotice(assignedFire?`${vehicle.unit} assigned to ${assignedFire.name}`:`${vehicle.unit} fire assignment cleared`,{vehicle,label:`Undo fire assignment for ${vehicle.unit}`});
+    showNotice(onDataChange?'Saving fire assignment…':assignedFire?`${vehicle.unit} assigned to ${assignedFire.name}`:`${vehicle.unit} fire assignment cleared`,{vehicle,applied:next,label:`Undo fire assignment for ${vehicle.unit}`});
   };
   const assignToMe = (id: string) => {
+    if(!allowLocalChange())return;
     const vehicle=vehicles.find(item=>item.id===id);if(!vehicle||(vehicle.assignedTo&&vehicle.assignedTo!==currentUser.id)||(!canManageFleet&&!vehicle.assignedTo&&vehicle.status!=='Ready'))return;
     const assignedTo=vehicle.assignedTo===currentUser.id?undefined:currentUser.id;
     const status:Status=assignedTo?'Assigned':'Ready';
@@ -444,16 +470,18 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     setVehicles(items=>items.map(item=>item.id===id?next:item));
     logActivity({action:assignedTo?`${currentUser.name} assigned ${vehicle.unit} to themselves`:`${currentUser.name} unassigned ${vehicle.unit}`,detail:assignedTo?'Vehicle is now in use':'Vehicle returned to ready status',targetType:'vehicle',targetId:id,tone:'complete'});
     setSelected(item=>item?.id===id?next:item);
-    showNotice(assignedTo?'Vehicle assigned to you':'Vehicle assignment removed',{vehicle,label:`Undo assignment change for ${vehicle.unit}`});
+    showNotice(onDataChange?'Saving crew assignment…':assignedTo?'Vehicle assigned to you':'Vehicle assignment removed',{vehicle,applied:next,label:`Undo assignment change for ${vehicle.unit}`});
   };
   const inviteCrew = async (member: CrewMember) => {
+    if(!allowLocalChange())throw new Error('Finish the current fleet save before inviting crew.');
     if(!canInviteCrew){setInviteOpen(false);showNotice('No crew invitations are available');throw new Error('No crew invitations are available.')}
     const invited=onInviteCrew?await onInviteCrew(member):member;
     setCrew(items => [...items, invited]); logActivity({action:`${invited.name} added to company`,detail:invited.email,targetType:'crew',targetId:invited.id,tone:'complete'}); setInviteOpen(false); showNotice(`${invited.name} added to ${company.name}`);
   };
   const updateCrew = (member: CrewMember) => {
+    if(!allowLocalChange())return;
     const credentials=crewCredentials(member);
-    setCrew(items => items.map(item => item.id === member.id ? member : item)); logActivity({action:`Credentials updated for ${member.name}`,detail:credentials.length?`${credentials.length} ${credentials.length===1?'credential':'credentials'} on file`:'Credential removed',targetType:'crew',targetId:member.id,tone:'complete'}); setSelectedCrew(member); showNotice('Crew credentials updated');
+    setCrew(items => items.map(item => item.id === member.id ? member : item)); logActivity({action:`Credentials updated for ${member.name}`,detail:credentials.length?`${credentials.length} ${credentials.length===1?'credential':'credentials'} on file`:'Credential removed',targetType:'crew',targetId:member.id,tone:'complete'}); setSelectedCrew(member); showNotice(onDataChange?'Saving crew credentials…':'Crew credentials updated');
   };
   const updateCrewRole = async(member:CrewMember,role:AssignableUserRole)=>{
     const updated=onUpdateCrewRole?await onUpdateCrewRole(member,role):{...member,role};
@@ -480,14 +508,14 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     setSelectedExperience(undefined);setPage('qualifications');showNotice('Experience deleted');
   };
   const deleteCrew = async (member: CrewMember) => {
-    if(!canManageFleet||member.role==='owner'||member.id===currentUser.id)return;
+    if(!canManageFleet||member.role==='owner'||member.id===currentUser.id||!allowLocalChange())return;
     setDeletingCrew(true);setCrewDeleteError('');
     try {
       const removal=await onDeleteCrew?.(member);
       const assignmentCount=vehicles.filter(vehicle=>vehicle.assignedTo===member.id).length;
       setCrew(items=>items.filter(item=>item.id!==member.id));
       setVehicles(items=>items.map(vehicle=>vehicle.assignedTo===member.id?{...vehicle,assignedTo:undefined,assignedFire:undefined,status:vehicle.status==='Assigned'?'Ready':vehicle.status}:vehicle));
-      logActivity({action:`${member.name} removed from crew`,detail:assignmentCount?`App access revoked · ${assignmentCount} vehicle ${assignmentCount===1?'assignment':'assignments'} cleared`:'App access revoked',tone:'urgent'});
+      if(!onDeleteCrew)logActivity({action:`${member.name} removed from crew`,detail:assignmentCount?`App access revoked · ${assignmentCount} vehicle ${assignmentCount===1?'assignment':'assignments'} cleared`:'App access revoked',tone:'urgent'});
       setCrewDeleteCandidate(null);
       showNotice(removal?.accountDeleted?`${member.name} removed and pending account deleted`:removal?.accountCleanupFailed?`${member.name} removed and access revoked; account retained`:`${member.name} removed and access revoked`);
     } catch (error) {
@@ -616,10 +644,10 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
-      <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?.filter(item=>item.unread).length??unreadThreadCount+unreadTrainingCount):undefined} onNotifications={()=>setPage('overview')} onSignOut={onSignOut} onSwitchCompany={onSwitchCompany} demoMode={demoMode}/>
+      <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?.filter(item=>item.unread).length??unreadThreadCount+unreadTrainingCount):undefined} onNotifications={()=>setPage('overview')} onSignOut={leaveWorkspace(onSignOut)} onSwitchCompany={leaveWorkspace(onSwitchCompany)} demoMode={demoMode}/>
       <main>
         {demoMode&&<div className="demo-mode-banner" role="status"><b>Demo mode</b><span>Explore freely. Changes stay in this session and disappear when you exit.</span><a className="demo-pricing-link" href="/?info=1#pricing" target="_blank" rel="noopener noreferrer">See Pricing</a></div>}
-        {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>Retry save</button></div>}
+        {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>{onDataChange?'Retry original save':'Retry save'}</button></div>}
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id)=>{if(id)void dashboardInbox.markRead(id);setPage(target)}} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
@@ -654,7 +682,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
       <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
-    {editing && canManageFleet && <VehicleForm vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => {setSelected(vehicles.find(vehicle => vehicle.id === editing.id) ?? editing);setEditing(null)}} onSave={updateVehicle}/>}
+    {editing && canManageFleet && <VehicleForm key={editing.id} vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => {setSelected(vehicles.find(vehicle => vehicle.id === editing.id) ?? editing);setEditing(null)}} onSave={updateVehicle}/>}
     {issueFormOpen && canOpenIssues && <IssueForm vehicles={vehicles} initialVehicleId={issueVehicleId} user={currentUser} onClose={() => setIssueFormOpen(false)} onSave={addIssue}/>}
     {inspectionPickerOpen && !canManageFleet && canInspectFleet && <VehicleInspectionPicker vehicles={vehicles} onClose={()=>setInspectionPickerOpen(false)} onSelect={vehicle=>{setInspectionPickerOpen(false);setInspectionVehicle(vehicle)}}/>}
     {inspectionVehicle && canInspectFleet && <InspectionForm vehicle={inspectionVehicle} user={currentUser} templateItems={inspectionTemplate.items} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={()=>setInspectionVehicle(null)} onSave={inspection=>addInspection(inspectionVehicle,inspection)}/>}
@@ -664,9 +692,9 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     {documentForm!==undefined&&canManageFleet&&<DocumentForm document={documentForm??undefined} uploadFile={uploadFile} onDiscardFiles={onDiscardFiles} onClose={()=>setDocumentForm(undefined)} onSave={saveDocument}/>}
     {documentDeleteCandidate&&canManageFleet&&<DeleteDocumentDialog document={documentDeleteCandidate} onCancel={()=>setDocumentDeleteCandidate(null)} onConfirm={()=>deleteDocument(documentDeleteCandidate)}/>}
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
-    {selectedIssue && <IssueDetail issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
+    {selectedIssue && <IssueDetail key={selectedIssue.id} issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
     {selectedCrew && <CrewDetail member={selectedCrew} canManage={canManageFleet} onClose={() => setSelectedCrew(null)} onUpdateRole={selectedCrew.role==='owner'?undefined:role=>updateCrewRole(selectedCrew,role)} onUpdateDetails={details=>updateCrewDetails(selectedCrew,details)} onResend={selectedCrew.status==='Invited'&&onResendCrewInvite?async()=>{await onResendCrewInvite(selectedCrew);showNotice(`Invitation resent to ${selectedCrew.email}`)}:undefined} onDelete={selectedCrew.role==='owner'||selectedCrew.id===currentUser.id?undefined:()=>{setCrewDeleteError('');setCrewDeleteCandidate(selectedCrew);setSelectedCrew(null)}}/>}
-    <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">{notice && <div className="toast"><span><Check size={16}/></span><b>{notice}</b>{undoAction&&<button onClick={undoLastAction} aria-label={undoAction.label}>Undo</button>}</div>}</div>
+    <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">{notice && <div className="toast"><span><Check size={16}/></span><b>{notice}</b>{undoAction&&<button disabled={!!onDataChange&&onlineEdits.pending} onClick={undoLastAction} aria-label={undoAction.label}>Undo</button>}</div>}</div>
   </div>;
 }
 
@@ -950,7 +978,7 @@ function CrewDetail({member,canManage,onClose,onResend,onUpdateRole,onUpdateDeta
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer crew-detail" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" onClick={cancel} aria-label="Back to crew"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{member.name}</h2></div><button className="close" onClick={cancel} aria-label="Close crew details"><X/></button></header><div className="crew-profile"><span className={`crew-status ${member.status.toLowerCase()}`}>{member.status}</span><h3>{member.name}</h3><p>{userRoleLabel(member.role)}</p></div>{canManage&&onUpdateRole&&<div className="detail-section"><h4>Role</h4><label>Company role<select value={member.role} disabled={roleBusy} onChange={event=>void changeRole(event.target.value as AssignableUserRole)}>{assignableUserRoles.map(role=><option key={role.value} value={role.value}>{role.label}</option>)}</select></label>{roleBusy&&<p className="no-updates">Saving role…</p>}</div>}<div className="detail-section crew-contact"><div className="detail-section-heading"><h4>Contact information</h4>{canManage&&!editingDetails&&<button className="secondary compact" onClick={()=>setEditingDetails(true)}>Edit details</button>}</div>{editingDetails?<form className="crew-details-form" onSubmit={event=>void saveDetails(event)} noValidate><label>Full name<input required maxLength={120} disabled={detailsBusy} value={details.name} onChange={event=>setDetails({...details,name:event.target.value})}/></label><label>Email address<input required type="email" maxLength={254} disabled={detailsBusy} value={details.email} onChange={event=>setDetails({...details,email:event.target.value})}/></label><label>Phone<input type="tel" maxLength={30} disabled={detailsBusy} value={details.phone} onChange={event=>setDetails({...details,phone:event.target.value})}/></label>{detailsError&&<div className="form-submit-error" role="alert">{detailsError}</div>}<div className="crew-details-actions"><button type="button" className="secondary" disabled={detailsBusy} onClick={cancelDetails}>Cancel</button><button type="submit" className="primary" disabled={detailsBusy}>{detailsBusy?'Saving…':'Save details'}</button></div></form>:<dl className="details"><Detail icon={<Mail/>} label="Email" value={<a href={`mailto:${member.email}`}>{member.email}</a>}/><Detail icon={<Phone/>} label="Phone" value={member.phone?<a href={`tel:${member.phone.replace(/[^\d+]/g,'')}`}>{member.phone}</a>:'Not added'}/></dl>}{canManage&&onResend&&<><button className="secondary" disabled={resending||editingDetails} onClick={()=>void resend()}><Mail/> {resending?'Resending...':'Resend invitation'}</button>{resendError&&<div className="form-submit-error" role="alert">{resendError}</div>}</>}</div>{canManage&&onDelete&&<div className="crew-record-actions"><button className="delete-vehicle" onClick={onDelete}><Trash2/> Remove crew member</button><p>Removes company access and clears vehicle assignments.</p></div>}<div className="detail-section crew-qualifications"><h4>Qualifications</h4>{credentials.length?<div className="crew-qualification-list">{credentials.map(credential=><div key={credential.id}><ShieldCheck/><span><b>{credential.name}</b><small>{[credential.recordType,credential.courseCode,credential.provider].filter(Boolean).join(' · ')||'Credential'}</small>{credential.expirationDate&&<small>Expires {new Date(`${credential.expirationDate}T12:00:00`).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</small>}</span>{credential.file&&<a href={credential.file.dataUrl} target="_blank" rel="noreferrer" aria-label={`Open attachment for ${credential.name}`}><ExternalLink/></a>}</div>)}</div>:<p className="no-updates">No qualifications on file.</p>}</div></section></div>;
 }
 
-function VehicleForm({vehicle,vehicleTypes,vehicleTypeError,vehicles,onCreateVehicleType,onDeleteVehicleType,uploadFile,onCommitFiles,onDiscardFiles,onClose,onSave}:{vehicle?:Vehicle;vehicleTypes:VehicleTypeOption[];vehicleTypeError?:string;vehicles:Vehicle[];onCreateVehicleType:(name:string)=>Promise<VehicleTypeOption>;onDeleteVehicleType:(type:VehicleTypeOption)=>Promise<void>;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;onClose:()=>void;onSave:(v:Vehicle)=>void}) {
+function VehicleForm({vehicle,vehicleTypes,vehicleTypeError,vehicles,onCreateVehicleType,onDeleteVehicleType,uploadFile,onCommitFiles,onDiscardFiles,onClose,onSave}:{vehicle?:Vehicle;vehicleTypes:VehicleTypeOption[];vehicleTypeError?:string;vehicles:Vehicle[];onCreateVehicleType:(name:string)=>Promise<VehicleTypeOption>;onDeleteVehicleType:(type:VehicleTypeOption)=>Promise<void>;uploadFile?:(file:File)=>Promise<VehicleFile>;onCommitFiles?:(files:VehicleFile[])=>void;onDiscardFiles?:()=>Promise<void>|void;onClose:()=>void;onSave:(v:Vehicle)=>boolean|void}) {
   const editing = Boolean(vehicle);
   const [managingTypes,setManagingTypes]=useState(false);
   const cancel=()=>{if(managingTypes){setManagingTypes(false);return}void onDiscardFiles?.();onClose()};
@@ -967,7 +995,7 @@ function VehicleForm({vehicle,vehicleTypes,vehicleTypeError,vehicles,onCreateVeh
   const selectedType=configuredType?.name??(existingLegacyType?form.type:vehicleTypes[0]?.name??'');
   const typeNames=existingLegacyType&&!configuredType?[form.type,...vehicleTypes.map(type=>type.name)]:vehicleTypes.map(type=>type.name);
   const setBinderFile=(key:VehicleDocumentKey,label:string,file?:VehicleFile)=>setDocuments(current=>({...current,[key]:file?{id:current[key]?.id??key,name:label,file,...(key==='dotInspection'?{inspectionDate:''}:{})}:undefined}));
-  const submit=(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();const next:Record<string,string>={};if(documents.dotInspection&&!inspectionExpirationDate(documents.dotInspection.inspectionDate??''))next.inspectionDate='Select a valid DOT inspection date';if(!form.unit.trim())next.unit='Unit name is required';if(!selectedType)next.type='Select a vehicle type';if(!form.make.trim())next.make='Make is required';if(!form.model.trim())next.model='Model is required';if(!form.year||Number(form.year)<1950||Number(form.year)>new Date().getFullYear()+1)next.year='Enter a valid year';setErrors(next);if(Object.keys(next).length){focusFirstInvalid(e.currentTarget);return}onCommitFiles?.([photo,...documentList.map(document=>document.file)].filter((file):file is VehicleFile=>Boolean(file)));onSave({id:vehicle?.id??crypto.randomUUID(),unit:form.unit.trim(),type:selectedType,year:Number(form.year),make:form.make.trim(),model:form.model.trim(),vin:form.vin.trim().toUpperCase(),plate:form.plate.trim().toUpperCase(),status:form.status,photo:vehicle?.photo??photo,documents:documentList,contract:undefined,viprChecklist:undefined,registration:undefined,insurance:undefined,dotInspection:undefined,notes:form.notes.trim(),createdAt:vehicle?.createdAt??new Date().toISOString(),assignedTo:vehicle?.assignedTo,assignedFire:vehicle?.assignedFire})};
+  const submit=(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();const next:Record<string,string>={};if(documents.dotInspection&&!inspectionExpirationDate(documents.dotInspection.inspectionDate??''))next.inspectionDate='Select a valid DOT inspection date';if(!form.unit.trim())next.unit='Unit name is required';if(!selectedType)next.type='Select a vehicle type';if(!form.make.trim())next.make='Make is required';if(!form.model.trim())next.model='Model is required';if(!form.year||Number(form.year)<1950||Number(form.year)>new Date().getFullYear()+1)next.year='Enter a valid year';setErrors(next);if(Object.keys(next).length){focusFirstInvalid(e.currentTarget);return}const accepted=onSave({...vehicle,id:vehicle?.id??crypto.randomUUID(),unit:form.unit.trim(),type:selectedType,year:Number(form.year),make:form.make.trim(),model:form.model.trim(),vin:form.vin.trim().toUpperCase(),plate:form.plate.trim().toUpperCase(),status:form.status,photo:vehicle?.photo??photo,documents:[...(vehicle?.documents??[]).filter(document=>!vehicleDocumentOptions.some(({key,label})=>document.id===key||document.name.toLocaleLowerCase()===label.toLocaleLowerCase())),...documentList],contract:undefined,viprChecklist:undefined,registration:undefined,insurance:undefined,dotInspection:undefined,notes:form.notes.trim(),createdAt:vehicle?.createdAt??new Date().toISOString(),assignedTo:vehicle?.assignedTo,assignedFire:vehicle?.assignedFire});if(accepted===false){setErrors({record:'Record changed or another save is pending. Your entered values remain here; reopen against current data before saving.'});return}onCommitFiles?.([photo,...documentList.map(document=>document.file)].filter((file):file is VehicleFile=>Boolean(file)))};
   if(managingTypes)return <div className="overlay"><section ref={dialog.ref} className="drawer form-drawer vehicle-type-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" onClick={()=>setManagingTypes(false)} aria-label="Back to vehicle form"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>Vehicle types</h2><p>Add choices used when creating or editing vehicles.</p></div><button className="close" onClick={()=>setManagingTypes(false)} aria-label="Back to vehicle form"><X/></button></header><VehicleTypeManager types={vehicleTypes} vehicles={vehicles} loadError={vehicleTypeError} onCreate={onCreateVehicleType} onDelete={onDeleteVehicleType}/></section></div>;
   return <div className="overlay"><section ref={dialog.ref} className="drawer form-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" onClick={cancel} aria-label="Back to fleet"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{editing?'Edit vehicle':'Add vehicle'}</h2><p>{editing?'Update fleet details for this vehicle.':'Enter basic details. You can update these later.'}</p></div><button className="close" onClick={cancel} aria-label="Close"><X/></button></header><form ref={formRef} onSubmit={submit} noValidate>
     <FormErrorSummary errors={errors} formRef={formRef}/><FormSection number="1" title="Vehicle details" hideLegend><div className="form-grid"><Field label="Unit name" required error={errors.unit}><input name="unit" maxLength={120} value={form.unit} onChange={e=>update('unit',e.target.value)} placeholder="e.g. Engine 702" autoFocus/></Field><Field label="Vehicle type" required error={errors.type}><select name="type" value={selectedType} onChange={e=>{if(e.target.value==='__edit_vehicle_types__'){setManagingTypes(true);return}update('type',e.target.value)}}>{!selectedType&&<option value="">Select vehicle type</option>}{typeNames.map(type=><option key={type} value={type}>{type}</option>)}<option disabled>──────────</option><option value="__edit_vehicle_types__">Edit vehicle types…</option></select></Field><Field label="Year" required error={errors.year}><input name="year" type="number" inputMode="numeric" value={form.year} onChange={e=>update('year',e.target.value)}/></Field><Field label="Make" required error={errors.make}><input name="make" maxLength={80} value={form.make} onChange={e=>update('make',e.target.value)} placeholder="e.g. International"/></Field><Field label="Model" required error={errors.model}><input name="model" maxLength={80} value={form.model} onChange={e=>update('model',e.target.value)} placeholder="e.g. HV"/></Field><Field label="Status" error={errors.status}><select name="status" value={form.status} onChange={e=>update('status',e.target.value)}>{form.status==='Assigned'&&<option hidden>Assigned</option>}{currentStatuses.map(s=><option key={s} value={s}>{vehicleStatusLabel(s)}</option>)}</select></Field></div></FormSection>
@@ -1155,7 +1183,8 @@ function VehicleNotesSection({vehicle,user,onList,onSave,onDelete}:{vehicle:Vehi
 }
 
 function VehicleDetail({vehicle,issues,crew,user,canManage,onPhoto,motive,motiveMock,onCaptureMotiveImage,onClose,onEdit,onDelete,onNewIssue,onInspect,onIssue,onStatus,onAssignee,onFire,onAssign,onListNotes,onSaveNote,onDeleteNote,onOpenOperations}:{vehicle:Vehicle;issues:FleetIssue[];crew:CrewMember[];user:FireOpsUser;canManage:boolean;onPhoto:(file:File)=>Promise<void>;motive?:{location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number;diagnostics?:MotiveDiagnosticCode[]};motiveMock:boolean;onCaptureMotiveImage?:(fleetVehicleId:string)=>Promise<MotiveCameraCapture>;onClose:()=>void;onEdit:()=>void;onDelete:()=>void;onNewIssue:()=>void;onInspect:()=>void;onIssue:(issue:FleetIssue)=>void;onStatus:(s:Status)=>void;onAssignee:(memberId:string)=>void;onFire:(fire?:Pick<NifcIncident,'id'|'name'|'state'>)=>void;onAssign:()=>void;onListNotes?:(vehicleId:string)=>Promise<VehicleNote[]>;onSaveNote?:(vehicleId:string,note:{id?:string;subject:string;body:string})=>Promise<VehicleNote>;onDeleteNote?:(noteId:string)=>Promise<void>;onOpenOperations:()=>void}) {const openIssues=issues.filter(issue=>issue.status==='Open');const resolvedIssues=issues.filter(issue=>issue.status==='Resolved').sort((a,b)=>Date.parse(b.resolvedAt??b.createdAt)-Date.parse(a.resolvedAt??a.createdAt));const activeCrew=crew.filter(member=>member.status==='Active');const [cropFile,setCropFile]=useState<File>();const [photoBusy,setPhotoBusy]=useState(false);const [photoError,setPhotoError]=useState('');const [notesOpen,setNotesOpen]=useState(false);const dialog=useDialogA11y(onClose);return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}><header><button className="back-mobile" onClick={onClose} aria-label="Back to fleet"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{vehicle.unit}</h2></div><div className="detail-actions"><button className="close" onClick={onClose} aria-label="Close vehicle details"><X/></button></div></header><div className="detail-hero"><label className={`large-vehicle-icon ${vehicle.photo?'has-photo':''} ${canManage?'editable-photo':''}`} aria-label={canManage?`Change ${vehicle.unit} vehicle photo`:undefined}>{vehicle.photo?<img src={vehicle.photo.dataUrl} alt={`${vehicle.unit} vehicle`} loading="lazy" decoding="async"/>:<Truck/>}{canManage&&<><FileInput type="file" accept="image/*" disabled={photoBusy} onChange={event=>{const file=event.target.files?.[0];event.target.value='';setPhotoError('');if(!file)return;if(!file.type.startsWith('image/')){setPhotoError('Choose an image file.');return}if(file.size>8*1024*1024){setPhotoError('Photo must be 8 MB or smaller.');return}setCropFile(file)}}/><span className="vehicle-photo-edit"><Camera/> {photoBusy?'Saving...':vehicle.photo?'Change photo':'Add photo'}</span></>}</label>{photoError&&<div className="vehicle-photo-error" role="alert">{photoError}</div>}<StatusBadge status={vehicle.status}/><h3>{vehicle.year} {vehicle.make} {vehicle.model}</h3><p>{vehicle.type}</p>{vehicle.assignedTo&&<span className="assigned-person"><CircleUserRound/> Assigned to {crew.find(member=>member.id===vehicle.assignedTo)?.name??'Crew member'}</span>}<div className="vehicle-detail-buttons">{canInspectVehicle(user.role)&&<button className="inspect-vehicle-button" onClick={onInspect}><ClipboardCheck/> Inspect</button>}{canOpenVehicleIssue(user.role)&&<button className="issue-vehicle-button" onClick={onNewIssue}><CircleAlert/> Open issue</button>}{user.role!=='fire_fighter'&&<button className="notes-vehicle-button" onClick={()=>setNotesOpen(open=>!open)}><MessageSquare/> Vehicle Notes</button>}<button className={vehicle.assignedTo===user.id?'assignment-button assigned':'assignment-button'} disabled={Boolean(vehicle.assignedTo&&vehicle.assignedTo!==user.id)||(!canManage&&!vehicle.assignedTo&&vehicle.status!=='Ready')} onClick={onAssign}>{vehicle.assignedTo===user.id?<><Check/> Remove Assignment</>:vehicle.assignedTo?<><CircleUserRound/> Assigned</>:!canManage&&vehicle.status!=='Ready'?<><CircleUserRound/> Unavailable</>:<><CircleUserRound/> Assign to me</>}</button></div>{motive&&<MotiveHeroStatus motive={motive} onOpenOperations={onOpenOperations}/>}</div>{notesOpen&&user.role!=='fire_fighter'&&<VehicleNotesSection vehicle={vehicle} user={user} onList={onListNotes} onSave={onSaveNote} onDelete={onDeleteNote}/>}<div className="detail-section"><h4>Current status</h4><label className={`status-select ${canManage?'':'readonly'}`}><span className="sr-only">Current vehicle status</span><select value={vehicle.status} disabled={!canManage} onChange={event=>onStatus(event.target.value as Status)}>{vehicle.status==='Assigned'&&<option hidden>Assigned</option>}{currentStatuses.map(s=><option key={s} value={s}>{vehicleStatusLabel(s)}</option>)}</select></label>{canManage&&<label className="assignee-select"><span>Assigned crew member</span><select value={vehicle.assignedTo??''} onChange={event=>onAssignee(event.target.value)}><option value="">No crew member assigned</option>{activeCrew.map(member=><option key={member.id} value={member.id}>{member.name}</option>)}</select><small>Selecting crew changes status to Assigned.</small></label>}{vehicle.assignedTo&&(canManage||vehicle.assignedTo===user.id)&&<FireAssignmentField vehicle={vehicle} onChange={onFire}/>}</div>{openIssues.length>0&&<div className="detail-section vehicle-issues"><h4>Open issues <span>{openIssues.length}</span></h4>{openIssues.map(issue=><button key={issue.id} onClick={()=>onIssue(issue)}><span className={`priority-icon ${issue.priority.toLowerCase()}`}><AlertTriangle/></span><span><b>{issue.title}</b><small>{issue.priority} priority · {issue.updates.length} {issue.updates.length===1?'update':'updates'}</small></span><ChevronRight/></button>)}</div>}{canManage&&<div className="vehicle-record-actions"><button className="edit-vehicle" onClick={onEdit}><Pencil/> Edit vehicle details</button><button className="delete-vehicle" onClick={onDelete}><Trash2/> Delete vehicle</button></div>}<div className="detail-section"><h4>Digital Equipment Binder</h4><div className="document-list">{vehicleDocumentOptions.map(({key,label})=>{const document=binderDocument(vehicle,key,label);return document?<a className="document-preview" key={key} href={document.file.dataUrl} target="_blank" rel="noreferrer" aria-label={`Open ${label}: ${document.file.name}`}><span className={`document-thumbnail ${document.file.type.startsWith('image/')?'image':''}`}>{document.file.type.startsWith('image/')?<img src={document.file.dataUrl} alt="" loading="lazy" decoding="async"/>:<FileText/>}</span><span className="document-copy"><b>{label}</b><small>{document.file.name}</small>{key==='dotInspection'&&document.inspectionDate&&<small>Inspected {document.inspectionDate} · Expires {inspectionExpirationDate(document.inspectionDate)??'—'}</small>}</span><ExternalLink/></a>:<div className="document-preview missing" key={key}><span className="document-thumbnail"><FileText/></span><span className="document-copy"><b>{label}</b><small>No document attached</small></span></div>})}</div></div><div className="detail-section"><h4>Vehicle information</h4><dl className="details"><Detail icon={<Hash/>} label="VIN" value={vehicle.vin||'Not added'}/><Detail icon={<CarFront/>} label="License plate" value={vehicle.plate||'Not added'}/><Detail icon={<CalendarDays/>} label="Added" value={new Date(vehicle.createdAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}/></dl></div>{resolvedIssues.length>0&&<div className="detail-section vehicle-issues resolved-vehicle-issues"><h4>Resolved issues <span>{resolvedIssues.length}</span></h4>{resolvedIssues.map(issue=><button key={issue.id} onClick={()=>onIssue(issue)}><span className="priority-icon resolved"><Check/></span><span><b>{issue.title}</b><small>Resolved {new Date(issue.resolvedAt??issue.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · {issue.updates.length} {issue.updates.length===1?'update':'updates'}</small></span><ChevronRight/></button>)}</div>}{vehicle.notes&&<div className="detail-section"><h4>Notes</h4><p className="notes">{vehicle.notes}</p></div>}</section>{cropFile&&<SquarePhotoCrop file={cropFile} onCancel={()=>setCropFile(undefined)} onSave={async file=>{setPhotoBusy(true);setPhotoError('');try{await onPhoto(file);setCropFile(undefined)}catch(error){setPhotoError('Photo could not be updated. Check your connection and try again.');throw error}finally{setPhotoBusy(false)}}}/>}</div>}
-function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetIssue;vehicle?:Vehicle;user:FireOpsUser;canManage:boolean;onClose:()=>void;onSave:(issue:FleetIssue)=>void}) {
+function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetIssue;vehicle?:Vehicle;user:FireOpsUser;canManage:boolean;onClose:()=>void;onSave:(issue:FleetIssue,base?:FleetIssue)=>boolean|void}) {
+  const detailBase=useRef(issue);const [saveError,setSaveError]=useState('');
   const [updateText,setUpdateText]=useState('');
   const [editingDetails,setEditingDetails]=useState(false);
   const [details,setDetails]=useState({title:issue.title,description:issue.description,priority:issue.priority});
@@ -1164,7 +1193,7 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
   const dialog=useDialogA11y(onClose);
   const updateId=useId();
   const detailsChanged=details.title.trim()!==issue.title||details.description.trim()!==issue.description||details.priority!==issue.priority;
-  const beginEditing=()=>{setDetails({title:issue.title,description:issue.description,priority:issue.priority});setDetailErrors({});setEditingDetails(true)};
+  const beginEditing=()=>{detailBase.current=issue;setSaveError('');setDetails({title:issue.title,description:issue.description,priority:issue.priority});setDetailErrors({});setEditingDetails(true)};
   const cancelEditing=()=>{setDetails({title:issue.title,description:issue.description,priority:issue.priority});setDetailErrors({});setEditingDetails(false)};
   const saveDetails=(event:React.FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
@@ -1174,10 +1203,10 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
     if(!details.description.trim())errors.description='Description is required';
     setDetailErrors(errors);
     if(Object.keys(errors).length){focusFirstInvalid(event.currentTarget);return}
-    onSave({...issue,title:details.title.trim(),description:details.description.trim(),priority:details.priority});
+    if(onSave({...detailBase.current,title:details.title.trim(),description:details.description.trim(),priority:details.priority},detailBase.current)===false){setDetailErrors({record:'Issue changed or another save is pending. Your entered values remain here.'});return}
     setEditingDetails(false);
   };
-  const saveUpdate=(status?:IssueStatus)=>{if(!updateText.trim())return;const now=new Date().toISOString();const nextStatus=status??issue.status;onSave({...issue,status:nextStatus,resolvedAt:nextStatus==='Resolved'?(issue.resolvedAt??now):undefined,updates:[{id:crypto.randomUUID(),text:updateText.trim(),createdBy:user.name,createdById:user.id,createdAt:now},...issue.updates]});setUpdateText('')};
+  const saveUpdate=(status?:IssueStatus)=>{if(!updateText.trim())return;const now=new Date().toISOString();const nextStatus=status??issue.status;if(onSave({...issue,status:nextStatus,resolvedAt:nextStatus==='Resolved'?(issue.resolvedAt??now):undefined,updates:[{id:crypto.randomUUID(),text:updateText.trim(),createdBy:user.name,createdById:user.id,createdAt:now},...issue.updates]},issue)===false){setSaveError('Issue changed or another save is pending. Update text has been kept.');return}setSaveError('');setUpdateText('')};
   const addUpdate=(event:React.FormEvent)=>{event.preventDefault();saveUpdate()};
   const formatDate=(date:string)=>new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer issue-detail" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}>
@@ -1186,6 +1215,7 @@ function IssueDetail({issue,vehicle,user,canManage,onClose,onSave}:{issue:FleetI
       {editingDetails?<form ref={detailFormRef} className="issue-details-form" onSubmit={saveDetails} noValidate><FormErrorSummary errors={detailErrors} formRef={detailFormRef}/><div className="form-grid"><Field label="Issue title" required error={detailErrors.title} wide><input name="title" maxLength={160} value={details.title} onChange={event=>setDetails(current=>({...current,title:event.target.value}))} autoFocus/></Field><Field label="Description" required error={detailErrors.description} wide><textarea name="description" maxLength={2000} value={details.description} onChange={event=>setDetails(current=>({...current,description:event.target.value}))}/></Field><Field label="Priority" required wide><select value={details.priority} onChange={event=>setDetails(current=>({...current,priority:event.target.value as Priority}))}>{priorities.map(priority=><option key={priority}>{priority}</option>)}</select></Field></div><div className="issue-details-actions"><button type="button" className="secondary" onClick={cancelEditing}>Cancel</button><button className="primary" disabled={!detailsChanged}><Pencil/> Save issue</button></div></form>:<><div className="issue-badges"><span className={`issue-status ${issue.status.toLowerCase()}`}>{issue.status}</span><span className={`priority ${issue.priority.toLowerCase()}`}>{issue.priority} priority</span></div><p>{issue.description}</p><small>Reported by {issue.createdBy} · {formatDate(issue.createdAt)}</small></>}
     </div>
     {canManage&&!editingDetails&&<button className="edit-vehicle edit-vehicle-wide issue-edit-button" onClick={beginEditing}><Pencil/> Edit issue details</button>}
+    {saveError&&<div className="form-submit-error" role="alert">{saveError}</div>}
     <div className="detail-section"><h4>Add update</h4><form className="update-form" onSubmit={addUpdate}><label htmlFor={updateId}>Progress, repair, or inspection notes</label><textarea id={updateId} maxLength={2000} value={updateText} onChange={event=>setUpdateText(event.target.value)} placeholder="Describe work completed or next steps"/><div className="update-actions"><button className="primary" disabled={!updateText.trim()}><MessageSquare/> Add update</button><button type="button" className={issue.status==='Open'?'resolve-button':'reopen-button'} disabled={!updateText.trim()} onClick={()=>saveUpdate(issue.status==='Open'?'Resolved':'Open')}>{issue.status==='Open'?<Check/>:<CircleAlert/>}{issue.status==='Open'?'Mark as resolved':'Reopen issue'}</button></div></form></div>
     <div className="detail-section issue-history"><h4>Updates <span>{issue.updates.length}</span></h4>{issue.updates.map(update=><article key={update.id}><span><MessageSquare/></span><div><p>{update.text}</p><small>{update.createdBy} · {formatDate(update.createdAt)}</small></div></article>)}{!issue.updates.length&&<p className="no-updates">No updates yet.</p>}</div>
   </section></div>
