@@ -385,7 +385,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     if (!canManageFleet) return;
     const next=normalizeVehicle(vehicle);
     setVehicles(v => v.map(item => item.id === next.id ? next : item));
-    logActivity({action:`${next.unit} details updated`,detail:'Vehicle record changed',targetType:'vehicle',targetId:next.id,tone:'complete'}); setEditing(null); showNotice(`${next.unit} details updated`);
+    logActivity({action:`${next.unit} details updated`,detail:'Vehicle record changed',targetType:'vehicle',targetId:next.id,tone:'complete'}); setEditing(null); setSelected(next); showNotice(`${next.unit} details updated`);
   };
   const updateVehiclePhoto = async (vehicle:Vehicle,file:File) => {
     if(!canManageFleet)return;
@@ -652,7 +652,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
       <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
-    {editing && canManageFleet && <VehicleForm vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setEditing(null)} onSave={updateVehicle}/>}
+    {editing && canManageFleet && <VehicleForm vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => {setSelected(vehicles.find(vehicle => vehicle.id === editing.id) ?? editing);setEditing(null)}} onSave={updateVehicle}/>}
     {issueFormOpen && canOpenIssues && <IssueForm vehicles={vehicles} initialVehicleId={issueVehicleId} user={currentUser} onClose={() => setIssueFormOpen(false)} onSave={addIssue}/>}
     {inspectionPickerOpen && !canManageFleet && canInspectFleet && <VehicleInspectionPicker vehicles={vehicles} onClose={()=>setInspectionPickerOpen(false)} onSelect={vehicle=>{setInspectionPickerOpen(false);setInspectionVehicle(vehicle)}}/>}
     {inspectionVehicle && canInspectFleet && <InspectionForm vehicle={inspectionVehicle} user={currentUser} templateItems={inspectionTemplate.items} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={()=>setInspectionVehicle(null)} onSave={inspection=>addInspection(inspectionVehicle,inspection)}/>}

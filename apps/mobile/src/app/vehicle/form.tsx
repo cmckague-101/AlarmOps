@@ -202,7 +202,7 @@ export default function VehicleFormScreen() {
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),
       }, user, editing);
       if (replacedPaths.length) void removeFleetFiles(replacedPaths).catch(() => undefined);
-      if (editing) router.back();
+      if (editing) router.dismissTo(`/vehicle/${recordId}`);
       else router.replace(`/vehicle/${recordId}`);
     } catch (error) {
       if (uploaded.length) void removeFleetFiles(uploaded.map((file) => file.path)).catch(() => undefined);
@@ -273,7 +273,7 @@ export default function VehicleFormScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.back()} style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}><Text style={styles.cancelLabel}>Cancel</Text></Pressable>
+          <Pressable accessibilityRole="button" disabled={saving} onPress={() => { if (id) router.dismissTo(`/vehicle/${id}`); else router.back(); }} style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}><Text style={styles.cancelLabel}>Cancel</Text></Pressable>
           <Pressable accessibilityRole="button" disabled={saving} onPress={submit} style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed, saving && styles.disabled]}>
             <AppSymbol name="checkmark" color={theme.commandText} size={18} />
             <Text style={styles.saveLabel}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Add vehicle'}</Text>
