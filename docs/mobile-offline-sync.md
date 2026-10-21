@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: agreed product requirements and implementation plan; not implemented by this document.
+Status: implementation started with shared contracts and pure merge rules. Offline writes, server synchronization, and conflict-review UI are not enabled yet.
 
 ## Scope
 
@@ -109,6 +109,27 @@ Every mobile workflow must receive an explicit adapter and offline acceptance te
 7. Validate security, failure recovery, and rollout/version compatibility before enabling offline writes broadly.
 
 Do not replace the current read-only banner with a promise of offline editing before adapters actually persist the corresponding operations.
+
+## Implementation progress
+
+### Shared foundation (implemented)
+
+`packages/domain/src/offline-sync.ts` exports operation/provenance/status contracts, explicit present/absent field values, `createSyncPatch`, and `mergeSyncUpdate`. Both clients can consume these through `@fireops/domain`; no native dependencies are introduced into web.
+
+The merge compares base/current/proposed values, merges independent changes, preserves conflict context, distinguishes absent values from null, and refuses to resurrect deleted records. Optional invariant field groups require review for related changes. A conflicting operation returns no partially applicable record. Inputs are validated as JSON, outputs are detached copies, and comparisons do not depend on timestamps or object key order.
+
+Nested arrays/objects are currently indivisible fields. Each feature adapter must define editable projections (and flatten independently editable nested fields where appropriate), invariant groups, and server-side domain validation. These helpers alone do not authenticate authors, verify client base snapshots, authorize mutations, persist multiple candidates, or prevent concurrent writes.
+
+Focused tests live in `packages/domain/src/offline-sync.test.ts`. Run `npm run test --workspace @fireops/domain -- src/offline-sync.test.ts` and `npm run typecheck --workspace @fireops/domain`.
+
+### Next implementation slices
+
+- Complete feature-level mutation inventory and define server revision/receipt/security contracts before enabling replay.
+- Implement the account/company-scoped SQLite outbox and atomic local projection updates, with restart and attachment recovery tests.
+- Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
+- Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
+
+The existing read-only offline banner and request guard remain unchanged intentionally: no operation is presented as saved offline before durable persistence and server reconciliation exist.
 
 ## Required targeted tests
 

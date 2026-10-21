@@ -11,3 +11,4 @@ export * from './dashboard-preferences';
 export * from './command-center';
 export * from './dot-inspection';
 export * from './demo-data';
+export * from './offline-sync';
