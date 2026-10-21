@@ -16,6 +16,15 @@ export function inspectionReminderDate(expirationDate:string):string {
   return new Date(Date.UTC(date.getUTCFullYear(),month,day)).toISOString().slice(0,10);
 }
 
+export function dotInspectionWarning(vehicle:{documents?:{id:string;name:string;inspectionDate?:string}[]},now=new Date()):{inspectionDate:string;expiration:string;expired:boolean}|null {
+  const document=vehicle.documents?.find(document=>document.id==='dotInspection'||document.name.toLowerCase()==='dot inspection');
+  const inspectionDate=document?.inspectionDate;
+  const expiration=inspectionDate&&inspectionExpirationDate(inspectionDate);
+  const today=localDateToday(now);
+  if(!inspectionDate||!expiration||today<inspectionReminderDate(expiration))return null;
+  return {inspectionDate,expiration,expired:today>=expiration};
+}
+
 export function localDateToday(now=new Date()):string {
   return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 }

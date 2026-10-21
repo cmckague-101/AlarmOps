@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
+import { dotInspectionWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,12 +30,13 @@ const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Out of servi
 
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
+  const dotWarning = dotInspectionWarning(vehicle);
   const [loadedPhotoUrl, setLoadedPhotoUrl] = useState<string | null>(null);
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${vehicle.name}, ${displayStatus(vehicle.status)}`}
+      accessibilityLabel={`${vehicle.name}, ${displayStatus(vehicle.status)}${dotWarning ? `, DOT inspection ${dotWarning.expired ? 'expired' : 'expiring'} ${dotWarning.expiration}` : ''}`}
       accessibilityHint="Opens vehicle details"
       onPress={onPress}
       style={({ pressed }) => [styles.vehicleRow, pressed && styles.vehicleRowPressed]}
@@ -66,6 +67,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
             {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null, vehicle.motive?.diagnostics?.length ? `${vehicle.motive.diagnostics.length} diagnostic ${vehicle.motive.diagnostics.length === 1 ? 'code' : 'codes'}` : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
+        {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {dotWarning.expiration}</Text> : null}
       </View>
       <View style={styles.rowEnd}>
         <Text style={styles.status}>{displayStatus(vehicle.status)}</Text>

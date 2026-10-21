@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {commandAlerts,inspectionExpirationDate,inspectionReminderDate,localDateToday} from '@fireops/domain';
+import {dotInspectionWarning,commandAlerts,inspectionExpirationDate,inspectionReminderDate,localDateToday} from '@fireops/domain';
 
 const vehicle=(inspectionDate?:string)=>({id:'engine',unit:'Engine 1',status:'Ready',documents:[{id:'dotInspection',name:'DOT Inspection',inspectionDate}]});
 const alerts=(date:string,inspectionDate='2025-07-15')=>commandAlerts([vehicle(inspectionDate)],[],[],new Date(`${date}T12:00:00`));
@@ -33,6 +33,14 @@ describe('DOT inspection expiration',()=>{
     expect(result.map(alert=>alert.id)).toEqual(['dot-inspection-engine','payroll-payroll']);
     item.documents[0].inspectionDate='2026-07-01';
     expect(commandAlerts([item],[],[],new Date('2026-07-01T12:00:00'))).toEqual([]);
+  });
+  it('uses the same warning status for fleet rows and dashboard alerts',()=>{
+    const item=vehicle('2025-07-15');
+    expect(dotInspectionWarning(item,new Date('2026-06-14T12:00:00'))).toBeNull();
+    expect(dotInspectionWarning(item,new Date('2026-06-15T12:00:00'))).toEqual({inspectionDate:'2025-07-15',expiration:'2026-07-15',expired:false});
+    expect(dotInspectionWarning(item,new Date('2026-07-15T12:00:00'))?.expired).toBe(true);
+    expect(dotInspectionWarning(vehicle('2026-07-15'),new Date('2026-07-15T12:00:00'))).toBeNull();
+    expect(dotInspectionWarning(vehicle())).toBeNull();
   });
   it('formats today using the local calendar date',()=>{
     expect(localDateToday(new Date(2026,0,2,0,1))).toBe('2026-01-02');
