@@ -27,6 +27,7 @@ export type OutboxEntry = {
   readonly noticeDismissed: boolean;
 };
 export type OutboxReceipt = SyncServerReceipt;
+export type CachedOfflineRecord = CanonicalSyncRecord & {readonly entityType:'vehicle'|'issue';readonly entityId:string;readonly verifiedAt:string};
 export type OutboxAttempt = {
   readonly operationId: string;
   readonly token: string;
@@ -175,7 +176,19 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
       `);
       current = 2;
     }
-    if (current !== 2) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if (current === 2) {
+      await tx.execAsync(`
+        CREATE TABLE offline_records (
+          user_id TEXT NOT NULL, company_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+          revision TEXT NOT NULL, record_json TEXT NOT NULL, verified_at TEXT NOT NULL,
+          PRIMARY KEY(user_id, company_id, entity_type, entity_id)
+        );
+        CREATE TABLE offline_devices (user_id TEXT PRIMARY KEY NOT NULL, device_id TEXT NOT NULL);
+        PRAGMA user_version = 3;
+      `);
+      current = 3;
+    }
+    if (current !== 3) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -220,15 +233,43 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         });
       }
 
+      async function confirmed(tx:OutboxSqlConnection,entityType:string,entityId:string,incoming:CanonicalSyncRecord):Promise<CanonicalSyncRecord>{
+        if(!['vehicle','issue'].includes(entityType))throw new Error('Unsupported cached entity.');
+        const value=decodeCanonicalSyncRecord({entityId},incoming,'1');
+        const existing=await tx.getFirstAsync<{revision:string;record_json:string}>('SELECT revision,record_json FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,entityType,entityId);
+        if(existing){
+          const previous=decodeCanonicalSyncRecord({entityId},{revision:existing.revision,record:JSON.parse(existing.record_json)},'1');
+          if(BigInt(previous.revision)>BigInt(value.revision))return previous;
+          if(previous.revision===value.revision){if(!sameJson(existing.record_json,JSON.stringify(value.record)))throw new Error('A server revision has conflicting data.');return previous}
+        }
+        await tx.runAsync(`INSERT INTO offline_records VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id,company_id,entity_type,entity_id)
+          DO UPDATE SET revision=excluded.revision,record_json=excluded.record_json,verified_at=excluded.verified_at`,...ids,entityType,entityId,value.revision,JSON.stringify(value.record),new Date().toISOString());
+        return value;
+      }
       return {
+        scope:Object.freeze({...identity}),
+        getDeviceId(createId:()=>string):Promise<string>{return write(async tx=>{
+          const row=await tx.getFirstAsync<{device_id:string}>('SELECT device_id FROM offline_devices WHERE user_id=?',identity.userId);
+          if(row)return row.device_id;
+          const value=createId();required(value,'device ID');await tx.runAsync('INSERT INTO offline_devices VALUES (?,?)',identity.userId,value);return value;
+        })},
+        listRecords():Promise<CachedOfflineRecord[]>{return read(async()=>{
+          const rows=await db.getAllAsync<{entity_type:'vehicle'|'issue';entity_id:string;revision:string;record_json:string;verified_at:string}>('SELECT * FROM offline_records WHERE user_id=? AND company_id=?',...ids);
+          return rows.map(row=>({...decodeCanonicalSyncRecord({entityId:row.entity_id},{revision:row.revision,record:JSON.parse(row.record_json)},'1'),entityType:row.entity_type,entityId:row.entity_id,verifiedAt:row.verified_at}));
+        })},
+        putRecord(entityType:'vehicle'|'issue',entityId:string,value:CanonicalSyncRecord):Promise<CanonicalSyncRecord>{
+          const copy=decodeCanonicalSyncRecord({entityId},value,'1');return write(tx=>confirmed(tx,entityType,entityId,copy));
+        },
+        removeRecord(entityType:string,entityId:string):Promise<void>{return write(async tx=>{await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,entityType,entityId)})},
         /** Commit projection and intent together. Re-enqueueing the same intent never regresses newer state. */
-        enqueue(operation: SyncOperation, projection: SyncRecord | null): Promise<OutboxEntry> {
+        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean}): Promise<OutboxEntry> {
           guard();
           const encoded = encodeOperation(operation, identity);
           record(projection);
           // Detached before awaiting, including the dependency list and entity keys.
           const saved = JSON.parse(encoded) as SyncOperation;
           const projected = JSON.stringify(projection);
+          const exclusiveRecord=options?.exclusiveRecord===true;
           return write(async (tx) => {
             const existing = await tx.getFirstAsync<Row>(
               'SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ?', ...ids, saved.operationId,
@@ -238,6 +279,11 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
                 throw new Error('Offline operation ID was reused for different work.');
               }
               return entry(existing);
+            }
+            if(exclusiveRecord){
+              const pending=await tx.getFirstAsync<{operation_id:string}>(`SELECT operation_id FROM offline_operations WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?
+                AND (status IN ('pending','syncing','awaiting_review') OR (status='blocked' AND review_outcome_json IS NULL)) LIMIT 1`,...ids,saved.entityType,saved.entityId);
+              if(pending)throw new Error('This record already has a pending change. Sync or resolve it before editing again.');
             }
             for (const dependency of saved.dependsOn) {
               const parent = await tx.getFirstAsync<{ operation_id: string }>(
@@ -250,7 +296,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               `SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ?
                ORDER BY sequence DESC LIMIT 1`, ...ids, saved.entityType, saved.entityId,
             );
-            if (previous && previous.status !== 'synced' && !saved.dependsOn.includes(previous.operation_id)) {
+            if (previous && (['pending','syncing','awaiting_review'].includes(previous.status)||(previous.status==='blocked'&&!previous.review_outcome_json)) && !saved.dependsOn.includes(previous.operation_id)) {
               throw new Error('A later edit must depend on the previous unsynced edit.');
             }
             await tx.runAsync(
@@ -313,7 +359,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
                    SELECT 1 FROM offline_operations previous
                    WHERE previous.user_id = candidate.user_id AND previous.company_id = candidate.company_id
                      AND previous.entity_type = candidate.entity_type AND previous.entity_id = candidate.entity_id
-                     AND previous.sequence < candidate.sequence AND previous.status <> 'synced'
+                     AND previous.sequence < candidate.sequence AND (previous.status IN ('pending','syncing','awaiting_review') OR (previous.status = 'blocked' AND previous.review_outcome_json IS NULL))
                  )
                ORDER BY candidate.sequence LIMIT 1`, ...ids, now, now,
             );
@@ -382,7 +428,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const receipt = JSON.parse(row.receipt_json!) as SyncServerReceipt;
             if (receipt.kind !== 'awaiting_review') throw new Error('Missing conflict acknowledgment.');
             const outcome = decodeSyncOutcome(operation, receipt.conflictId, JSON.parse(row.review_outcome_json))!;
-            const current = snapshot ? decodeCanonicalSyncRecord(operation, snapshot, outcome.revision) : null;
+            const current = snapshot ? await confirmed(tx,operation.entityType,operation.entityId,decodeCanonicalSyncRecord(operation, snapshot, outcome.revision)) : null;
             const status = outcome.outcome === 'kept' ? 'synced' : outcome.outcome === 'partially_kept' ? 'blocked' : 'not_selected';
             await tx.runAsync(`UPDATE offline_operations SET status = ?, error = ?, notice_dismissed = 0
               WHERE user_id = ? AND company_id = ? AND operation_id = ?`, status,
@@ -392,6 +438,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
                 WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ? AND operation_id = ?`,
                 JSON.stringify(current.record), ...ids, operation.entityType, operation.entityId, operationId);
             } else {
+              await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,operation.entityType,operation.entityId);
               await tx.runAsync('DELETE FROM offline_projections WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ? AND operation_id = ?',
                 ...ids, operation.entityType, operation.entityId, operationId);
             }
@@ -427,7 +474,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             case 'blocked': required(result.error, 'blocking error'); break;
             default: throw new Error('Unsupported offline delivery result.');
           }
-          const saved = JSON.parse(JSON.stringify(result)) as OutboxDeliveryResult;
+          let saved = JSON.parse(JSON.stringify(result)) as OutboxDeliveryResult;
           const fence = { ...attempt };
           return write(async (tx) => {
             const row = await tx.getFirstAsync<Row>(
@@ -436,6 +483,13 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               ...ids, fence.operationId, fence.token, fence.number,
             );
             if (!row) return false;
+            if(saved.kind==='applied'){
+              const operation=JSON.parse(row.operation_json) as SyncOperation;
+              // Generic legacy receipts remain supported; fleet deliveries carry decimal revisions and raw IDs.
+              if(['vehicle','issue'].includes(operation.entityType)&&/^[1-9][0-9]{0,17}$/.test(saved.revision)&&(saved.record===null||saved.record.id===operation.entityId)){
+                saved={...saved,...await confirmed(tx,operation.entityType,operation.entityId,saved)};
+              }
+            }
             const status = saved.kind === 'applied' ? 'synced' : saved.kind === 'retry' ? 'pending' : saved.kind;
             const receipt = saved.kind === 'applied' || saved.kind === 'awaiting_review' ? JSON.stringify(saved) : null;
             const error = saved.kind === 'retry' || saved.kind === 'blocked' ? saved.error : null;

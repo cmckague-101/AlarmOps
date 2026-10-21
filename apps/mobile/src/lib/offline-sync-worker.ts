@@ -6,6 +6,7 @@ export interface OfflineSyncTransport{
   deliver(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   canonical(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
+  readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
 }
 export type OfflineSyncState={readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean};
 export const emptyOfflineSyncState:OfflineSyncState={entries:[],busy:false,loaded:false,error:null,setupPending:false};
@@ -24,12 +25,13 @@ function errorMessage(error:unknown):string{
 /** One foreground worker per scoped outbox. Never writes stale responses after pause/stop. */
 export function createOfflineSyncWorker(options:{
   session:OfflineOutboxSession;transport:OfflineSyncTransport;
-  canAccess:()=>boolean;canRun:()=>boolean;token:()=>string;now?:()=>number;timeoutMs?:number;
+  canAccess:()=>boolean;canRun:()=>boolean;canReadRecords?:()=>boolean;token:()=>string;now?:()=>number;timeoutMs?:number;
 }){
   const {session,transport}=options;const now=options.now??Date.now;
   let state:OfflineSyncState=emptyOfflineSyncState;let stopped=false;let epoch=0;let running:Promise<void>|null=null;
   let requestAbort:AbortController|null=null;let recovering:Promise<void>|null=null;
   const listeners=new Set<()=>void>();
+  let cacheError:string|null=null;
   const emit=(patch:Partial<OfflineSyncState>)=>{state={...state,...patch};listeners.forEach(listener=>listener())};
   const valid=(version:number)=>!stopped&&version===epoch&&options.canAccess();
   const ready=(version:number)=>valid(version)&&options.canRun();
@@ -37,7 +39,7 @@ export function createOfflineSyncWorker(options:{
     const version=epoch;if(!valid(version))return;
     try{const entries=await session.list();if(valid(version)){
       const unfinished=entries.some(entry=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
-      emit({entries,loaded:true,...(!unfinished?{error:null,setupPending:false}:{})});
+      emit({entries,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
     }}
     catch{if(valid(version))emit({loaded:true,error:'Device sync storage could not be read. Saved work has not been discarded.'})}
   }
@@ -99,6 +101,24 @@ export function createOfflineSyncWorker(options:{
     }
     return true;
   }
+  async function refreshCachedRecords(version:number){
+    if(!transport.readRecord||!options.canReadRecords?.()){cacheError=null;return}
+    try{
+      for(const cached of await persist(()=>session.listRecords())){
+        if(!ready(version)||!options.canReadRecords())return;
+        try{
+          const raw=await rpc(version,signal=>transport.readRecord!(cached,signal));
+          const current=decodeCanonicalSyncRecord(cached,raw,cached.revision);
+          if(ready(version))await persist(()=>session.putRecord(cached.entityType,cached.entityId,current));
+        }catch(error){
+          if(!ready(version))return;
+          if(offlineSyncErrorCode(error)==='42501')await persist(()=>session.removeRecord(cached.entityType,cached.entityId));
+          else throw error;
+        }
+      }
+      if(ready(version)){cacheError=null;emit({error:null,setupPending:false})}
+    }catch(error){if(ready(version)){cacheError=errorMessage(error);emit({error:cacheError,setupPending:isSyncReviewUnavailable(error)})}}
+  }
   async function run(version:number){
     try{
       await refresh();if(!ready(version))return;emit({busy:true});
@@ -131,6 +151,7 @@ export function createOfflineSyncWorker(options:{
           if(isSyncReviewUnavailable(error)||['42501','401','PGRST301','PGRST302'].includes(offlineSyncErrorCode(error)))break;
         }
       }
+      if(ready(version))await refreshCachedRecords(version);
     }catch{
       if(valid(version))emit({error:'Device sync storage could not be updated. Saved work has not been discarded.'});
     }finally{

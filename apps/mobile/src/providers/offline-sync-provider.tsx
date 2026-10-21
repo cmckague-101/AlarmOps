@@ -1,5 +1,6 @@
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,useSyncExternalStore,type PropsWithChildren} from 'react';
 import {AppState,Platform} from 'react-native';
+import {createOfflineDetailEditor,type OfflineDetailEditor} from '../lib/offline-detail-editor';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
 import {createNativeSyncTransport} from '../lib/offline-sync-transport';
@@ -9,7 +10,7 @@ import {supabase} from '../lib/supabase';
 import {useSession} from './session-provider';
 import {isOffline,useNetworkStatus} from './network-provider';
 
-type ContextValue={state:OfflineSyncState;available:boolean;loading:boolean;offline:boolean;refresh:()=>Promise<void>;retry:(operationId:string)=>Promise<void>;dismiss:()=>Promise<void>};
+type ContextValue={detailEditor:OfflineDetailEditor|null;state:OfflineSyncState;available:boolean;loading:boolean;offline:boolean;refresh:()=>Promise<void>;retry:(operationId:string)=>Promise<void>;dismiss:()=>Promise<void>};
 const Context=createContext<ContextValue|null>(null);
 const emptySubscribe=()=>()=>{};
 const emptySnapshot=()=>emptyOfflineSyncState;
@@ -21,8 +22,9 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const companyId=userId?member?.company.id??null:null;
   const key=userId&&companyId?`${userId}:${companyId}`:null;
   const [foreground,setForeground]=useState(AppState.currentState==='active');
-  const runtime=useRef({key,foreground});runtime.current={key,foreground};
-  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker}|null>(null);
+  const manager=member?.user.role==='owner'||member?.user.role==='admin';
+  const runtime=useRef({key,foreground,manager});runtime.current={key,foreground,manager};
+  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor}|null>(null);
   const [bootAttempt,setBootAttempt]=useState(0);
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
   const worker=binding?.key===key?binding.worker:null;
@@ -46,14 +48,17 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const scoped=store.activate(identity);
         const canAccess=()=>!cancelled&&runtime.current.key===key;
         const canRun=()=>canAccess()&&runtime.current.foreground&&!isOffline()&&!offlineSyncSessionPaused(identity.userId);
-        const created=createOfflineSyncWorker({session:scoped,transport:createNativeSyncTransport(client,identity,canRun),canAccess,canRun,token:createFleetId});
+        const transport=createNativeSyncTransport(client,identity,canRun);
+        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.manager,token:createFleetId});
+        const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,canEdit:()=>canAccess()&&runtime.current.manager&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
+          changed:async()=>{await created.refresh();void created.wake()}});
         const unregister=registerOfflineSyncSession(identity.userId,{pause:()=>created.pause(),resume:()=>void created.resume()});
         const auth=client.auth.onAuthStateChange((_event,next)=>{
           if(!canAccess())return;
-          if(next?.user.id!==identity.userId){created.stop();store.pause();setBinding(previous=>previous?.worker===created?null:previous)}
+          if(next?.user.id!==identity.userId){editor.dispose();created.stop();store.pause();setBinding(previous=>previous?.worker===created?null:previous)}
         });
-        cleanup=()=>{created.stop();store.pause();unregister();auth.data.subscription.unsubscribe();if(current.current?.worker===created)current.current=null};
-        current.current={key,worker:created};setBinding({key,worker:created});setStartupError(null);
+        cleanup=()=>{editor.dispose();created.stop();store.pause();unregister();auth.data.subscription.unsubscribe();if(current.current?.worker===created)current.current=null};
+        current.current={key,worker:created};setBinding({key,worker:created,editor});setStartupError(null);
         await created.refresh();
       }catch{
         if(!cancelled&&runtime.current.key===key)setStartupError({key,message:'Device sync storage is unavailable. Saved work has not been discarded.'});
@@ -76,7 +81,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const refresh=useCallback(async()=>{if(worker)await worker.resume();else if(key)setBootAttempt(value=>value+1)},[worker,key]);
   const retry=useCallback(async(id:string)=>{if(worker){await worker.retry(id);await worker.wake()}},[worker]);
   const dismiss=useCallback(async()=>{await worker?.dismiss()},[worker]);
-  const value=useMemo<ContextValue>(()=>({state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss}),[state,startupError,key,worker,offline,refresh,retry,dismiss]);
+  const value=useMemo<ContextValue>(()=>({detailEditor:binding?.key===key&&manager?binding.editor:null,state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss}),[binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useOfflineSync(){const value=useContext(Context);if(!value)throw new Error('useOfflineSync must be inside OfflineSyncProvider');return value}

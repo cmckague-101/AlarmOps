@@ -14,7 +14,7 @@ export function decodeSyncReceipt(operation:SyncOperation,value:unknown):SyncSer
   else throw new Error('Invalid sync acknowledgment');
   return copy(value as SyncServerReceipt);
 }
-export function decodeCanonicalSyncRecord(operation:SyncOperation,value:unknown,minimumRevision:string):CanonicalSyncRecord{
+export function decodeCanonicalSyncRecord(operation:Pick<SyncOperation,'entityId'>,value:unknown,minimumRevision:string):CanonicalSyncRecord{
   createSyncPatch({},value as SyncRecord);const data=object(value);syncRevision(data.revision);syncRevision(minimumRevision);record(data.record,operation.entityId);
   if(BigInt(data.revision)<BigInt(minimumRevision))throw new Error('Shared record is older than the acknowledged change');
   return copy({revision:data.revision,record:data.record as SyncRecord|null});

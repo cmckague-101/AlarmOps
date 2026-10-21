@@ -12,7 +12,7 @@ function setup(){
 }
 describe('authenticated native sync RPC transport',()=>{
   it('uses RPCs (not cacheable GETs), the correct scope, an explicit user token and abort signal',async()=>{
-    const f=setup();await f.transport.deliver(operation,f.signal);await f.transport.canonical(operation,f.signal);await f.transport.outcome(operation,f.signal);
+    const f=setup();await f.transport.deliver(operation,f.signal);await f.transport.canonical(operation,f.signal);await f.transport.outcome(operation,f.signal);await f.transport.readRecord({entityType:'vehicle',entityId:'vehicle-1'},f.signal);
     expect(f.client.rpc).toHaveBeenCalledWith('sync_fleet_update',{operation});
     expect(f.client.rpc).toHaveBeenCalledWith('get_fleet_sync_record',{target_company_id:scope.companyId,entity_type:'vehicle',record_id:'vehicle-1'});
     expect(f.client.rpc).toHaveBeenCalledWith('get_fleet_sync_outcome',{target_company_id:scope.companyId,operation_id:'op-1'});
@@ -26,7 +26,8 @@ describe('authenticated native sync RPC transport',()=>{
   });
   it('does not send when the restored SDK session belongs to another account',async()=>{
     const f=setup();f.client.auth.getSession.mockResolvedValue({data:{session:{user:{id:'other'},access_token:'wrong'}},error:null});
-    await expect(f.transport.deliver(operation,f.signal)).rejects.toMatchObject({code:'401'});expect(f.client.rpc).not.toHaveBeenCalled();
+    await expect(f.transport.deliver(operation,f.signal)).rejects.toMatchObject({code:'401'});
+    await expect(f.transport.readRecord(operation,f.signal)).rejects.toMatchObject({code:'401'});expect(f.client.rpc).not.toHaveBeenCalled();
   });
   it('checks pause/abort again after asynchronous session restoration',async()=>{
     const f=setup();f.client.auth.getSession.mockImplementation(async()=>{f.mode.ready=false;return {data:{session:{user:{id:scope.userId},access_token:'bound'}},error:null}});

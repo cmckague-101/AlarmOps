@@ -27,15 +27,27 @@ async function setup(operation=op()){
   const db:OutboxDatabase={...tx,async withExclusiveTransactionAsync(task){sqlite.exec('BEGIN IMMEDIATE');try{await task(tx);sqlite.exec('COMMIT')}catch(error){sqlite.exec('ROLLBACK');throw error}}};
   const store=await createOfflineOutbox(db);let session=store.activate(scope);
   await session.enqueue(operation,{...base,notes:'Submitted'});
-  const transport={deliver:vi.fn().mockResolvedValue(accepted),canonical:vi.fn().mockResolvedValue(canonical),outcome:vi.fn().mockResolvedValue(null)};
-  const mode={online:true,foreground:true,access:true};let time=0;let token=0;
-  const make=(nextSession=session)=>{const worker=createOfflineSyncWorker({session:nextSession,transport,canAccess:()=>mode.access,canRun:()=>mode.online&&mode.foreground,token:()=>`attempt-${++token}`,now:()=>time,timeoutMs:1000});cleanups.push(()=>worker.stop());return worker};
+  const transport={deliver:vi.fn().mockResolvedValue(accepted),canonical:vi.fn().mockResolvedValue(canonical),outcome:vi.fn().mockResolvedValue(null),readRecord:vi.fn().mockResolvedValue(canonical)};
+  const mode={online:true,foreground:true,access:true,read:false};let time=0;let token=0;
+  const make=(nextSession=session)=>{const worker=createOfflineSyncWorker({session:nextSession,transport,canAccess:()=>mode.access,canRun:()=>mode.online&&mode.foreground,canReadRecords:()=>mode.read,token:()=>`attempt-${++token}`,now:()=>time,timeoutMs:1000});cleanups.push(()=>worker.stop());return worker};
   const worker=make();
   return {sqlite,store,transport,mode,worker,get session(){return session},advance(value:number){time+=value},restart(){worker.stop();session=store.activate(scope);return make(session)}};
 }
 async function entry(fixture:Awaited<ReturnType<typeof setup>>){return (await fixture.session.list())[0]}
 
 describe('native durable sync worker (real SQLite, no native UI)',()=>{
+  it('refreshes previously downloaded bases after reconnect even without queued work',async()=>{
+    const f=await setup();await f.worker.wake();f.transport.deliver.mockClear();f.mode.read=true;
+    const latest={revision:'4',record:{...base,notes:'Latest download'}};f.transport.readRecord.mockResolvedValue(latest);
+    await f.worker.resume();expect(f.transport.deliver).not.toHaveBeenCalled();expect((await f.session.listRecords())[0]).toMatchObject(latest);
+    f.mode.online=false;f.worker.pause();await f.worker.wake();expect(f.transport.readRecord).toHaveBeenCalledTimes(1);
+  });
+  it('does not downgrade cached revisions and removes forbidden cached bases without fabricating deletions',async()=>{
+    const f=await setup();await f.worker.wake();f.mode.read=true;f.transport.readRecord.mockResolvedValue({revision:'1',record:base});
+    await f.worker.wake();expect((await f.session.listRecords())[0].revision).toBe('3');expect(f.worker.getSnapshot().error).not.toBeNull();
+    f.transport.readRecord.mockRejectedValue({code:'42501'});await f.worker.wake();expect(await f.session.listRecords()).toEqual([]);
+    expect((await entry(f)).status).toBe('synced');expect((await entry(f)).operation.mutation).toEqual(op().mutation);
+  });
   it('does not upload offline/background, then confirms with a fresh record rather than the old receipt',async()=>{
     const f=await setup();f.mode.online=false;await f.worker.wake();expect(f.transport.deliver).not.toHaveBeenCalled();
     expect(offlineSyncNotice(f.worker.getSnapshot())?.message).toContain('waiting to sync');

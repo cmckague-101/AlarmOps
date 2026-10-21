@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage and a provider-owned atomic detail-edit boundary are implemented; normalized reads/overlays and feature save handlers are not connected. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -228,7 +228,21 @@ Native sign-out checks unresolved work across **all companies for that user**. U
 
 Focused tests cover real SQLite migration/restart/leases, staged acknowledgments, timeout/pause/account races, canonical revision/identity checks, review privacy/outcomes, unsupported/dependent operations, final storage failures, notices, sign-out retention and token-bound POST RPCs. The server suite verifies live revisions, deletion proof, role/company scope and unsupported-table denial. No native UI, application server or visual testing was launched.
 
-**Still not enabled:** feature save handlers do not enqueue, attachment bytes are not persisted, normalized/raw downloaded bases and full catch-up are not connected to offline editing, and sensitive-data encryption/retention plus dependent-edit rebase require implementation. Existing mobile mutations and the global offline banner therefore remain read-only. This slice must not be advertised as all-feature offline mode.
+**Still not enabled:** feature save handlers do not enqueue, attachment bytes are not persisted, normalized reads/overlays and full catch-up are not connected to offline editing, and sensitive-data encryption/retention plus dependent-edit rebase require implementation. Existing mobile mutations and the global offline banner therefore remain read-only. This slice must not be advertised as all-feature offline mode.
+
+### Verified bases and atomic detail-edit boundary (implemented, not exposed in UI)
+
+The native outbox now migrates **v1 → v2 → v3** transactionally. `offline_records` stores complete raw vehicle/issue records, decimal revisions, proven tombstones, and device-reported download time separately from projections and the HTTP cache. Every record query is account/company scoped. Revisions use integer comparison without JavaScript-number precision loss. Older downloads cannot replace newer data; different data for the same revision is rejected. `offline_devices` retains a stable per-account installation ID across companies/restarts, without sharing identifiers between accounts.
+
+Canonical upload/review reconciliation commits the verified raw record and operation completion together. A failed raw-cache write rolls back completion; a historical result cannot downgrade a newer cached revision or its matching confirmed projection. Lost raw-record permission after a verified review removes the cached record, not the preserved operation history, and never invents a deletion.
+
+`apps/mobile/src/lib/offline-detail-editor.ts` captures a private, detached verified base when preparing an editor. Online preparation uses the account-bound, uncached POST read RPC; offline preparation requires a previously verified live record. GET display normalization and cached HTTP responses are never treated as verified bases. Borrowed drafts, invalidated account/permission scope, unsupported fields, invalid values, deleted records and unchanged saves are rejected. It supports only the existing manager vehicle/issue scalar adapter. It has **no screen/form callers yet**.
+
+The provider exposes this boundary through its existing active session, not another `activate()` handle. Saves enqueue a full raw base plus changed-field patch and local projection in one transaction, retaining stable operation ID, device identity, device save time and observed connection state on retries. Concurrent duplicate saves coalesce by operation identity. Independent edits to an already-pending record are rejected atomically until completion/review; dependency rebasing is deliberately not bypassed. A fresh explicit edit after rejection uses a new verified base and does not automatically resend the discarded proposal. Failure to refresh notices after a committed save does not misreport persistence as failed.
+
+Foreground/reconnect/manual worker runs also refresh **previously cached raw records**, including when no upload remains. Permission failures remove unavailable bases; stale revisions cannot downgrade them. This is bounded to individually cached records, not full-company download coverage, a checkpointed change feed, or a normalized offline read model. Newly discovered records still need an explicit verified download before offline editing. No UI or existing online writer has been switched to these methods.
+
+Targeted native checks: **95 tests** across outbox/native storage, worker, protocol, transport, sign-out and conflict-review hooks; mobile typecheck and diff whitespace checks. New coverage includes v1/v2 migration, 18-digit revision ordering, conflicting revision data, raw-cache/completion rollback, scoped device IDs, concurrent enqueue exclusion, same-intent retries, verified issue/vehicle patches, fresh edits after rejection, and real database file close/reopen followed by reconnect reconciliation. Server migrations are unchanged by this slice. No deployment or UI launch occurred.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
@@ -267,7 +281,8 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Connect raw downloaded bases, normalized reads and save handlers to the durable native queue for completed adapters, preserving local overlays and truthful per-workflow availability. Expose enqueue through the active provider-owned session; do not create competing `activate()` handles per save. Enforce monotonic downloaded revisions independently of historical receipt snapshots. Then enable and test those workflows end-to-end.
+- Connect the verified raw cache and pending field overlays to normalized fleet reads, including restart/offline recovery and account/company changes. Preserve newer canonical revisions and unrelated online fields; do not expose a pending proposal as confirmed shared data.
+- Wire vehicle/issue detail editors through the provider-owned `detailEditor` prepare/save methods, retaining the original draft throughout editing. Guard legacy whole-record writes against pending local edits; keep unsupported fields/workflows online-only. Add truthful per-record download availability and end-to-end logic tests before changing the read-only banner. Do not create competing `activate()` handles per save.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
