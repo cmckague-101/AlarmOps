@@ -27,6 +27,17 @@ describe('dashboard customization',()=>{
       expect(keys).toEqual(expect.arrayContaining(['greeting','availability','inventory','payroll','receipts','invoices','nationalFireActivity']));
     }
   });
+  it('offers current picture only on mobile and recent fleet activity for both member roles',()=>{
+    expect(parseDashboardPreferences({currentPicture:false,recentActivity:false})).toEqual({currentPicture:false,recentActivity:false});
+    for(const role of ['shop_tech','fire_fighter'] as const){
+      expect(ids(role,'mobile')).toEqual(expect.arrayContaining(['currentPicture','recentActivity']));
+      expect(ids(role,'web')).not.toContain('currentPicture');
+      const command=dashboardPreferenceGroups(role,'mobile').find(group=>group.title==='Command Center');
+      expect(command?.items).toContainEqual({id:'currentPicture',label:'Current picture — vehicles needing attention'});
+    }
+    expect(ids('owner','mobile')).not.toContain('currentPicture');
+    expect(ids('admin','mobile')).not.toContain('currentPicture');
+  });
   it('updates subscribers by user, preserves unrelated choices, and supports re-enabling',async()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;
     function Probe({id}:{id:string}){preferences=useDashboardPreferences(id,true);return null}

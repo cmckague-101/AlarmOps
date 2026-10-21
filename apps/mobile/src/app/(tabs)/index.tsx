@@ -101,7 +101,7 @@ export default function DashboardScreen() {
 
         {!loading && !error ? (
           <>
-            {attention > 0 ? (
+            {preferences.visible('currentPicture') && attention > 0 ? (
               <View style={styles.summaryRow}>
                 <Text style={styles.sectionTitle}>Current picture</Text>
                 <Text style={styles.summaryText}>
