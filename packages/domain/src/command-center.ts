@@ -1,5 +1,5 @@
 import type {CrewMember, FleetIssue, NifcIncident} from './models';
-import {dotInspectionWarning, inspectionReminderDate, localDateToday} from './dot-inspection';
+import {dotInspectionWarning, inspectionExpirationDate, localDateToday} from './dot-inspection';
 
 export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[]};
 export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll';id:string};
@@ -26,11 +26,15 @@ export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payr
   const annualAlerts:CommandAlert[]=crew.flatMap(member=>{
     const record=member.annualRecord;
     if(!record)return [];
-    return ([['rt130CurrencyDate','RT-130'],['wctCurrencyDate','Work capacity test']] as const).flatMap(([field,label])=>{
-      const expiration=record[field];
-      if(!expiration||!/^\d{4}-\d{2}-\d{2}$/.test(expiration))return [];
-      const date=new Date(`${expiration}T00:00:00Z`);
-      if(!Number.isFinite(date.valueOf())||date.toISOString().slice(0,10)!==expiration||today<inspectionReminderDate(expiration))return [];
+    return ([['rt130CompletionDate','RT-130'],['wctCompletionDate','Work capacity test']] as const).flatMap(([field,label])=>{
+      const completion=record[field];
+      const expiration=inspectionExpirationDate(completion);
+      if(!expiration)return [];
+      const date=new Date(`${completion}T00:00:00Z`);
+      const month=date.getUTCMonth()+11;
+      const day=Math.min(date.getUTCDate(),new Date(Date.UTC(date.getUTCFullYear(),month+1,0)).getUTCDate());
+      const reminder=new Date(Date.UTC(date.getUTCFullYear(),month,day)).toISOString().slice(0,10);
+      if(today<reminder)return [];
       const expired=today>=expiration;
       return [{id:`annual-${member.id}-${field}`,kind:'crew' as const,title:`${member.name} — ${label} ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Annual record needs updating`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'crew' as const,id:member.id}}];
     });
