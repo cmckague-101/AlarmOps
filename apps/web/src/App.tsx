@@ -670,12 +670,12 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
 function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
   return <aside className="sidebar"><Brand/><nav>
-    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} notificationReplacesIcon={target==='communications'} onClick={()=>setPage(target)}/>})}
+    {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
   </nav></aside>
 }
-function NavItem({icon,label,active,notificationCount=0,notificationReplacesIcon=false,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;notificationReplacesIcon?:boolean;onClick:()=>void}) {
-  const badge=notificationCount>0?<span className={`sidebar-nav-badge${notificationReplacesIcon?' sidebar-nav-badge-leading':''}`} aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>:null;
-  return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{notificationReplacesIcon&&badge?badge:icon}<span className="sidebar-nav-label">{label}</span>{!notificationReplacesIcon&&badge}</button>
+function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
+  const badge=notificationCount>0?<span className="sidebar-nav-badge sidebar-nav-badge-leading" aria-label={`${notificationCount} unread ${notificationCount===1?'item':'items'}`}>{notificationCount>99?'99+':notificationCount}</span>:null;
+  return <button className={active?'active':''} onClick={onClick} aria-current={active?'page':undefined}>{badge??icon}<span className="sidebar-nav-label">{label}</span></button>
 }
 function Topbar({saveState,notificationCount,onNotifications,onSignOut,onSwitchCompany,demoMode=false}:{saveState:SaveState;notificationCount?:number;onNotifications?:()=>void;onSignOut?:()=>void;onSwitchCompany?:()=>void;demoMode?:boolean}) {
   const saveLabel=demoMode?'':saveState==='saving'?'Saving changes':saveState==='error'?'Save failed':saveState==='saved'?'All changes saved':'';
