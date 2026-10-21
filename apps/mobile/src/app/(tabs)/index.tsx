@@ -1,6 +1,8 @@
 import {QuickActions} from '@/components/quick-actions';
 import {NationalFireActivitySection} from '@/components/national-fire-activity';
 import {OwnerDashboard} from '@/components/owner-dashboard';
+import {CustomizeDashboardButton} from '@/components/dashboard-customization';
+import {useDashboardPreferences} from '@/lib/use-dashboard-preferences';
 import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -37,9 +39,10 @@ function formatNotificationDate(value: string) {
 export default function DashboardScreen() {
   const theme = useFireOpsTheme();
   const router = useRouter();
-  const { access } = useSession();
+  const { access,demoMode } = useSession();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
+  const preferences=useDashboardPreferences(user?.id,demoMode);
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, crew, activities, loading, refreshing, error } = useFleetVehicles(companyId);
   const {forms:payrolls,refreshing:payrollRefreshing}=usePayroll(companyId);
@@ -78,12 +81,12 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
-        <View style={styles.greeting}>
+        {preferences.visible('greeting')&&<View style={styles.greeting}>
           <Text style={styles.hello}>{getTimeOfDayGreeting()},</Text>
           <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
-        </View>
+        </View>}
         <QuickActions/>
-        <NationalFireActivitySection/>
+        {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection/>}
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
         {error ? (
@@ -107,7 +110,7 @@ export default function DashboardScreen() {
               </View>
             ) : null}
 
-            {openIssues.length > 0 ? (
+            {preferences.visible('currentIssues') && openIssues.length > 0 ? (
               <DashboardSection title="Open-issue blockers" count={openIssues.length} styles={styles}>
                 {openIssues.slice(0, 5).map((issue) => (
                     <Pressable
@@ -174,7 +177,7 @@ export default function DashboardScreen() {
               </DashboardSection>
             ) : null}
 
-            {recentActivities.length > 0 ? (
+            {preferences.visible('recentActivity') && recentActivities.length > 0 ? (
               <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
                 {recentActivities.map((activity) => {
                   const canOpen = activity.targetType === 'issue' || activity.targetType === 'vehicle';
@@ -200,6 +203,7 @@ export default function DashboardScreen() {
             ) : null}
           </>
         ) : null}
+        <CustomizeDashboardButton/>
       </ScrollView>
     </SafeAreaView>
   );

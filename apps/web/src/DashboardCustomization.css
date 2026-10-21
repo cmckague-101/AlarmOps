@@ -1,0 +1,11 @@
+.dashboard-customization { scroll-margin-top: 80px; }
+.dashboard-customization fieldset { border: 0; margin: 0; padding: 16px 20px; }
+.dashboard-customization legend { color: var(--ink); font-weight: 800; }
+.dashboard-customization label { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 48px; color: var(--ink); cursor: pointer; }
+.dashboard-customization input[role="switch"] { appearance: none; position: relative; flex: none; width: 46px; height: 28px; padding: 0; margin: 0; border: 1px solid var(--muted); border-radius: 20px; background: var(--muted); cursor: pointer; }
+.dashboard-customization input[role="switch"]::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; }
+.dashboard-customization input[role="switch"]:checked { background: var(--green); border-color: var(--green); }
+.dashboard-customization input[role="switch"]:checked::after { left: 21px; }
+.dashboard-customization input[role="switch"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.dashboard-customization input[role="switch"]:disabled { opacity: .5; cursor: wait; }
+.dashboard-customization > p { margin: 12px 20px; }

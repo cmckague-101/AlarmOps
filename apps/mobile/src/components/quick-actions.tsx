@@ -5,14 +5,17 @@ import {AppSymbol} from './app-symbol';
 import {useSession} from '@/providers/session-provider';
 import {useAvailability} from '@/lib/use-availability';
 import {useTaskCount} from '@/lib/use-task-count';
+import {useDashboardPreferences} from '@/lib/use-dashboard-preferences';
+import type {DashboardItem} from '@fireops/domain';
 import {useFireOpsTheme} from '@/theme';
 
 export function QuickActions() {
   const router = useRouter();
   const theme = useFireOpsTheme();
   const {width,fontScale} = useWindowDimensions();
-  const {access} = useSession();
+  const {access,demoMode} = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
+  const {visible}=useDashboardPreferences(member?.user.id,demoMode);
   const {statuses,loading,error} = useAvailability(member?.company.id);
   const taskCount = useTaskCount(member&&canManagePersonalTasks(member.user.role)?member.company.id:undefined,member&&canManagePersonalTasks(member.user.role)?member.user.id:undefined);
   const status = member ? statuses[member.user.id] : undefined;
@@ -27,5 +30,7 @@ export function QuickActions() {
     {path:'/receipts',label:'Receipts',ios:'receipt',android:'receipt_long',color:theme.ember},
     {path:'/invoices',label:'Invoices',ios:'doc.text.fill',android:'description',color:'#981d5c'},
   ];
-  return <View style={styles.section}><Text accessibilityRole="header" style={styles.title}>Quick Actions</Text><View style={styles.grid}>{actions.map(action=><Pressable key={action.path} accessibilityRole="button" onPress={()=>router.push(action.path as never)} style={({pressed})=>[styles.card,action.path==='/availability'&&styles.fullCard,pressed&&styles.pressed]}><View style={[styles.icon,{backgroundColor:action.color}]}><AppSymbol name={{ios:action.ios,android:action.android} as never} size={27} color="#FFFFFF"/>{action.path==='/tasks'&&taskCount!==null&&<Text accessibilityLabel={`${taskCount} open tasks`} style={styles.count}>{taskCount}</Text>}</View><Text style={styles.label}>{action.label}</Text>{action.path==='/availability' && <Text style={styles.status}>{member?.user.role==='owner'||member?.user.role==='admin'?'Crew readiness':loading?'Loading…':error?'Status unavailable':status===undefined?'Not set':status?'Available':'Unavailable'}</Text>}</Pressable>)}</View></View>;
+  const visibleActions=actions.filter(action=>visible((action.path==='/inspection'?'inspections':action.path.slice(1)) as DashboardItem));
+  if(!visibleActions.length)return null;
+  return <View style={styles.section}><Text accessibilityRole="header" style={styles.title}>Quick Actions</Text><View style={styles.grid}>{visibleActions.map(action=><Pressable key={action.path} accessibilityRole="button" onPress={()=>router.push(action.path as never)} style={({pressed})=>[styles.card,action.path==='/availability'&&styles.fullCard,pressed&&styles.pressed]}><View style={[styles.icon,{backgroundColor:action.color}]}><AppSymbol name={{ios:action.ios,android:action.android} as never} size={27} color="#FFFFFF"/>{action.path==='/tasks'&&taskCount!==null&&<Text accessibilityLabel={`${taskCount} open tasks`} style={styles.count}>{taskCount}</Text>}</View><Text style={styles.label}>{action.label}</Text>{action.path==='/availability' && <Text style={styles.status}>{member?.user.role==='owner'||member?.user.role==='admin'?'Crew readiness':loading?'Loading…':error?'Status unavailable':status===undefined?'Not set':status?'Available':'Unavailable'}</Text>}</Pressable>)}</View></View>;
 }

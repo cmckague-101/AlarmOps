@@ -6,6 +6,7 @@ export * from './phone-number';
 export * from './payroll';
 export * from './invoices';
 export * from './tasks';
+export * from './dashboard-preferences';
 
 export * from './command-center';
 export * from './dot-inspection';
