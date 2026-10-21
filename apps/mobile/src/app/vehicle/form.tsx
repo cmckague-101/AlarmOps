@@ -137,7 +137,7 @@ export default function VehicleFormScreen() {
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
     if (result.canceled) return;
     const asset = result.assets[0];
-    if (key === 'dotInspection') setInspectionDate(localDateToday());
+    if (key === 'dotInspection') setInspectionDate('');
     setBinderFiles((current) => ({ ...current, [key]: { uri: asset.uri, name: asset.name, type: asset.mimeType ?? null } }));
   };
 
