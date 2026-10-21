@@ -1,4 +1,24 @@
-# Data API grant regression checks
+# Database regression checks
+
+## Fleet sync safeguards
+
+```sh
+npm run test:db-sync
+```
+
+Runs embedded PostgreSQL (PGlite, a development-only dependency) against
+`20261109000100_fleet_sync_safeguards.sql`, a minimal auth/company fixture, and
+production fleet RLS policies/functions. Checks real grants, RLS, triggers,
+transaction rollback, revision fingerprints/tombstones, and idempotent receipts.
+No Supabase credentials, application server, or UI are needed.
+
+This is not the full Supabase migration chain or target-version validation.
+PGlite uses a single backend and cannot prove multi-session lock/deadlock behavior.
+Before deployment, verify the role-creation/ownership migration and concurrent
+same-key/competing-write requests against the target Supabase PostgreSQL version.
+See `docs/mobile-offline-sync.md` at the repository root for rollout and scope.
+
+## Data API grant regression checks
 
 Run from the repository root:
 

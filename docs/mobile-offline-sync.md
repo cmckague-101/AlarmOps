@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts and the durable native outbox are implemented. Feature-level offline writes, server synchronization, and conflict-review UI are not enabled yet.
+Status: shared merge contracts, the durable native outbox, and the first fleet server safeguards are implemented. Feature-level offline writes, server merge/conflict synchronization, and conflict-review UI are not enabled yet.
 
 ## Scope
 
@@ -136,9 +136,46 @@ Tests use Node's real SQLite implementation (Node 22.13+), including file close/
 
 This layer deliberately does not start network workers, integrate session-provider lifecycle, cache attachment bytes, resolve owner/admin decisions, unblock/rebase dependent edits, or implement retention. It has no production feature callers yet. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
 
+### First fleet server safeguards (migration added, not deployed here)
+
+`supabase/migrations/20261109000100_fleet_sync_safeguards.sql` adds:
+
+- Private `fleet_sync_revisions` for vehicles, issues, crew, and activities. Each revision records a PostgreSQL-computed SHA-256 fingerprint (not row values), changed field names, server time, actor where known, and origin. Baseline entries preserve existing versions but do not invent historical authors or edit times.
+- BEFORE/AFTER triggers that assign monotonic versions to every fleet writer, including old RPCs, direct writes, and integrations. Deletes leave fingerprint-free tombstones; recreations cannot reuse old revisions. AFTER capture avoids phantom history from UPSERT's INSERT path. Changing record/company identity in place is rejected. Parent-company deletion removes history instead of recreating it.
+- Private `fleet_sync_receipts` and `apply_fleet_changes_once(company UUID, operation UUID, changes JSONB)`. The RPC returns the same successful fleet-batch result for an identical retry, rejects UUID reuse for different work, rechecks current company access before receipt replay, and transactionally commits the mutations, revision history, trigger side effects, and receipt together.
+- A dedicated non-login/non-BYPASSRLS `fireops_sync_writer` role that inherits authenticated permissions, owns the wrapper function but no fleet tables, and has only SELECT/INSERT on receipts. The wrapper calls the existing security-invoker fleet RPC, preserving its RLS and member-change guards. Normal clients cannot forge/read receipts or read revision history. An advisory transaction lock serializes same-key submissions; receipts are scoped by actor/company/operation, not a hash alone.
+
+This is a retry-safe versioned batch RPC, **not** the final offline operation endpoint. A stale batch still returns `PT409`; no conflict candidate is stored yet. Clients are not switched to the new RPC. Existing direct writers now advance revisions but must still be migrated to explicit expected-revision contracts before offline replay is enabled. Fingerprints establish a trusted baseline for a future server-side three-way merge; they do not grant access or validate fields by themselves. The bridge RPC does not yet accept device-reported offline provenance.
+
+Apply the new migration through normal Supabase migration tooling (no database reset). It locks fleet tables during backfill/trigger installation, so schedule appropriately for the dataset. The migration runner needs permission to create a non-login role, grant authenticated membership, and transfer function ownership. Verify role/grant behavior on the target Supabase PostgreSQL version before rollout. History/receipt retention must remain compatible with supported offline durations; do not prune blindly.
+
+`npm run test:db-sync` runs real embedded PostgreSQL role/RLS/trigger/transaction tests using PGlite and a minimal Supabase fixture plus the production fleet policies/functions. This covers replay, permission failures, rollback, service writes, tombstones, UPSERT, fingerprints, and company cascades. It does not replace a full migration-chain deployment test or a multi-session concurrency/deadlock test against the target database.
+
+### Mutation inventory checkpoint
+
+All paths below still need feature-level offline adapters; no offline write workflow is enabled by this checkpoint. Paths are under `apps/mobile/src/` unless noted.
+
+| Workflow | Current write entry points | Required sync boundary |
+| --- | --- | --- |
+| Fleet details, assignments, issues, inspections | `lib/fleet-store.ts`; web `FleetApp.tsx`; legacy `apply_fleet_changes`; privileged functions/jobs | Atomic record/batch revisions; verified bases; independent-field merge; domain-invariant conflicts; all writer CAS migration |
+| Crew details, roles, qualifications, invitations/removal | `lib/fleet-store.ts`, `lib/qualification-card-store.ts`, invite/remove Edge Functions | Typed privileged commands; role/seat checks; external mail only after acceptance; approval provenance |
+| Vehicle notes, types, inspection templates | `lib/vehicle-notes-store.ts`, `lib/vehicle-type-store.ts`, `lib/inspection-template-store.ts` | Per-record revision/delete tracking; stable generated IDs; reference dependencies |
+| Communications and read receipts | `lib/communications-store.ts` | Append messages independently; delete authorization; idempotent notifications and seen markers |
+| Company and stored documents | `lib/documents-store.ts`, `lib/stored-documents-store.ts` | Durable files; record/file ordering; read receipts; versioned replacements |
+| Training and enrollment | `lib/training-store.ts` | Versioned training fields; capacity-validated enrollment commands; notification deduplication |
+| Inventory | `lib/inventory-store.ts` | Adjustment/checkin/checkout commands, not stale totals; current availability checks |
+| Receipts, payroll, invoices/customers | `lib/receipts-store.ts`, `lib/payroll-store.ts`, `lib/invoice-store.ts` | Versioned drafts; attachment dependencies; validated financial/status transitions; sensitive-data retention |
+| Availability, tasks, dashboard preferences | `lib/use-availability.ts`, `lib/use-personal-tasks.ts`, `lib/use-dashboard-preferences.ts` | User-scoped revisions; private task visibility must not be widened by manager conflict review |
+| Notifications/preferences and device tokens | `lib/notification-inbox-store.ts`, `lib/notifications.ts` | Idempotent user-scoped markers/settings; device registration only online |
+| Company/account settings, feedback, integrations | `providers/session-provider.tsx`, `app/settings.tsx`, Motive Edge Function | Server-authorized commands; no offline authentication/OAuth exchange or fabricated external success |
+| File operations and local exports | `lib/fleet-files.ts`, `lib/payroll-files.ts`, `lib/invoice-files.ts`, form/export screens | Persist local bytes before enqueue; safe cleanup; downloaded inputs for local generation |
+| External fire/maps/dispatch data | Operations screens and external feed clients | Previously downloaded data only; freshness/coverage labels; online refresh, no fake live data |
+
+The table is an entry-point review, not a completed per-mutation acceptance inventory. Before enabling each adapter, enumerate its exact RPC/table/file side effects and add its permission, failure, and replay tests. Private workflows need an explicit review-authority design consistent with existing privacy policies before their conflicts are exposed to managers.
+
 ### Next implementation slices
 
-- Complete feature-level mutation inventory and define server revision/receipt/security contracts before enabling replay.
+- Add an authorized fleet sync endpoint that verifies base fingerprints, merges allowed fields, and durably stores conflicts/provenance instead of returning only `PT409`.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
