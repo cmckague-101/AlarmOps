@@ -1,13 +1,14 @@
 import {useCallback,useState} from 'react';
 import {Pressable,StyleSheet,Text,View} from 'react-native';
-import {Stack,useFocusEffect} from 'expo-router';
+import {Stack,useFocusEffect,useRouter} from 'expo-router';
 import {SectionScreen} from '../components/section-screen';
 import {useOfflineSync} from '../providers/offline-sync-provider';
 import {offlineSyncEntryLabel,offlineSyncVisible} from '../lib/offline-sync-worker';
+import {continuationReviewHref} from '../lib/offline-rebase-form';
 import {useFireOpsTheme} from '../theme';
 
 export default function SyncStatusScreen(){
-  const {state,available,loading,offline,refresh,retry,dismiss}=useOfflineSync();const theme=useFireOpsTheme();
+  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
   useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
   const [history,setHistory]=useState(false);
   const visible=history?state.entries:state.entries.filter(offlineSyncVisible);
@@ -16,7 +17,7 @@ export default function SyncStatusScreen(){
   return <SectionScreen title="Saved changes & sync" description="Only this account's changes for the selected company. Closing the app does not discard saved work.">
     <Stack.Screen options={{title:'Saved changes & sync'}}/>
     {!available?<Text style={{color:theme.secondary}}>Sign in to a company on iOS or Android to view this device's saved changes.</Text>:<>
-      <Text style={[styles.meta,{color:theme.secondary}]}>{offline?'Offline — uploads are paused.':'Sync resumes while the app is open and connected.'} Offline editing is still read-only until individual workflows are enabled.</Text>
+      <Text style={[styles.meta,{color:theme.secondary}]}>{offline?'Offline — uploads are paused.':'Sync resumes while the app is open and connected.'} Downloaded owner/admin vehicle/issue scalar details support offline saves; other workflows still require a connection.</Text>
       {loading&&<Text accessibilityLiveRegion="polite" style={{color:theme.secondary}}>Loading this account's saved changes…</Text>}
       {button(state.busy?'Checking sync…':'Check sync / retry due changes',()=>void refresh(),state.busy||loading)}
       {!!state.error&&<View accessibilityRole="alert" style={styles.entry}><Text style={{color:theme.danger}}>{state.error}</Text></View>}
@@ -29,7 +30,8 @@ export default function SyncStatusScreen(){
         {entry.reviewOutcome&&<Text style={[styles.meta,{color:theme.secondary}]}>Kept fields: {entry.reviewOutcome.keptFields.join(', ')||'None'}. Discarded fields: {entry.reviewOutcome.discardedFields.join(', ')||'None'}. Original submitted work remains in saved history.</Text>}
         {entry.noticeDismissed&&<Text style={[styles.meta,{color:theme.secondary}]}>Notice dismissed — retained in this account's device history.</Text>}
         {entry.error&&<Text style={[styles.meta,{color:theme.danger}]}>{entry.error}</Text>}
-        {entry.status==='blocked'&&!entry.reviewOutcome&&button('Retry after fixing access or updating the app',()=>void retry(entry.operation.operationId),offline||state.busy)}
+        {entry.status==='blocked'&&entry.continuation?.phase==='waiting'&&detailEditor&&button('Review / rebase later edit',()=>router.push(continuationReviewHref(entry.operation.operationId)),state.busy)}
+        {entry.status==='blocked'&&!entry.reviewOutcome&&entry.continuation?.phase!=='waiting'&&button('Retry after fixing access or updating the app',()=>void retry(entry.operation.operationId),offline||state.busy)}
       </View>)}
       {!loading&&!visible.length&&!state.error&&<Text style={{color:theme.secondary}}>No pending changes or new sync results for this account and company.</Text>}
       {completed&&button('Dismiss completed notices (keep history)',()=>void dismiss())}

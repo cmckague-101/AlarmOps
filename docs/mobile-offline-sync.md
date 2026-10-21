@@ -316,7 +316,15 @@ SQLite migrates v3 → v4 without discarding operations, adding local continuati
 
 Rejected/partly-kept parents, overlapping newer fields, deletion and unavailable canonical data block the continuation for explicit rebase. Retry cannot bypass that decision. Other records keep syncing; newer local overlays survive older acknowledgments. Materialization never claims uploaded/synced work merely from a local merge. The server still validates the canonical fingerprint, current permissions, dependency receipt and live merge before accepting the materialized request.
 
-Native tests include three offline saves/reverts followed by ordered reconnect, preservation of unrelated server changes, no claim before materialization, stale siblings, rejection/overlap blocking, transactional audit rollback and original-save retries after materialization. Explicit rebase UI is the next slice; no git/Supabase push or deployment occurred.
+Native tests include three offline saves/reverts followed by ordered reconnect, preservation of unrelated server changes, no claim before materialization, stale siblings, rejection/overlap blocking, transactional audit rollback and original-save retries after materialization. Explicit rebase UI is connected by the next slice below; no git/Supabase push or deployment occurred.
+
+### Explicit local continuation review
+
+Blocked never-uploaded continuations now expose **Review / rebase later edit** in native Saved changes & sync. Current owner/admin identity is required. The screen compares each changed field's local value when saved, saved proposal and current verified download, including distinct absent/null/empty/type displays. Every field requires an explicit downloaded-versus-saved selection, followed by confirmation. This is local preparation, **not server conflict approval**; server permissions and live conflicts are still checked on upload.
+
+The scoped review object is privately owned and detached. SQLite rechecks the original unsent operation and exact canonical snapshot before committing; a newer record or different review requires refreshed choices. Only zero-attempt waiting drafts can change. An explicit decision starts from the canonical record, drops failed-parent dependencies and includes only selected child changes, never discarded parent values. Keeping all downloaded values produces a legitimate no-op request, not a fabricated synced/rejected result. Audit snapshots, dependency changes, operation and matching projection commit or roll back together. Original save provenance is retained, duplicate decisions are idempotent, and late scope results cannot update another screen.
+
+All discarded local values and choices remain in scoped rebase history. Server backup of that device history is the next slice, before history-bearing changes can be considered fully backed up. The ordinary server conflict/decision audit already remains immutable. Targeted native tests cover stale/borrowed reviews, all-field confirmation, storage rollback, failed-parent severance, exact retries and deleted-record denial. No deployment or UI launch occurred.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
@@ -356,7 +364,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 ### Next implementation slices
 
 - Expand verified download coverage/freshness and complete authorized company-wide catch-up; retain per-record availability and pending overlays. Native scalar saves now use the provider-owned session; do not create competing `activate()` handles.
-- Add explicit review/rebase UI for blocked continuations. Repeated scalar saves and safe independent materialization are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
+- Back up device continuation/rebase history with its server submission, then expand dependent-edit adapters. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Extend existing sync notices, owner/admin Alerts and conflict review/approval to remaining adapters with workflow-appropriate permissions/privacy.

@@ -1,6 +1,6 @@
 import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import {projectOfflineFleet} from './offline-fleet-model';
-import type {OfflineOutboxSession,OutboxEntry} from './offline-outbox';
+import type {OfflineOutboxSession,OutboxEntry,ContinuationReview} from './offline-outbox';
 import {decodeCanonicalSyncRecord} from './offline-sync-protocol';
 
 export type DetailTarget={readonly entityType:'vehicle'|'issue';readonly entityId:string};
@@ -30,6 +30,7 @@ export function createOfflineDetailEditor(options:{
 }){
   let disposed=false;
   const requests=new Set<AbortController>();
+  const rebaseReviews=new WeakMap<ContinuationReview,ContinuationReview>();
   const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord}>();
   function guard(){if(disposed||!options.canEdit())throw new Error('This offline editor is no longer available for the current account or permissions.')}
   async function available(target:DetailTarget){
@@ -39,7 +40,7 @@ export function createOfflineDetailEditor(options:{
     if(parent&&(parent.operation.mutation.kind!=='update'||Object.keys(parent.operation.mutation.patch).some(field=>!fields[target.entityType].includes(field))))throw new Error('This pending workflow cannot be edited with the scalar editor.');
     return {entries,parent};
   }
-  return {
+  const editor={
     dispose(){disposed=true;for(const request of requests)request.abort();requests.clear()},
     async prepare(target:DetailTarget,mode?:{downloadedOnly?:boolean}):Promise<OfflineDetailDraft>{
       const downloadedOnly=mode?.downloadedOnly===true;
@@ -74,6 +75,18 @@ export function createOfflineDetailEditor(options:{
       try{await options.downloaded?.()}catch{/* Download remains durable if publication needs retry. */}
       guard();return draft;
     },
+    async prepareRebase(operationId:string,mode?:{downloadedOnly?:boolean}):Promise<ContinuationReview>{
+      guard();const entry=(await options.session.list()).find(entry=>entry.operation.operationId===operationId);guard();
+      if(!entry||!['vehicle','issue'].includes(entry.operation.entityType))throw new Error('Later edit is unavailable.');
+      await editor.prepare({entityType:entry.operation.entityType as DetailTarget['entityType'],entityId:entry.operation.entityId},mode);guard();
+      const review=await options.session.getContinuationReview(operationId);guard();rebaseReviews.set(review,clone(review));return review;
+    },
+    async rebase(review:ContinuationReview,choices:Readonly<Record<string,'current'|'saved'>>):Promise<OutboxEntry>{
+      guard();const owned=rebaseReviews.get(review);if(!owned||Object.keys(createSyncPatch(owned as unknown as SyncRecord,review as unknown as SyncRecord)).length)throw new Error('Reload this account’s rebase review before continuing.');
+      const operation=owned.operation;const release=options.reserve?.({entityType:operation.entityType as DetailTarget['entityType'],entityId:operation.entityId},operation.operationId)??(()=>{});
+      let entry:OutboxEntry;try{entry=await options.session.rebaseContinuation(owned,choices)}finally{release()}
+      try{await options.changed()}catch{/* Committed local decision remains durable. */}return entry;
+    },
     async save(draft:OfflineDetailDraft,values:SyncRecord):Promise<OutboxEntry>{
       guard();const owned=drafts.get(draft);if(!owned)throw new Error('Reload verified details before saving.');
       validateOfflineDetailValues(owned.base.entityType,values);
@@ -98,5 +111,6 @@ export function createOfflineDetailEditor(options:{
       return entry;
     },
   };
+  return editor;
 }
 export type OfflineDetailEditor=ReturnType<typeof createOfflineDetailEditor>;

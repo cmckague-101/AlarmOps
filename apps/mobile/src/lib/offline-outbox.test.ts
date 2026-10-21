@@ -462,6 +462,60 @@ async function detailSetup(offline=true){
     readRecord:async()=>{reads++;return {revision:'2',record:{...rawVehicle,notes:'fresh'}}},changed:async()=>{notices++}});
   return {...fixture,editor,disallow:()=>{allowed=false},setOffline:(value:boolean)=>{disconnected=value},reads:()=>reads,notices:()=>notices};
 }
+async function blockedLaterEdit(){
+  const fixture=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+  await fixture.editor.save(await fixture.editor.prepare(target),{notes:'one'});
+  const child=await fixture.editor.save(await fixture.editor.prepare(target),{notes:'two'});
+  const parent=(await fixture.session.claimNext('parent',0))!;
+  await fixture.session.finishAttempt(parent.attempt,{kind:'applied',receivedAt,revision:'3',record:{...rawVehicle,notes:'Shared value'}});
+  await fixture.session.materializeContinuations();return {...fixture,child,target};
+}
+describe('explicit local continuation rebase',()=>{
+  it('requires every field choice and rejects stale canonical review snapshots',async()=>{
+    const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);
+    expect(review.fields.notes).toEqual({before:{present:true,value:'one'},saved:{present:true,value:'two'},current:{present:true,value:'Shared value'}});
+    await expect(f.editor.rebase(review,{})).rejects.toThrow('every saved field');
+    await f.session.putRecord('vehicle',rawVehicle.id,{revision:'4',record:{...rawVehicle,notes:'New shared value'}});
+    await expect(f.editor.rebase(review,{notes:'saved'})).rejects.toThrow('stale');expect((await f.session.list())[1].attempts).toBe(0);
+  });
+  it('preserves discarded values in history and creates a legitimate fresh no-op when current is selected',async()=>{
+    const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);const rebased=await f.editor.rebase(review,{notes:'current'});
+    expect(rebased.operation).toMatchObject({operationId:f.child.operation.operationId,dependsOn:[],mutation:{baseRevision:'3',base:{notes:'Shared value'},patch:{}}});
+    expect(rebased.continuation).toMatchObject({phase:'ready',explicit:true});expect(rebased.projection).toMatchObject({notes:'Shared value'});
+    const history=await f.session.listRebases(f.child.operation.operationId);expect(history[0].before.mutation).toMatchObject({patch:{notes:{value:'two'}}});expect(history[0].reason).toContain('current');
+    const claimed=(await f.session.claimNext('child',0))!;expect(claimed.entry.operation.operationId).toBe(f.child.operation.operationId);
+    expect((await f.editor.rebase(review,{notes:'current'})).attempts).toBe(1);expect(await f.session.listRebases(f.child.operation.operationId)).toHaveLength(1);
+    await expect(f.editor.rebase(review,{notes:'saved'})).rejects.toThrow('not awaiting');
+  });
+  it('chooses saved values only over the verified raw base and leaves original provenance intact',async()=>{
+    const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);const rebased=await f.editor.rebase(review,{notes:'saved'});
+    expect(rebased.operation.mutation).toMatchObject({baseRevision:'3',base:{notes:'Shared value'},patch:{notes:{value:'two'}}});expect(rebased.operation.provenance).toEqual(f.child.operation.provenance);
+  });
+  it('rejects borrowed or mutated review objects instead of changing an unseen intent',async()=>{
+    const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);
+    await expect(f.editor.rebase({...review},{notes:'saved'})).rejects.toThrow('Reload');
+    (review.current as {revision:string}).revision='999';await expect(f.editor.rebase(review,{notes:'saved'})).rejects.toThrow('Reload');
+  });
+  it('rolls back local choices, dependency removal, history and projection together',async()=>{
+    const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);
+    f.sqlite.exec("CREATE TRIGGER fail_choice BEFORE UPDATE ON offline_projections BEGIN SELECT RAISE(FAIL,'disk full'); END;");
+    await expect(f.editor.rebase(review,{notes:'current'})).rejects.toThrow('disk full');expect(await f.session.listRebases(f.child.operation.operationId)).toEqual([]);
+    expect((await f.session.list())[1]).toMatchObject({status:'blocked',continuation:{phase:'waiting'}});expect(await f.session.claimNext('no',0)).toBeNull();
+  });
+  it('explicitly severs rejected-parent dependencies without resubmitting its discarded fields',async()=>{
+    const f=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};const parent=await f.editor.save(await f.editor.prepare(target),{notes:'Discarded parent note'});
+    const child=await f.editor.save(await f.editor.prepare(target),{unit:'Later unit'});const claimed=(await f.session.claimNext('parent',0))!;
+    await f.session.recordDelivery(claimed.attempt,{kind:'awaiting_review',receivedAt,conflictId:'conflict'});
+    await f.session.recordReviewOutcome(parent.operation.operationId,{kind:'reviewed',operationId:parent.operation.operationId,decisionId:'decision',conflictId:'conflict',decidedAt:receivedAt,revision:'2',outcome:'not_selected',keptFields:[],discardedFields:['notes']});
+    await f.session.finishReview(parent.operation.operationId,{revision:'2',record:{...rawVehicle,notes:'Shared note'}});await f.session.materializeContinuations();
+    const review=await f.editor.prepareRebase(child.operation.operationId);const rebased=await f.editor.rebase(review,{unit:'saved'});
+    expect(rebased.operation.mutation).toMatchObject({base:{notes:'Shared note'},patch:{unit:{value:'Later unit'}}});expect(rebased.operation.dependsOn).toEqual([]);expect((await f.session.claimNext('later',0))!.entry.operation.operationId).toBe(child.operation.operationId);
+  });
+  it('does not revive a deleted record through local rebase',async()=>{
+    const f=await blockedLaterEdit();await f.session.putRecord('vehicle',rawVehicle.id,{revision:'4',record:null});await expect(f.editor.prepareRebase(f.child.operation.operationId)).rejects.toThrow('deleted');
+  });
+});
+
 describe('atomic native detail-edit boundary',()=>{
   it('saves three offline edits, including a revert, then rebases each against verified parent results',async()=>{
     const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};

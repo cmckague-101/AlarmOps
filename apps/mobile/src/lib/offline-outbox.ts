@@ -1,4 +1,4 @@
-import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome } from '@fireops/domain';
+import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
@@ -25,8 +25,9 @@ export type OutboxEntry = {
   readonly delivery: OutboxReceipt | null;
   readonly reviewOutcome: SyncReviewOutcome | null;
   readonly noticeDismissed: boolean;
-  readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready'};
+  readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready';readonly explicit?:boolean};
 };
+export type ContinuationReview={readonly operation:SyncOperation;readonly parentId:string;readonly current:CanonicalSyncRecord;readonly fields:Readonly<Record<string,{before:SyncFieldValue;saved:SyncFieldValue;current:SyncFieldValue}>>};
 export type OutboxReceipt = SyncServerReceipt;
 export type CachedOfflineRecord = CanonicalSyncRecord & {readonly entityType:'vehicle'|'issue';readonly entityId:string;readonly verifiedAt:string};
 export type OutboxAttempt = {
@@ -149,7 +150,7 @@ function entry(row: Row): OutboxEntry {
   const reviewOutcome = row.review_outcome_json ? decodeSyncOutcome(operation, conflict!.conflictId, JSON.parse(row.review_outcome_json)) : null;
   if (row.review_outcome_json && !reviewOutcome) throw new Error('Invalid saved review outcome.');
   const continuation=row.continuation_json?JSON.parse(row.continuation_json):undefined;
-  if(continuation&&(!['waiting','ready'].includes(continuation.phase)||typeof continuation.parentId!=='string'||operation.dependsOn.length!==1||operation.dependsOn[0]!==continuation.parentId))throw new Error('Invalid continuation metadata.');
+  if(continuation&&(!['waiting','ready'].includes(continuation.phase)||typeof continuation.parentId!=='string'||!(continuation.phase==='ready'&&continuation.explicit===true&&operation.dependsOn.length===0)&&(operation.dependsOn.length!==1||operation.dependsOn[0]!==continuation.parentId)))throw new Error('Invalid continuation metadata.');
   return {
     ...(continuation?{continuation}:{}),
     sequence: row.sequence, operation, projection: JSON.parse(row.projection_json),
@@ -257,6 +258,22 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           DO UPDATE SET revision=excluded.revision,record_json=excluded.record_json,verified_at=excluded.verified_at`,...ids,entityType,entityId,value.revision,JSON.stringify(value.record),new Date().toISOString());
         return value;
       }
+      async function continuationReview(connection:OutboxSqlConnection,operationId:string):Promise<ContinuationReview>{
+        const row=await connection.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId);
+        if(!row)throw new Error('Later edit is unavailable.');const child=entry(row);
+        if(child.status!=='blocked'||child.attempts!==0||child.continuation?.phase!=='waiting'||child.operation.mutation.kind!=='update')throw new Error('This edit is not awaiting local rebase.');
+        const parentRow=await connection.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,child.continuation.parentId);
+        if(!parentRow)throw new Error('Earlier edit is unavailable.');const parent=entry(parentRow);
+        if(parent.status!=='synced'&&!(parent.reviewOutcome&&['blocked','not_selected'].includes(parent.status)))throw new Error('Earlier work must finish sync/review before rebasing.');
+        const cached=await connection.getFirstAsync<{revision:string;record_json:string}>('SELECT revision,record_json FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,row.entity_type,row.entity_id);
+        const minimum=parent.reviewOutcome?.revision??(parent.receipt?.kind==='applied'?parent.receipt.revision:null);
+        if(!cached||!minimum)throw new Error('Download a verified current record before rebasing.');
+        const current=decodeCanonicalSyncRecord({entityId:row.entity_id},{revision:cached.revision,record:JSON.parse(cached.record_json)},minimum);
+        if(!current.record)throw new Error('Deleted records cannot be restored by rebasing details.');
+        const field=(record:SyncRecord,key:string):SyncFieldValue=>Object.prototype.hasOwnProperty.call(record,key)?{present:true,value:record[key]}:{present:false};
+        const fields=Object.fromEntries(Object.entries(child.operation.mutation.patch).map(([key,value])=>[key,{before:field(child.operation.mutation.kind==='update'?child.operation.mutation.base:{},key),saved:value,current:field(current.record!,key)}]));
+        return {operation:child.operation,parentId:child.continuation.parentId,current,fields};
+      }
       return {
         scope:Object.freeze({...identity}),
         getDeviceId(createId:()=>string):Promise<string>{return write(async tx=>{
@@ -351,6 +368,38 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               ...ids, entityType, entityId,
             );
             return row ? { operationId: row.operation_id, record: JSON.parse(row.record_json) } : null;
+          });
+        },
+
+        getContinuationReview(operationId:string):Promise<ContinuationReview>{return read(()=>continuationReview(db,operationId))},
+        /** Explicit local choice, not a server approval. Only never-attempted drafts can change wire body. */
+        rebaseContinuation(review:ContinuationReview,choices:Readonly<Record<string,'current'|'saved'>>):Promise<OutboxEntry>{
+          createSyncPatch({},review as unknown as SyncRecord);createSyncPatch({},choices as SyncRecord);
+          const expected=JSON.parse(JSON.stringify(review)) as ContinuationReview;const selected={...choices};
+          return write(async tx=>{
+            const existing=await tx.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,expected.operation.operationId);
+            const previous=await tx.getFirstAsync<{before_json:string;after_json:string;reason:string}>("SELECT before_json,after_json,reason FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? AND reason LIKE 'explicit:%' ORDER BY sequence DESC LIMIT 1",...ids,expected.operation.operationId);
+            if(existing&&previous&&sameJson(previous.before_json,JSON.stringify(expected.operation))&&sameJson(previous.after_json,existing.operation_json)&&sameJson(previous.reason.slice(9),JSON.stringify(selected)))return entry(existing);
+            const current=await continuationReview(tx,expected.operation.operationId);
+            if(!sameJson(JSON.stringify(current),JSON.stringify(expected)))throw new Error('Rebase review is stale. Refresh and choose again.');
+            const keys=Object.keys(current.fields);
+            if(Object.keys(selected).length!==keys.length||keys.some(key=>!['current','saved'].includes(selected[key])))throw new Error('Choose a source for every saved field.');
+            const projected={...current.current.record!};
+            const allowed=current.operation.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
+            for(const key of keys){
+              if(selected[key]==='current')continue;
+              if(!allowed.includes(key))throw new Error('This field needs another rebase adapter.');
+              const slot=current.fields[key][selected[key]];
+              if(slot.present){const value=slot.value;if(key==='year'){if(typeof value!=='number'||!Number.isInteger(value)||value<1000||value>9999)throw new Error('Invalid rebased year.')}else if(typeof value!=='string'||value.length>(['notes','description'].includes(key)?10000:200)||['unit','type','make','model','title'].includes(key)&&!value.trim()||key==='priority'&&!['Low','Medium','High','Critical'].includes(value))throw new Error('Invalid rebased value.');projected[key]=value}
+              else{if(!['vin','plate','notes'].includes(key))throw new Error('Required field cannot be removed.');delete projected[key]}
+            }
+            const operation:SyncOperation={...current.operation,dependsOn:[],mutation:{kind:'update',baseRevision:current.current.revision,base:current.current.record!,patch:createSyncPatch(current.current.record!,projected)}};
+            const encoded=encodeOperation(operation,identity);
+            await tx.runAsync('INSERT INTO offline_rebase_history(user_id,company_id,operation_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?)',...ids,operation.operationId,JSON.stringify(current.operation),encoded,`explicit:${JSON.stringify(selected)}`,new Date().toISOString());
+            await tx.runAsync('DELETE FROM offline_dependencies WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operation.operationId);
+            await tx.runAsync("UPDATE offline_operations SET operation_json=?,projection_json=?,continuation_json=?,status='pending',error=NULL,retry_at=0,notice_dismissed=0 WHERE user_id=? AND company_id=? AND operation_id=?",encoded,JSON.stringify(projected),JSON.stringify({parentId:current.parentId,phase:'ready',explicit:true}),...ids,operation.operationId);
+            await tx.runAsync('UPDATE offline_projections SET record_json=? WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=? AND operation_id=?',JSON.stringify(projected),...ids,operation.entityType,operation.entityId,operation.operationId);
+            return entry((await tx.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operation.operationId))!);
           });
         },
 
