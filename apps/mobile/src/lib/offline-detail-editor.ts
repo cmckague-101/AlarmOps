@@ -1,9 +1,10 @@
 import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {projectOfflineFleet} from './offline-fleet-model';
 import type {OfflineOutboxSession,OutboxEntry} from './offline-outbox';
 import {decodeCanonicalSyncRecord} from './offline-sync-protocol';
 
 export type DetailTarget={readonly entityType:'vehicle'|'issue';readonly entityId:string};
-export type OfflineDetailDraft=DetailTarget & {readonly revision:string;readonly record:SyncRecord;readonly verifiedAt:string};
+export type OfflineDetailDraft=DetailTarget & {readonly revision:string;readonly record:SyncRecord;readonly verifiedAt:string;readonly pendingParentId?:string};
 const fields={vehicle:['unit','type','year','make','model','vin','plate','notes'],issue:['title','description','priority']};
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const active=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -29,17 +30,21 @@ export function createOfflineDetailEditor(options:{
 }){
   let disposed=false;
   const requests=new Set<AbortController>();
-  const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;operation?:SyncOperation;values?:SyncRecord}>();
+  const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord}>();
   function guard(){if(disposed||!options.canEdit())throw new Error('This offline editor is no longer available for the current account or permissions.')}
   async function available(target:DetailTarget){
-    if((await options.session.list()).some(entry=>entry.operation.entityType===target.entityType&&entry.operation.entityId===target.entityId&&active(entry)))throw new Error('This record already has a pending change. Sync or resolve it before editing again.');
+    const entries=await options.session.list();
+    const matching=entries.filter(entry=>entry.operation.entityType===target.entityType&&entry.operation.entityId===target.entityId&&active(entry));
+    const parent=matching[matching.length-1];
+    if(parent&&(parent.operation.mutation.kind!=='update'||Object.keys(parent.operation.mutation.patch).some(field=>!fields[target.entityType].includes(field))))throw new Error('This pending workflow cannot be edited with the scalar editor.');
+    return {entries,parent};
   }
   return {
     dispose(){disposed=true;for(const request of requests)request.abort();requests.clear()},
     async prepare(target:DetailTarget,mode?:{downloadedOnly?:boolean}):Promise<OfflineDetailDraft>{
       const downloadedOnly=mode?.downloadedOnly===true;
       guard();if(!['vehicle','issue'].includes(target.entityType))throw new Error('Unsupported detail editor.');
-      const identity={...target};await available(identity);guard();
+      const identity={...target};const {entries,parent}=await available(identity);guard();
       if(!options.offline()&&!downloadedOnly){
         const controller=new AbortController();requests.add(controller);
         const timeout=setTimeout(()=>controller.abort(),30_000);
@@ -61,9 +66,11 @@ export function createOfflineDetailEditor(options:{
       const cached=(await options.session.listRecords()).find(row=>row.entityType===identity.entityType&&row.entityId===identity.entityId);guard();
       if(!cached)throw new Error('Open this detail editor online once to download a verified record before editing offline.');
       if(!cached.record)throw new Error('This record was deleted. Offline restoration is not supported.');
-      const draft:OfflineDetailDraft={...identity,revision:cached.revision,record:clone(cached.record),verifiedAt:cached.verifiedAt};
+      const displayed=projectOfflineFleet([],{scope:options.session.scope,records:[cached],entries,loaded:true,offline:options.offline()}).records.find(row=>row.entityType===identity.entityType&&row.entityId===identity.entityId)?.record;
+      if(!displayed)throw new Error('This record is unavailable.');
+      const draft:OfflineDetailDraft={...identity,revision:cached.revision,record:clone(displayed),verifiedAt:cached.verifiedAt,...(parent?{pendingParentId:parent.operation.operationId}:{})};
       const deviceId=await options.session.getDeviceId(options.id);guard();
-      drafts.set(draft,{base:clone(draft),deviceId});
+      drafts.set(draft,{base:clone(draft),deviceId,parent:parent?clone(parent):undefined});
       try{await options.downloaded?.()}catch{/* Download remains durable if publication needs retry. */}
       guard();return draft;
     },
@@ -79,13 +86,13 @@ export function createOfflineDetailEditor(options:{
         owned.values=clone(values);
         owned.operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:base.entityType,entityId:base.entityId,
           provenance:{userId:options.session.scope.userId,deviceId:owned.deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},
-          dependsOn:[],mutation:{kind:'update',baseRevision:base.revision,base:clone(base.record),patch}};
+          dependsOn:owned.parent?[owned.parent.operation.operationId]:[],mutation:{kind:'update',baseRevision:base.revision,base:clone(base.record),patch}};
       }
       guard();const operation=clone(owned.operation!);
       const base=owned.base;
       const release=options.reserve?.(base,operation.operationId)??(()=>{});
       let entry:OutboxEntry;
-      try{entry=await options.session.enqueue(operation,{...base.record,...owned.values},{exclusiveRecord:true})}finally{release()}
+      try{entry=await options.session.enqueue(operation,{...base.record,...owned.values},{exclusiveRecord:!owned.parent,continuationParent:owned.parent?.operation.operationId})}finally{release()}
       // Durable commit succeeded. A notice refresh failure must never report the save itself failed.
       try{await options.changed()}catch{/* Worker/status refresh can retry; committed intent remains durable. */}
       return entry;

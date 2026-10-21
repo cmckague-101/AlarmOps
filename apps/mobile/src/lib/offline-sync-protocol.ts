@@ -39,9 +39,9 @@ export function decodeSyncOutcome(operation:SyncOperation,conflictId:string,valu
 }
 
 /** No implicit replay of commands, attachments, or edits that need dependency rebasing. */
-export function offlineSyncAdapterBlock(operation:SyncOperation):string|null{
+export function offlineSyncAdapterBlock(operation:SyncOperation,verifiedContinuation=false):string|null{
   if(operation.schemaVersion!==1||operation.mutation.kind!=='update'||!['vehicle','issue'].includes(operation.entityType))return 'This workflow is not enabled for offline sync yet. Work remains on this device.';
-  if(operation.dependsOn.length)return 'This edit depends on earlier work and needs an explicit rebase before syncing.';
+  if(operation.dependsOn.length&&!verifiedContinuation)return 'This edit depends on earlier work and needs an explicit rebase before syncing.';
   const allowed=operation.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
   if(Object.keys(operation.mutation.patch).some(key=>!allowed.includes(key)))return 'This field needs a dedicated offline adapter. Work remains on this device.';
   return null;

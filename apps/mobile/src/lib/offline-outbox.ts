@@ -25,6 +25,7 @@ export type OutboxEntry = {
   readonly delivery: OutboxReceipt | null;
   readonly reviewOutcome: SyncReviewOutcome | null;
   readonly noticeDismissed: boolean;
+  readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready'};
 };
 export type OutboxReceipt = SyncServerReceipt;
 export type CachedOfflineRecord = CanonicalSyncRecord & {readonly entityType:'vehicle'|'issue';readonly entityId:string;readonly verifiedAt:string};
@@ -46,7 +47,7 @@ type Row = {
   user_id: string; company_id: string; entity_type: string; entity_id: string;
   sequence: number; operation_id: string; operation_json: string; projection_json: string;
   status: SyncOperationStatus; attempts: number; error: string | null; receipt_json: string | null;
-  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number;
+  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number; continuation_json?:string|null;
 };
 
 const schema = `
@@ -147,7 +148,10 @@ function entry(row: Row): OutboxEntry {
   if (row.review_outcome_json && !conflict) throw new Error('Saved review has no matching conflict.');
   const reviewOutcome = row.review_outcome_json ? decodeSyncOutcome(operation, conflict!.conflictId, JSON.parse(row.review_outcome_json)) : null;
   if (row.review_outcome_json && !reviewOutcome) throw new Error('Invalid saved review outcome.');
+  const continuation=row.continuation_json?JSON.parse(row.continuation_json):undefined;
+  if(continuation&&(!['waiting','ready'].includes(continuation.phase)||typeof continuation.parentId!=='string'||operation.dependsOn.length!==1||operation.dependsOn[0]!==continuation.parentId))throw new Error('Invalid continuation metadata.');
   return {
+    ...(continuation?{continuation}:{}),
     sequence: row.sequence, operation, projection: JSON.parse(row.projection_json),
     status: row.status, attempts: row.attempts, error: row.error,
     receipt, delivery, reviewOutcome,
@@ -188,7 +192,14 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
       `);
       current = 3;
     }
-    if (current !== 3) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===3){
+      await tx.execAsync(`ALTER TABLE offline_operations ADD COLUMN continuation_json TEXT;
+        CREATE TABLE offline_rebase_history (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL,company_id TEXT NOT NULL,operation_id TEXT NOT NULL,
+          before_json TEXT NOT NULL,after_json TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL
+        ); PRAGMA user_version=4;`);current=4;
+    }
+    if (current !== 4) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -262,7 +273,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         },
         removeRecord(entityType:string,entityId:string):Promise<void>{return write(async tx=>{await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,entityType,entityId)})},
         /** Commit projection and intent together. Re-enqueueing the same intent never regresses newer state. */
-        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean}): Promise<OutboxEntry> {
+        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean;continuationParent?:string}): Promise<OutboxEntry> {
           guard();
           const encoded = encodeOperation(operation, identity);
           record(projection);
@@ -270,13 +281,15 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           const saved = JSON.parse(encoded) as SyncOperation;
           const projected = JSON.stringify(projection);
           const exclusiveRecord=options?.exclusiveRecord===true;
+          const continuationParent=options?.continuationParent;
           return write(async (tx) => {
             const existing = await tx.getFirstAsync<Row>(
               'SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ?', ...ids, saved.operationId,
             );
             if (existing) {
               if (!sameJson(existing.operation_json, encoded) || !sameJson(existing.projection_json, projected)) {
-                throw new Error('Offline operation ID was reused for different work.');
+                const staged=continuationParent&&existing.continuation_json?await tx.getFirstAsync<{before_json:string}>('SELECT before_json FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence LIMIT 1',...ids,saved.operationId):null;
+                if(!staged||!sameJson(staged.before_json,encoded)||!sameJson(existing.projection_json,projected))throw new Error('Offline operation ID was reused for different work.');
               }
               return entry(existing);
             }
@@ -296,6 +309,9 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               `SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ?
                ORDER BY sequence DESC LIMIT 1`, ...ids, saved.entityType, saved.entityId,
             );
+            if(continuationParent){
+              if(!previous||previous.operation_id!==continuationParent||saved.dependsOn.length!==1||saved.dependsOn[0]!==continuationParent||saved.mutation.kind!=='update'||!['vehicle','issue'].includes(saved.entityType))throw new Error('Record changed locally. Reopen the editor before saving another change.');
+            }
             if (previous && (['pending','syncing','awaiting_review'].includes(previous.status)||(previous.status==='blocked'&&!previous.review_outcome_json)) && !saved.dependsOn.includes(previous.operation_id)) {
               throw new Error('A later edit must depend on the previous unsynced edit.');
             }
@@ -305,6 +321,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
               ...ids, saved.operationId, saved.entityType, saved.entityId, encoded, projected,
             );
+            if(continuationParent)await tx.runAsync('UPDATE offline_operations SET continuation_json=? WHERE user_id=? AND company_id=? AND operation_id=?',JSON.stringify({parentId:continuationParent,phase:'waiting'}),...ids,saved.operationId);
             for (const dependency of saved.dependsOn) {
               await tx.runAsync('INSERT INTO offline_dependencies VALUES (?, ?, ?, ?)', ...ids, saved.operationId, dependency);
             }
@@ -337,6 +354,49 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           });
         },
 
+        listRebases(operationId:string):Promise<{before:SyncOperation;after:SyncOperation;reason:string;createdAt:string}[]>{return read(async()=>{
+          const rows=await db.getAllAsync<{before_json:string;after_json:string;reason:string;created_at:string}>('SELECT * FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence',...ids,operationId);
+          return rows.map(row=>({before:JSON.parse(row.before_json),after:JSON.parse(row.after_json),reason:row.reason,createdAt:row.created_at}));
+        })},
+
+        /** Local-only drafts cannot be claimed until a complete parent and verified canonical base permit rebase. */
+        materializeContinuations():Promise<void>{return write(async tx=>{
+          const rows=await tx.getAllAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? ORDER BY sequence',...ids);
+          const parents=new Map(rows.map(row=>[row.operation_id,row]));
+          for(const row of rows){
+            if(row.status!=='pending'||row.attempts!==0||!row.continuation_json)continue;
+            const child=entry(row);if(child.continuation?.phase!=='waiting')continue;
+            const parentRow=parents.get(child.continuation.parentId);if(!parentRow)throw new Error('Missing continuation parent.');
+            const parent=entry(parentRow);
+            if(['pending','syncing','awaiting_review'].includes(parent.status)||parent.status==='blocked'&&!parent.reviewOutcome)continue;
+            let reason='';let rebased:SyncOperation|undefined;
+            if(parent.status!=='synced'||parent.reviewOutcome&&parent.reviewOutcome.outcome!=='kept')reason='Earlier review changed or rejected work. Review and explicitly rebase this later edit.';
+            else{
+              const canonical=await tx.getFirstAsync<{revision:string;record_json:string}>('SELECT revision,record_json FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,row.entity_type,row.entity_id);
+              const minimum=parent.reviewOutcome?.revision??(parent.receipt?.kind==='applied'?parent.receipt.revision:null);
+              if(!canonical||!minimum)reason='A verified current record is required to rebase this later edit.';
+              else{
+                const current=decodeCanonicalSyncRecord({entityId:row.entity_id},{revision:canonical.revision,record:JSON.parse(canonical.record_json)},minimum);
+                const mutation=child.operation.mutation;
+                if(mutation.kind!=='update'||!current.record)reason='Record is unavailable or deleted. This later edit needs explicit review; it will not restore a record.';
+                else{
+                  const allowed=row.entity_type==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
+                  if(Object.keys(mutation.patch).some(field=>!allowed.includes(field)))reason='This continuation needs a dedicated workflow adapter.';
+                  else{
+                    const merged=mergeSyncUpdate(mutation.base,current.record,mutation.patch);
+                    if(merged.kind!=='merged')reason='Shared fields changed after this later edit was made. Review and explicitly rebase it.';
+                    else rebased={...child.operation,mutation:{kind:'update',baseRevision:current.revision,base:current.record,patch:createSyncPatch(current.record,merged.record)}};
+                  }
+                }
+              }
+            }
+            if(!rebased){await tx.runAsync("UPDATE offline_operations SET status='blocked',error=? WHERE user_id=? AND company_id=? AND operation_id=?",reason,...ids,row.operation_id);continue}
+            const encoded=encodeOperation(rebased,identity);
+            await tx.runAsync('INSERT INTO offline_rebase_history(user_id,company_id,operation_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?)',...ids,row.operation_id,row.operation_json,encoded,'automatic_independent',new Date().toISOString());
+            await tx.runAsync('UPDATE offline_operations SET operation_json=?,continuation_json=?,error=NULL WHERE user_id=? AND company_id=? AND operation_id=?',encoded,JSON.stringify({...child.continuation,phase:'ready'}),...ids,row.operation_id);
+          }
+        })},
+
         /** Expired leases can be retried after a crash. Attempt numbers fence late responses. */
         claimNext(token: string, now = Date.now(), leaseMs = 60_000): Promise<{ entry: OutboxEntry; attempt: OutboxAttempt } | null> {
           required(token, 'attempt token'); milliseconds(now); milliseconds(leaseMs);
@@ -346,6 +406,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const row = await tx.getFirstAsync<Row>(
               `SELECT candidate.* FROM offline_operations candidate
                WHERE candidate.user_id = ? AND candidate.company_id = ?
+                 AND (candidate.continuation_json IS NULL OR json_extract(candidate.continuation_json,'$.phase')='ready')
                  AND ((candidate.status = 'pending' AND candidate.retry_at <= ?)
                    OR (candidate.status = 'syncing' AND candidate.lease_until <= ?))
                  AND NOT EXISTS (
@@ -454,7 +515,8 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
 
         retryBlocked(operationId: string): Promise<boolean> {
           return write(async tx => (await tx.runAsync(`UPDATE offline_operations SET status = 'pending', retry_at = 0, error = NULL
-            WHERE user_id = ? AND company_id = ? AND operation_id = ? AND status = 'blocked' AND review_outcome_json IS NULL`, ...ids, operationId)).changes === 1);
+            WHERE user_id = ? AND company_id = ? AND operation_id = ? AND status = 'blocked' AND review_outcome_json IS NULL
+            AND (continuation_json IS NULL OR json_extract(continuation_json,'$.phase')='ready')`, ...ids, operationId)).changes === 1);
         },
 
         dismissCompletedNotices(): Promise<void> {

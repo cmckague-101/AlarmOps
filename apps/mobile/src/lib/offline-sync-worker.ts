@@ -124,10 +124,11 @@ export function createOfflineSyncWorker(options:{
       await refresh();if(!ready(version))return;emit({busy:true});
       if(!await pollReviews(version)||!ready(version))return;
       for(let count=0;count<100&&ready(version);count++){
+        await persist(()=>session.materializeContinuations());if(!ready(version))break;
         const claimed=await session.claimNext(options.token(),now());if(!ready(version)||!claimed)break;
         const {entry,attempt}=claimed;
         try{
-          const block=offlineSyncAdapterBlock(entry.operation);
+          const block=offlineSyncAdapterBlock(entry.operation,entry.continuation?.phase==='ready');
           if(block){await persist(()=>session.finishAttempt(attempt,{kind:'blocked',error:block}));await refresh();continue}
           let delivery=entry.delivery;
           if(!delivery){
@@ -194,6 +195,7 @@ export function createOfflineSyncWorker(options:{
 export type OfflineSyncWorker=ReturnType<typeof createOfflineSyncWorker>;
 
 export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
+  if(entry.continuation?.phase==='waiting')return entry.status==='blocked'?'Saved later edit — explicit rebase needed':'Saved later edit — waiting for earlier changes';
   if(entry.reviewOutcome?.outcome==='partially_kept')return 'Reviewed — some changes were kept';
   if(entry.reviewOutcome?.outcome==='not_selected'||entry.status==='not_selected')return 'Reviewed — another version was kept';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';

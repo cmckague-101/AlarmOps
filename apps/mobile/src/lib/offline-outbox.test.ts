@@ -329,19 +329,19 @@ describe('durable mobile outbox', () => {
 
   it('rejects unsupported database versions without modifying existing data', async () => {
     const { db, sqlite } = database();
-    sqlite.exec('PRAGMA user_version = 4; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    sqlite.exec('PRAGMA user_version = 5; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
     await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
     expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
   });
 
   it('upgrades v1 storage without losing queued work, projections or ordering', async () => {
     const {session,store,sqlite,db}=await setup();await session.enqueue(operation(),{name:'Saved'});store.pause();
-    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=1;');
+    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=1;');
     const restored=(await createOfflineOutbox(db)).activate(scope);
     expect((await restored.list())[0]).toMatchObject({status:'pending',delivery:null,reviewOutcome:null,noticeDismissed:false});
     expect(await restored.getProjection('vehicle','vehicle-1')).toEqual({operationId:'op-1',record:{name:'Saved'}});
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:3});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:4});
   });
 
   it('persists delivery before catch-up and retains it across retries without replacing local data', async () => {
@@ -437,10 +437,10 @@ describe('verified offline detail bases',()=>{
   });
   it('migrates v2 without discarding pending operations or delivery metadata',async()=>{
     const {session,sqlite,db,store}=await setup();await session.enqueue(operation(),{name:'pending'});store.pause();
-    sqlite.exec('DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=2;');
+    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=2;');
     const migrated=(await createOfflineOutbox(db)).activate(scope);
     expect(await migrated.list()).toHaveLength(1);expect(await migrated.listRecords()).toEqual([]);
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:3});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:4});
   });
   it('commits canonical raw data and completion together, without downgrading a newer download',async()=>{
     const {session,sqlite}=await setup();await session.enqueue(operation(),{name:'pending'});const {attempt}=(await session.claimNext('token',0))!;
@@ -463,6 +463,59 @@ async function detailSetup(offline=true){
   return {...fixture,editor,disallow:()=>{allowed=false},setOffline:(value:boolean)=>{disconnected=value},reads:()=>reads,notices:()=>notices};
 }
 describe('atomic native detail-edit boundary',()=>{
+  it('saves three offline edits, including a revert, then rebases each against verified parent results',async()=>{
+    const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    const first=await editor.save(await editor.prepare(target),{notes:'one'});
+    const secondDraft=await editor.prepare(target);expect(secondDraft.record.notes).toBe('one');
+    const second=await editor.save(secondDraft,{notes:'base'});
+    const third=await editor.save(await editor.prepare(target),{plate:'AA'});
+    expect(second.continuation).toEqual({parentId:first.operation.operationId,phase:'waiting'});
+    let current={revision:'1',record:{...rawVehicle} as SyncRecord};const history=new Map([['1',current.record]]);const sent:SyncOperation[]=[];
+    const worker=createOfflineSyncWorker({session,canAccess:()=>true,canRun:()=>true,token:()=>`token-${sent.length}`,transport:{
+      async deliver(operation){sent.push(operation);if(operation.mutation.kind!=='update')throw new Error('wrong kind');expect(operation.mutation.base).toEqual(history.get(operation.mutation.baseRevision));
+        const patch=operation.mutation.patch;const record={...current.record};for(const [key,value] of Object.entries(patch)){if(value.present)record[key]=value.value;else delete record[key]}
+        current={revision:String(Number(current.revision)+1),record};history.set(current.revision,record);return {kind:'applied',receivedAt,...current};},
+      async canonical(){if(current.revision==='2'){current={revision:'3',record:{...current.record,unit:'Remote unit'}};history.set('3',current.record)}return current},outcome:async()=>null,
+    }});cleanup.push(()=>worker.stop());await worker.resume();
+    expect(sent).toHaveLength(3);expect((await session.list()).every(row=>row.status==='synced')).toBe(true);expect(current.record).toMatchObject({notes:'base',plate:'AA',unit:'Remote unit'});
+    expect((await session.listRebases(second.operation.operationId))[0]).toMatchObject({reason:'automatic_independent',after:{mutation:{baseRevision:'3'}}});
+    expect((await session.listRebases(third.operation.operationId))[0].before.provenance).toEqual(third.operation.provenance);
+    expect((await editor.save(secondDraft,{notes:'base'})).status).toBe('synced');expect(await session.list()).toHaveLength(3);
+  });
+  it('never claims a local continuation before canonical materialization, even after parent status changes',async()=>{
+    const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    await editor.save(await editor.prepare(target),{notes:'one'});const child=await editor.save(await editor.prepare(target),{notes:'two'});
+    const root=(await session.claimNext('root',0))!;await session.finishAttempt(root.attempt,{kind:'applied',receivedAt,revision:'2',record:{...rawVehicle,notes:'one'}});
+    expect(await session.claimNext('must-not-send-local-base',0)).toBeNull();expect(child.attempts).toBe(0);
+    await session.materializeContinuations();expect((await session.claimNext('child',0))!.entry.operation.mutation).toMatchObject({baseRevision:'2',base:{notes:'one'},patch:{notes:{value:'two'}}});
+  });
+  it('blocks overlapping canonical changes without silently promoting them to a fresh base',async()=>{
+    const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    await editor.save(await editor.prepare(target),{notes:'one'});const child=await editor.save(await editor.prepare(target),{notes:'two'});
+    const root=(await session.claimNext('root',0))!;await session.finishAttempt(root.attempt,{kind:'applied',receivedAt,revision:'3',record:{...rawVehicle,notes:'Another editor'}});
+    await session.materializeContinuations();expect((await session.list())[1]).toMatchObject({status:'blocked',attempts:0,continuation:{phase:'waiting'}});
+    expect(await session.retryBlocked(child.operation.operationId)).toBe(false);expect(await session.claimNext('no',0)).toBeNull();expect(await session.listRebases(child.operation.operationId)).toEqual([]);
+  });
+  it('requires explicit rebase after parent rejection and preserves all later values',async()=>{
+    const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    const root=await editor.save(await editor.prepare(target),{notes:'one'});const child=await editor.save(await editor.prepare(target),{unit:'Later unit'});
+    const claimed=(await session.claimNext('root',0))!;await session.recordDelivery(claimed.attempt,{kind:'awaiting_review',receivedAt,conflictId:'conflict'});
+    await session.recordReviewOutcome(root.operation.operationId,{kind:'reviewed',operationId:root.operation.operationId,decisionId:'decision',conflictId:'conflict',decidedAt:receivedAt,revision:'2',outcome:'not_selected',keptFields:[],discardedFields:['notes']});
+    await session.finishReview(root.operation.operationId,{revision:'2',record:rawVehicle});await session.materializeContinuations();
+    const later=(await session.list())[1];expect(later.status).toBe('blocked');expect(later.projection).toMatchObject({unit:'Later unit'});expect(later.operation).toEqual(child.operation);expect(await session.claimNext('no',0)).toBeNull();
+  });
+  it('rolls back materialization and its audit together when storage fails',async()=>{
+    const {editor,session,sqlite}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    await editor.save(await editor.prepare(target),{notes:'one'});const child=await editor.save(await editor.prepare(target),{notes:'two'});const root=(await session.claimNext('root',0))!;
+    await session.finishAttempt(root.attempt,{kind:'applied',receivedAt,revision:'2',record:{...rawVehicle,notes:'one'}});
+    sqlite.exec("CREATE TRIGGER fail_rebase BEFORE INSERT ON offline_rebase_history BEGIN SELECT RAISE(FAIL,'disk full'); END;");
+    await expect(session.materializeContinuations()).rejects.toThrow('disk full');expect((await session.list())[1].continuation?.phase).toBe('waiting');expect(await session.listRebases(child.operation.operationId)).toEqual([]);
+  });
+  it('rejects stale sibling saves instead of branching around an intervening local edit',async()=>{
+    const {editor,session}=await detailSetup();const target={entityType:'vehicle' as const,entityId:rawVehicle.id};await editor.save(await editor.prepare(target),{notes:'one'});
+    const a=await editor.prepare(target);const b=await editor.prepare(target);await editor.save(a,{notes:'two'});
+    await expect(editor.save(b,{notes:'other'})).rejects.toThrow('changed locally');expect(await session.list()).toHaveLength(2);
+  });
   it('can explicitly use an owned verified download during a server outage without claiming an offline connection state',async()=>{
     const {editor,reads}=await detailSetup(false);const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id},{downloadedOnly:true});
     expect(reads()).toBe(0);expect(draft.revision).toBe('1');expect((await editor.save(draft,{notes:'During outage'})).operation.provenance.connectivity).toBe('online');
@@ -557,7 +610,7 @@ describe('atomic native detail-edit boundary',()=>{
     const {editor,session}=await detailSetup();const one=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});const two=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});
     const result=await Promise.allSettled([editor.save(one,{notes:'one'}),editor.save(two,{notes:'two'})]);
     expect(result.filter(item=>item.status==='fulfilled')).toHaveLength(1);expect(await session.list()).toHaveLength(1);
-    await expect(editor.prepare({entityType:'vehicle',entityId:rawVehicle.id})).rejects.toThrow('pending change');
+    expect((await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id})).pendingParentId).toBe((await session.list())[0].operation.operationId);
   });
   it('retries the exact same intent after a transaction rollback',async()=>{
     const {editor,sqlite,session}=await detailSetup();const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});
