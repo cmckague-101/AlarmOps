@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
-import {Map, NavigationControl, type GeoJSONSource, type MapLayerMouseEvent} from 'maplibre-gl';
+import {Map, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapLayerMouseEvent} from 'maplibre-gl';
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type {FireResourceVehicle, NifcIncident} from '@fireops/domain';
 import {incidentMapData, NATIONAL_BOUNDS, validMapCoordinates, vehicleMapData} from './operations-map-data';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -19,6 +20,10 @@ type Tip = {x: number; y: number; name: string; incident?: NifcIncident};
 // OpenFreeMap's public vector style requires no API key. Map data stays with
 // NIFC/Motive; only basemap tile requests are sent to the map provider.
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+
+// MapLibre 6 otherwise resolves its worker relative to the bundled map chunk.
+// Explicitly let Vite emit the worker and provide its hashed deployment URL.
+setWorkerUrl(mapWorkerUrl);
 
 export default function OperationsMap(props: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -53,12 +58,14 @@ export default function OperationsMap(props: Props) {
     mapRef.current = map;
     map.addControl(new NavigationControl(), 'top-left');
     map.getCanvas().setAttribute('aria-label', 'Wildfire operations map. Use arrow keys to pan and plus or minus to zoom. Search fires to open incident details.');
-    map.on('error', () => {
-      if (!disposed) setError('Some map tiles could not load. Check your connection or retry the map.');
+    map.on('error', event => {
+      console.error('Operations map error:', event.error);
+      if (!disposed) setError(`Map error: ${event.error.message || 'A map resource could not load.'}`);
     });
     const onContextLost = () => setError('Map graphics were interrupted. Retry to restore the map.');
     map.getCanvas().addEventListener('webglcontextlost', onContextLost);
-    map.on('load', () => {
+    // Operational overlays must not wait for every remote basemap tile to load.
+    map.once('style.load', () => {
       if (disposed) return;
       map.addSource('fires', {type: 'geojson', data: incidentMapData(latest.current.incidents), cluster: true, clusterMaxZoom: 8, clusterRadius: 45});
       map.addSource('fleet', {type: 'geojson', data: vehicleMapData(latest.current.vehicles)});
