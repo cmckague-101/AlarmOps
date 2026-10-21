@@ -51,7 +51,7 @@ export default function CommunicationsScreen() {
 
         <View style={styles.sectionHeading}>
           <View>
-            <Text style={styles.sectionTitle}>Chat</Text>
+            <Text style={styles.sectionTitle}>Communications</Text>
             <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
           </View>
           {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}
@@ -60,7 +60,7 @@ export default function CommunicationsScreen() {
         {loading ? <Text style={styles.stateText}>Loading company threads…</Text> : null}
         {error ? (
           <View style={styles.errorBlock}>
-            <Text style={styles.errorTitle}>Chat unavailable</Text>
+            <Text style={styles.errorTitle}>Communications unavailable</Text>
             <Text style={styles.errorText}>{error}</Text>
             <Pressable accessibilityRole="button" onPress={refreshCommunications} style={styles.retryButton}>
               <Text style={styles.retryLabel}>Try again</Text>
