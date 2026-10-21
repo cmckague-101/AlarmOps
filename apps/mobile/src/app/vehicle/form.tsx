@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
 import { removeFleetFiles, uploadFleetFile, type LocalFleetFile } from '@/lib/fleet-files';
-import { createFleetId, saveFleetVehicleRecord, useFleetVehicles, type FleetVehicle, type FleetVehicleFile } from '@/lib/fleet-store';
+import { assertFleetRecordVersion, fleetReadVersion, createFleetId, saveFleetVehicleRecord, useFleetVehicles, type FleetVehicle, type FleetVehicleFile } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { useVehicleTypes } from '@/lib/vehicle-type-store';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -56,6 +56,7 @@ type FormState = {
 };
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
+function editableVehicleVersion(vehicle:FleetVehicle|undefined){try{return vehicle?fleetReadVersion(vehicle,'vehicles'):undefined}catch{return undefined}}
 
 export default function VehicleFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -81,6 +82,10 @@ export default function VehicleFormScreen() {
     notes: vehicle?.notes ?? '',
   }));
   const hydratedIdRef = useRef(vehicle?.id ?? null);
+  const baseVersionRef=useRef(editableVehicleVersion(vehicle));
+  const scopeKey=user&&session?.user.id===user.id?`${user.id}:${companyId}:${user.role}`:null;
+  const originalScopeRef=useRef(scopeKey);
+  if(originalScopeRef.current===null&&scopeKey)originalScopeRef.current=scopeKey;
   const [newVehicleId] = useState(() => createFleetId());
   const [errors, setErrors] = useState<FormErrors>({});
   const [saveError, setSaveError] = useState('');
@@ -103,6 +108,7 @@ export default function VehicleFormScreen() {
   useEffect(() => {
     if (!vehicle || hydratedIdRef.current === vehicle.id) return;
     hydratedIdRef.current = vehicle.id;
+    baseVersionRef.current=editableVehicleVersion(vehicle);
     setInspectionDate(vehicle.documents.find(document => document.id === 'dotInspection' || document.name.toLowerCase() === 'dot inspection')?.inspectionDate ?? '');
     setForm({
       unit: vehicle.name,
@@ -119,7 +125,8 @@ export default function VehicleFormScreen() {
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
   if (access.status === 'idle' || access.status === 'loading') return <SafeAreaView style={styles.safeArea}><Text style={styles.loading}>Checking fleet access…</Text></SafeAreaView>;
-  if (!user || user.role !== 'owner' && user.role !== 'admin') return <Redirect href={id ? `/vehicle/${id}` : '/(tabs)/fleet'} />;
+  if(scopeKey!==originalScopeRef.current)return <SafeAreaView style={styles.safeArea}><Text accessibilityRole="alert" style={styles.loading}>Account or permissions changed. Reopen this editor.</Text></SafeAreaView>;
+  if (!user || session.user.id!==user.id || user.role !== 'owner' && user.role !== 'admin') return <Redirect href={id ? `/vehicle/${id}` : '/(tabs)/fleet'} />;
 
   const update = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -162,6 +169,7 @@ export default function VehicleFormScreen() {
     const uploaded: FleetVehicleFile[] = [];
     const replacedPaths: (string | null)[] = [];
     try {
+      if(editing)assertFleetRecordVersion('vehicles',recordId,baseVersionRef.current);
       let uploadedPhoto: FleetVehicleFile | undefined;
       if (!editing && photo) {
         uploadedPhoto = await uploadFleetFile(companyId!, user.id, photo);
@@ -200,7 +208,7 @@ export default function VehicleFormScreen() {
         ...(!editing && uploadedPhoto ? { photo: uploadedPhoto } : {}),
         ...(editing ? { documents, contract: null, viprChecklist: null, registration: null, insurance: null, dotInspection: null } : {}),
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),
-      }, user, editing);
+      }, user, editing,{version:baseVersionRef.current,companyId,userId:user.id});
       if (replacedPaths.length) void removeFleetFiles(replacedPaths).catch(() => undefined);
       if (editing) router.dismissTo(`/vehicle/${recordId}`);
       else router.replace(`/vehicle/${recordId}`);
@@ -212,7 +220,7 @@ export default function VehicleFormScreen() {
     }
   };
 
-  if (editing && loading && !vehicle) {
+  if (editing && (loading && !vehicle || vehicle && hydratedIdRef.current!==vehicle.id)) {
     return <SafeAreaView style={styles.safeArea}><Text style={styles.loading}>Loading vehicle…</Text></SafeAreaView>;
   }
   if (editing && !loading && !vehicle) return <Redirect href="/(tabs)/fleet" />;

@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { visibleVehicleIssues, type IssuePriority, type IssueStatus } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
-import { createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
+import { fleetReadVersion, createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -25,14 +25,17 @@ export default function IssueDetailScreen() {
   const { session, access } = useSession();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
-  const { vehicles, issues, loading, error } = useFleetVehicles(companyId);
+  const { vehicles, issues, loading, error, pendingDetails } = useFleetVehicles(companyId);
   const candidate = issues.find((item) => item.id === id);
   const candidateVehicle = vehicles.find((item) => item.id === candidate?.vehicleId);
   const canView = candidate && user && visibleVehicleIssues([candidate], user).length > 0;
   const issue = canView ? candidate : undefined;
   const vehicle = issue ? candidateVehicle : undefined;
   const [updateText, setUpdateText] = useState('');
-  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsOpen, setEditingDetails] = useState(false);
+  const detailVersion=useRef<number|undefined>(undefined);const detailScope=useRef<string|null>(null);
+  const scopeKey=user&&session?.user.id===user.id?`${user.id}:${companyId}:${user.role}:${id}`:null;
+  const editingDetails=detailsOpen&&detailScope.current===scopeKey&&(user?.role==='owner'||user?.role==='admin');
   const [details, setDetails] = useState<{ title: string; description: string; priority: IssuePriority }>({ title: '', description: '', priority: 'Medium' });
   const [detailErrors, setDetailErrors] = useState<{ title?: string; description?: string }>({});
   const [saving, setSaving] = useState(false);
@@ -42,6 +45,8 @@ export default function IssueDetailScreen() {
 
   const beginEditing = () => {
     if (!issue || (user?.role !== 'owner' && user?.role !== 'admin')) return;
+    try{detailVersion.current=fleetReadVersion(issue,'issues')}catch(error){setSaveError(error instanceof Error?error.message:'Refresh and reopen this issue.');return}
+    detailScope.current=scopeKey;
     setDetails({ title: issue.title, description: issue.description, priority: issue.priority });
     setDetailErrors({});
     setSaveError('');
@@ -68,12 +73,13 @@ export default function IssueDetailScreen() {
     setSaving(true);
     setSaveError('');
     try {
+      if(detailScope.current!==scopeKey)throw new Error('Account changed. Reopen this editor.');
       await saveFleetRecord('issues', {
         ...issue,
         title: details.title.trim(),
         description: details.description.trim(),
         priority: details.priority,
-      });
+      },{version:detailVersion.current,companyId,userId:user.id});
       setEditingDetails(false);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Issue details could not be saved.');
@@ -94,7 +100,7 @@ export default function IssueDetailScreen() {
         status,
         resolvedAt: status === 'Resolved' ? issue.resolvedAt ?? now : undefined,
         updates: [{ id: createFleetId(), text: updateText.trim(), createdBy: user.name, createdById: user.id, createdAt: now }, ...issue.updates],
-      });
+      },{version:fleetReadVersion(issue,'issues'),companyId,userId:user.id});
       setUpdateText('');
     } catch (saveIssueError) {
       setSaveError(saveIssueError instanceof Error ? saveIssueError.message : 'Issue update could not be saved.');
@@ -119,6 +125,7 @@ export default function IssueDetailScreen() {
 
           {issue ? (
             <>
+              {pendingDetails?.[`issue:${issue.id}`]?<Text accessibilityRole="alert" style={styles.reported}>{pendingDetails[`issue:${issue.id}`]}</Text>:null}
               {vehicle ? (
                 <Pressable
                   accessibilityRole="button"

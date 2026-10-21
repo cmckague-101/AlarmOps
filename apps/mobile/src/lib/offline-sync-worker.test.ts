@@ -36,6 +36,10 @@ async function setup(operation=op()){
 async function entry(fixture:Awaited<ReturnType<typeof setup>>){return (await fixture.session.list())[0]}
 
 describe('native durable sync worker (real SQLite, no native UI)',()=>{
+  it('publishes scoped raw records for the read model, but not after manager access is withdrawn',async()=>{
+    const f=await setup();f.mode.read=true;await f.worker.wake();expect(f.worker.getSnapshot().records[0]).toMatchObject(canonical);
+    f.mode.read=false;await f.worker.refresh();expect(f.worker.getSnapshot().records).toEqual([]);
+  });
   it('refreshes previously downloaded bases after reconnect even without queued work',async()=>{
     const f=await setup();await f.worker.wake();f.transport.deliver.mockClear();f.mode.read=true;
     const latest={revision:'4',record:{...base,notes:'Latest download'}};f.transport.readRecord.mockResolvedValue(latest);

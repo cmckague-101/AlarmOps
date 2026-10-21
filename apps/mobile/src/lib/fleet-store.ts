@@ -19,6 +19,10 @@ import type {
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { isDemoActive, supabase } from "@/lib/supabase";
+import { useSession } from "@/providers/session-provider";
+import { fleetDetailKey,getOfflineFleet,guardOfflineFleetWrite,projectOfflineFleet,refreshOfflineFleet,subscribeOfflineFleet,type FleetModelRecord } from './offline-fleet-model';
+import type {DetailTarget} from './offline-detail-editor';
+import type {SyncRecord} from '@fireops/domain';
 
 export type FleetVehicleFile = {
   name: string;
@@ -87,6 +91,7 @@ export type SharedFleetSnapshot = {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  pendingDetails?: Readonly<Record<string,string>>;
 };
 
 type FleetCollection = "vehicles" | "issues" | "crew" | "activities";
@@ -126,7 +131,13 @@ let snapshot: SharedFleetSnapshot = {
   refreshing: false,
   error: null,
 };
+let visibleSnapshot=snapshot;
+const emptyFleet:SharedFleetSnapshot={vehicles:[],issues:[],crew:[],activities:[],loading:false,refreshing:false,error:null};
+const loadingFleet:SharedFleetSnapshot={...emptyFleet,loading:true};
 let activeCompanyId: string | null | undefined;
+let activeUserId:string|null|undefined;
+let activeRole:string|null|undefined;
+const observedDeletes=new Map<string,string>();
 let companyVersion = 0;
 let channel: RealtimeChannel | null = null;
 let request: Promise<void> | null = null;
@@ -135,6 +146,14 @@ let refreshQueued = false;
 let queuedRefreshShowsIndicator = false;
 let fleetChangeSequence = 0;
 const listeners = new Set<() => void>();
+const readVersions=new WeakMap<object,{scope:number;revision:string;pending:boolean}>();
+function rememberRead<T extends object>(record:T,revision:string,pending=false):T{readVersions.set(record,{scope:companyVersion,revision,pending});return record}
+export function fleetReadVersion(record:{id:string},collection:'vehicles'|'issues'):number{
+  const captured=readVersions.get(record);const current=versions[collection].get(record.id);
+  if(!captured||captured.scope!==companyVersion||captured.pending)throw new Error('Unconfirmed or old-account data cannot be used for this action. Sync/review and reopen this record.');
+  if(current===undefined||!Number.isSafeInteger(current)||captured.revision!==String(current))throw new Error('Record changed while this view was open. Refresh and reopen it before saving.');
+  return current;
+}
 
 function text(row: VehicleRow, ...keys: string[]) {
   for (const key of keys) {
@@ -251,10 +270,28 @@ function records<T>(rows: FleetRecordRow[]): T[] {
   );
 }
 
+function rebuildVisible(){
+  const local=activeCompanyId&&activeUserId?getOfflineFleet({companyId:activeCompanyId,userId:activeUserId}):null;
+  if(!local){visibleSnapshot=snapshot;return}
+  const remote:FleetModelRecord[]=[
+    ...snapshot.vehicles.map(vehicle=>({entityType:'vehicle' as const,entityId:vehicle.id,revision:revisionText(versions.vehicles.get(vehicle.id)),record:displayRecord(vehicle.source)})),
+    ...snapshot.issues.map(issue=>({entityType:'issue' as const,entityId:issue.id,revision:revisionText(versions.issues.get(issue.id)),record:displayRecord(issue)})),
+  ];
+  const projected=projectOfflineFleet(remote,local,observedDeletes);
+  const motive=new Map(snapshot.vehicles.map(vehicle=>[vehicle.id,vehicle.motive]));
+  const vehicles=projected.records.filter(row=>row.entityType==='vehicle'&&row.record).map(row=>{const value=normalizeVehicle({data:row.record});return rememberRead({...value,motive:motive.get(value.id)??value.motive},row.revision,!!projected.pending[fleetDetailKey(row)])}).sort((a,b)=>a.name.localeCompare(b.name));
+  const issues=projected.records.filter(row=>row.entityType==='issue'&&row.record).map(row=>{const value=row.record as unknown as FleetIssue;return rememberRead({...value,status:value.status??'Open',updates:value.updates??[]},row.revision,!!projected.pending[fleetDetailKey(row)])}).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
+  const available=local.loaded&&local.offline&&(vehicles.length>0||issues.length>0);
+  visibleSnapshot={...snapshot,vehicles,issues,pendingDetails:projected.pending,...(available?{loading:false,error:null}:{})};
+}
+// Legacy payloads may still contain undefined optional fields; display their wire JSON, not a forged base.
+function displayRecord(value:unknown):SyncRecord{return JSON.parse(JSON.stringify(value)) as SyncRecord}
+function revisionText(value:number|undefined){return value!==undefined&&Number.isSafeInteger(value)&&value>=0?String(value):'0'}
 function emit(next: SharedFleetSnapshot) {
-  snapshot = next;
+  snapshot = next;rebuildVisible();
   listeners.forEach((listener) => listener());
 }
+subscribeOfflineFleet(()=>{rebuildVisible();listeners.forEach(listener=>listener())});
 
 function patchFleetRecord(
   collection: FleetCollection,
@@ -267,6 +304,7 @@ function patchFleetRecord(
   if (version !== undefined && version < currentVersion) return;
 
   if (event === "delete") {
+    if(collection==='vehicles'||collection==='issues')observedDeletes.set(`${collection==='vehicles'?'vehicle':'issue'}:${recordId}`,revisionText(version??versions[collection].get(recordId)));
     versions[collection].delete(recordId);
     emit({
       ...snapshot,
@@ -276,6 +314,7 @@ function patchFleetRecord(
   }
   if (!data || typeof data !== "object") return;
   if (version !== undefined) versions[collection].set(recordId, version);
+  if(collection==='vehicles'||collection==='issues')observedDeletes.delete(`${collection==='vehicles'?'vehicle':'issue'}:${recordId}`);
 
   const value =
     collection === "vehicles"
@@ -287,6 +326,7 @@ function patchFleetRecord(
             updates: (data as FleetIssue).updates ?? [],
           }
         : data;
+  if(collection==='vehicles'||collection==='issues')rememberRead(value as object,revisionText(version??currentVersion));
   const records = [
     value,
     ...snapshot[collection].filter((record) => record.id !== recordId),
@@ -310,53 +350,72 @@ export function createFleetId() {
   });
 }
 
-async function saveFleetRecords(
-  records: { collection: FleetCollection; record: { id: string } }[],
-) {
-  if (!supabase || !activeCompanyId)
-    throw new Error("Company fleet is unavailable.");
-  const changes = records.map(({ collection, record }) => {
-    const expectedVersion = versions[collection].get(record.id);
-    return {
-      collection,
-      event: expectedVersion === undefined ? "insert" : "update",
-      recordId: record.id,
-      data: record,
-      ...(expectedVersion === undefined ? {} : { expectedVersion }),
-    };
-  });
-  const companyId = activeCompanyId;
-  const { data, error } = await supabase.rpc("apply_fleet_changes", {
-    target_company_id: companyId,
-    changes,
-  });
-  if (error) {
-    if (error.code === "40001" || error.code === "PT409") {
-      await refreshFleet({ showIndicator: false });
-      throw new Error("Record changed elsewhere. Latest fleet data was loaded; try again.");
-    }
-    throw new Error(error.message);
-  }
-  if (activeCompanyId !== companyId) return;
-  const savedRecords = new Map(
-    records.map(({ collection, record }) => [`${collection}:${record.id}`, record]),
-  );
-  ((data ?? []) as FleetChangeResult[]).forEach((result) => {
-    patchFleetRecord(
-      result.collection,
-      result.event === "delete" ? "delete" : "upsert",
-      result.recordId,
-      savedRecords.get(`${result.collection}:${result.recordId}`),
-      result.version,
-    );
+function detailTargets(records:readonly {collection:FleetCollection;record:{id:string}}[]):DetailTarget[]{
+  return records.flatMap(({collection,record})=>{
+    if(collection!=='vehicles'&&collection!=='issues')return [];
+    const targets:DetailTarget[]=[{entityType:collection==='vehicles'?'vehicle':'issue',entityId:record.id}];
+    const parent=(record as {vehicleId?:unknown}).vehicleId;
+    if(collection==='issues'&&typeof parent==='string')targets.push({entityType:'vehicle',entityId:parent});
+    return targets;
   });
 }
+async function guardFleetWrite(targets:DetailTarget[],version:number){
+  if(!activeCompanyId||!activeUserId)throw new Error('Company fleet is unavailable.');
+  const scope={companyId:activeCompanyId,userId:activeUserId};
+  const release=await guardOfflineFleetWrite(scope,targets,createFleetId());
+  try{
+    if(version!==companyVersion)throw new Error('Fleet account changed. Reopen this screen.');
+    const local=getOfflineFleet(scope);
+    for(const target of targets){
+      const cached=local?.records.find(row=>fleetDetailKey(row)===fleetDetailKey(target));
+      const current=versions[target.entityType==='vehicle'?'vehicles':'issues'].get(target.entityId);
+      if(cached&&(cached.record===null||BigInt(cached.revision)>BigInt(revisionText(current))))throw new Error('Saved data is newer than the online fleet snapshot. Refresh fleet before other actions.');
+      if(current!==undefined&&!Number.isSafeInteger(current))throw new Error('This record revision requires the saved detail editor.');
+    }
+    return release;
+  }catch(error){release();throw error}
+}
+async function applyFleetChanges(companyId:string,changes:unknown[],version:number){
+  const client=supabase;if(!client)throw new Error('Company fleet is unavailable.');
+  let token:string|undefined;
+  if(!isDemoActive()){
+    const {data,error}=await client.auth.getSession();
+    if(error||!data.session||data.session.user.id!==activeUserId||version!==companyVersion)throw new Error('Fleet account changed. Reopen this screen.');
+    token=data.session.access_token;
+  }
+  const request=client.rpc('apply_fleet_changes',{target_company_id:companyId,changes});
+  return token?await request.setHeader('Authorization',`Bearer ${token}`):await request;
+}
+export function assertFleetRecordVersion(collection:FleetCollection,id:string,version:number|undefined){
+  if(version===undefined||!Number.isSafeInteger(version)||versions[collection].get(id)!==version)throw new Error('Record changed while this form was open. Reopen the editor before saving.');
+}
+async function saveFleetRecords(records: { collection: FleetCollection; record: { id: string }; expectedVersion?:number }[]) {
+  if (!supabase || !activeCompanyId)throw new Error('Company fleet is unavailable.');
+  const companyId=activeCompanyId;const version=companyVersion;
+  const release=await guardFleetWrite(detailTargets(records),version);
+  try{
+    const changes=records.map(item=>{const {collection,record}=item;const captured='expectedVersion' in item;const expectedVersion=captured?item.expectedVersion:versions[collection].get(record.id);if(captured&&(expectedVersion===undefined||!Number.isSafeInteger(expectedVersion)))throw new Error('Record changed while this form was open. Reopen the editor before saving.');return {collection,event:expectedVersion===undefined?'insert':'update',recordId:record.id,data:record,...(expectedVersion===undefined?{}:{expectedVersion})}});
+    const {data,error}=await applyFleetChanges(companyId,changes,version);
+    if(error){
+      if(error.code==='40001'||error.code==='PT409'){await refreshFleet({showIndicator:false});throw new Error('Record changed elsewhere. Latest fleet data was loaded; reopen the editor before saving.')}
+      throw new Error(error.message);
+    }
+    if(version!==companyVersion)throw new Error('Account changed while saving. Check the original account before retrying.');
+    const savedRecords=new Map(records.map(({collection,record})=>[`${collection}:${record.id}`,record]));
+    ((data??[]) as FleetChangeResult[]).forEach(result=>patchFleetRecord(result.collection,result.event==='delete'?'delete':'upsert',result.recordId,savedRecords.get(`${result.collection}:${result.recordId}`),result.version));
+    refreshOfflineFleet();
+  }finally{release()}
+}
 
+type CapturedFleetVersion={version:number|undefined;companyId:string|null;userId:string|null};
+function assertCapturedScope(captured:CapturedFleetVersion|undefined){if(captured&&(captured.companyId!==activeCompanyId||captured.userId!==activeUserId))throw new Error('Fleet account changed. Reopen this screen.')}
 export async function saveFleetRecord<T extends { id: string }>(
   collection: FleetCollection,
   record: T,
+  captured?:CapturedFleetVersion,
 ) {
-  await saveFleetRecords([{ collection, record }]);
+  assertCapturedScope(captured);
+  await saveFleetRecords([{ collection, record,...(captured?{expectedVersion:captured.version}:{}) }]);
 }
 
 export async function inviteCrewMember(
@@ -559,7 +618,8 @@ export async function deleteFleetVehicle(
 ) {
   if (!supabase || !activeCompanyId)
     throw new Error("Company fleet is unavailable.");
-  const vehicleVersion = versions.vehicles.get(vehicle.id);
+  const version=companyVersion;
+  const vehicleVersion = fleetReadVersion(vehicle,'vehicles');
   if (vehicleVersion === undefined)
     throw new Error("Vehicle changed elsewhere. Refresh and try again.");
 
@@ -601,10 +661,9 @@ export async function deleteFleetVehicle(
     },
   ];
   const companyId = activeCompanyId;
-  const { data, error } = await supabase.rpc("apply_fleet_changes", {
-    target_company_id: companyId,
-    changes,
-  });
+  const release=await guardFleetWrite([{entityType:'vehicle',entityId:vehicle.id},...linkedIssues.map(issue=>({entityType:'issue' as const,entityId:issue.id}))],version);
+  try{
+  const { data, error } = await applyFleetChanges(companyId,changes,version);
   if (error) {
     if (error.code === "40001" || error.code === "PT409") {
       await refreshFleet({ showIndicator: false });
@@ -612,7 +671,7 @@ export async function deleteFleetVehicle(
     }
     throw new Error(error.message);
   }
-  if (activeCompanyId !== companyId) return;
+  if(version!==companyVersion)throw new Error('Account changed while saving. Check the original account before retrying.');
   ((data ?? []) as FleetChangeResult[]).forEach((result) => {
     patchFleetRecord(
       result.collection,
@@ -622,13 +681,17 @@ export async function deleteFleetVehicle(
       result.version,
     );
   });
+  refreshOfflineFleet();
+  }finally{release()}
 }
 
 export async function saveFleetVehicleRecord(
   record: { id: string; unit: string; [key: string]: unknown },
   user: FireOpsUser,
   editing: boolean,
+  captured?:CapturedFleetVersion,
 ) {
+  assertCapturedScope(captured);
   const activityRecord: Activity = {
     id: createFleetId(),
     action: editing
@@ -643,7 +706,7 @@ export async function saveFleetVehicleRecord(
     tone: "complete",
   };
   const records = [
-    { collection: "vehicles" as const, record },
+    { collection: "vehicles" as const, record,...(editing&&captured?{expectedVersion:captured.version}:{}) },
     { collection: "activities" as const, record: activityRecord },
   ];
   try {
@@ -653,7 +716,7 @@ export async function saveFleetVehicleRecord(
     const isNetworkError =
       /fetch failed|network connection|network request failed/i.test(message);
     const isDuplicate = /duplicate key|23505/i.test(message);
-    if ((!isNetworkError && !isDuplicate) || !supabase || !activeCompanyId)
+    if (editing || (!isNetworkError && !isDuplicate) || !supabase || !activeCompanyId)
       throw error;
 
     // iOS can lose the RPC response after Supabase committed it. Confirm before
@@ -688,6 +751,7 @@ export async function updateFleetVehicle(
   user: FireOpsUser,
   activity: { action: string; detail: string; tone?: Activity["tone"] },
 ) {
+  const expectedVersion=fleetReadVersion(vehicle,'vehicles');
   const record = {
     ...vehicle.source,
     id: vehicle.id,
@@ -715,7 +779,7 @@ export async function updateFleetVehicle(
     tone: activity.tone,
   };
   await saveFleetRecords([
-    { collection: "vehicles", record },
+    { collection: "vehicles", record,expectedVersion },
     { collection: "activities", record: activityRecord },
   ]);
 }
@@ -725,6 +789,7 @@ export async function saveFleetInspection(
   inspection: VehicleInspection,
   user: FireOpsUser,
 ) {
+  const expectedVersion=fleetReadVersion(vehicle,'vehicles');
   const failed = inspection.items.filter((item) => item.result === "Fail").length;
   const record = {
     ...vehicle.source,
@@ -744,7 +809,7 @@ export async function saveFleetInspection(
     tone: failed ? "urgent" : "complete",
   };
   await saveFleetRecords([
-    { collection: "vehicles", record },
+    { collection: "vehicles", record,expectedVersion },
     { collection: "activities", record: activityRecord },
   ]);
 }
@@ -756,6 +821,7 @@ export async function deleteFleetInspection(
 ) {
   if (user.role !== "owner" && user.role !== "admin")
     throw new Error("Only owners and admins can delete inspections.");
+  const expectedVersion=fleetReadVersion(vehicle,'vehicles');
   const inspection = vehicle.inspections.find((item) => item.id === inspectionId);
   if (!inspection?.items.some((item) => item.result === "Fail"))
     throw new Error("Failed inspection could not be found. Refresh and try again.");
@@ -776,7 +842,7 @@ export async function deleteFleetInspection(
     tone: "urgent",
   };
   await saveFleetRecords([
-    { collection: "vehicles", record },
+    { collection: "vehicles", record,expectedVersion },
     { collection: "activities", record: activityRecord },
   ]);
 }
@@ -790,6 +856,7 @@ export async function updateFleetVehicleFiles(
   user: FireOpsUser,
   activity: { action: string; detail: string },
 ) {
+  const expectedVersion=fleetReadVersion(vehicle,'vehicles');
   const record = {
     ...vehicle.source,
     id: vehicle.id,
@@ -809,7 +876,7 @@ export async function updateFleetVehicleFiles(
     tone: "complete",
   };
   await saveFleetRecords([
-    { collection: "vehicles", record },
+    { collection: "vehicles", record,expectedVersion },
     { collection: "activities", record: activityRecord },
   ]);
 }
@@ -922,14 +989,14 @@ export function refreshFleet(
     const motiveByVin=new Map(motiveSnapshots.map(item=>[item.vin.trim().toUpperCase(),item]));
     const vehicles = (results[0].data ?? [])
       .map((row) => normalizeVehicle(row as VehicleRow))
-      .map(vehicle=>({...vehicle,motive:motiveByFleetId.get(vehicle.id)??(vehicle.vin?motiveByVin.get(vehicle.vin.trim().toUpperCase()):undefined)}))
+      .map(vehicle=>rememberRead({...vehicle,motive:motiveByFleetId.get(vehicle.id)??(vehicle.vin?motiveByVin.get(vehicle.vin.trim().toUpperCase()):undefined)},revisionText(versions.vehicles.get(vehicle.id))))
       .sort((a, b) => a.name.localeCompare(b.name));
     const issues = (loaded.issues as FleetIssue[])
-      .map((issue) => ({
+      .map((issue) => rememberRead({
         ...issue,
         status: issue.status ?? "Open",
         updates: issue.updates ?? [],
-      }))
+      },revisionText(versions.issues.get(issue.id))))
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
     emit({
@@ -941,6 +1008,7 @@ export function refreshFleet(
       refreshing: false,
       error: null,
     });
+    refreshOfflineFleet();
   })().finally(() => {
     if (requestVersion !== version) return;
     request = null;
@@ -955,9 +1023,10 @@ export function refreshFleet(
   return request;
 }
 
-function selectCompany(companyId: string | null) {
-  if (companyId === activeCompanyId) return;
-  activeCompanyId = companyId;
+function selectCompany(companyId: string | null,userId:string|null,role:string|null) {
+  if (companyId === activeCompanyId&&userId===activeUserId&&role===activeRole) return;
+  activeCompanyId = companyId;activeUserId=userId;activeRole=role;
+  observedDeletes.clear();Object.values(versions).forEach(map=>map.clear());
   companyVersion += 1;
   refreshQueued = false;
   queuedRefreshShowsIndicator = false;
@@ -975,6 +1044,7 @@ function selectCompany(companyId: string | null) {
   });
   if (!companyId || !supabase) return;
 
+  const selectedVersion=companyVersion;
   channel = supabase.channel(`mobile-fleet:${companyId}`);
   (Object.entries(tables) as [FleetCollection, string][]).forEach(
     ([collection, table]) => {
@@ -988,7 +1058,7 @@ function selectCompany(companyId: string | null) {
             filter: `company_id=eq.${companyId}`,
           },
           (payload) => {
-            if (activeCompanyId !== companyId) return;
+            if (activeCompanyId !== companyId||companyVersion!==selectedVersion) return;
             fleetChangeSequence += 1;
             const row = (payload.eventType === "DELETE"
               ? payload.old
@@ -1001,6 +1071,7 @@ function selectCompany(companyId: string | null) {
               row.data,
               row.version,
             );
+            if(collection==='vehicles'||collection==='issues')refreshOfflineFleet();
           },
         ) ?? null;
     },
@@ -1015,10 +1086,13 @@ function subscribe(listener: () => void) {
 }
 
 export function useFleetVehicles(companyId: string | null) {
-  useEffect(() => selectCompany(companyId), [companyId]);
-  return useSyncExternalStore(
-    subscribe,
-    () => snapshot,
-    () => snapshot,
-  );
+  const {session,access}=useSession();
+  const member=access.status==='ready'&&access.value?.kind==='member'&&access.value.user.id===session?.user.id?access.value:null;
+  const userId=member?.user.id??null;const role=member?.user.role??null;const selectedCompany=member?companyId:null;
+  useEffect(() => selectCompany(selectedCompany,userId,role), [selectedCompany,userId,role]);
+  const getSnapshot=()=>{
+    if(selectedCompany!==activeCompanyId||userId!==activeUserId||role!==activeRole)return selectedCompany?loadingFleet:emptyFleet;
+    return visibleSnapshot;
+  };
+  return useSyncExternalStore(subscribe,getSnapshot,getSnapshot);
 }

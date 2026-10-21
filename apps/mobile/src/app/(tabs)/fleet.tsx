@@ -28,7 +28,7 @@ type FleetStyles = ReturnType<typeof createStyles>;
 type StatusFilter = 'All' | 'Ready' | 'Assigned' | 'Out of service';
 const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Out of service'];
 
-function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void }) {
+function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pendingLabel }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void;pendingLabel?:string }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
   const dotWarning = dotInspectionWarning(vehicle);
   const [loadedPhotoUrl, setLoadedPhotoUrl] = useState<string | null>(null);
@@ -67,6 +67,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
             {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null, vehicle.motive?.diagnostics?.length ? `${vehicle.motive.diagnostics.length} diagnostic ${vehicle.motive.diagnostics.length === 1 ? 'code' : 'codes'}` : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
+        {pendingLabel?<Text style={styles.location}>{pendingLabel}</Text>:null}
         {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {dotWarning.expiration}</Text> : null}
       </View>
       <View style={styles.rowEnd}>
@@ -77,7 +78,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress }: { ve
   );
 }
 
-function IssueRow({ issue, vehicleName, styles, onPress }: { issue: FleetIssue; vehicleName: string; styles: FleetStyles; onPress: () => void }) {
+function IssueRow({ issue, vehicleName, styles, onPress,pendingLabel }: { issue: FleetIssue; vehicleName: string; styles: FleetStyles; onPress: () => void;pendingLabel?:string }) {
   const high = issue.priority === 'Critical' || issue.priority === 'High';
   const markerTone = high ? styles.priorityHighMarker : issue.priority === 'Medium' ? styles.priorityMediumMarker : styles.priorityLowMarker;
   const labelTone = high ? styles.priorityHighLabel : issue.priority === 'Medium' ? styles.priorityMediumLabel : styles.priorityLowLabel;
@@ -97,6 +98,7 @@ function IssueRow({ issue, vehicleName, styles, onPress }: { issue: FleetIssue; 
         </View>
         <Text style={styles.issueDescription} numberOfLines={2}>{issue.description}</Text>
         <Text style={styles.issueMeta}>{vehicleName} · Reported by {issue.createdBy}</Text>
+        {pendingLabel?<Text style={styles.issueMeta}>{pendingLabel}</Text>:null}
       </View>
       <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' } as never} color={styles.icon.color} size={16} />
     </Pressable>
@@ -110,7 +112,7 @@ export default function FleetScreen() {
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const currentUser = access.value?.kind === 'member' ? access.value.user : null;
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { vehicles, issues, crew, loading, refreshing, error } = useFleetVehicles(companyId);
+  const { vehicles, issues, crew, loading, refreshing, error,pendingDetails } = useFleetVehicles(companyId);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('All');
   const normalizedQuery = query.trim().toLowerCase();
@@ -196,6 +198,7 @@ export default function FleetScreen() {
                   <VehicleRow
                     key={vehicle.id}
                     vehicle={vehicle}
+                    pendingLabel={pendingDetails?.[`vehicle:${vehicle.id}`]}
                     assignedName={crew.find((member) => member.id === vehicle.assignedTo)?.name}
                     issueCount={openIssues.filter((issue) => issue.vehicleId === vehicle.id).length}
                     styles={styles}
@@ -227,6 +230,7 @@ export default function FleetScreen() {
                   <IssueRow
                     key={issue.id}
                     issue={issue}
+                    pendingLabel={pendingDetails?.[`issue:${issue.id}`]}
                     vehicleName={vehicles.find((vehicle) => vehicle.id === issue.vehicleId)?.name ?? 'Unknown vehicle'}
                     styles={styles}
                     onPress={() => router.push(`/issue/${encodeURIComponent(issue.id)}` as never)}

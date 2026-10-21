@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SyncOperation, SyncRecord } from '@fireops/domain';
+import {createFleetEditGate} from './offline-fleet-model';
 import {createOfflineDetailEditor} from './offline-detail-editor';
 import {createOfflineSyncWorker} from './offline-sync-worker';
 import {
@@ -461,6 +462,21 @@ async function detailSetup(offline=true){
   return {...fixture,editor,disallow:()=>{allowed=false},setOffline:(value:boolean)=>{disconnected=value},reads:()=>reads,notices:()=>notices};
 }
 describe('atomic detail-edit boundary (UI adapters not enabled yet)',()=>{
+  it('reserves a record against in-flight legacy writes before atomic enqueue, with stable retry identity',async()=>{
+    const {session}=await setup();await session.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});let sequence=0;
+    const gate=createFleetEditGate(session,()=>true);const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+    const editor=createOfflineDetailEditor({session,canEdit:()=>true,offline:()=>true,id:()=>`id-${++sequence}`,changed:async()=>{},readRecord:async()=>null,reserve:(target,owner)=>gate.acquire([target],owner)});
+    const draft=await editor.prepare(target);const release=await gate.legacy([target],'legacy');
+    await expect(editor.save(draft,{notes:'mine'})).rejects.toThrow('progress');expect(await session.list()).toEqual([]);release();
+    expect((await editor.save(draft,{notes:'mine'})).operation.operationId).toBe('id-2');
+    await expect(gate.legacy([target],'later legacy')).rejects.toThrow('must sync');
+  });
+  it('bounds a stuck verified download even if session restoration ignores abort',async()=>{
+    const {session}=await setup();const readRecord=vi.fn(()=>new Promise(()=>{}));
+    const editor=createOfflineDetailEditor({session,canEdit:()=>true,offline:()=>false,id:()=> 'device',changed:async()=>{},readRecord});
+    const rejected=expect(editor.prepare({entityType:'vehicle',entityId:rawVehicle.id})).rejects.toThrow('interrupted');
+    await vi.waitFor(()=>expect(readRecord).toHaveBeenCalledOnce());editor.dispose();await rejected;expect(await session.listRecords()).toEqual([]);
+  });
   it('retains a saved edit and verified base across file close/reopen, then reconciles on reconnect',async()=>{
     const directory=mkdtempSync(join(tmpdir(),'fireops-details-'));cleanup.push(()=>rmSync(directory,{recursive:true,force:true}));
     const path=join(directory,'details.db');const first=database(path);const old=(await createOfflineOutbox(first.db)).activate(scope);

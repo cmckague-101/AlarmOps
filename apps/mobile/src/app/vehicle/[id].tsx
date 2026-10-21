@@ -164,7 +164,7 @@ export default function VehicleDetailScreen() {
   const companyId =
     access.value?.kind === "member" ? access.value.company.id : null;
   const user = access.value?.kind === "member" ? access.value.user : null;
-  const { vehicles, issues, crew, loading, error } =
+  const { vehicles, issues, crew, loading, error,pendingDetails } =
     useFleetVehicles(companyId);
   const vehicle = vehicles.find((item) => item.id === id);
   const photoUrl = useFleetFileUrl(vehicle?.photo);
@@ -512,6 +512,7 @@ export default function VehicleDetailScreen() {
 
         {vehicle ? (
           <>
+            {pendingDetails?.[`vehicle:${vehicle.id}`]?<Text accessibilityRole="alert" style={styles.stateText}>{pendingDetails[`vehicle:${vehicle.id}`]}</Text>:null}
             <View style={styles.identity}>
               {photoUrl ? (
                 <Pressable

@@ -1,5 +1,5 @@
 import {isSyncReviewUnavailable,type SyncOperation} from '@fireops/domain';
-import type {OfflineOutboxSession,OutboxEntry} from './offline-outbox';
+import type {CachedOfflineRecord,OfflineOutboxSession,OutboxEntry} from './offline-outbox';
 import {decodeCanonicalSyncRecord,decodeSyncOutcome,decodeSyncReceipt,offlineSyncAdapterBlock} from './offline-sync-protocol';
 
 export interface OfflineSyncTransport{
@@ -8,8 +8,8 @@ export interface OfflineSyncTransport{
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
 }
-export type OfflineSyncState={readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean};
-export const emptyOfflineSyncState:OfflineSyncState={entries:[],busy:false,loaded:false,error:null,setupPending:false};
+export type OfflineSyncState={readonly records:readonly CachedOfflineRecord[];readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean};
+export const emptyOfflineSyncState:OfflineSyncState={records:[],entries:[],busy:false,loaded:false,error:null,setupPending:false};
 export function offlineSyncErrorCode(error:unknown):string{return error&&typeof error==='object'?String((error as {code?:unknown}).code??''):''}
 const coded=(message:string,code:string)=>Object.assign(new Error(message),{code});
 const retryDelay=(attempts:number)=>Math.min(300_000,1000*2**Math.min(attempts,8));
@@ -37,9 +37,9 @@ export function createOfflineSyncWorker(options:{
   const ready=(version:number)=>valid(version)&&options.canRun();
   async function refresh(){
     const version=epoch;if(!valid(version))return;
-    try{const entries=await session.list();if(valid(version)){
+    try{const [entries,records]=await Promise.all([session.list(),options.canReadRecords?.()?session.listRecords():Promise.resolve([])]);if(valid(version)){
       const unfinished=entries.some(entry=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
-      emit({entries,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
+      emit({entries,records,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
     }}
     catch{if(valid(version))emit({loaded:true,error:'Device sync storage could not be read. Saved work has not been discarded.'})}
   }
