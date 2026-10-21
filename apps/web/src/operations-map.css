@@ -1,0 +1,60 @@
+.fire-map .operations-vector-map {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  font: inherit;
+}
+
+/* The old SVG map's sizing must not stretch map controls. */
+.fire-map .maplibregl-control-container svg {
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.operations-map-reset {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px #0002;
+}
+
+.operations-map-reset:focus-visible,
+.operations-map-error button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.fire-map .fire-map-state { z-index: 3; }
+
+.operations-map-error {
+  position: absolute;
+  bottom: 35px;
+  left: 12px;
+  right: 12px;
+  z-index: 4;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.operations-map-error button {
+  margin-left: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+}
