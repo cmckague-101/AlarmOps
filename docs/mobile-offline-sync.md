@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -134,7 +134,7 @@ Focused tests live in `packages/domain/src/offline-sync.test.ts`. Run `npm run t
 
 Tests use Node's real SQLite implementation (Node 22.13+), including file close/reopen, SQL-triggered write failures, account-switch races, and stale acknowledgments. Native entry-point tests mock only the native module boundary. Run `npm run test --workspace @fireops/mobile -- src/lib/offline-outbox.test.ts src/lib/offline-outbox-native.test.ts` and `npm run typecheck --workspace @fireops/mobile`.
 
-This layer deliberately does not start network workers, integrate session-provider lifecycle, cache attachment bytes, resolve owner/admin decisions, unblock/rebase dependent edits, or implement retention. It has no production feature callers yet. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
+This module remains the storage layer; native worker/session and review-result integration are added by the subsequent slice below. Feature save handlers do not enqueue work yet. Attachment persistence, dependent-edit rebasing, and retention are not implemented. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
 
 ### First fleet server safeguards (migration added, not deployed here)
 
@@ -171,7 +171,7 @@ Conflict rows are SELECT-only for currently authorized company managers on eithe
 
 `merge_fleet_sync_fields` is the SQL counterpart to the pure domain merge. Both consume `packages/domain/test-fixtures/offline-sync-merge.json` to check merge parity, including missing/null values, field groups and indivisible nested data. The new `supabase/tests/fleet-sync-conflicts.test.mjs` also tests real PostgreSQL authorization, forged bases, multiple candidates/devices, provenance, replay, deletions, and rollback.
 
-Approval and decision handling are added by the subsequent review migration below. Dashboard Alerts/review UI are added by the subsequent client slice below; mobile workers and attachment persistence are still pending. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
+Approval and decision handling are added by the subsequent review migration below. Dashboard Alerts/review UI are added by the subsequent client slice below; native workers are added below, while attachment persistence remains pending. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
 
 ### Guarded review, approval and submitter outcomes (migration added)
 
@@ -195,7 +195,7 @@ Shared `FleetSyncReview`, request/decision/outcome types and `suggestSyncReviewC
 
 Tests: `supabase/tests/fleet-sync-review.test.mjs` covers stale/competing reviews, idempotency, final-step rollback, field selection, deletion safety, permissions, provenance and dependency outcomes. `packages/domain/src/offline-sync-review.test.ts` checks safe client defaults. PGlite still does not replace target-version, full-migration-chain or real multi-session lock/deadlock validation. Apply this migration after the two preceding fleet sync migrations, using the same role/ownership prerequisites.
 
-The frontend review endpoints are now connected by the client slice below. Submitter outcome notices, mobile workers, and the remaining feature adapters are still pending.
+The frontend review endpoints are now connected by the client slice below. Native workers and submitter outcome notices are added below; the remaining feature adapters are still pending.
 
 ### Dashboard Alerts and online review screens (implemented, not deployed)
 
@@ -208,6 +208,28 @@ The frontend review endpoints are now connected by the client slice below. Submi
 
 Tests include shared controller validation/pagination/scope/race/retry tests, web server-rendered markup unit tests (not visual tests), and native transport/authorization/offline guard tests without loading a native UI. The user still performs visual UI testing.
 
+### Native worker, live reconciliation and sync notices (implemented, not deployed)
+
+`OfflineSyncProvider` is mounted inside the native session provider. It activates one user/company-scoped SQLite session only after restored identity and downloaded company access agree. Demo mode, system-admin company selection without a selected company, native account mismatches and web do not start workers. Foreground/reconnect resumes recover interrupted attempts; backgrounding, offline transitions, sign-out and identity/company changes pause or stop delivery and fence late results. Active pending work is checked every 15 seconds; background execution is not promised.
+
+`apps/mobile/src/lib/offline-sync-worker.ts` is a single-flight worker with bounded request timeouts, abort signals, durable retry backoff and stable server operation IDs. Restart/foreground recovery resets interrupted leases and old wall-clock retry deadlines without changing operation identity or losing acknowledgments. It never automatically sends unsupported commands, assignments, files, or edits needing dependency rebase. The current transport targets only the completed manager vehicle/issue scalar-update endpoint. Unauthorized/invalid work is preserved with an actionable blocked state, not discarded or overwritten.
+
+The native outbox now migrates **v1 → v2** transactionally, preserving work and projections. It adds durable `delivery_json`, `review_outcome_json`, and completed-notice dismissal metadata. Delivery is persisted **before** verification. If the server accepted a change but catch-up failed, subsequent attempts skip re-upload and only retry the authoritative read. If even delivery persistence failed, retry uses the original operation ID so the server deduplicates the uncertain mutation. Storage failures never report a successful sync.
+
+`supabase/migrations/20261112000100_fleet_sync_record_read.sql` adds `get_fleet_sync_record(company, entity, record)` for the current fleet adapter. It uses the same non-bypass executor and current manager checks, returning a raw record/revision or a ledger-proven tombstone. An absent/inaccessible row without a proven deletion is denied, never interpreted as a deletion. The transport uses an uncached POST RPC rather than the existing GET response-cache fallback, binds each call to that account's SDK session token, and checks identity/readiness again after asynchronous session restoration.
+
+Applied upload receipts are not marked synced until the authoritative returned revision is at least the acknowledged revision. Canonical results update only the matching operation's local projection; newer pending overlays survive. This is **per-operation reconciliation**, not complete company-wide download/change-feed catch-up or the normalized offline read model. Those remain prerequisites for workflow rollout.
+
+Awaiting-review operations poll only the submitting user's authenticated outcome endpoint. Outcomes are persisted before reconciliation. Kept proposals settle; partly kept/rejected proposals display truthful outcomes and are never automatically resubmitted. Dependent edits remain blocked pending explicit rebase. A verified review decision can still settle an operation after demotion: if current raw-record access is denied, remove the matching pending overlay rather than cache forbidden data or fabricate a deleted record. Original operation/proposal history is retained. Newer dependent overlays are never erased by their parent's outcome.
+
+The root native sync notice and **More → Saved changes & sync** show saved-on-device, uploading/verification, awaiting-review, blocked, synced, partly-kept and not-selected states. Completed results persist until explicitly dismissed; dismissal hides notices, not operation history. The details screen can reveal completed device history. Account/company transitions hide the old scope immediately, and the UI distinguishes storage/loading errors from an empty queue.
+
+Native sign-out checks unresolved work across **all companies for that user**. Users can stay signed in or explicitly keep account-bound device work and sign out; no queue is silently deleted. The warning states that work not uploaded has no server backup. If sync storage cannot be checked, users may explicitly sign out anyway rather than being forced to stay signed in. The guard rechecks restored identity before/after confirmation, pauses the worker during sign-out, and cannot log out or resume a replacement account. Web sign-out does not acquire offline storage behavior.
+
+Focused tests cover real SQLite migration/restart/leases, staged acknowledgments, timeout/pause/account races, canonical revision/identity checks, review privacy/outcomes, unsupported/dependent operations, final storage failures, notices, sign-out retention and token-bound POST RPCs. The server suite verifies live revisions, deletion proof, role/company scope and unsupported-table denial. No native UI, application server or visual testing was launched.
+
+**Still not enabled:** feature save handlers do not enqueue, attachment bytes are not persisted, normalized/raw downloaded bases and full catch-up are not connected to offline editing, and sensitive-data encryption/retention plus dependent-edit rebase require implementation. Existing mobile mutations and the global offline banner therefore remain read-only. This slice must not be advertised as all-feature offline mode.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -215,10 +237,11 @@ You do not need to push the site or apply Supabase changes while implementation 
 1. `20261109000100_fleet_sync_safeguards.sql`
 2. `20261110000100_fleet_sync_conflicts.sql`
 3. `20261111000100_fleet_sync_review.sql`
+4. `20261112000100_fleet_sync_record_read.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
-The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: durable queue/worker, attachment and feature adapters, submitter notices and catch-up are not connected yet. Deploying these review screens is not an announcement that all-feature offline mode is complete.
+The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: the worker and notices are connected, but save handlers, attachment persistence, raw-base/normalized read models and full catch-up are not. Deploying these review screens is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
@@ -244,7 +267,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Connect native session-scoped synchronization workers and authoritative catch-up to the durable outbox, with truthful submitter status/outcome notices; enable only completed adapters.
+- Connect raw downloaded bases, normalized reads and save handlers to the durable native queue for completed adapters, preserving local overlays and truthful per-workflow availability. Expose enqueue through the active provider-owned session; do not create competing `activate()` handles per save. Enforce monotonic downloaded revisions independently of historical receipt snapshots. Then enable and test those workflows end-to-end.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.

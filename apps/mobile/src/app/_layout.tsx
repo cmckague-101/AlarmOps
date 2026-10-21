@@ -12,6 +12,7 @@ import {Pressable,StyleSheet,Text,View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppProviders} from '@/providers/app-providers';
+import {OfflineSyncNotice} from '@/components/offline-sync-notice';
 import {useNetworkStatus} from '@/providers/network-provider';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
@@ -32,6 +33,7 @@ function RootNavigator(){
         <Pressable accessibilityRole="button" accessibilityLabel="Exit demo and discard changes" onPress={()=>void signOut().then(()=>{router.dismissAll();router.replace('/sign-in')})} style={styles.exitDemo}><Text style={{color:theme.ember,fontWeight:'700'}}>Exit demo</Text></Pressable>
       </View>:null}
       {isOffline&&!demoMode?<View accessibilityRole="alert" style={[styles.offlineNotice,{paddingTop:insets.top,backgroundColor:theme.warning}]}><Text style={styles.offlineText}>Offline · Read-only mode · Showing saved data</Text></View>:null}
+      <OfflineSyncNotice topInset={!isOffline&&!demoMode?insets.top:0}/>
       <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
         <Stack.Screen name="index"/>
         <Stack.Screen name="sign-in"/>

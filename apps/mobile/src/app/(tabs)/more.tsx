@@ -1,6 +1,6 @@
 import {isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
-import {Alert,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
+import {Alert,Platform,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
@@ -20,6 +20,7 @@ const sections=[
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
   {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
   {label:'Audit log',path:'/audit-log',ios:'clock.fill',android:'history',color:'#3F6478',ownerOnly:true},
+  {label:'Saved changes & sync',path:'/sync-status',ios:'arrow.triangle.2.circlepath',android:'sync',color:'#3F6478',nativeOnly:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
 ] as const;
 
@@ -27,7 +28,7 @@ export default function More(){
   const router=useRouter();
   const theme=useFireOpsTheme();
   const {width,fontScale}=useWindowDimensions();
-  const {access,signOut}=useSession();
+  const {access,signOut,demoMode}=useSession();
   const member=access.value?.kind==='member'?access.value:null;
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
@@ -35,7 +36,7 @@ export default function More(){
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
   const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
-  const visible=sections.filter(section=>!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'));
+  const visible=sections.filter(section=>(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="More" showTitle={false}>

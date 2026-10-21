@@ -1,4 +1,5 @@
-import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt } from '@fireops/domain';
+import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome } from '@fireops/domain';
+import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
 export type OutboxSqlValue = string | number | null;
@@ -21,6 +22,9 @@ export type OutboxEntry = {
   readonly attempts: number;
   readonly error: string | null;
   readonly receipt: OutboxReceipt | null;
+  readonly delivery: OutboxReceipt | null;
+  readonly reviewOutcome: SyncReviewOutcome | null;
+  readonly noticeDismissed: boolean;
 };
 export type OutboxReceipt = SyncServerReceipt;
 export type OutboxAttempt = {
@@ -38,8 +42,10 @@ export type OutboxProjection = {
 };
 
 type Row = {
+  user_id: string; company_id: string; entity_type: string; entity_id: string;
   sequence: number; operation_id: string; operation_json: string; projection_json: string;
   status: SyncOperationStatus; attempts: number; error: string | null; receipt_json: string | null;
+  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number;
 };
 
 const schema = `
@@ -124,10 +130,27 @@ function encodeOperation(operation: SyncOperation, scope: OutboxScope): string {
   return JSON.stringify(operation);
 }
 function entry(row: Row): OutboxEntry {
+  const operation = JSON.parse(row.operation_json) as SyncOperation;
+  encodeOperation(operation, {userId:row.user_id,companyId:row.company_id});
+  if (operation.operationId !== row.operation_id || operation.entityType !== row.entity_type || operation.entityId !== row.entity_id) throw new Error('Saved offline operation identity is inconsistent.');
+  record(JSON.parse(row.projection_json));
+  const receipt = row.receipt_json ? JSON.parse(row.receipt_json) as SyncServerReceipt : null;
+  if (receipt) {
+    createSyncPatch({}, receipt as unknown as SyncRecord); timestamp(receipt.receivedAt);
+    if (receipt.kind === 'applied') { required(receipt.revision, 'receipt revision'); record(receipt.record); }
+    else if (receipt.kind === 'awaiting_review') required(receipt.conflictId, 'conflict ID');
+    else throw new Error('Invalid saved sync receipt.');
+  } else if (row.receipt_json) throw new Error('Invalid saved sync receipt.');
+  const delivery = row.delivery_json ? decodeSyncReceipt(operation, JSON.parse(row.delivery_json)) : null;
+  const conflict = delivery?.kind === 'awaiting_review' ? delivery : receipt?.kind === 'awaiting_review' ? receipt : null;
+  if (row.review_outcome_json && !conflict) throw new Error('Saved review has no matching conflict.');
+  const reviewOutcome = row.review_outcome_json ? decodeSyncOutcome(operation, conflict!.conflictId, JSON.parse(row.review_outcome_json)) : null;
+  if (row.review_outcome_json && !reviewOutcome) throw new Error('Invalid saved review outcome.');
   return {
-    sequence: row.sequence, operation: JSON.parse(row.operation_json), projection: JSON.parse(row.projection_json),
+    sequence: row.sequence, operation, projection: JSON.parse(row.projection_json),
     status: row.status, attempts: row.attempts, error: row.error,
-    receipt: row.receipt_json === null ? null : JSON.parse(row.receipt_json),
+    receipt, delivery, reviewOutcome,
+    noticeDismissed: row.notice_dismissed === 1,
   };
 }
 
@@ -141,8 +164,18 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
   await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   await db.withExclusiveTransactionAsync(async (tx) => {
     const version = await tx.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    if (version?.user_version === 0) await tx.execAsync(schema);
-    else if (version?.user_version !== 1) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    let current = version?.user_version;
+    if (current === 0) { await tx.execAsync(schema); current = 1; }
+    if (current === 1) {
+      await tx.execAsync(`
+        ALTER TABLE offline_operations ADD COLUMN delivery_json TEXT;
+        ALTER TABLE offline_operations ADD COLUMN review_outcome_json TEXT;
+        ALTER TABLE offline_operations ADD COLUMN notice_dismissed INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 2;
+      `);
+      current = 2;
+    }
+    if (current !== 2) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -154,6 +187,14 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
 
   return {
     pause() { generation += 1; },
+    /** For the authenticated sign-out guard, across all of that user's companies. */
+    countUnresolvedForUser(userId: string): Promise<number> {
+      required(userId, 'user ID');
+      return serialize(async () => (await db.getFirstAsync<{count:number}>(
+        `SELECT count(*) AS count FROM offline_operations WHERE user_id = ? AND
+         (status IN ('pending','syncing','awaiting_review') OR (status = 'blocked' AND review_outcome_json IS NULL))`, userId,
+      ))?.count ?? 0);
+    },
     activate(scope: OutboxScope) {
       required(scope.userId, 'user ID');
       required(scope.companyId, 'company ID');
@@ -288,7 +329,93 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           });
         },
 
-        /** Only call with a validated response from the future authenticated sync adapter. */
+        /** Persist acceptance BEFORE authoritative catch-up; a restart never needs to re-upload it. */
+        recordDelivery(attempt: OutboxAttempt, response: SyncServerReceipt): Promise<boolean> {
+          const fence = {...attempt};
+          createSyncPatch({}, response as unknown as SyncRecord);
+          const responseCopy = JSON.parse(JSON.stringify(response)) as SyncServerReceipt;
+          return write(async tx => {
+            const row = await tx.getFirstAsync<Row>(
+              `SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ?
+               AND status = 'syncing' AND attempt_token = ? AND attempts = ?`, ...ids, fence.operationId, fence.token, fence.number,
+            );
+            if (!row) return false;
+            const receipt = decodeSyncReceipt(JSON.parse(row.operation_json), responseCopy);
+            const encoded = JSON.stringify(receipt);
+            if (row.delivery_json && !sameJson(row.delivery_json, encoded)) throw new Error('Sync acknowledgment changed for the same operation.');
+            if (receipt.kind === 'awaiting_review') {
+              await tx.runAsync(`UPDATE offline_operations SET delivery_json = ?, receipt_json = ?, status = 'awaiting_review',
+                attempt_token = NULL, lease_until = NULL, error = NULL, notice_dismissed = 0
+                WHERE user_id = ? AND company_id = ? AND operation_id = ?`, encoded, encoded, ...ids, fence.operationId);
+            } else {
+              await tx.runAsync('UPDATE offline_operations SET delivery_json = ? WHERE user_id = ? AND company_id = ? AND operation_id = ?', encoded, ...ids, fence.operationId);
+            }
+            return true;
+          });
+        },
+
+        recordReviewOutcome(operationId: string, response: SyncReviewOutcome): Promise<boolean> {
+          createSyncPatch({}, response as unknown as SyncRecord);
+          const copy = JSON.parse(JSON.stringify(response));
+          return write(async tx => {
+            const row = await tx.getFirstAsync<Row>("SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ? AND status = 'awaiting_review'", ...ids, operationId);
+            if (!row) return false;
+            const receipt = JSON.parse(row.receipt_json!) as SyncServerReceipt;
+            if (receipt.kind !== 'awaiting_review') throw new Error('Missing conflict acknowledgment.');
+            const outcome = decodeSyncOutcome(JSON.parse(row.operation_json), receipt.conflictId, copy);
+            if (!outcome) throw new Error('Missing review outcome.');
+            const encoded = JSON.stringify(outcome);
+            if (row.review_outcome_json && !sameJson(row.review_outcome_json, encoded)) throw new Error('Review decision changed.');
+            await tx.runAsync('UPDATE offline_operations SET review_outcome_json = ? WHERE user_id = ? AND company_id = ? AND operation_id = ?', encoded, ...ids, operationId);
+            return true;
+          });
+        },
+
+        /** No canonical snapshot means access was denied: remove the overlay, never invent a deletion. */
+        finishReview(operationId: string, canonical?: CanonicalSyncRecord): Promise<boolean> {
+          if (canonical) createSyncPatch({}, canonical as unknown as SyncRecord);
+          const snapshot = canonical ? JSON.parse(JSON.stringify(canonical)) : undefined;
+          return write(async tx => {
+            const row = await tx.getFirstAsync<Row>("SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ? AND status = 'awaiting_review'", ...ids, operationId);
+            if (!row || !row.review_outcome_json) return false;
+            const operation = JSON.parse(row.operation_json) as SyncOperation;
+            const receipt = JSON.parse(row.receipt_json!) as SyncServerReceipt;
+            if (receipt.kind !== 'awaiting_review') throw new Error('Missing conflict acknowledgment.');
+            const outcome = decodeSyncOutcome(operation, receipt.conflictId, JSON.parse(row.review_outcome_json))!;
+            const current = snapshot ? decodeCanonicalSyncRecord(operation, snapshot, outcome.revision) : null;
+            const status = outcome.outcome === 'kept' ? 'synced' : outcome.outcome === 'partially_kept' ? 'blocked' : 'not_selected';
+            await tx.runAsync(`UPDATE offline_operations SET status = ?, error = ?, notice_dismissed = 0
+              WHERE user_id = ? AND company_id = ? AND operation_id = ?`, status,
+              outcome.outcome === 'partially_kept' ? 'Reviewed — some changes were kept. Dependent edits need rebase.' : null, ...ids, operationId);
+            if (current) {
+              await tx.runAsync(`UPDATE offline_projections SET record_json = ?, operation_id = NULL
+                WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ? AND operation_id = ?`,
+                JSON.stringify(current.record), ...ids, operation.entityType, operation.entityId, operationId);
+            } else {
+              await tx.runAsync('DELETE FROM offline_projections WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ? AND operation_id = ?',
+                ...ids, operation.entityType, operation.entityId, operationId);
+            }
+            return true;
+          });
+        },
+
+        /** Only after the previous worker is paused/stopped; IDs and saved delivery receipts are retained. */
+        recoverInterrupted(): Promise<void> {
+          return write(async tx => { await tx.runAsync(`UPDATE offline_operations SET status = 'pending', retry_at = 0, attempt_token = NULL, lease_until = NULL
+            WHERE user_id = ? AND company_id = ? AND status IN ('pending','syncing')`, ...ids); });
+        },
+
+        retryBlocked(operationId: string): Promise<boolean> {
+          return write(async tx => (await tx.runAsync(`UPDATE offline_operations SET status = 'pending', retry_at = 0, error = NULL
+            WHERE user_id = ? AND company_id = ? AND operation_id = ? AND status = 'blocked' AND review_outcome_json IS NULL`, ...ids, operationId)).changes === 1);
+        },
+
+        dismissCompletedNotices(): Promise<void> {
+          return write(async tx => { await tx.runAsync(`UPDATE offline_operations SET notice_dismissed = 1 WHERE user_id = ? AND company_id = ?
+            AND (status IN ('synced','not_selected') OR (status = 'blocked' AND review_outcome_json IS NOT NULL))`, ...ids); });
+        },
+
+        /** Call with a validated receipt plus a fresh canonical snapshot before reporting applied work synced. */
         finishAttempt(attempt: OutboxAttempt, result: OutboxDeliveryResult): Promise<boolean> {
           required(attempt.operationId, 'operation ID'); required(attempt.token, 'attempt token');
           if (!Number.isSafeInteger(attempt.number) || attempt.number < 1) throw new Error('Invalid attempt number.');
@@ -313,7 +440,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const receipt = saved.kind === 'applied' || saved.kind === 'awaiting_review' ? JSON.stringify(saved) : null;
             const error = saved.kind === 'retry' || saved.kind === 'blocked' ? saved.error : null;
             await tx.runAsync(
-              `UPDATE offline_operations SET status = ?, retry_at = ?, error = ?, receipt_json = ?, attempt_token = NULL, lease_until = NULL
+              `UPDATE offline_operations SET status = ?, retry_at = ?, error = ?, receipt_json = ?, attempt_token = NULL, lease_until = NULL, notice_dismissed = 0
                WHERE user_id = ? AND company_id = ? AND operation_id = ?`,
               status, saved.kind === 'retry' ? saved.retryAt : 0, error, receipt, ...ids, fence.operationId,
             );
@@ -333,3 +460,6 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
     },
   };
 }
+
+export type OfflineOutboxStore = Awaited<ReturnType<typeof createOfflineOutbox>>;
+export type OfflineOutboxSession = ReturnType<OfflineOutboxStore['activate']>;

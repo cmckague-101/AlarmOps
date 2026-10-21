@@ -90,9 +90,12 @@ describe('durable mobile outbox', () => {
     const old = (await createOfflineOutbox(first.db)).activate(scope);
     await old.enqueue(operation(), { name: 'Engine 1' });
     const interrupted = await old.claimNext('attempt-1', 100, 50);
+    const delivered={kind:'applied' as const,receivedAt,revision:'2',record:{id:'vehicle-1',name:'Server accepted'}};
+    await old.recordDelivery(interrupted!.attempt,delivered);
     first.close();
     const second = database(path);
     const restored = (await createOfflineOutbox(second.db)).activate(scope);
+    expect((await restored.list())[0].delivery).toEqual(delivered);
     expect(await restored.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: { name: 'Engine 1' } });
     expect(await restored.claimNext('too-soon', 149)).toBeNull();
     const retry = await restored.claimNext('attempt-2', 150);
@@ -101,6 +104,9 @@ describe('durable mobile outbox', () => {
     expect(await restored.finishAttempt(interrupted!.attempt, applied())).toBe(false);
     expect(await restored.finishAttempt(retry!.attempt, applied())).toBe(true);
     expect((await restored.list())[0].status).toBe('synced');
+    await restored.dismissCompletedNotices();second.close();
+    const third=database(path);const reopened=(await createOfflineOutbox(third.db)).activate(scope);
+    expect((await reopened.list())[0]).toMatchObject({status:'synced',noticeDismissed:true});
   });
 
   it('preserves data across scoped sessions without exposing it to another user or company', async () => {
@@ -319,10 +325,65 @@ describe('durable mobile outbox', () => {
 
   it('rejects unsupported database versions without modifying existing data', async () => {
     const { db, sqlite } = database();
-    sqlite.exec('PRAGMA user_version = 2; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    sqlite.exec('PRAGMA user_version = 3; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
     await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
     expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+  });
+
+  it('upgrades v1 storage without losing queued work, projections or ordering', async () => {
+    const {session,store,sqlite,db}=await setup();await session.enqueue(operation(),{name:'Saved'});store.pause();
+    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; PRAGMA user_version=1;');
+    const restored=(await createOfflineOutbox(db)).activate(scope);
+    expect((await restored.list())[0]).toMatchObject({status:'pending',delivery:null,reviewOutcome:null,noticeDismissed:false});
+    expect(await restored.getProjection('vehicle','vehicle-1')).toEqual({operationId:'op-1',record:{name:'Saved'}});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:2});
+  });
+
+  it('persists delivery before catch-up and retains it across retries without replacing local data', async () => {
+    const {session}=await setup();const op={...operation(),mutation:{kind:'update' as const,baseRevision:'1',base:{id:'vehicle-1',notes:'Old'},patch:{notes:{present:true as const,value:'New'}}}};
+    await session.enqueue(op,{id:'vehicle-1',notes:'New'});const first=await session.claimNext('first',0);
+    const delivered={kind:'applied' as const,receivedAt,revision:'2',record:{id:'vehicle-1',notes:'Accepted'}};
+    await session.recordDelivery(first!.attempt,delivered);
+    expect((await session.list())[0]).toMatchObject({status:'syncing',delivery:delivered,receipt:null});
+    expect((await session.getProjection('vehicle','vehicle-1'))?.operationId).toBe('op-1');
+    await session.finishAttempt(first!.attempt,{kind:'retry',retryAt:100,error:'Refresh unavailable'});
+    const retry=await session.claimNext('retry',100);expect(retry?.entry.delivery).toEqual(delivered);
+    await session.finishAttempt(retry!.attempt,{kind:'applied',receivedAt,revision:'3',record:{id:'vehicle-1',notes:'Latest'}});
+    await session.dismissCompletedNotices();expect((await session.list())[0]).toMatchObject({status:'synced',noticeDismissed:true,delivery:delivered});
+    expect(await session.finishAttempt(retry!.attempt,delivered)).toBe(false);
+  });
+
+  it('records a verified review outcome without inventing a deleted or readable canonical record', async () => {
+    const {session}=await setup();const op={...operation(),mutation:{kind:'update' as const,baseRevision:'1',base:{id:'vehicle-1',notes:'Old'},patch:{notes:{present:true as const,value:'New'}}}};
+    await session.enqueue(op,{id:'vehicle-1',notes:'New'});const claim=await session.claimNext('review',0);
+    await session.recordDelivery(claim!.attempt,{kind:'awaiting_review',receivedAt,conflictId:'conflict-1'});
+    const result={kind:'reviewed' as const,decisionId:'decision-1',conflictId:'conflict-1',operationId:'op-1',decidedAt:receivedAt,revision:'3',outcome:'kept' as const,keptFields:['notes'],discardedFields:[]};
+    await session.recordReviewOutcome('op-1',result);
+    expect((await session.list())[0]).toMatchObject({status:'awaiting_review',reviewOutcome:result});
+    await session.finishReview('op-1');expect((await session.list())[0].status).toBe('synced');
+    expect(await session.getProjection('vehicle','vehicle-1')).toBeNull();
+    expect(await session.finishReview('op-1')).toBe(false);
+  });
+
+  it('partly kept work cannot be retried and its decision cannot erase a newer dependent overlay', async () => {
+    const {session,store}=await setup();const op={...operation(),mutation:{kind:'update' as const,baseRevision:'1',base:{id:'vehicle-1',notes:'Old'},patch:{notes:{present:true as const,value:'New'},vin:{present:true as const,value:'VIN'}}}};
+    await session.enqueue(op,{id:'vehicle-1',notes:'New',vin:'VIN'});
+    await session.enqueue({...op,operationId:'child',dependsOn:['op-1']},{id:'vehicle-1',notes:'Later'});
+    const claim=await session.claimNext('review',0);await session.recordDelivery(claim!.attempt,{kind:'awaiting_review',receivedAt,conflictId:'conflict-1'});
+    await session.recordReviewOutcome('op-1',{kind:'reviewed',decisionId:'decision-1',conflictId:'conflict-1',operationId:'op-1',decidedAt:receivedAt,revision:'3',outcome:'partially_kept',keptFields:['notes'],discardedFields:['vin']});
+    await session.finishReview('op-1',{revision:'4',record:{id:'vehicle-1',notes:'Confirmed'}});
+    expect(await session.retryBlocked('op-1')).toBe(false);expect(await session.claimNext('child',100)).toBeNull();
+    expect(await session.getProjection('vehicle','vehicle-1')).toEqual({operationId:'child',record:{id:'vehicle-1',notes:'Later'}});
+    expect(await store.countUnresolvedForUser(scope.userId)).toBe(1);
+    await session.dismissCompletedNotices();expect((await session.list())[0]).toMatchObject({status:'blocked',noticeDismissed:true});
+  });
+
+  it('sign-out counts include pending work across that user’s companies, but not another account', async () => {
+    const {session,store}=await setup();await session.enqueue(operation(),{});
+    const second=store.activate({...scope,companyId:'company-2'});await second.enqueue({...operation(),companyId:'company-2'},{});
+    const other=store.activate({...scope,userId:'other'});await other.enqueue({...operation(),provenance:{...operation().provenance,userId:'other'}},{});
+    expect(await store.countUnresolvedForUser(scope.userId)).toBe(2);expect(await store.countUnresolvedForUser('other')).toBe(1);
   });
 
   it('validates stored mutation shapes and projections instead of silently losing JSON data', async () => {

@@ -4,7 +4,7 @@ import { createOfflineOutbox } from './offline-outbox';
 
 let storePromise: ReturnType<typeof createOfflineOutbox> | null = null;
 
-/** Lazy native-only store. Feature adapters/session lifecycle will opt in later. */
+/** Lazy native-only store; the session provider owns its active worker handle. */
 export function getNativeOfflineOutbox() {
   if (Platform.OS === 'web') throw new Error('Offline editing is only supported on iOS and Android.');
   storePromise ??= (async () => {

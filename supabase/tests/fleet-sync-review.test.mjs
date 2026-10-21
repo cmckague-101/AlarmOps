@@ -273,6 +273,21 @@ test('outcomes are metadata-only, scoped to the submitter, and remain available 
   await assert.rejects(outcome(candidate.op.operationId),error=>error.code==='42501');
 });
 
+test('authoritative record reads return fresh revisions and only ledger-proven deletions',async()=>{
+  const read=()=>asActor(owner,async()=>(await row('select public.get_fleet_sync_record($1,$2,$3) result',[company,'vehicle',recordId])).result);
+  assert.deepEqual(await read(),{revision:'1',record:base});
+  await online({...base,notes:'Latest'});assert.deepEqual(await read(),{revision:'2',record:{...base,notes:'Latest'}});
+  await asActor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',recordId,event:'delete',expectedVersion:2}])]));
+  assert.deepEqual(await read(),{revision:'3',record:null});
+  await assert.rejects(asActor(owner,()=>db.query('select public.get_fleet_sync_record($1,$2,$3)',[company,'vehicle',randomUUID()])),error=>error.code==='42501');
+});
+
+test('record reconciliation rechecks company/role permissions and refuses unsupported tables',async()=>{
+  for(const actor of [crew,outsider,null])await assert.rejects(asActor(actor,()=>db.query('select public.get_fleet_sync_record($1,$2,$3)',[company,'vehicle',recordId])),error=>error.code==='42501');
+  await assert.rejects(asActor(owner,()=>db.query('select public.get_fleet_sync_record($1,$2,$3)',[company,'crew',recordId])),error=>error.code==='22023');
+  await assert.rejects(asActor(owner,()=>db.query('select public.get_fleet_sync_record($1,$2,$3)',[otherCompany,'vehicle',recordId])),error=>error.code==='42501');
+});
+
 test('company deletion cascades review audits and outcomes without resurrecting any data',async()=>{
   await online({...base,notes:'Online'});await pending();await approve(approval(await review(),{notes:'current'}));
   await db.query('delete from public.companies where id=$1',[company]);

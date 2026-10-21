@@ -8,12 +8,14 @@ npm run test:db-sync
 
 Runs embedded PostgreSQL (PGlite, a development-only dependency) against
 `20261109000100_fleet_sync_safeguards.sql`,
-`20261110000100_fleet_sync_conflicts.sql`, and
-`20261111000100_fleet_sync_review.sql`, a minimal auth/company fixture, and
+`20261110000100_fleet_sync_conflicts.sql`,
+`20261111000100_fleet_sync_review.sql`, and
+`20261112000100_fleet_sync_record_read.sql`, a minimal auth/company fixture, and
 production fleet RLS policies/functions. Checks real grants, RLS, triggers,
 transaction rollback, revision fingerprints/tombstones, idempotent receipts,
 verified field merges, persistent conflict/provenance records, guarded approvals,
-immutable decision history, per-submitter outcomes, and dependency acceptance.
+immutable decision history, per-submitter outcomes, dependency acceptance, and
+authoritative record/tombstone reads for native reconciliation.
 
 The SQL merge and domain unit tests share
 `packages/domain/test-fixtures/offline-sync-merge.json` at the repository root.

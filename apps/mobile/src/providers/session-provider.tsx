@@ -6,6 +6,8 @@ import {demoCompany,demoUser} from '@/lib/demo-backend';
 import {unregisterFromPushNotifications} from '@/lib/notifications';
 import {loadAccountAccess,setOfflineCacheUser,storeAccountAccess} from '@/lib/offline-cache';
 import {checkIsOffline,isOffline} from './network-provider';
+import {prepareOfflineSyncSignOut} from '../lib/offline-sync-sign-out';
+import {pauseOfflineSyncForSignOut} from '../lib/offline-sync-session';
 
 export type CompanyAccess={
   kind:'member';
@@ -125,9 +127,16 @@ export function SessionProvider({children}:PropsWithChildren){
       return;
     }
     if(!supabase)return;
-    try{await unregisterFromPushNotifications()}catch(error){console.warn('Push notification cleanup failed:',error)}
-    await supabase.auth.signOut(isOffline()?{scope:'local'}:undefined);
-  },[demoAccess]);
+    const client=supabase;const actor=sessionUserId;
+    const isCurrent=async()=>{try{const {data,error}=await client.auth.getSession();return !error&&data.session?.user.id===actor}catch{return false}};
+    if(actor&&!await prepareOfflineSyncSignOut(actor,isCurrent))return;
+    const resume=actor?pauseOfflineSyncForSignOut(actor):()=>{};
+    try{
+      try{await unregisterFromPushNotifications()}catch(error){console.warn('Push notification cleanup failed:',error)}
+      if(actor&&!await isCurrent())return;
+      await client.auth.signOut(isOffline()?{scope:'local'}:undefined);
+    }finally{resume()}
+  },[demoAccess,sessionUserId]);
   const selectCompany=useCallback(async(company:AdminCompany)=>{
     if(!supabase||access.value?.kind!=='admin')throw new Error('Administrator access is unavailable.');
     const {error}=await supabase.rpc('admin_access_company',{target_company_id:company.id});

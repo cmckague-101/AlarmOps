@@ -19,6 +19,7 @@ export async function loadFleetSyncSchema(db, beforeSafeguards = async () => {})
   await db.exec(migration('20261109000100_fleet_sync_safeguards'));
   await db.exec(migration('20261110000100_fleet_sync_conflicts'));
   await db.exec(migration('20261111000100_fleet_sync_review'));
+  await db.exec(migration('20261112000100_fleet_sync_record_read'));
   await db.exec(`create trigger sync_test_side_effect after insert or update or delete on public.fleet_vehicles
     for each row execute function public.sync_test_effect()`);
 }
