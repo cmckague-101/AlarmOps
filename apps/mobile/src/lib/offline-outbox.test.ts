@@ -1,0 +1,348 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { SyncOperation, SyncRecord } from '@fireops/domain';
+import {
+  createOfflineOutbox, type OutboxDatabase, type OutboxSqlConnection, type OutboxSqlValue,
+} from './offline-outbox';
+
+const scope = { userId: 'user-1', companyId: 'company-1' };
+const receivedAt = '2026-01-01T10:00:00.000Z';
+function operation(id = 'op-1', entityId = 'vehicle-1', dependsOn: string[] = []): SyncOperation {
+  return {
+    schemaVersion: 1, operationId: id, companyId: scope.companyId, entityType: 'vehicle', entityId,
+    provenance: { userId: scope.userId, deviceId: 'device-1', savedAt: receivedAt, connectivity: 'offline' },
+    dependsOn, mutation: { kind: 'create', record: { name: 'Engine 1' } },
+  };
+}
+function applied(record: SyncRecord | null = { name: 'Confirmed' }) {
+  return { kind: 'applied' as const, receivedAt, revision: 'revision-2', record };
+}
+
+const cleanup: (() => void)[] = [];
+afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
+
+// Real SQL and rollback/commit behavior, without loading Expo/React Native or a UI.
+function database(path = ':memory:') {
+  const sqlite = new DatabaseSync(path);
+  let closed = false;
+  const close = () => { if (!closed) { sqlite.close(); closed = true; } };
+  cleanup.push(close);
+  const connection: OutboxSqlConnection = {
+    async execAsync(sql) { sqlite.exec(sql); },
+    async runAsync(sql, ...params) { return { changes: Number(sqlite.prepare(sql).run(...params).changes) }; },
+    async getFirstAsync<T>(sql: string, ...params: OutboxSqlValue[]) {
+      return (sqlite.prepare(sql).get(...params) as T | undefined) ?? null;
+    },
+    async getAllAsync<T>(sql: string, ...params: OutboxSqlValue[]) { return sqlite.prepare(sql).all(...params) as T[]; },
+  };
+  const db: OutboxDatabase = {
+    ...connection,
+    async withExclusiveTransactionAsync(task) {
+      sqlite.exec('BEGIN IMMEDIATE');
+      try { await task(connection); sqlite.exec('COMMIT'); }
+      catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+    },
+  };
+  return { db, connection, sqlite, close };
+}
+async function setup() {
+  const fixture = database();
+  const store = await createOfflineOutbox(fixture.db);
+  return { ...fixture, store, session: store.activate(scope) };
+}
+function barrier() {
+  let release!: () => void;
+  let reached!: () => void;
+  const wait = new Promise<void>((resolve) => { release = resolve; });
+  const ready = new Promise<void>((resolve) => { reached = resolve; });
+  return { release, reached, wait, ready };
+}
+
+describe('durable mobile outbox', () => {
+  it('atomically saves local data and a detached pending intent', async () => {
+    const { session } = await setup();
+    const projected = { name: 'Engine 1' };
+    const saved = await session.enqueue(operation(), projected);
+    projected.name = 'mutated';
+    expect(saved).toMatchObject({ status: 'pending', attempts: 0, error: null, receipt: null });
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: { name: 'Engine 1' } });
+    expect((await session.list())[0].projection).toEqual({ name: 'Engine 1' });
+  });
+
+  it('rolls back the intent when saving its local projection fails, and allows retry', async () => {
+    const { session, sqlite } = await setup();
+    sqlite.exec(`CREATE TRIGGER fail_projection BEFORE INSERT ON offline_projections BEGIN SELECT RAISE(FAIL, 'disk full'); END;`);
+    await expect(session.enqueue(operation(), { name: 'Engine 1' })).rejects.toThrow('disk full');
+    expect(await session.list()).toEqual([]);
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toBeNull();
+    sqlite.exec('DROP TRIGGER fail_projection');
+    await expect(session.enqueue(operation(), { name: 'Engine 1' })).resolves.toMatchObject({ status: 'pending' });
+  });
+
+  it('survives closing/reopening the database and recovers an interrupted attempt after lease expiry', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fireops-outbox-'));
+    cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
+    const path = join(directory, 'sync.db');
+    const first = database(path);
+    const old = (await createOfflineOutbox(first.db)).activate(scope);
+    await old.enqueue(operation(), { name: 'Engine 1' });
+    const interrupted = await old.claimNext('attempt-1', 100, 50);
+    first.close();
+    const second = database(path);
+    const restored = (await createOfflineOutbox(second.db)).activate(scope);
+    expect(await restored.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: { name: 'Engine 1' } });
+    expect(await restored.claimNext('too-soon', 149)).toBeNull();
+    const retry = await restored.claimNext('attempt-2', 150);
+    expect(retry?.attempt.number).toBe(2);
+    expect(retry?.entry.operation.operationId).toBe('op-1');
+    expect(await restored.finishAttempt(interrupted!.attempt, applied())).toBe(false);
+    expect(await restored.finishAttempt(retry!.attempt, applied())).toBe(true);
+    expect((await restored.list())[0].status).toBe('synced');
+  });
+
+  it('preserves data across scoped sessions without exposing it to another user or company', async () => {
+    const { session, store } = await setup();
+    await session.enqueue(operation(), { name: 'private' });
+    for (const other of [{ ...scope, userId: 'user-2' }, { ...scope, companyId: 'company-2' }]) {
+      const switched = store.activate(other);
+      expect(await switched.list()).toEqual([]);
+      expect(await switched.getProjection('vehicle', 'vehicle-1')).toBeNull();
+      expect(await switched.claimNext('attempt', 1)).toBeNull();
+      expect(() => switched.enqueue(operation(), {})).toThrow(/different account or company/);
+    }
+    await expect(session.list()).rejects.toThrow(/no longer active/);
+    expect((await store.activate(scope).list()).length).toBe(1);
+  });
+
+  it('captures scope and payload before awaiting, without following caller mutations', async () => {
+    const { store } = await setup();
+    const mutableScope = { ...scope };
+    const session = store.activate(mutableScope);
+    mutableScope.userId = 'other';
+    const intent = operation();
+    const promise = session.enqueue(intent, { name: 'original' });
+    (intent as { entityId: string }).entityId = 'different';
+    (intent.dependsOn as string[]).push('missing');
+    await promise;
+    expect((await session.list())[0].operation.entityId).toBe('vehicle-1');
+    expect((await session.list())[0].operation.dependsOn).toEqual([]);
+  });
+
+  it('rolls back in-flight work when the active scope changes before commit', async () => {
+    const { session, store, connection } = await setup();
+    const gate = barrier();
+    const run = connection.runAsync;
+    connection.runAsync = async (sql, ...params) => {
+      if (sql.includes('INSERT INTO offline_projections')) { gate.reached(); await gate.wait; }
+      return run(sql, ...params);
+    };
+    const pending = session.enqueue(operation(), {});
+    const rejected = expect(pending).rejects.toThrow(/no longer active/);
+    await gate.ready;
+    store.activate({ ...scope, companyId: 'other' });
+    gate.release();
+    await rejected;
+    const restored = store.activate(scope);
+    expect(await restored.list()).toEqual([]);
+    expect(await restored.getProjection('vehicle', 'vehicle-1')).toBeNull();
+  });
+
+  it('pauses old sessions and refuses their late acknowledgments without deleting saved work', async () => {
+    const { store, session } = await setup();
+    await session.enqueue(operation(), {});
+    const claim = await session.claimNext('attempt', 100);
+    store.pause();
+    await expect(session.finishAttempt(claim!.attempt, applied())).rejects.toThrow(/no longer active/);
+    expect((await store.activate(scope).list())[0].status).toBe('syncing');
+  });
+
+  it('does not return a read that completes after account switching', async () => {
+    const { store, session, db } = await setup();
+    const gate = barrier();
+    const getAll = db.getAllAsync;
+    db.getAllAsync = async <T>(sql: string, ...params: OutboxSqlValue[]) => {
+      const rows = await getAll<T>(sql, ...params);
+      gate.reached(); await gate.wait; return rows;
+    };
+    const reading = session.list();
+    const rejected = expect(reading).rejects.toThrow(/no longer active/);
+    await gate.ready;
+    store.pause(); gate.release();
+    await rejected;
+  });
+
+  it('deduplicates equivalent JSON and never reinstates older data on an enqueue retry', async () => {
+    const { session } = await setup();
+    const first = operation();
+    await session.enqueue(first, { a: 1, b: 2 });
+    await session.enqueue(operation('op-2', 'vehicle-1', ['op-1']), { a: 3 });
+    const duplicate = await session.enqueue({ ...first }, { b: 2, a: 1 });
+    expect(duplicate.operation.operationId).toBe('op-1');
+    expect((await session.list()).length).toBe(2);
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-2', record: { a: 3 } });
+    await expect(session.enqueue(first, { a: 999 })).rejects.toThrow(/reused/);
+    await expect(session.enqueue({ ...first, entityId: 'different' }, { a: 1, b: 2 })).rejects.toThrow(/reused/);
+  });
+
+  it('keeps an acknowledged operation acknowledged when the caller retries its original save', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), { name: 'local' });
+    const claim = await session.claimNext('attempt', 0);
+    await session.finishAttempt(claim!.attempt, applied());
+    expect((await session.enqueue(operation(), { name: 'local' })).status).toBe('synced');
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: null, record: { name: 'Confirmed' } });
+  });
+
+  it('validates delivery results before changing an in-flight operation', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), {});
+    const claim = await session.claimNext('attempt', 0);
+    expect(() => session.finishAttempt(claim!.attempt, { ...applied(), revision: '' })).toThrow();
+    expect(() => session.finishAttempt(claim!.attempt, { ...applied(), record: { value: NaN } })).toThrow();
+    expect(() => session.finishAttempt(claim!.attempt, { kind: 'retry', retryAt: -1, error: 'lost' })).toThrow();
+    expect(() => session.finishAttempt(claim!.attempt, { kind: 'awaiting_review', conflictId: '', receivedAt })).toThrow();
+    expect((await session.list())[0]).toMatchObject({ status: 'syncing', receipt: null });
+  });
+
+  it('serializes concurrent enqueues and claims without duplicating work', async () => {
+    const { session } = await setup();
+    await Promise.all([session.enqueue(operation(), {}), session.enqueue(operation(), {})]);
+    const results = await Promise.all([session.claimNext('one', 0), session.claimNext('two', 0)]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await session.list()).toHaveLength(1);
+  });
+
+  it('does not accept missing, duplicate, self, or other-scope dependencies', async () => {
+    const { session, store } = await setup();
+    await expect(session.enqueue(operation('child', 'child', ['missing']), {})).rejects.toThrow(/dependency/);
+    expect(() => session.enqueue(operation('self', 'child', ['self']), {})).toThrow(/itself/);
+    expect(() => session.enqueue(operation('duplicate', 'child', ['parent', 'parent']), {})).toThrow(/dependencies/);
+    await session.enqueue(operation('parent'), {});
+    const other = store.activate({ ...scope, companyId: 'other' });
+    await expect(other.enqueue({ ...operation('child', 'child', ['parent']), companyId: 'other' }, {})).rejects.toThrow(/dependency/);
+  });
+
+  it('requires an explicit dependency for later edits and waits for predecessor acceptance', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), {});
+    await expect(session.enqueue(operation('op-2'), {})).rejects.toThrow(/previous unsynced/);
+    await session.enqueue(operation('op-2', 'vehicle-1', ['op-1']), {});
+    const first = await session.claimNext('first', 0);
+    expect(first?.entry.operation.operationId).toBe('op-1');
+    expect(await session.claimNext('second', 0)).toBeNull();
+    await session.finishAttempt(first!.attempt, applied());
+    expect((await session.claimNext('second', 0))?.entry.operation.operationId).toBe('op-2');
+  });
+
+  it('respects cross-record dependencies without blocking unrelated work', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation('parent', 'parent'), {});
+    await session.enqueue(operation('child', 'child', ['parent']), {});
+    await session.enqueue(operation('unrelated', 'unrelated'), {});
+    const parent = await session.claimNext('parent', 0);
+    await session.finishAttempt(parent!.attempt, { kind: 'blocked', error: 'Permission revoked' });
+    expect((await session.claimNext('unrelated', 0))?.entry.operation.operationId).toBe('unrelated');
+    expect(await session.claimNext('child', 0)).toBeNull();
+  });
+
+  it('fails closed if a dependency row references missing data', async () => {
+    const { session, sqlite } = await setup();
+    await session.enqueue(operation(), {});
+    sqlite.prepare('INSERT INTO offline_dependencies VALUES (?, ?, ?, ?)').run(scope.userId, scope.companyId, 'op-1', 'missing');
+    expect(await session.claimNext('attempt', 0)).toBeNull();
+  });
+
+  it('persists retries and backoff, fencing stale results even when a caller reuses an attempt token', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), {});
+    const first = await session.claimNext('same-token', 10, 20);
+    await session.finishAttempt(first!.attempt, { kind: 'retry', error: 'Connection lost', retryAt: 100 });
+    expect((await session.list())[0]).toMatchObject({ status: 'pending', attempts: 1, error: 'Connection lost' });
+    expect(await session.claimNext('same-token', 99)).toBeNull();
+    const second = await session.claimNext('same-token', 100);
+    expect(second?.attempt.number).toBe(2);
+    expect(await session.finishAttempt(first!.attempt, applied())).toBe(false);
+    expect(await session.finishAttempt(second!.attempt, applied())).toBe(true);
+    expect(await session.finishAttempt(second!.attempt, applied({ name: 'duplicate' }))).toBe(false);
+    expect((await session.list())[0]).toMatchObject({ status: 'synced', error: null, attempts: 2, receipt: applied() });
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: null, record: { name: 'Confirmed' } });
+  });
+
+  it('retains conflict proposals, provenance and receipt without calling them synced', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), { status: 'out of service' });
+    const claim = await session.claimNext('attempt', 0);
+    const receipt = { kind: 'awaiting_review' as const, receivedAt, conflictId: 'conflict-1' };
+    await session.finishAttempt(claim!.attempt, receipt);
+    expect((await session.list())[0]).toMatchObject({ status: 'awaiting_review', receipt, operation: operation() });
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: { status: 'out of service' } });
+    expect(await session.claimNext('again', 999_999)).toBeNull();
+  });
+
+  it('never overwrites a newer local projection with an older acknowledgment', async () => {
+    const { session } = await setup();
+    await session.enqueue(operation(), { name: 'first' });
+    const first = await session.claimNext('first', 0);
+    await session.enqueue(operation('op-2', 'vehicle-1', ['op-1']), { name: 'second' });
+    await session.finishAttempt(first!.attempt, applied({ name: 'server first' }));
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-2', record: { name: 'second' } });
+    const second = await session.claimNext('second', 0);
+    await session.finishAttempt(second!.attempt, applied({ name: 'server second' }));
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: null, record: { name: 'server second' } });
+  });
+
+  it('represents confirmed deletions separately from a record that was never downloaded', async () => {
+    const { session } = await setup();
+    const intent: SyncOperation = { ...operation(), mutation: { kind: 'delete', baseRevision: 'revision-1', base: {} } };
+    await session.enqueue(intent, null);
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: null });
+    const claim = await session.claimNext('delete', 0);
+    await session.finishAttempt(claim!.attempt, applied(null));
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: null, record: null });
+    expect(await session.getProjection('vehicle', 'unknown')).toBeNull();
+  });
+
+  it('rolls back an acknowledgment when updating the confirmed projection fails', async () => {
+    const { session, sqlite } = await setup();
+    await session.enqueue(operation(), { name: 'local' });
+    const claim = await session.claimNext('attempt', 0);
+    sqlite.exec(`CREATE TRIGGER fail_confirmation BEFORE UPDATE ON offline_projections BEGIN SELECT RAISE(FAIL, 'write failed'); END;`);
+    await expect(session.finishAttempt(claim!.attempt, applied())).rejects.toThrow('write failed');
+    expect((await session.list())[0]).toMatchObject({ status: 'syncing', receipt: null });
+    expect(await session.getProjection('vehicle', 'vehicle-1')).toEqual({ operationId: 'op-1', record: { name: 'local' } });
+    sqlite.exec('DROP TRIGGER fail_confirmation');
+    expect(await session.finishAttempt(claim!.attempt, applied())).toBe(true);
+  });
+
+  it('rejects unsupported database versions without modifying existing data', async () => {
+    const { db, sqlite } = database();
+    sqlite.exec('PRAGMA user_version = 2; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
+    expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+  });
+
+  it('validates stored mutation shapes and projections instead of silently losing JSON data', async () => {
+    const { session } = await setup();
+    const invalid = [
+      { ...operation(), schemaVersion: 2 },
+      { ...operation(), operationId: '' },
+      { ...operation(), provenance: { ...operation().provenance, connectivity: 'maybe' } },
+      { ...operation(), provenance: { ...operation().provenance, savedAt: 'invalid' } },
+      { ...operation(), mutation: { kind: 'unknown' } },
+      { ...operation(), mutation: { kind: 'update', baseRevision: '', base: {}, patch: {} } },
+      { ...operation(), mutation: { kind: 'update', baseRevision: 'r1', base: {}, patch: { name: { present: true } } } },
+      { ...operation(), mutation: { kind: 'create', record: { value: NaN } } },
+    ];
+    for (const intent of invalid) expect(() => session.enqueue(intent as SyncOperation, {})).toThrow();
+    expect(() => session.enqueue(operation(), { value: undefined } as unknown as SyncRecord)).toThrow();
+    expect(() => session.enqueue(operation(), { value: Infinity })).toThrow();
+    expect(() => session.claimNext('', 0)).toThrow();
+    expect(() => session.claimNext('token', 0, 0)).toThrow();
+    expect(() => session.claimNext('token', -1)).toThrow();
+    expect(await session.list()).toEqual([]);
+  });
+});

@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: implementation started with shared contracts and pure merge rules. Offline writes, server synchronization, and conflict-review UI are not enabled yet.
+Status: shared merge contracts and the durable native outbox are implemented. Feature-level offline writes, server synchronization, and conflict-review UI are not enabled yet.
 
 ## Scope
 
@@ -122,10 +122,24 @@ Nested arrays/objects are currently indivisible fields. Each feature adapter mus
 
 Focused tests live in `packages/domain/src/offline-sync.test.ts`. Run `npm run test --workspace @fireops/domain -- src/offline-sync.test.ts` and `npm run typecheck --workspace @fireops/domain`.
 
+### Durable native outbox (implemented, not connected to features)
+
+`apps/mobile/src/lib/offline-outbox.ts` provides an injectable SQLite store. `offline-outbox-native.ts` lazily opens a separate, versioned `fireops-sync.db` on iOS/Android and explicitly refuses web. The existing response-cache database is unchanged.
+
+- Enqueue commits the operation, dependency links, and local projection in one transaction. Save failures roll back all three. Reusing an operation ID for different work is rejected; identical retries do not regress newer local data or acknowledged status.
+- Every query includes user/company scope. Activating another scoped session or pausing invalidates old handles. In-flight operations check scope before returning and before transaction completion; work invalidated before commit is rolled back. Persisted work is retained, not deleted on a scope change.
+- Claims respect explicit dependencies, same-record ordering, retry deadlines, and expiring upload leases. Persistent attempt numbers/tokens fence late and duplicate results. A terminated worker's lease can be reclaimed after expiry using the same operation ID for eventual server idempotency.
+- Applied receipts, pending-review receipts, retry errors, and blocked states persist. Awaiting-review proposals stay local and are never labeled synced. An acknowledgment cannot overwrite a newer local projection.
+- A projection with `operationId: null` is confirmed; a null record is a deletion, distinct from no projection being stored. This is a local projection/receipt layer, not yet the authoritative download/catch-up cache.
+
+Tests use Node's real SQLite implementation (Node 22.13+), including file close/reopen, SQL-triggered write failures, account-switch races, and stale acknowledgments. Native entry-point tests mock only the native module boundary. Run `npm run test --workspace @fireops/mobile -- src/lib/offline-outbox.test.ts src/lib/offline-outbox-native.test.ts` and `npm run typecheck --workspace @fireops/mobile`.
+
+This layer deliberately does not start network workers, integrate session-provider lifecycle, cache attachment bytes, resolve owner/admin decisions, unblock/rebase dependent edits, or implement retention. It has no production feature callers yet. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
+
 ### Next implementation slices
 
 - Complete feature-level mutation inventory and define server revision/receipt/security contracts before enabling replay.
-- Implement the account/company-scoped SQLite outbox and atomic local projection updates, with restart and attachment recovery tests.
+- Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
 
