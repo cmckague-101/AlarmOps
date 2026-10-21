@@ -27,7 +27,7 @@ export type IssuePriority = 'Low' | 'Medium' | 'High' | 'Critical';
 export type IssueStatus = 'Open' | 'Resolved';
 
 export type VehicleFile = {name:string;type:string;dataUrl:string;path?:string};
-export type NamedDocument = {id:string;name:string;file:VehicleFile};
+export type NamedDocument = {id:string;name:string;file:VehicleFile;inspectionDate?:string};
 export type CredentialRecordType = 'Training'|'Qualification'|'License'|'Task Book'|'DOT Medical';
 export type CrewCredential = {
   id:string;

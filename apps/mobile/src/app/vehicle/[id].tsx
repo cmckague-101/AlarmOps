@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
+import { inspectionExpirationDate, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -917,6 +917,7 @@ export default function VehicleDetailScreen() {
               <Text style={styles.sectionTitle}>Digital Equipment Binder</Text>
               <View style={styles.documents}>
                 {binderDocuments.map((label) => {
+                  const inspectionDate = label === 'DOT Inspection' ? vehicle.documents.find(document => document.id === 'dotInspection' || document.name.toLowerCase() === 'dot inspection')?.inspectionDate : undefined;
                   const file = vehicle.files.find(
                     (entry) => entry.label.toLocaleLowerCase() === label.toLocaleLowerCase(),
                   )?.file;
@@ -936,6 +937,7 @@ export default function VehicleDetailScreen() {
                       <View style={styles.documentMain}>
                         <Text style={styles.documentLabel}>{label}</Text>
                         <Text style={styles.documentName} numberOfLines={1}>{file?.name ?? "No document attached"}</Text>
+                        {inspectionDate ? <Text style={styles.documentName}>Inspected {inspectionDate} · Expires {inspectionExpirationDate(inspectionDate) ?? '—'}</Text> : null}
                       </View>
                       {file?.path ? <AppSymbol name={{ ios: "chevron.right", android: "chevron_right" } as never} color={theme.secondary} size={17} /> : null}
                     </Pressable>

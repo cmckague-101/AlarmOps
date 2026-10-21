@@ -27,6 +27,7 @@ export type FleetVehicleFile = {
 };
 
 export type FleetVehicleDocument = {
+  inspectionDate?: string;
   id: string;
   name: string;
   file: FleetVehicleFile;
@@ -188,6 +189,7 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
               {
                 id: text(value, "id") ?? createFleetId(),
                 name: text(value, "name") ?? "Document",
+                inspectionDate: text(value, "inspectionDate") ?? undefined,
                 file,
               },
             ]
