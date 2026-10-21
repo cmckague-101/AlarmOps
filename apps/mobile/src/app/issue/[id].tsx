@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppSymbol } from '@/components/app-symbol';
 import { fleetReadVersion, createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
+import { useOfflineSync } from '@/providers/offline-sync-provider';
+import {savedDetailHref} from '@/lib/offline-detail-form';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 const priorities: IssuePriority[] = ['Low', 'Medium', 'High', 'Critical'];
@@ -22,7 +24,8 @@ export default function IssueDetailScreen() {
   const router = useRouter();
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { session, access } = useSession();
+  const { session, access,demoMode } = useSession();
+  const {offline,state:syncState}=useOfflineSync();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const { vehicles, issues, loading, error, pendingDetails } = useFleetVehicles(companyId);
@@ -31,6 +34,7 @@ export default function IssueDetailScreen() {
   const canView = candidate && user && visibleVehicleIssues([candidate], user).length > 0;
   const issue = canView ? candidate : undefined;
   const vehicle = issue ? candidateVehicle : undefined;
+  const savedDetailBase=syncState.records.find(record=>record.entityType==='issue'&&record.entityId===id&&record.record!==null);
   const [updateText, setUpdateText] = useState('');
   const [detailsOpen, setEditingDetails] = useState(false);
   const detailVersion=useRef<number|undefined>(undefined);const detailScope=useRef<string|null>(null);
@@ -223,12 +227,16 @@ export default function IssueDetailScreen() {
               </View>
 
               {(user?.role === 'owner' || user?.role === 'admin') && !editingDetails ? (
-                <Pressable accessibilityRole="button" onPress={beginEditing} style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}>
+                <Pressable accessibilityRole="button" onPress={()=>{if(offline&&Platform.OS!=='web'&&!demoMode)router.push(savedDetailHref({entityType:'issue',entityId:issue.id}));else beginEditing()}} style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}>
                   <AppSymbol name={{ ios: 'pencil', android: 'edit' } as never} color={theme.ember} size={17} />
                   <Text style={styles.editButtonLabel}>Edit issue details</Text>
                 </Pressable>
               ) : null}
 
+              {(user?.role==='owner'||user?.role==='admin')&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
+                <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'issue',entityId:issue.id}))} style={styles.editButton}><Text style={styles.editButtonLabel}>{savedDetailBase?'Edit downloaded details':'Download / edit saved details'}</Text></Pressable>
+                <Text style={styles.sectionHelp}>{savedDetailBase?'Verified details downloaded. Title, description and priority can be saved offline in this editor.':'Open saved-detail editor online once to download verified details before editing offline.'} Status and updates stay online-only.</Text>
+              </View>:null}
               {!editingDetails ? <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Add update</Text>
                 <Text style={styles.sectionHelp}>Progress, repair, or inspection notes</Text>

@@ -32,6 +32,8 @@ import {
 import { fetchNifcIncidents } from "@/lib/nifc";
 import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
 import { useSession } from "@/providers/session-provider";
+import { useOfflineSync } from "@/providers/offline-sync-provider";
+import {savedDetailHref} from '@/lib/offline-detail-form';
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
 function displayStatus(status: string) {
@@ -160,7 +162,8 @@ export default function VehicleDetailScreen() {
   const router = useRouter();
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { session, access } = useSession();
+  const { session, access,demoMode } = useSession();
+  const {offline,state:syncState}=useOfflineSync();
   const companyId =
     access.value?.kind === "member" ? access.value.company.id : null;
   const user = access.value?.kind === "member" ? access.value.user : null;
@@ -183,6 +186,7 @@ export default function VehicleDetailScreen() {
     );
   const activeCrew = crew.filter((member) => member.status === "Active");
   const canManage = user?.role === "owner" || user?.role === "admin";
+  const savedDetailBase=syncState.records.find(record=>record.entityType==='vehicle'&&record.entityId===id&&record.record!==null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -466,7 +470,7 @@ export default function VehicleDetailScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Edit ${vehicle.name}`}
                     onPress={() =>
-                      router.push({
+                      router.push(offline&&Platform.OS!=='web'&&!demoMode?savedDetailHref({entityType:'vehicle',entityId:vehicle.id}):{
                         pathname: "/vehicle/form",
                         params: { id: vehicle.id },
                       })
@@ -513,6 +517,10 @@ export default function VehicleDetailScreen() {
         {vehicle ? (
           <>
             {pendingDetails?.[`vehicle:${vehicle.id}`]?<Text accessibilityRole="alert" style={styles.stateText}>{pendingDetails[`vehicle:${vehicle.id}`]}</Text>:null}
+            {canManage&&Platform.OS!=='web'&&!demoMode?<View>
+              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{savedDetailBase?'Edit downloaded details':'Download / edit saved details'}</Text></Pressable>
+              <Text style={styles.stateText}>{savedDetailBase?'Verified details downloaded. Scalar detail edits can be saved offline in this editor.':'Open saved-detail editor online once to download a verified base for offline edits.'} Files, status and assignments stay online-only.</Text>
+            </View>:null}
             <View style={styles.identity}>
               {photoUrl ? (
                 <Pressable

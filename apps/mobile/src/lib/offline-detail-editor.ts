@@ -36,10 +36,11 @@ export function createOfflineDetailEditor(options:{
   }
   return {
     dispose(){disposed=true;for(const request of requests)request.abort();requests.clear()},
-    async prepare(target:DetailTarget):Promise<OfflineDetailDraft>{
+    async prepare(target:DetailTarget,mode?:{downloadedOnly?:boolean}):Promise<OfflineDetailDraft>{
+      const downloadedOnly=mode?.downloadedOnly===true;
       guard();if(!['vehicle','issue'].includes(target.entityType))throw new Error('Unsupported detail editor.');
       const identity={...target};await available(identity);guard();
-      if(!options.offline()){
+      if(!options.offline()&&!downloadedOnly){
         const controller=new AbortController();requests.add(controller);
         const timeout=setTimeout(()=>controller.abort(),30_000);
         let onAbort=()=>{};
@@ -50,7 +51,10 @@ export function createOfflineDetailEditor(options:{
           const saved=await options.session.putRecord(identity.entityType,identity.entityId,value);guard();
           if(saved.revision!==value.revision)throw new Error('Server record revision moved backwards. Verify server state before editing.');
         }catch(error){
-          if(!disposed&&options.canEdit()&&error&&typeof error==='object'&&String((error as {code?:unknown}).code)==='42501')await options.session.removeRecord(identity.entityType,identity.entityId);
+          if(!disposed&&options.canEdit()&&error&&typeof error==='object'&&String((error as {code?:unknown}).code)==='42501'){
+            await options.session.removeRecord(identity.entityType,identity.entityId);
+            try{await options.downloaded?.()}catch{/* Removed access must not leave a stale published base. */}
+          }
           throw error;
         }finally{clearTimeout(timeout);controller.signal.removeEventListener('abort',onAbort);requests.delete(controller)}
       }

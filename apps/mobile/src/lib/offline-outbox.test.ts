@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SyncOperation, SyncRecord } from '@fireops/domain';
-import {createFleetEditGate} from './offline-fleet-model';
+import {createFleetEditGate,projectOfflineFleet} from './offline-fleet-model';
+import {offlineDetailFormChanges,offlineDetailFormValues} from './offline-detail-form';
 import {createOfflineDetailEditor} from './offline-detail-editor';
 import {createOfflineSyncWorker} from './offline-sync-worker';
 import {
@@ -461,7 +462,18 @@ async function detailSetup(offline=true){
     readRecord:async()=>{reads++;return {revision:'2',record:{...rawVehicle,notes:'fresh'}}},changed:async()=>{notices++}});
   return {...fixture,editor,disallow:()=>{allowed=false},setOffline:(value:boolean)=>{disconnected=value},reads:()=>reads,notices:()=>notices};
 }
-describe('atomic detail-edit boundary (UI adapters not enabled yet)',()=>{
+describe('atomic native detail-edit boundary',()=>{
+  it('can explicitly use an owned verified download during a server outage without claiming an offline connection state',async()=>{
+    const {editor,reads}=await detailSetup(false);const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id},{downloadedOnly:true});
+    expect(reads()).toBe(0);expect(draft.revision).toBe('1');expect((await editor.save(draft,{notes:'During outage'})).operation.provenance.connectivity).toBe('online');
+    await expect(editor.prepare({entityType:'issue',entityId:'never-downloaded'},{downloadedOnly:true})).rejects.toThrow('online once');
+  });
+  it('publishes permission-denied cache removal and cannot use that base through the downloaded-only path',async()=>{
+    const {session}=await setup();await session.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});const published:unknown[]=[];
+    const editor=createOfflineDetailEditor({session,canEdit:()=>true,offline:()=>false,id:()=> 'id',changed:async()=>{},downloaded:async()=>{published.push(await session.listRecords())},readRecord:async()=>{throw {code:'42501'}}});
+    await expect(editor.prepare({entityType:'vehicle',entityId:rawVehicle.id})).rejects.toMatchObject({code:'42501'});expect(published).toEqual([[]]);
+    await expect(editor.prepare({entityType:'vehicle',entityId:rawVehicle.id},{downloadedOnly:true})).rejects.toThrow('online once');
+  });
   it('reserves a record against in-flight legacy writes before atomic enqueue, with stable retry identity',async()=>{
     const {session}=await setup();await session.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});let sequence=0;
     const gate=createFleetEditGate(session,()=>true);const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
@@ -483,15 +495,20 @@ describe('atomic detail-edit boundary (UI adapters not enabled yet)',()=>{
     await old.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});let id=0;
     const editor=createOfflineDetailEditor({session:old,canEdit:()=>true,offline:()=>true,id:()=>`saved-${++id}`,now:()=>receivedAt,
       readRecord:async()=>{throw new Error('must not read offline')},changed:async()=>{throw new Error('notice refresh failed')}});
-    const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});const saved=await editor.save(draft,{notes:'mine'});
+    const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});
+    const form=offlineDetailFormValues(draft);form.notes='mine';const saved=await editor.save(draft,offlineDetailFormChanges(draft,form));
     editor.dispose();first.close();const restored=(await createOfflineOutbox(database(path).db)).activate(scope);
     expect((await restored.list())[0].operation).toEqual(saved.operation);expect((await restored.listRecords())[0].record).toEqual(rawVehicle);
     expect(await restored.getDeviceId(()=> 'wrong')).toBe('saved-1');
+    const preview=projectOfflineFleet([],{scope,loaded:true,offline:true,records:await restored.listRecords(),entries:await restored.list()});
+    expect(preview.records[0].record).toMatchObject({notes:'mine',status:'Ready'});expect(preview.pending['vehicle:vehicle-1']).toContain('Local proposal');
     const canonical={revision:'2',record:{...rawVehicle,notes:'mine',status:'Out of service'}};
     const worker=createOfflineSyncWorker({session:restored,canAccess:()=>true,canRun:()=>true,token:()=> 'attempt',
       transport:{deliver:async operation=>{expect(operation).toEqual(saved.operation);return {kind:'applied',receivedAt,...canonical}},canonical:async()=>canonical,outcome:async()=>null}});
     cleanup.push(()=>worker.stop());await worker.resume();expect((await restored.list())[0].status).toBe('synced');
     expect((await restored.listRecords())[0]).toMatchObject(canonical);expect(await restored.getProjection('vehicle',rawVehicle.id)).toMatchObject({operationId:null,record:canonical.record});
+    const confirmed=projectOfflineFleet([],{scope,loaded:true,offline:false,records:await restored.listRecords(),entries:await restored.list()});
+    expect(confirmed.records[0].record).toEqual(canonical.record);expect(confirmed.pending).toEqual({});
   });
   it('validates issue priority and queues only changed issue scalar fields',async()=>{
     const {editor,session}=await detailSetup();const issue={id:'issue-1',title:'Pump leak',description:'Inspect pump',priority:'Low',vehicleId:rawVehicle.id,status:'Open'};

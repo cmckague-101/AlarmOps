@@ -15,6 +15,7 @@ import {AppProviders} from '@/providers/app-providers';
 import {OfflineSyncNotice} from '@/components/offline-sync-notice';
 import {useNetworkStatus} from '@/providers/network-provider';
 import {useSession} from '@/providers/session-provider';
+import {useOfflineSync} from '@/providers/offline-sync-provider';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
 export default function RootLayout(){return <AppProviders><RootNavigator/></AppProviders>}
@@ -24,6 +25,7 @@ function RootNavigator(){
   const {colorScheme}=useFireOpsColorScheme();
   const {isOffline}=useNetworkStatus();
   const {demoMode,signOut}=useSession();
+  const {hasSavedDetails}=useOfflineSync();
   const insets=useSafeAreaInsets();
   return <ThemeProvider value={colorScheme==='dark'?DarkTheme:DefaultTheme}>
     <View style={styles.root}>
@@ -32,7 +34,7 @@ function RootNavigator(){
         <View style={styles.demoCopy}><Text style={[styles.demoTitle,{color:theme.ember}]}>Demo mode · Sample data</Text><Text style={{color:theme.secondary,fontSize:12}}>Session only · External services disabled</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Exit demo and discard changes" onPress={()=>void signOut().then(()=>{router.dismissAll();router.replace('/sign-in')})} style={styles.exitDemo}><Text style={{color:theme.ember,fontWeight:'700'}}>Exit demo</Text></Pressable>
       </View>:null}
-      {isOffline&&!demoMode?<View accessibilityRole="alert" style={[styles.offlineNotice,{paddingTop:insets.top,backgroundColor:theme.warning}]}><Text style={styles.offlineText}>Offline · Read-only mode · Showing saved data</Text></View>:null}
+      {isOffline&&!demoMode?<View accessibilityRole="alert" style={[styles.offlineNotice,{paddingTop:insets.top,backgroundColor:theme.warning}]}><Text style={styles.offlineText}>{hasSavedDetails?'Offline · Saved vehicle/issue detail editor only · Other actions read-only':'Offline · Read-only mode · Showing saved data'}</Text></View>:null}
       <OfflineSyncNotice topInset={!isOffline&&!demoMode?insets.top:0}/>
       <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
         <Stack.Screen name="index"/>

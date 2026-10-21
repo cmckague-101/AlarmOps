@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage, normalized native fleet reads with pending overlays, and a provider-owned atomic detail-edit boundary are implemented. Native legacy writes have pending-work/stale-read guards. Web online fleet saves now retain captured revisions and immutable retry requests without overwriting pending local work from realtime. Feature save handlers are not connected to native offline enqueue yet. Web remains online-only. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage, normalized native fleet reads with pending overlays, and a provider-owned atomic detail-edit boundary are implemented. Native legacy writes have pending-work/stale-read guards. Web online fleet saves now retain captured revisions and immutable retry requests without overwriting pending local work from realtime. Installed-app owners/admins can now save downloaded vehicle/issue scalar details offline through the dedicated saved-detail editor. One pending edit per record is supported; all other workflows remain online-only. Web remains online-only. This is the first enabled adapter, not all-feature offline mode. The new migrations and client changes have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -134,7 +134,7 @@ Focused tests live in `packages/domain/src/offline-sync.test.ts`. Run `npm run t
 
 Tests use Node's real SQLite implementation (Node 22.13+), including file close/reopen, SQL-triggered write failures, account-switch races, and stale acknowledgments. Native entry-point tests mock only the native module boundary. Run `npm run test --workspace @fireops/mobile -- src/lib/offline-outbox.test.ts src/lib/offline-outbox-native.test.ts` and `npm run typecheck --workspace @fireops/mobile`.
 
-This module remains the storage layer; native worker/session and review-result integration are added by the subsequent slice below. Feature save handlers do not enqueue work yet. Attachment persistence, dependent-edit rebasing, and retention are not implemented. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
+This module remains the storage layer; native worker/session and review-result integration are added by the subsequent slice below. Feature save handlers were not connected at this storage milestone; the limited native scalar editor is connected below. Attachment persistence, dependent-edit rebasing, and retention are not implemented. Feature adapters must reconcile/rebase sequential edits against acknowledged revisions and avoid superseded external side effects before replay is enabled. Retention/encryption decisions must precede sensitive-data workflow integration.
 
 ### First fleet server safeguards (migration added, not deployed here)
 
@@ -204,7 +204,7 @@ The frontend review endpoints are now connected by the client slice below. Nativ
 - Both clients use shared scoped state in `packages/domain/src/sync-review-client.ts`. It validates response identity and candidate/field references, suggests only safe independent defaults, requires every field selection and explicit UI confirmation, rejects stale review tokens, and presents per-proposal kept/partly kept/not-kept summaries.
 - An uncertain approval freezes selections/navigation and offers a confirmation retry using the **same request ID and payload**. It never silently submits a replacement decision after a dropped response. Successful receipts are not written directly over active fleet data; native refreshes fleet data, while web uses its existing fleet subscriptions.
 - Pending Alert queries page through all results. Because conflict tables are not yet published to Realtime, clients refresh on foreground/focus/reconnect, manual refresh, and a 30-second poll while active. A missing table/RPC (`42P01`, `42883`, `PGRST202`, `PGRST205`) produces an unobtrusive setup-pending message, not a dashboard crash or a fabricated “no conflicts” result. Permission/network errors remain distinct failures. Demo mode, nonmanager roles and native session/account mismatches do not issue review requests.
-- Native review/approval RPCs explicitly require a connection; approval is not queued or confirmed offline. Already displayed in-memory review details may be read while disconnected, but fresh review/approval requires reconnection. The existing offline read-only banner remains accurate.
+- Native review/approval RPCs explicitly require a connection; approval is not queued or confirmed offline. Already displayed in-memory review details may be read while disconnected, but fresh review/approval requires reconnection. At this review-screen milestone the offline banner was read-only; the later scalar-editor slice adds a narrowly scoped capability notice.
 
 Tests include shared controller validation/pagination/scope/race/retry tests, web server-rendered markup unit tests (not visual tests), and native transport/authorization/offline guard tests without loading a native UI. The user still performs visual UI testing.
 
@@ -228,15 +228,15 @@ Native sign-out checks unresolved work across **all companies for that user**. U
 
 Focused tests cover real SQLite migration/restart/leases, staged acknowledgments, timeout/pause/account races, canonical revision/identity checks, review privacy/outcomes, unsupported/dependent operations, final storage failures, notices, sign-out retention and token-bound POST RPCs. The server suite verifies live revisions, deletion proof, role/company scope and unsupported-table denial. No native UI, application server or visual testing was launched.
 
-**Still not enabled:** feature save handlers do not enqueue, attachment bytes are not persisted, full catch-up is not connected to offline editing, and sensitive-data encryption/retention plus dependent-edit rebase require implementation. The following slice connects normalized reads and pending overlays, without enabling feature saves. Existing mobile mutations and the global offline banner therefore remain read-only. This slice must not be advertised as all-feature offline mode.
+**At this worker milestone, feature saves were not yet enabled.** Subsequent slices connect normalized reads and limited scalar saves below. Attachment bytes, full catch-up, sensitive-data encryption/retention and dependent-edit rebase remain pending. This must not be advertised as all-feature offline mode.
 
-### Verified bases and atomic detail-edit boundary (implemented, not exposed in UI)
+### Verified bases and atomic detail-edit boundary (implemented; UI connected below)
 
 The native outbox now migrates **v1 → v2 → v3** transactionally. `offline_records` stores complete raw vehicle/issue records, decimal revisions, proven tombstones, and device-reported download time separately from projections and the HTTP cache. Every record query is account/company scoped. Revisions use integer comparison without JavaScript-number precision loss. Older downloads cannot replace newer data; different data for the same revision is rejected. `offline_devices` retains a stable per-account installation ID across companies/restarts, without sharing identifiers between accounts.
 
 Canonical upload/review reconciliation commits the verified raw record and operation completion together. A failed raw-cache write rolls back completion; a historical result cannot downgrade a newer cached revision or its matching confirmed projection. Lost raw-record permission after a verified review removes the cached record, not the preserved operation history, and never invents a deletion.
 
-`apps/mobile/src/lib/offline-detail-editor.ts` captures a private, detached verified base when preparing an editor. Online preparation uses the account-bound, uncached POST read RPC; offline preparation requires a previously verified live record. GET display normalization and cached HTTP responses are never treated as verified bases. Borrowed drafts, invalidated account/permission scope, unsupported fields, invalid values, deleted records and unchanged saves are rejected. It supports only the existing manager vehicle/issue scalar adapter. It has **no screen/form callers yet**.
+`apps/mobile/src/lib/offline-detail-editor.ts` captures a private, detached verified base when preparing an editor. Online preparation uses the account-bound, uncached POST read RPC; offline preparation requires a previously verified live record. GET display normalization and cached HTTP responses are never treated as verified bases. Borrowed drafts, invalidated account/permission scope, unsupported fields, invalid values, deleted records and unchanged saves are rejected. It supports only the existing manager vehicle/issue scalar adapter. The later saved-detail screen is its first native UI caller.
 
 The provider exposes this boundary through its existing active session, not another `activate()` handle. Saves enqueue a full raw base plus changed-field patch and local projection in one transaction, retaining stable operation ID, device identity, device save time and observed connection state on retries. Concurrent duplicate saves coalesce by operation identity. Independent edits to an already-pending record are rejected atomically until completion/review; dependency rebasing is deliberately not bypassed. A fresh explicit edit after rejection uses a new verified base and does not automatically resend the discarded proposal. Failure to refresh notices after a committed save does not misreport persistence as failed.
 
@@ -256,7 +256,7 @@ Native legacy fleet writes are guarded against both queued work and in-flight lo
 
 Native vehicle/issue read objects retain private scope/revision/pending stamps. Legacy actions cannot reuse an unconfirmed preview, an old account's object, or a stale revision. Vehicle and issue detail forms capture their original revision/scope, rather than substituting a mutable current realtime token at save time. Captured expected revisions survive uploads and asynchronous queue checks. Online fleet RPCs bind the verified SDK user's bearer token; late responses cannot update another identity's repository. Failed vehicle **updates** no longer claim success merely because a verification query finds that the vehicle already exists.
 
-The detail-edit boundary now reserves records before enqueue and publishes successful verified downloads through the worker. Verified downloads also race abort/timeouts explicitly, so a stuck session restoration cannot leave preparation waiting indefinitely. No screen/form calls its offline prepare/save methods yet; the read-only banner and unsupported-action request guard remain unchanged.
+The detail-edit boundary now reserves records before enqueue and publishes successful verified downloads through the worker. Verified downloads also race abort/timeouts explicitly, so a stuck session restoration cannot leave preparation waiting indefinitely. At this read-model milestone no screen/form called its offline methods; the later saved-detail slice connects them while preserving the unsupported-action request guard.
 
 **Rollout blocker found (addressed by the following slice):** main web `App.tsx`/`FleetApp.tsx` had whole-snapshot/debounced saves that could take expected revisions from a newer mutable map after a form captured older values. That can overwrite newly synced fields even though revision triggers are active. Harden those online writers and their pending-versus-realtime behavior before enabling native detail-save UI. Web remains online-only; no web offline behavior was added.
 
@@ -278,7 +278,35 @@ File cleanup runs only after validated acknowledgment, excludes still-referenced
 
 Targeted validation: **76 web tests** covering pure plans/transport, actual production workspace/form/debounce callbacks with injected dependencies, and existing fleet contracts; web typecheck; **21 embedded PostgreSQL fleet batch/revision/RLS tests**; diff whitespace check. No UI/server launch or visual testing. Server migrations are unchanged and nothing was deployed. PGlite remains no substitute for target-Supabase migration and real multi-session validation.
 
-This hardens the existing online fleet boundary; it does not complete every workflow's permission/invariant/attachment adapter or enable native saves by itself. Native vehicle/issue detail UI and per-record verified-download availability are next.
+This hardens the existing online fleet boundary; it does not complete every workflow's permission/invariant/attachment adapter or enable native saves by itself. Native vehicle/issue detail UI and per-record verified-download availability are added by the following slice.
+
+### First native offline detail editor (client implemented; backend not deployed here)
+
+Installed iOS/Android owners/admins now have **Download / edit saved details** on vehicle and issue detail screens. Opening it online downloads the complete raw record/revision through the verified POST read RPC and stores it in scoped SQLite, even if the user leaves without editing. Subsequent offline opens require that verified download; ordinary HTTP/display cache is not enough. Native Edit actions route to this editor while offline; existing full-feature online editors remain available while connected. Demo mode, web, nonmanager roles, mismatched sessions, unsupported targets and unavailable records do not expose an offline save form.
+
+`/saved-details` exposes only the completed scalar adapter:
+
+- Vehicle: unit, type, year, make, model, VIN, plate, notes.
+- Issue: title, description, priority.
+
+Files, photos, readiness/status, assignments, updates, inspections, creates/deletes and all remaining workflows stay online-only. The screen and banner say so explicitly. This advances the agreed all-feature rollout; it does not narrow its eventual scope or claim completion. Only one unresolved edit per record is accepted; finish synchronization/review before editing that record again. Different downloaded records can each have saved changes.
+
+The form retains the original privately owned draft, raw field types and verified revision. It submits only explicit field changes, without defaulting missing/null fields or converting unchanged raw values into display-normalized values. No-op trimming and validation errors leave the form editable. Save calls the provider-owned durable boundary; only after SQLite enqueue resolves does it display **Saved on device**. Inputs then represent a labeled **submitted copy**, not current shared values. Sync/review status remains in the root notice and Saved changes & sync. Save failures retain original values/identity for safe retry; duplicate taps and late editor/scope results cannot create replacement saves or update another form.
+
+If live verification fails but a verified download still exists, **Use verified download instead** allows explicit device-only work even when network detection reports online (for example, a server outage). Provenance still records the app's actual observed connection state, not a fabricated offline flag. No GET fallback becomes a verified base. A permission-denied read removes and republishes the unavailable cached base; downloaded-only preparation cannot bypass that removal. Missing database setup is explained and no unverified record becomes editable.
+
+The offline banner advertises only the saved vehicle/issue detail editor when the current manager has verified records; otherwise it remains read-only. The HTTP mutation guard still rejects unsupported offline requests and now directs users to the limited editor rather than claiming all offline changes are forbidden. Storage/sign-out retention, account isolation, original operation IDs, authoritative refresh, independent-field merge, whole-operation conflicts and audited per-field review continue through the existing worker/server contracts.
+
+Targeted checks: **159 native tests**, mobile typecheck and diff whitespace checks; **55 embedded PostgreSQL merge/conflict/review/read tests**. Coverage includes field inventory/normalization, no-op/invalid inputs, native-only/current-identity route guards, save feedback after commit, exact retry bodies, duplicate taps, late results, downloaded-only outage editing and permission-denied cache removal. The real SQLite close/reopen test now starts with the actual form adapter, restores its local preview without HTTP cache, reconnects, and verifies canonical refresh preserves unrelated shared fields. No UI/server launch, visual testing or deployment occurred.
+
+#### Manual validation when backend/client are ready
+
+1. Apply all pending migrations in order to a test environment and validate actual Supabase roles/RLS/concurrency before production rollout.
+2. On installed mobile, sign in as owner/admin and open a vehicle/issue saved-detail editor online. Confirm verified revision/download metadata; return without saving to prove the download is retained.
+3. Disconnect and restart. Open the downloaded editor, change supported details and save. Confirm local-preview labels and a waiting-to-sync notice, then restart again to verify retention. A never-downloaded record must remain unavailable.
+4. Confirm same-record edits are blocked while pending; other downloaded records can have independent saved work. Unsupported actions still require a connection.
+5. Edit independent fields from another online account, reconnect the phone in foreground, and confirm merge/canonical refresh. Repeat with overlapping fields; verify Alerts/review on web/mobile and truthful kept/partly-kept/not-selected outcomes with preserved audit values.
+6. Check account/company switching, permission loss, retained-work sign-out warnings, server-outage downloaded-copy choice and failed-save retries. Never uninstall/clear app data to recover unsynced work.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
@@ -291,11 +319,11 @@ You do not need to push the site or apply Supabase changes while implementation 
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
-The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: the worker and notices are connected, but native save handlers, attachment persistence, full catch-up and remaining workflow adapters are not complete. Deploying these review screens is not an announcement that all-feature offline mode is complete.
+Review UI and the native saved-detail editor report setup pending against an old database; existing online editors remain available. After the migrations and a successful per-record verified download, only the installed-app manager scalar editor can save offline. Attachment persistence, full catch-up, dependent-edit rebase and remaining workflow adapters are incomplete. No production sample conflicts are inserted. Deployment is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
-All paths below still need feature-level offline adapters; no offline write workflow is enabled by this checkpoint. Paths are under `apps/mobile/src/` unless noted.
+Only installed-app owner/admin scalar vehicle/issue updates through `/saved-details` are enabled in client code. The inventory below covers remaining adapters or expanded coverage of these entry points. Paths are under `apps/mobile/src/` unless noted.
 
 | Workflow | Current write entry points | Required sync boundary |
 | --- | --- | --- |
@@ -317,12 +345,13 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Wire native vehicle/issue detail editors through the provider-owned `detailEditor` prepare/save methods, retaining the original draft throughout editing. Native normalized reads, pending overlays and legacy write guards now exist; keep unsupported fields/workflows online-only. Add truthful per-record download availability and end-to-end logic tests before changing the read-only banner. Do not create competing `activate()` handles per save.
+- Expand verified download coverage/freshness and complete authorized company-wide catch-up; retain per-record availability and pending overlays. Native scalar saves now use the provider-owned session; do not create competing `activate()` handles.
+- Support explicit dependent-edit rebase and safe sequential/coalesced same-record offline edits before lifting the one-pending-edit restriction. Never replace an uncertain delivered operation or automatically resend discarded review values.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
-- Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
+- Extend existing sync notices, owner/admin Alerts and conflict review/approval to remaining adapters with workflow-appropriate permissions/privacy.
 
-The existing read-only offline banner and request guard remain unchanged intentionally: no operation is presented as saved offline before durable persistence and server reconciliation exist.
+The banner now distinguishes the limited downloaded scalar editor from read-only workflows. Unsupported offline HTTP mutations remain blocked. No operation is presented as saved before durable persistence, and none as synced before authoritative reconciliation. Web remains online-only.
 
 ## Required targeted tests
 
