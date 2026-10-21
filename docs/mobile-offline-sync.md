@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Feature-level offline writes and conflict-review UI are not enabled yet. The new migrations have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Feature-level offline writes are not enabled yet. The new migrations and client changes have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -171,7 +171,7 @@ Conflict rows are SELECT-only for currently authorized company managers on eithe
 
 `merge_fleet_sync_fields` is the SQL counterpart to the pure domain merge. Both consume `packages/domain/test-fixtures/offline-sync-merge.json` to check merge parity, including missing/null values, field groups and indivisible nested data. The new `supabase/tests/fleet-sync-conflicts.test.mjs` also tests real PostgreSQL authorization, forged bases, multiple candidates/devices, provenance, replay, deletions, and rollback.
 
-Approval and decision handling are added by the subsequent review migration below. There is still **no dashboard Alert wiring, mobile worker, or attachment persistence**. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
+Approval and decision handling are added by the subsequent review migration below. Dashboard Alerts/review UI are added by the subsequent client slice below; mobile workers and attachment persistence are still pending. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
 
 ### Guarded review, approval and submitter outcomes (migration added)
 
@@ -195,7 +195,30 @@ Shared `FleetSyncReview`, request/decision/outcome types and `suggestSyncReviewC
 
 Tests: `supabase/tests/fleet-sync-review.test.mjs` covers stale/competing reviews, idempotency, final-step rollback, field selection, deletion safety, permissions, provenance and dependency outcomes. `packages/domain/src/offline-sync-review.test.ts` checks safe client defaults. PGlite still does not replace target-version, full-migration-chain or real multi-session lock/deadlock validation. Apply this migration after the two preceding fleet sync migrations, using the same role/ownership prerequisites.
 
-No frontend calls these endpoints yet. Dashboard Alerts/review screens on web and mobile, submitter notices, mobile workers, and the remaining feature adapters are still pending.
+The frontend review endpoints are now connected by the client slice below. Submitter outcome notices, mobile workers, and the remaining feature adapters are still pending.
+
+### Dashboard Alerts and online review screens (implemented, not deployed)
+
+- Web `apps/web/src/OwnerDashboard.tsx` and mobile `apps/mobile/src/components/owner-dashboard.tsx` include persistent manager-only data-conflict Alerts, grouped by record with the pending proposal count. Opening an Alert does not mark it resolved or read; it disappears only after a server decision closes those candidates.
+- Web `SyncConflictReview.tsx` and native `/sync-conflict?entityType=vehicle|issue&entityId=<UUID>` show current and proposed field values, authors, reported connection state, device save time, server receipt/record time, device identity, original downloaded values, and lifecycle warnings. Times include the viewer's time zone. Missing/null/empty values are distinct. Current-record provenance can also identify the approving manager separately from the original offline author.
+- Both clients use shared scoped state in `packages/domain/src/sync-review-client.ts`. It validates response identity and candidate/field references, suggests only safe independent defaults, requires every field selection and explicit UI confirmation, rejects stale review tokens, and presents per-proposal kept/partly kept/not-kept summaries.
+- An uncertain approval freezes selections/navigation and offers a confirmation retry using the **same request ID and payload**. It never silently submits a replacement decision after a dropped response. Successful receipts are not written directly over active fleet data; native refreshes fleet data, while web uses its existing fleet subscriptions.
+- Pending Alert queries page through all results. Because conflict tables are not yet published to Realtime, clients refresh on foreground/focus/reconnect, manual refresh, and a 30-second poll while active. A missing table/RPC (`42P01`, `42883`, `PGRST202`, `PGRST205`) produces an unobtrusive setup-pending message, not a dashboard crash or a fabricated “no conflicts” result. Permission/network errors remain distinct failures. Demo mode, nonmanager roles and native session/account mismatches do not issue review requests.
+- Native review/approval RPCs explicitly require a connection; approval is not queued or confirmed offline. Already displayed in-memory review details may be read while disconnected, but fresh review/approval requires reconnection. The existing offline read-only banner remains accurate.
+
+Tests include shared controller validation/pagination/scope/race/retry tests, web server-rendered markup unit tests (not visual tests), and native transport/authorization/offline guard tests without loading a native UI. The user still performs visual UI testing.
+
+### Deployment checkpoint (nothing deployed by this implementation)
+
+You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
+
+1. `20261109000100_fleet_sync_safeguards.sql`
+2. `20261110000100_fleet_sync_conflicts.sql`
+3. `20261111000100_fleet_sync_review.sql`
+
+Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
+
+The new review UI can run against the old database and will show setup pending until the migrations are applied. No production sample conflicts are inserted, and mobile editing will still be read-only offline after deploying this slice: durable queue/worker, attachment and feature adapters, submitter notices and catch-up are not connected yet. Deploying these review screens is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
@@ -221,7 +244,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Wire manager dashboard Alerts and review/approval screens on web and mobile to the guarded endpoints, including stale-review refresh and partial-outcome notices.
+- Connect native session-scoped synchronization workers and authoritative catch-up to the durable outbox, with truthful submitter status/outcome notices; enable only completed adapters.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.
