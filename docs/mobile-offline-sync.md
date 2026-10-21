@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, and the first verified merge/conflict endpoint are implemented. Feature-level offline writes and conflict-review UI are not enabled yet. The new migrations have not been deployed as part of this implementation.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Feature-level offline writes and conflict-review UI are not enabled yet. The new migrations have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -171,7 +171,31 @@ Conflict rows are SELECT-only for currently authorized company managers on eithe
 
 `merge_fleet_sync_fields` is the SQL counterpart to the pure domain merge. Both consume `packages/domain/test-fixtures/offline-sync-merge.json` to check merge parity, including missing/null values, field groups and indivisible nested data. The new `supabase/tests/fleet-sync-conflicts.test.mjs` also tests real PostgreSQL authorization, forged bases, multiple candidates/devices, provenance, replay, deletions, and rollback.
 
-There is still **no approval/decision endpoint, dashboard Alert wiring, mobile worker, or attachment persistence**. Reviewed dependencies remain blocked until decision/rebase handling is implemented. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
+Approval and decision handling are added by the subsequent review migration below. There is still **no dashboard Alert wiring, mobile worker, or attachment persistence**. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
+
+### Guarded review, approval and submitter outcomes (migration added)
+
+`supabase/migrations/20261111000100_fleet_sync_review.sql` adds:
+
+- `get_fleet_sync_review(company UUID, entity TEXT, record UUID)` for current company managers. It returns the **fresh** current record/revision and per-field provenance, all pending candidates, offered field values, and an opaque review token. A fresh lifecycle-change flag warns about deletions/re-creations that happened after the candidate was first captured.
+- `approve_fleet_sync_review(request JSONB)` with exactly `requestId`, `companyId`, `entityType`, `entityId`, `reviewToken`, and `choices`. Each affected field must select `current` or an offered candidate UUID; arbitrary values, unrelated fields, or dropping independent pending changes by omission are rejected. Selected historical values are revalidated against the current scalar-detail adapter rules.
+- `get_fleet_sync_outcome(company UUID, operation UUID)` for a submitter who still has company access. It returns only their decision metadata (`kept`, `partially_kept`, or `not_selected`, with kept/discarded field names), never another person's outcome or historical record values. Demoted-but-current members can learn their result without regaining manager data access; removed members cannot.
+
+Approval recomputes the review token under a record-group advisory lock and live-row lock. A changed revision, new candidate, or another reviewer's completed decision causes `PT409` and requires refreshed review. The token is a concurrency guard, not proof someone viewed the UI. Submission and review acquire group locks **before** row locks; the old submission implementation is now private behind this locking wrapper. Cached approval retries require current manager access, are scoped by actor/company/request ID, and cannot repeat mutations, outcomes or side effects.
+
+Approved fields are applied over the current record, not by replacing it with an old whole-record proposal. Unrelated online changes survive. Keeping current values can reject all proposals without rewriting data. Deleted records can currently only be kept deleted; restoration needs a dedicated create/restore adapter. A live recreated record can receive explicitly selected scalar details after fresh review, without replacing its other data.
+
+`fleet_sync_decisions` is an append-only manager-scoped decision audit, separate from the existing summary-only company audit log. It preserves approver identity/name, reviewed candidate IDs/token, selections, field sources, before/after snapshots, timestamps, and the retry response. Every candidate remains stored; only its state becomes resolved. `fleet_sync_outcomes` retains per-submitter field outcomes. Both tables are SELECT-only to normal clients, with RLS; only the non-bypass executor can insert through the RPC. Losing values are discarded from active data, not deleted from audit history.
+
+A completely kept proposal's delivery `result` becomes an applied receipt so existing dependency checks can accept that parent. Its original upload acknowledgment is retained immutably in the new `initial_result` column, along with its original author/provenance. Partial/rejected parents remain blocked and require explicit client rebase/correction. Approval does not attribute all accepted parents to the new revision: decision field-source records preserve the original selected offline author separately from the approving manager. Future conflict capture and review use this source-aware provenance.
+
+Record mutation, revision history, decision, outcomes, delivery results and candidate closure are one transaction. Failures even at the final closure step roll back everything. Historical receipt/decision snapshots still must not replace newer authoritative client data; workers must catch up and rebase dependent operations deliberately.
+
+Shared `FleetSyncReview`, request/decision/outcome types and `suggestSyncReviewChoices` live in `packages/domain/src/offline-sync.ts`. The helper only suggests matching independent values (or identical current outcomes); it never submits approval. Conflicting values and lifecycle changes remain unselected. Both web and mobile review screens can use it to prefill safe choices and require explicit decisions for the remainder. Partially kept work needs a truthful future notice such as “Reviewed — some changes were kept,” not a blanket “Synced.”
+
+Tests: `supabase/tests/fleet-sync-review.test.mjs` covers stale/competing reviews, idempotency, final-step rollback, field selection, deletion safety, permissions, provenance and dependency outcomes. `packages/domain/src/offline-sync-review.test.ts` checks safe client defaults. PGlite still does not replace target-version, full-migration-chain or real multi-session lock/deadlock validation. Apply this migration after the two preceding fleet sync migrations, using the same role/ownership prerequisites.
+
+No frontend calls these endpoints yet. Dashboard Alerts/review screens on web and mobile, submitter notices, mobile workers, and the remaining feature adapters are still pending.
 
 ### Mutation inventory checkpoint
 
@@ -197,7 +221,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Add manager review/approval endpoints with fresh-revision/candidate-set guards, immutable decision audit, and submitter/dependency outcome handling.
+- Wire manager dashboard Alerts and review/approval screens on web and mobile to the guarded endpoints, including stale-review refresh and partial-outcome notices.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.

@@ -107,7 +107,9 @@ test('client restrictions remain intact without inherited default grants', () =>
     'fleet_sync_revisions', 'fleet_sync_receipts', 'fleet_sync_submissions']) {
     assert.equal(acl.get(`${table}:authenticated`)?.size ?? 0, 0, `${table} must remain backend-only`);
   }
-  assert.deepEqual([...(acl.get('fleet_sync_conflicts:authenticated') ?? [])].sort(), ['select'], 'conflict review data is read-only to clients');
+  for (const table of ['fleet_sync_conflicts', 'fleet_sync_decisions', 'fleet_sync_outcomes']) {
+    assert.deepEqual([...(acl.get(`${table}:authenticated`) ?? [])].sort(), ['select'], `${table} is read-only to clients`);
+  }
   for (const [key, privileges] of acl) {
     if (key.endsWith(':anon') || key.endsWith(':public')) assert.equal(privileges.size, 0, key);
   }

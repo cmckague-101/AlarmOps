@@ -20,6 +20,75 @@ export type SyncServerReceipt =
   | { readonly kind: 'applied'; readonly receivedAt: string; readonly revision: string; readonly record: SyncRecord | null }
   | { readonly kind: 'awaiting_review'; readonly receivedAt: string; readonly conflictId: string };
 
+export type SyncReviewFieldProvenance = {
+  readonly userId: string | null;
+  readonly actorName: string | null;
+  readonly connectivity: SyncConnectivity;
+  readonly savedAt?: string | null;
+  readonly deviceId?: string | null;
+  readonly serverRecordedAt?: string | null;
+  readonly origin?: string | null;
+  readonly revision?: string | null;
+  readonly approvedBy?: string;
+  readonly approvedByName?: string | null;
+  readonly approvedAt?: string;
+};
+export type FleetSyncReviewCandidate = {
+  readonly id: string;
+  readonly operationId: string;
+  readonly baseRevision: string;
+  readonly currentRevision: string;
+  readonly baseRecord: SyncRecord;
+  readonly currentRecord: SyncRecord | null;
+  readonly proposedRecord: SyncRecord;
+  readonly reason: 'fields' | 'deleted' | 'recreated';
+  /** Fresh review may detect deletion/re-creation since the candidate was stored. */
+  readonly lifecycleChanged?: boolean;
+  readonly fieldConflicts: readonly SyncFieldConflict[];
+  readonly provenance: SyncProvenance & { readonly actorName: string | null };
+  readonly receivedAt: string;
+};
+export type SyncReviewChoices = Readonly<Record<string, string>>;
+export type FleetSyncReview = {
+  readonly companyId: string;
+  readonly entityType: 'vehicle' | 'issue';
+  readonly entityId: string;
+  readonly currentRevision: string;
+  readonly currentRecord: SyncRecord | null;
+  readonly currentProvenance: Readonly<Record<string, SyncReviewFieldProvenance>>;
+  readonly candidates: readonly FleetSyncReviewCandidate[];
+  readonly fields: Readonly<Record<string, {
+    readonly current: SyncFieldValue;
+    readonly options: readonly { readonly source: string; readonly value: SyncFieldValue; readonly provenance: SyncReviewFieldProvenance }[];
+  }>>;
+  readonly reviewToken: string;
+};
+export type FleetSyncReviewRequest = Pick<FleetSyncReview, 'companyId' | 'entityType' | 'entityId' | 'reviewToken'> & {
+  readonly requestId: string;
+  /** Every affected field, selecting 'current' or an offered candidate ID. */
+  readonly choices: SyncReviewChoices;
+};
+export type SyncReviewOutcomeKind = 'kept' | 'partially_kept' | 'not_selected';
+export type SyncReviewOutcome = {
+  readonly kind: 'reviewed';
+  readonly decisionId: string;
+  readonly conflictId: string;
+  readonly operationId: string;
+  readonly decidedAt: string;
+  readonly outcome: SyncReviewOutcomeKind;
+  readonly keptFields: readonly string[];
+  readonly discardedFields: readonly string[];
+  readonly revision: string;
+};
+export type FleetSyncReviewDecision = {
+  readonly kind: 'resolved';
+  readonly decisionId: string;
+  readonly decidedAt: string;
+  readonly revision: string;
+  readonly record: SyncRecord | null;
+  readonly outcomes: readonly (Pick<SyncReviewOutcome, 'conflictId' | 'operationId' | 'outcome' | 'keptFields' | 'discardedFields'> & { readonly userId: string })[];
+};
+
 export type SyncProvenance = {
   readonly userId: string;
   readonly deviceId: string;
@@ -126,6 +195,39 @@ function field(record: SyncRecord, key: string): SyncFieldValue {
 
 function equalField(left: SyncFieldValue, right: SyncFieldValue): boolean {
   return left.present ? right.present && equalJson(left.value, right.value) : !right.present;
+}
+
+/** UI defaults only; never approves anything. Leave overlaps/lifecycle changes for explicit selection. */
+export function suggestSyncReviewChoices(review: FleetSyncReview): SyncReviewChoices {
+  if (review.currentRecord === null) return {};
+  assertRecord(review.currentRecord);
+  const candidates = new Map(review.candidates.map((candidate) => [candidate.id, candidate]));
+  if (candidates.size !== review.candidates.length) throw new Error('Duplicate review candidate.');
+  const choices: [string, string][] = [];
+  for (const key of Object.keys(review.fields).sort()) {
+    const definition = review.fields[key];
+    assertPatch(Object.fromEntries([[key, definition.current]]));
+    if (!equalField(definition.current, field(review.currentRecord, key))) throw new Error('Review field does not match current data.');
+    const options = definition.options.map((option) => {
+      const candidate = candidates.get(option.source);
+      if (!candidate || option.source === 'current') throw new Error('Unknown review candidate source.');
+      assertRecord(candidate.baseRecord);
+      assertRecord(candidate.proposedRecord);
+      assertPatch(Object.fromEntries([[key, option.value]]));
+      if (!equalField(option.value, field(candidate.proposedRecord, key)) || equalField(option.value, field(candidate.baseRecord, key))) {
+        throw new Error('Review option does not match its candidate change.');
+      }
+      return { option, candidate };
+    });
+    if (!options.length || options.some(({ candidate }) => candidate.reason !== 'fields' || candidate.lifecycleChanged)) continue;
+    if (options.every(({ option }) => equalField(option.value, definition.current))) {
+      choices.push([key, 'current']);
+    } else if (options.every(({ option, candidate }) => equalField(option.value, options[0].option.value)
+      && equalField(field(candidate.baseRecord, key), definition.current))) {
+      choices.push([key, options[0].option.source]);
+    }
+  }
+  return Object.fromEntries(choices);
 }
 
 function copy<T>(value: T): T {
