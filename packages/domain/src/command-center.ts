@@ -1,13 +1,13 @@
 import type {CrewMember, FleetIssue, NifcIncident} from './models';
-import {dotInspectionWarning} from './dot-inspection';
+import {dotInspectionWarning, inspectionReminderDate, localDateToday} from './dot-inspection';
 
 export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[]};
 export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll';id:string};
 export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:CommandTarget};
-export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'};
+export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'|'crew'};
 export type CommandPayroll = {id:string;createdByName:string;engineNumber:string;incidents:string;status:string};
 
-export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payrolls:CommandPayroll[],now=new Date()):CommandAlert[] {
+export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payrolls:CommandPayroll[],now=new Date(),crew:CrewMember[]=[]):CommandAlert[] {
   const rank={Critical:0,High:1,Medium:2,Low:3};
   const vehicleAlerts=vehicles.flatMap(vehicle=>{
     const open=issues.filter(issue=>issue.vehicleId===vehicle.id&&issue.status==='Open').sort((a,b)=>rank[a.priority]-rank[b.priority]);
@@ -22,7 +22,20 @@ export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payr
     const {inspectionDate,expiration,expired}=warning;
     return [{id:`dot-inspection-${vehicle.id}`,kind:'vehicle',title:`${vehicle.unit} DOT inspection ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Inspected ${inspectionDate}`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'vehicle',id:vehicle.id}}];
   });
-  return [...vehicleAlerts,...inspectionAlerts,...payrollAlerts];
+  const today=localDateToday(now);
+  const annualAlerts:CommandAlert[]=crew.flatMap(member=>{
+    const record=member.annualRecord;
+    if(!record)return [];
+    return ([['rt130CurrencyDate','RT-130'],['wctCurrencyDate','Work capacity test']] as const).flatMap(([field,label])=>{
+      const expiration=record[field];
+      if(!expiration||!/^\d{4}-\d{2}-\d{2}$/.test(expiration))return [];
+      const date=new Date(`${expiration}T00:00:00Z`);
+      if(!Number.isFinite(date.valueOf())||date.toISOString().slice(0,10)!==expiration||today<inspectionReminderDate(expiration))return [];
+      const expired=today>=expiration;
+      return [{id:`annual-${member.id}-${field}`,kind:'crew' as const,title:`${member.name} — ${label} ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Annual record needs updating`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'crew' as const,id:member.id}}];
+    });
+  });
+  return [...vehicleAlerts,...inspectionAlerts,...annualAlerts,...payrollAlerts];
 }
 export function commandCenter(vehicles:CommandVehicle[],crew:CrewMember[],issues:FleetIssue[]) {
   const assigned=vehicles.filter(vehicle=>Boolean(vehicle.assignedTo));
