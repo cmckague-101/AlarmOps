@@ -1,9 +1,9 @@
 import {isSyncReviewUnavailable,type SyncOperation} from '@fireops/domain';
-import type {CachedOfflineRecord,OfflineOutboxSession,OutboxEntry} from './offline-outbox';
+import type {CachedOfflineRecord,OfflineOutboxSession,OutboxEntry,OutboxRebase} from './offline-outbox';
 import {decodeCanonicalSyncRecord,decodeSyncOutcome,decodeSyncReceipt,offlineSyncAdapterBlock} from './offline-sync-protocol';
 
 export interface OfflineSyncTransport{
-  deliver(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
+  deliver(operation:SyncOperation,signal:AbortSignal,history?:readonly OutboxRebase[]):Promise<unknown>;
   canonical(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
@@ -132,7 +132,9 @@ export function createOfflineSyncWorker(options:{
           if(block){await persist(()=>session.finishAttempt(attempt,{kind:'blocked',error:block}));await refresh();continue}
           let delivery=entry.delivery;
           if(!delivery){
-            const raw=await rpc(version,signal=>transport.deliver(entry.operation,signal));
+            const history=await persist(()=>session.listRebases(entry.operation.operationId));
+            if(entry.continuation?.phase==='ready'&&!history.length)throw coded('Continuation history is missing','SYNC_STORAGE');
+            const raw=await rpc(version,signal=>transport.deliver(entry.operation,signal,history));
             delivery=decodeSyncReceipt(entry.operation,raw);
             if(!ready(version))break;
             if(!await persist(()=>session.recordDelivery(attempt,delivery!)))continue;

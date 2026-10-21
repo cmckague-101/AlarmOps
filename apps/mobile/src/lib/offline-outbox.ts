@@ -28,6 +28,7 @@ export type OutboxEntry = {
   readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready';readonly explicit?:boolean};
 };
 export type ContinuationReview={readonly operation:SyncOperation;readonly parentId:string;readonly current:CanonicalSyncRecord;readonly fields:Readonly<Record<string,{before:SyncFieldValue;saved:SyncFieldValue;current:SyncFieldValue}>>};
+export type OutboxRebase={before:SyncOperation;after:SyncOperation;reason:string;createdAt:string};
 export type OutboxReceipt = SyncServerReceipt;
 export type CachedOfflineRecord = CanonicalSyncRecord & {readonly entityType:'vehicle'|'issue';readonly entityId:string;readonly verifiedAt:string};
 export type OutboxAttempt = {
@@ -403,7 +404,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           });
         },
 
-        listRebases(operationId:string):Promise<{before:SyncOperation;after:SyncOperation;reason:string;createdAt:string}[]>{return read(async()=>{
+        listRebases(operationId:string):Promise<OutboxRebase[]>{return read(async()=>{
           const rows=await db.getAllAsync<{before_json:string;after_json:string;reason:string;created_at:string}>('SELECT * FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence',...ids,operationId);
           return rows.map(row=>({before:JSON.parse(row.before_json),after:JSON.parse(row.after_json),reason:row.reason,createdAt:row.created_at}));
         })},

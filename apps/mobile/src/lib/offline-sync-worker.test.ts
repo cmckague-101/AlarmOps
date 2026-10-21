@@ -1,3 +1,4 @@
+import {createOfflineDetailEditor} from './offline-detail-editor';
 import {DatabaseSync} from 'node:sqlite';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {SyncOperation,SyncReviewOutcome} from '@fireops/domain';
@@ -35,7 +36,23 @@ async function setup(operation=op()){
 }
 async function entry(fixture:Awaited<ReturnType<typeof setup>>){return (await fixture.session.list())[0]}
 
+async function stageChild(f:Awaited<ReturnType<typeof setup>>){
+  await f.session.putRecord('vehicle',entity,{revision:'1',record:base});
+  const editor=createOfflineDetailEditor({session:f.session,readRecord:f.transport.readRecord,canEdit:()=>true,offline:()=>true,id:()=> '40000000-0000-4000-8000-000000000002',changed:async()=>{}});
+  cleanups.push(()=>editor.dispose());return editor.save(await editor.prepare({entityType:'vehicle',entityId:entity}),{unit:'Later unit'});
+}
 describe('native durable sync worker (real SQLite, no native UI)',()=>{
+  it('retries an unavailable history endpoint with unchanged operation and history, never claiming synced early',async()=>{
+    const f=await setup();await stageChild(f);const childResult={...accepted,revision:'4',record:{...canonical.record,unit:'Later unit'}};
+    f.transport.deliver.mockResolvedValueOnce(accepted).mockRejectedValueOnce({code:'PGRST202'}).mockResolvedValue(childResult);f.transport.canonical.mockResolvedValueOnce(canonical).mockResolvedValue(childResult);
+    await f.worker.wake();const waiting=(await f.session.list())[1];expect(waiting.status).toBe('pending');expect(waiting.delivery).toBeNull();expect(f.worker.getSnapshot().setupPending).toBe(true);
+    const first=f.transport.deliver.mock.calls[1];expect(first[2]).toEqual(await f.session.listRebases(waiting.operation.operationId));expect(first[2]).toHaveLength(1);
+    f.advance(3000);await f.worker.wake();const retried=f.transport.deliver.mock.calls[2];expect(retried[0]).toEqual(first[0]);expect(retried[2]).toEqual(first[2]);expect((await f.session.list())[1].status).toBe('synced');
+  });
+  it('fails closed when a ready continuation has lost its history',async()=>{
+    const f=await setup();await stageChild(f);const root=(await f.session.claimNext('manual-parent',0))!;await f.session.finishAttempt(root.attempt,{kind:'applied',receivedAt:date,...canonical});await f.session.materializeContinuations();
+    f.sqlite.exec('DELETE FROM offline_rebase_history');await f.worker.wake();expect(f.transport.deliver).not.toHaveBeenCalled();expect((await f.session.list())[1].status).not.toBe('synced');expect(await f.store.countUnresolvedForUser(scope.userId)).toBe(1);
+  });
   it('publishes scoped raw records for the read model, but not after manager access is withdrawn',async()=>{
     const f=await setup();f.mode.read=true;await f.worker.wake();expect(f.worker.getSnapshot().records[0]).toMatchObject(canonical);
     f.mode.read=false;await f.worker.refresh();expect(f.worker.getSnapshot().records).toEqual([]);

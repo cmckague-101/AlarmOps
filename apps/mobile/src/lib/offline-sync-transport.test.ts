@@ -18,6 +18,11 @@ describe('authenticated native sync RPC transport',()=>{
     expect(f.client.rpc).toHaveBeenCalledWith('get_fleet_sync_outcome',{target_company_id:scope.companyId,operation_id:'op-1'});
     expect(f.builder.setHeader).toHaveBeenCalledWith('Authorization','Bearer bound-user-token');expect(f.builder.abortSignal).toHaveBeenCalledWith(f.signal);
   });
+  it('sends device history with the atomic RPC and never falls back when its migration is missing',async()=>{
+    const f=setup();const history=[{before:operation,after:operation,reason:'automatic_independent',createdAt:'2026-01-01T00:01:00Z'}];const error={code:'PGRST202',message:'Missing history function'};
+    f.builder.abortSignal.mockResolvedValue({data:null,error});await expect(f.transport.deliver(operation,f.signal,history)).rejects.toBe(error);
+    expect(f.client.rpc).toHaveBeenCalledExactlyOnceWith('sync_fleet_update_with_history',{operation,device_history:history});expect(f.builder.setHeader).toHaveBeenCalledWith('Authorization','Bearer bound-user-token');
+  });
   it('rejects other users/companies before issuing an RPC',async()=>{
     const f=setup();for(const foreign of [{...operation,companyId:'other'},{...operation,provenance:{...operation.provenance,userId:'other'}}]){
       for(const method of [f.transport.deliver,f.transport.canonical,f.transport.outcome])await expect(Promise.resolve().then(()=>method(foreign,f.signal))).rejects.toMatchObject({code:'42501'});

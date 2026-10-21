@@ -12,9 +12,9 @@ function setup(patch:Partial<SyncReviewClientState>={}){
   return {transport,html:renderToStaticMarkup(<SyncConflictReview state={state} controller={controller} onBack={()=>{}}/>)};
 }
 describe('web conflict review markup',()=>{
-  it('shows current/proposed/original values, authors and separate reported/server times',()=>{
+  it('shows current/proposed/submitted-base values, authors and separate reported/server times',()=>{
     const {html,transport}=setup();
-    for(const text of ['Online notes','Offline notes','Original notes','Morgan','Alex','Saved while offline','Connection status unknown','Device save time (reported)','Server received','Originally downloaded value'])expect(html).toContain(text);
+    for(const text of ['Online notes','Offline notes','Original notes','Morgan','Alex','Saved while offline','Connection status unknown','Device save time (reported)','Server received','Submitted verified base'])expect(html).toContain(text);
     expect(html).toContain('type="radio"');expect(html).toContain('type="checkbox"');expect(html).toContain('Choose a source for every field');
     expect(transport.approve).not.toHaveBeenCalled();
   });
