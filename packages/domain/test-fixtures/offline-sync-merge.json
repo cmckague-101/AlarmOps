@@ -1,0 +1,79 @@
+[
+  {
+    "name": "independent edits",
+    "base": {"a": 1, "b": 1}, "current": {"a": 2, "b": 1},
+    "patch": {"b": {"present": true, "value": 2}},
+    "expected": {"kind": "merged", "record": {"a": 2, "b": 2}, "changedFields": ["b"]}
+  },
+  {
+    "name": "overlap returns no partial record",
+    "base": {"a": 1, "b": 1}, "current": {"a": 2, "b": 1},
+    "patch": {"a": {"present": true, "value": 3}, "b": {"present": true, "value": 2}},
+    "expected": {"kind": "conflict", "reason": "fields", "fields": [
+      {"field": "a", "reason": "overlap", "base": {"present": true, "value": 1}, "current": {"present": true, "value": 2}, "proposed": {"present": true, "value": 3}, "relatedFields": []}
+    ]}
+  },
+  {
+    "name": "identical outcome",
+    "base": {"a": 1}, "current": {"a": 2}, "patch": {"a": {"present": true, "value": 2}},
+    "expected": {"kind": "merged", "record": {"a": 2}, "changedFields": []}
+  },
+  {
+    "name": "redundant original never reverts shared edits",
+    "base": {"a": 1}, "current": {"a": 2}, "patch": {"a": {"present": true, "value": 1}},
+    "expected": {"kind": "merged", "record": {"a": 2}, "changedFields": []}
+  },
+  {
+    "name": "null and absent are different",
+    "base": {"a": null}, "current": {}, "patch": {"a": {"present": true, "value": "new"}},
+    "expected": {"kind": "conflict", "reason": "fields", "fields": [
+      {"field": "a", "reason": "overlap", "base": {"present": true, "value": null}, "current": {"present": false}, "proposed": {"present": true, "value": "new"}, "relatedFields": []}
+    ]}
+  },
+  {
+    "name": "identical additions",
+    "base": {}, "current": {"a": null}, "patch": {"a": {"present": true, "value": null}},
+    "expected": {"kind": "merged", "record": {"a": null}, "changedFields": []}
+  },
+  {
+    "name": "explicit removal",
+    "base": {"a": 1}, "current": {"a": 1}, "patch": {"a": {"present": false}},
+    "expected": {"kind": "merged", "record": {}, "changedFields": ["a"]}
+  },
+  {
+    "name": "ordered arrays are indivisible",
+    "base": {"a": [1, 2]}, "current": {"a": [2, 1]}, "patch": {"a": {"present": true, "value": [1, 2, 3]}},
+    "expected": {"kind": "conflict", "reason": "fields", "fields": [
+      {"field": "a", "reason": "overlap", "base": {"present": true, "value": [1, 2]}, "current": {"present": true, "value": [2, 1]}, "proposed": {"present": true, "value": [1, 2, 3]}, "relatedFields": []}
+    ]}
+  },
+  {
+    "name": "object key order does not create a conflict",
+    "base": {"a": {}}, "current": {"a": {"x": 1, "y": 2}}, "patch": {"a": {"present": true, "value": {"y": 2, "x": 1}}},
+    "expected": {"kind": "merged", "record": {"a": {"x": 1, "y": 2}}, "changedFields": []}
+  },
+  {
+    "name": "related invariant fields require review",
+    "base": {"status": "ready", "assignment": null}, "current": {"status": "ready", "assignment": "fire-1"},
+    "patch": {"status": {"present": true, "value": "unavailable"}}, "groups": [["status", "assignment"]],
+    "expected": {"kind": "conflict", "reason": "fields", "fields": [
+      {"field": "status", "reason": "related_fields", "base": {"present": true, "value": "ready"}, "current": {"present": true, "value": "ready"}, "proposed": {"present": true, "value": "unavailable"}, "relatedFields": ["assignment"]}
+    ]}
+  },
+  {
+    "name": "deleted records are not recreated",
+    "base": {"a": 1}, "current": null, "patch": {"a": {"present": true, "value": 2}},
+    "expected": {"kind": "conflict", "reason": "deleted"}
+  },
+  {
+    "name": "literal reserved-looking keys",
+    "base": {}, "current": {}, "patch": {"__proto__": {"present": true, "value": {"literal": true}}},
+    "expected": {"kind": "merged", "record": {"__proto__": {"literal": true}}, "changedFields": ["__proto__"]}
+  },
+  {
+    "name": "falsy values are real changes",
+    "base": {"a": true, "b": 1, "c": "old"}, "current": {"a": true, "b": 1, "c": "old"},
+    "patch": {"c": {"present": true, "value": ""}, "b": {"present": true, "value": 0}, "a": {"present": true, "value": false}},
+    "expected": {"kind": "merged", "record": {"a": false, "b": 0, "c": ""}, "changedFields": ["a", "b", "c"]}
+  }
+]

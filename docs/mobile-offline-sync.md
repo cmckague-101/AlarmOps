@@ -1,6 +1,6 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, and the first fleet server safeguards are implemented. Feature-level offline writes, server merge/conflict synchronization, and conflict-review UI are not enabled yet.
+Status: shared merge contracts, the durable native outbox, fleet server safeguards, and the first verified merge/conflict endpoint are implemented. Feature-level offline writes and conflict-review UI are not enabled yet. The new migrations have not been deployed as part of this implementation.
 
 ## Scope
 
@@ -151,6 +151,28 @@ Apply the new migration through normal Supabase migration tooling (no database r
 
 `npm run test:db-sync` runs real embedded PostgreSQL role/RLS/trigger/transaction tests using PGlite and a minimal Supabase fixture plus the production fleet policies/functions. This covers replay, permission failures, rollback, service writes, tombstones, UPSERT, fingerprints, and company cascades. It does not replace a full migration-chain deployment test or a multi-session concurrency/deadlock test against the target database.
 
+### Verified fleet detail updates and persistent conflicts (migration added)
+
+`supabase/migrations/20261110000100_fleet_sync_conflicts.sql` adds `sync_fleet_update(operation JSONB)`, accepting the shared schema-version-1 `SyncOperation` shape. This first adapter supports **current owners/admins (including scoped system-admin company access), UPDATE only**:
+
+- Vehicle fields: `unit`, `type`, `year`, `make`, `model`, `vin`, `plate`, `notes`.
+- Issue fields: `title`, `description`, `priority`.
+- Assignments/readiness/status transitions, files, inspections, crew, creates/deletes, and crew-role submissions are rejected until their dedicated adapters are implemented. This restriction is incremental rollout, not a reduction of the agreed all-feature scope.
+
+The endpoint validates identity, reported provenance, field shapes/allowlists, dependencies and full **raw** base-row fingerprints before reconciliation. A normalized display projection is not a valid base. Operation/entity/dependency IDs must be UUIDs. Payloads are limited to 1 MiB; device IDs to 200 characters; dependency lists to 100 unique applied operations in the same actor/company scope. Required fields cannot be removed; optional VIN/plate/notes removals are explicit presence markers. Device save times are untrusted reported ISO timestamps, never revision ordering.
+
+It serializes operation-ID retries and locks the current record. Independent edits merge, identical outcomes produce no-op acknowledgments, and incompatible overlaps store an entire pending operation rather than partially applying its independent fields. Verified deleted records and delete/re-create lifecycles always require review; they are never silently recreated or changed using an old lifecycle's base. Existing production RLS and mutation triggers remain in force through the non-bypass executor.
+
+Private `fleet_sync_submissions` durably records request fingerprints, provenance, and `SyncServerReceipt` results. Applied mutations and their receipts are atomic. A no-op receipt never claims authorship of somebody else's revision. Replaying a receipt still requires current manager access. These per-update receipts are distinct from the earlier fleet-batch bridge receipts: adapters must choose one endpoint and must not fall back between endpoints after an uncertain response.
+
+`fleet_sync_conflicts` retains every candidate with base/current/proposed snapshots, affected fields, pinned revisions, author name/ID, device-reported save time/connectivity, and server receipt time. Current shared field provenance is derived from each field's actual last revision, not the most recent row editor. Accepted sync submissions supply their saved offline metadata; legacy writes have **unknown** connectivity. Baseline entries do not invent original edit timestamps/authors. Stored snapshots preserve available author labels across subsequent profile renames.
+
+Conflict rows are SELECT-only for currently authorized company managers on either client; direct insert/update/delete is denied. Candidate insertion and the submission receipt are linked by a deferred FK and commit together, so failures leave neither orphan candidates nor successful unacknowledged mutations. Snapshots contain potentially sensitive values: keep the tables scoped and define retention before broad workflow rollout.
+
+`merge_fleet_sync_fields` is the SQL counterpart to the pure domain merge. Both consume `packages/domain/test-fixtures/offline-sync-merge.json` to check merge parity, including missing/null values, field groups and indivisible nested data. The new `supabase/tests/fleet-sync-conflicts.test.mjs` also tests real PostgreSQL authorization, forged bases, multiple candidates/devices, provenance, replay, deletions, and rollback.
+
+There is still **no approval/decision endpoint, dashboard Alert wiring, mobile worker, or attachment persistence**. Reviewed dependencies remain blocked until decision/rebase handling is implemented. Receipt snapshots are historical acknowledgments, not a replacement for ordered authoritative catch-up; client integration must not overwrite newer downloaded state with an old receipt. Apply this migration after `20261109000100_fleet_sync_safeguards.sql`, with the same role/ownership prerequisites and target-version/multi-session verification.
+
 ### Mutation inventory checkpoint
 
 All paths below still need feature-level offline adapters; no offline write workflow is enabled by this checkpoint. Paths are under `apps/mobile/src/` unless noted.
@@ -175,7 +197,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 ### Next implementation slices
 
-- Add an authorized fleet sync endpoint that verifies base fingerprints, merges allowed fields, and durably stores conflicts/provenance instead of returning only `PT409`.
+- Add manager review/approval endpoints with fresh-revision/candidate-set guards, immutable decision audit, and submitter/dependency outcome handling.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Add user sync notices, owner/admin Alerts, and conflict review/approval on both clients.

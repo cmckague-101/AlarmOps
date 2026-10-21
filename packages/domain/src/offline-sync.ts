@@ -15,6 +15,11 @@ export type SyncConnectivity = 'online' | 'offline' | 'unknown';
 export type SyncOperationStatus =
   | 'pending' | 'syncing' | 'awaiting_review' | 'synced' | 'not_selected' | 'blocked';
 
+/** Durable acknowledgment from a validated server adapter, not a network-upload status. */
+export type SyncServerReceipt =
+  | { readonly kind: 'applied'; readonly receivedAt: string; readonly revision: string; readonly record: SyncRecord | null }
+  | { readonly kind: 'awaiting_review'; readonly receivedAt: string; readonly conflictId: string };
+
 export type SyncProvenance = {
   readonly userId: string;
   readonly deviceId: string;

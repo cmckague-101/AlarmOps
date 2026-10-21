@@ -7,9 +7,16 @@ npm run test:db-sync
 ```
 
 Runs embedded PostgreSQL (PGlite, a development-only dependency) against
-`20261109000100_fleet_sync_safeguards.sql`, a minimal auth/company fixture, and
+`20261109000100_fleet_sync_safeguards.sql` and
+`20261110000100_fleet_sync_conflicts.sql`, a minimal auth/company fixture, and
 production fleet RLS policies/functions. Checks real grants, RLS, triggers,
-transaction rollback, revision fingerprints/tombstones, and idempotent receipts.
+transaction rollback, revision fingerprints/tombstones, idempotent receipts,
+verified field merges, and persistent conflict/provenance records.
+
+The SQL merge and domain unit tests share
+`packages/domain/test-fixtures/offline-sync-merge.json` at the repository root.
+The conflict endpoint is currently manager-only and supports vehicle/issue scalar
+detail updates, not general fleet command replay or conflict approval.
 No Supabase credentials, application server, or UI are needed.
 
 This is not the full Supabase migration chain or target-version validation.

@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createSyncPatch, mergeSyncUpdate, type SyncPatch, type SyncRecord } from './offline-sync';
+
+const serverParityCases = JSON.parse(readFileSync(new URL('../test-fixtures/offline-sync-merge.json', import.meta.url), 'utf8')) as {
+  name: string; base: SyncRecord; current: SyncRecord | null; patch: SyncPatch; groups?: string[][]; expected: unknown;
+}[];
+
+describe('shared PostgreSQL/client merge fixtures', () => {
+  it.each(serverParityCases)('$name', ({ base, current, patch, groups, expected }) => {
+    expect(mergeSyncUpdate(base, current, patch, { fieldGroups: groups })).toEqual(expected);
+  });
+});
 
 const present = (value: string | number | null) => ({ present: true as const, value });
 const absent = { present: false as const };

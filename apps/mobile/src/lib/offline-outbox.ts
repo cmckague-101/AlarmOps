@@ -1,4 +1,4 @@
-import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord } from '@fireops/domain';
+import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt } from '@fireops/domain';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
 export type OutboxSqlValue = string | number | null;
@@ -22,9 +22,7 @@ export type OutboxEntry = {
   readonly error: string | null;
   readonly receipt: OutboxReceipt | null;
 };
-export type OutboxReceipt =
-  | { readonly kind: 'applied'; readonly receivedAt: string; readonly revision: string; readonly record: SyncRecord | null }
-  | { readonly kind: 'awaiting_review'; readonly receivedAt: string; readonly conflictId: string };
+export type OutboxReceipt = SyncServerReceipt;
 export type OutboxAttempt = {
   readonly operationId: string;
   readonly token: string;
