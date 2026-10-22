@@ -100,3 +100,49 @@ test('reservation rows are private and immutable; a verification receipt can be 
   await assert.rejects(putObject(reservation.path),error=>error.code==='42501');
   await db.query('delete from public.companies where id=$1',[company]);assert.equal(await count(),0);
 });
+
+const begin=(value,user=owner)=>actor(user,async()=>(await row('select public.begin_fleet_sync_attachment_verification($1,$2) result',[value.companyId,value.attachmentId])).result);
+const complete=(lease,objectId,size,digest)=>actor(null,async()=>(await row('select public.complete_fleet_sync_attachment_verification($1,$2,$3,$4) result',[lease,objectId,size,digest])).result,'service_role');
+const release=(lease,removed=true)=>actor(null,async()=>(await row('select public.release_fleet_sync_attachment_verification($1,$2) result',[lease,removed])).result,'service_role');
+const leased=async(value=manifest())=>{const reservation=await reserve(value);await putObject(reservation.path);return {value,reservation,lease:await begin(value)}};
+test('trusted verifier issues one receipt for matching stored bytes and replays it',async()=>{
+  const value=manifest();await reserve(value);assert.equal((await begin(value)).kind,'not_uploaded');
+  const {lease}=await leased(value);assert.equal(lease.kind,'lease');assert.equal(lease.byteSize,1024);assert.equal(lease.sha256,value.sha256);
+  await assert.rejects(begin(value),error=>error.code==='PT409');
+  const result=await complete(lease.leaseToken,lease.objectId,1024,value.sha256);assert.equal(result.kind,'verified');
+  const receipt=result.reservation.receipt;assert.deepEqual({...receipt,verifiedAt:undefined},{schemaVersion:1,kind:'uploaded',companyId:company,userId:owner,attachmentId:value.attachmentId,entityType:'vehicle',entityId:vehicle,bucket:'fleet-sync-files',path:lease.path,byteSize:1024,sha256:value.sha256,objectId:lease.objectId,verifiedAt:undefined});
+  assert.deepEqual(await complete(lease.leaseToken,lease.objectId,1,'b'.repeat(64)),result);
+  assert.deepEqual((await begin(value)).reservation.receipt,receipt);assert.deepEqual((await reserve(value)).receipt,receipt);
+});
+test('mismatched bytes never get a receipt and re-upload waits for verifier removal',async()=>{
+  const {value,reservation,lease}=await leased();
+  const result=await complete(lease.leaseToken,lease.objectId,1024,'b'.repeat(64));assert.equal(result.kind,'mismatch');assert.equal(result.reservation.receipt,null);
+  await actor(null,()=>db.query('delete from storage.objects where id=$1',[lease.objectId]),'service_role');
+  await assert.rejects(putObject(reservation.path),error=>error.code==='42501');assert.equal((await begin(value)).kind,'not_uploaded');
+  assert.deepEqual(await release(lease.leaseToken),{kind:'released',objectRemoved:true});
+  await putObject(reservation.path);const next=await begin(value);assert.equal(next.kind,'lease');assert.notEqual(next.objectId,lease.objectId);
+  assert.equal((await complete(next.leaseToken,next.objectId,1024,value.sha256)).kind,'verified');
+  const attempts=(await db.query('select outcome,observed_sha256 from public.fleet_sync_attachment_verifications order by started_at')).rows;
+  assert.deepEqual(attempts,[{outcome:'mismatch',observed_sha256:'b'.repeat(64)},{outcome:'verified',observed_sha256:value.sha256}]);
+});
+test('replaced or missing objects, revoked access and expired leases fail closed',async()=>{
+  const first=await leased();assert.equal((await complete(first.lease.leaseToken,randomUUID(),1024,first.value.sha256)).kind,'missing');
+  const second=await leased();await db.query("update public.company_members set role='fire_fighter' where user_id=$1",[owner]);
+  assert.deepEqual(await complete(second.lease.leaseToken,second.lease.objectId,1024,second.value.sha256),{kind:'access_revoked'});
+  await db.query("update public.company_members set role='owner' where user_id=$1",[owner]);
+  const third=await leased();await db.exec('set session_replication_role=replica');await db.query("update public.fleet_sync_attachment_verifications set started_at=now()-interval '1 hour',expires_at=now()-interval '1 minute' where lease_token=$1",[third.lease.leaseToken]);await db.exec('set session_replication_role=origin');
+  assert.equal((await complete(third.lease.leaseToken,third.lease.objectId,1024,third.value.sha256)).kind,'expired');
+  assert.equal((await row('select count(*)::int count from public.fleet_sync_attachment_uploads where receipt is not null')).count,0);
+  assert.equal((await begin(third.value)).kind,'lease');
+});
+test('only the service verifier records observations; clients cannot begin for others',async()=>{
+  const {value,lease}=await leased();
+  await assert.rejects(actor(owner,()=>db.query('select public.complete_fleet_sync_attachment_verification($1,$2,$3,$4)',[lease.leaseToken,lease.objectId,1024,value.sha256])),error=>error.code==='42501');
+  await assert.rejects(actor(owner,()=>db.query('select public.release_fleet_sync_attachment_verification($1,true)',[lease.leaseToken])),error=>error.code==='42501');
+  await assert.rejects(actor(owner,()=>db.query('select * from public.fleet_sync_attachment_verifications')),error=>error.code==='42501');
+  await assert.rejects(begin(value,admin),error=>error.code==='P0002');for(const user of [crew,outsider])await assert.rejects(begin(value,user),error=>error.code==='42501');
+  await assert.rejects(release(lease.leaseToken),error=>error.code==='PT409');
+  await complete(lease.leaseToken,lease.objectId,1024,value.sha256);
+  await assert.rejects(actor(null,()=>db.query("update public.fleet_sync_attachment_verifications set outcome='mismatch'"),'service_role'),/append-only/);
+  await assert.rejects(actor(null,()=>db.query("update public.fleet_sync_attachment_uploads set receipt='{}'"),'service_role'),/immutable/);
+});

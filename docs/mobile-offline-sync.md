@@ -400,6 +400,14 @@ Shared `packages/domain/src/attachment-upload.ts` (now exported) validates manif
 
 Tests: `supabase/tests/fleet-sync-attachment-uploads.test.mjs` uses a new minimal `fixtures/storage.sql` metadata boundary (storage.objects RLS only; no Storage API/byte transfer/upsert semantics) plus the production fleet fixture: idempotency, provenance mismatch, current role/company/target checks, shape validation, quota, exact-path inserts, overwrite/delete denial, demotion, private immutable rows and single-use receipts. Real Supabase Storage validation is still required.
 
+### Trusted attachment byte verification (migration and Edge Function added; not deployed)
+
+`20261118000100_fleet_sync_attachment_verification.sql` adds an append-only `fleet_sync_attachment_verifications` attempt log and three RPCs. `begin_fleet_sync_attachment_verification` runs with the **uploader's own JWT**, rechecks current owner/admin access and reservation ownership, and returns an existing receipt, `not_uploaded`, or a 10-minute lease bound to the current storage object ID. Only one active lease exists per attachment, and the replaced storage INSERT helper blocks re-upload while it is active. `complete_…` and `release_…` are **service-role only**: they recheck the uploader's current access (evaluated as that user), require the leased object still to be the stored object, and issue the immutable receipt only when the verifier's own observed size and SHA-256 equal the reservation. Mismatches never receive a receipt; the lease stays active until the verifier removes the object and releases it, so a late removal cannot delete a newer upload. Replaced/missing objects, expired leases and revoked access complete without a receipt. Exact retries return the recorded outcome and never re-decide it.
+
+`supabase/functions/verify-fleet-sync-attachment` authenticates the bearer token, calls `begin` with the caller's JWT, streams the object with the service key (never sent to clients) through a hard byte bound (declared size; one extra byte means oversized and is not hashed), hashes with Web Crypto and records the observation. Mismatched objects are removed and the release records whether removal succeeded. A transient storage read failure leaves the lease to expire (re-check after ~10 minutes). Pure logic lives in `logic.ts`; `logic.spec.ts` runs under Vitest (`cd packages/domain && npx vitest run --root ../../supabase/functions/verify-fleet-sync-attachment`) because Deno is not installed here. Edge-function lease timing and Storage API behavior (404/400 on missing objects, `remove`) need real Supabase validation.
+
+Embedded PostgreSQL tests extend `fleet-sync-attachment-uploads.test.mjs`: single receipt and replay, concurrent-lease denial, mismatch/removal/re-upload ordering, replaced object, demotion, expiry, service-only completion and append-only history. No native transport or business attachment is enabled yet.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -413,6 +421,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 7. `20261115000100_fleet_sync_history_recovery.sql`
 8. `20261116000100_fleet_sync_download.sql`
 9. `20261117000100_fleet_sync_attachment_uploads.sql`
+10. `20261118000100_fleet_sync_attachment_verification.sql` (deploy the `verify-fleet-sync-attachment` Edge Function with it)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

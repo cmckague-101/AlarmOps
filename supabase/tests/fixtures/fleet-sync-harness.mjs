@@ -33,4 +33,5 @@ export async function loadFleetSyncAttachmentSchema(db) {
   await loadFleetSyncSchema(db);
   await db.exec(readFileSync(new URL('./storage.sql', import.meta.url), 'utf8'));
   await db.exec(migration('20261117000100_fleet_sync_attachment_uploads'));
+  await db.exec(migration('20261118000100_fleet_sync_attachment_verification'));
 }
