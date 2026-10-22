@@ -16,4 +16,9 @@ describe('staging object release',()=>{
     await expect(releaseStagingObject(target,deps({request:vi.fn().mockResolvedValue({kind:'odd'})}))).rejects.toThrow();
     const failing=deps({remove:vi.fn().mockRejectedValue(new Error('storage down'))});await expect(releaseStagingObject(target,failing)).rejects.toThrow('storage down');expect(failing.confirm).not.toHaveBeenCalled();
   });
+  it('retries applied staging cleanup through the service path only after the user request says attached',async()=>{
+    const applied=vi.fn().mockResolvedValue({kind:'remove',reason:'applied',path:'c/u/a'});const d=deps({request:vi.fn().mockResolvedValue({kind:'attached'}),applied});
+    expect(await releaseStagingObject(target,d)).toEqual({kind:'released',reason:'applied'});expect(applied).toHaveBeenCalledWith(target);expect(d.remove).toHaveBeenCalledWith('c/u/a');
+    const unreleased=deps();await releaseStagingObject(target,{...unreleased,applied});expect(applied).toHaveBeenCalledOnce();
+  });
 });

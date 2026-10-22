@@ -6,6 +6,8 @@ export type ReleaseDeps = {
   request(target: ReleaseTarget): Promise<unknown>;
   remove(path: string): Promise<void>;
   confirm(target: ReleaseTarget): Promise<unknown>;
+  /** Service fallback: retries an applied document's staging cleanup. */
+  applied?(target: ReleaseTarget): Promise<unknown>;
 };
 export type ReleaseResult = {kind: 'released' | 'remove_pending' | 'attached'; reason?: string};
 const record = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -19,9 +21,12 @@ export function parseReleaseRequest(input: unknown): {companyId: string; attachm
 }
 
 export async function releaseStagingObject(target: ReleaseTarget, deps: ReleaseDeps): Promise<ReleaseResult> {
-  const requested = record(await deps.request(target));
+  let requested = record(await deps.request(target));
+  if (requested?.kind === 'attached') {
+    if (!deps.applied) return {kind: 'attached'};
+    requested = record(await deps.applied(target));
+  }
   const reason = typeof requested?.reason === 'string' ? requested.reason : undefined;
-  if (requested?.kind === 'attached') return {kind: 'attached'};
   if (requested?.kind === 'released') return {kind: 'released', reason};
   if (requested?.kind !== 'remove' || typeof requested.path !== 'string') throw new Error('Release request was not recognized.');
   await deps.remove(requested.path);

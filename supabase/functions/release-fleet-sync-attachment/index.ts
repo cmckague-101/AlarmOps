@@ -38,6 +38,8 @@ Deno.serve(async (request) => {
       request: (value) => rpc(user, 'request_fleet_sync_attachment_release', {target_company_id: value.companyId, target_attachment_id: value.attachmentId}),
       remove: async (path) => { const {error} = await admin.storage.from('fleet-sync-files').remove([path]); if (error) throw error; },
       confirm: (value) => rpc(admin, 'confirm_fleet_sync_attachment_release', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
+      // Only after the caller's own JWT proved current access and an applied result.
+      applied: (value) => rpc(admin, 'request_fleet_sync_attachment_applied_release', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
     });
     return response(200, result);
   } catch (error) {
