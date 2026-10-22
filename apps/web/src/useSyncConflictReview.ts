@@ -5,7 +5,18 @@ import {supabase} from './supabase';
 export function useSyncConflictReview(companyId?:string,userId?:string,demoMode=false){
   const controller=useMemo(()=>{
     const client=supabase;
+    async function historyRpc(name:string,args:Record<string,unknown>){
+      if(!client)throw new Error('Database unavailable');
+      const {data:auth,error:authError}=await client.auth.getSession();
+      if(authError||!auth.session||auth.session.user.id!==userId)throw new Error('Verify your current account before inspecting history.');
+      const {data,error}=await client.rpc(name,args).setHeader('Authorization',`Bearer ${auth.session.access_token}`);
+      if(error)throw error;return data;
+    }
     const transport:SyncReviewTransport={
+      history:{
+        list:(company,target,cursor)=>historyRpc('list_fleet_sync_device_history',{target_company_id:company,target_entity_type:target.entityType,target_record_id:target.entityId,history_cursor:cursor}),
+        report:(company,target,item)=>historyRpc('get_fleet_sync_device_history_report',{target_company_id:company,target_entity_type:target.entityType,target_record_id:target.entityId,submitter_id:item.actorUserId,submitted_operation_id:item.operationId}),
+      },
       async list(company,offset,limit){
         if(!client)throw new Error('Database unavailable');
         const {data,error}=await client.from('fleet_sync_conflicts').select('id,company_id,entity_type,record_id,received_at')

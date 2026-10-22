@@ -10,8 +10,9 @@ Runs embedded PostgreSQL (PGlite, a development-only dependency) against
 `20261109000100_fleet_sync_safeguards.sql`,
 `20261110000100_fleet_sync_conflicts.sql`,
 `20261111000100_fleet_sync_review.sql`,
-`20261112000100_fleet_sync_record_read.sql`, and
-`20261113000100_fleet_sync_device_history.sql`, a minimal auth/company fixture, and
+`20261112000100_fleet_sync_record_read.sql`,
+`20261113000100_fleet_sync_device_history.sql`, and
+`20261114000100_fleet_sync_history_reads.sql`, a minimal auth/company fixture, and
 production fleet RLS policies/functions. Checks real grants, RLS, triggers,
 transaction rollback, revision fingerprints/tombstones, idempotent receipts,
 verified field merges, persistent conflict/provenance records, guarded approvals,
@@ -21,6 +22,9 @@ of device-reported rebase versions/choices (including discarded local values).
 Device history is not canonical provenance or manager approval. History tests
 cover identity/dependency checks, original provenance, exact replay, scoped
 read-only audit access, permission revocation, and business/history rollback.
+History inspection tests cover scoped summaries/details, retained deleted-record
+reports, manager demotion and keyset pagination including tied timestamps and
+newer insertions between pages. Full snapshots are fetched one report at a time.
 
 The SQL merge and domain unit tests share
 `packages/domain/test-fixtures/offline-sync-merge.json` at the repository root.

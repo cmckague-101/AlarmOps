@@ -29,6 +29,7 @@ export default function SyncStatusScreen(){
         {entry.operation.dependsOn.length>0&&<Text style={[styles.meta,{color:theme.secondary}]}>This edit depends on earlier work. Rejected or partly kept predecessors require an explicit rebase; they will not be overwritten automatically.</Text>}
         {entry.reviewOutcome&&<Text style={[styles.meta,{color:theme.secondary}]}>Kept fields: {entry.reviewOutcome.keptFields.join(', ')||'None'}. Discarded fields: {entry.reviewOutcome.discardedFields.join(', ')||'None'}. Original submitted work remains in saved history.</Text>}
         {entry.noticeDismissed&&<Text style={[styles.meta,{color:theme.secondary}]}>Notice dismissed — retained in this account's device history.</Text>}
+        {detailEditor&&(entry.operation.entityType==='vehicle'||entry.operation.entityType==='issue')&&button('Inspect backed-up device history (online)',()=>router.push({pathname:'/sync-conflict',params:{entityType:entry.operation.entityType,entityId:entry.operation.entityId}} as never),offline)}
         {entry.error&&<Text style={[styles.meta,{color:theme.danger}]}>{entry.error}</Text>}
         {entry.status==='blocked'&&entry.continuation?.phase==='waiting'&&detailEditor&&button('Review / rebase later edit',()=>router.push(continuationReviewHref(entry.operation.operationId)),state.busy)}
         {entry.status==='blocked'&&!entry.reviewOutcome&&entry.continuation?.phase!=='waiting'&&button('Retry after fixing access or updating the app',()=>void retry(entry.operation.operationId),offline||state.busy)}

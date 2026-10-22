@@ -65,6 +65,30 @@ test('history reads are manager/company scoped; ordinary callers cannot forge or
   await assert.rejects(actor(owner,()=>db.query('delete from public.fleet_sync_device_history')),error=>error.code==='42501');
   await assert.rejects(submit(f.wire,f.history,crew),error=>error.code==='42501');await assert.rejects(submit(f.wire,f.history,outsider),error=>error.code==='42501');
 });
+const listHistory=(cursor=null,user=owner,target=id)=>actor(user,async()=>(await row('select public.list_fleet_sync_device_history($1,$2,$3,$4::jsonb) result',[company,'vehicle',target,cursor?JSON.stringify(cursor):null])).result);
+const readHistory=(operationId,user=owner,target=id)=>actor(user,async()=>(await row('select public.get_fleet_sync_device_history_report($1,$2,$3,$4,$5) result',[company,'vehicle',target,owner,operationId])).result);
+test('online history inspection returns scoped summaries and complete original snapshots',async()=>{
+  const f=await fixture();await submit(f.wire,f.history);const page=await listHistory();assert.equal(page.items.length,1);assert.equal(page.nextCursor,null);assert.equal(page.items[0].deviceHistory,undefined);
+  const report=await readHistory(f.wire.operationId);assert.deepEqual(report.deviceHistory,f.history);assert.equal(report.actorUserId,owner);
+  await db.query("update public.company_members set role='admin' where user_id=$1",[crew]);assert.deepEqual(await readHistory(f.wire.operationId,crew),report);
+  assert.deepEqual((await listHistory(null,owner,randomUUID())).items,[]);assert.equal(await readHistory(f.wire.operationId,owner,randomUUID()),null);
+});
+test('read RPCs reject crew, outsiders, anonymous callers and newly demoted managers',async()=>{
+  const f=await fixture();await submit(f.wire,f.history);
+  for(const user of [crew,outsider,null]){await assert.rejects(listHistory(null,user),error=>error.code==='42501');await assert.rejects(readHistory(f.wire.operationId,user),error=>error.code==='42501')}
+  await db.query("update public.company_members set role='fire_fighter' where user_id=$1",[owner]);await assert.rejects(listHistory(),error=>error.code==='42501');await assert.rejects(readHistory(f.wire.operationId),error=>error.code==='42501');
+});
+test('history remains inspectable after business-record deletion without recreating it',async()=>{
+  const f=await fixture();await submit(f.wire,f.history);await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'delete',recordId:id,expectedVersion:3}])]));
+  assert.equal((await listHistory()).items.length,1);assert.deepEqual((await readHistory(f.wire.operationId)).deviceHistory,f.history);assert.equal((await row('select count(*)::int count from public.fleet_vehicles')).count,0);
+});
+test('history keyset pagination handles timestamp ties and concurrent newer insertions',async()=>{
+  const f=await fixture();const ids=[];
+  async function add(){const staged={...f.staged,operationId:randomUUID()};const wire={...f.wire,operationId:staged.operationId,dependsOn:[],mutation:{...f.wire.mutation,patch:{}}};await submit(wire,[{before:staged,after:wire,reason:'explicit:{"notes":"current"}',createdAt:date}]);ids.push(wire.operationId)}
+  const date='2026-01-01T12:06:00Z';for(let i=0;i<21;i++)await add();await db.query("update public.fleet_sync_device_history set received_at='2026-01-01T12:10:00.123456Z'");
+  const first=await listHistory();assert.equal(first.items.length,20);assert.ok(first.nextCursor);await add();const second=await listHistory(first.nextCursor);assert.equal(second.items.length,1);assert.equal(second.nextCursor,null);assert.equal(new Set([...first.items,...second.items].map(item=>item.operationId)).size,21);
+});
+test('invalid history cursors fail without returning a partial page',async()=>{for(const cursor of [{},{receivedAt:'infinity',actorUserId:owner,operationId:randomUUID()}])await assert.rejects(listHistory(cursor))});
 test('unauthenticated calls and replay after manager demotion remain denied',async()=>{
   const f=await fixture();await submit(f.wire,f.history);await assert.rejects(submit(f.wire,f.history,null),error=>error.code==='42501');
   await db.query("update public.company_members set role='fire_fighter' where user_id=$1",[owner]);await assert.rejects(submit(f.wire,f.history),error=>error.code==='42501');

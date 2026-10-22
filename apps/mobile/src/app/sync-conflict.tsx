@@ -7,6 +7,7 @@ import {
   type SyncFieldValue,type SyncReviewFieldProvenance,type SyncReviewTarget,
 } from '@fireops/domain';
 import {useSyncConflictReview} from '@/lib/use-sync-conflict-review';
+import {SyncDeviceHistory} from '../components/sync-device-history';
 import {refreshFleet} from '@/lib/fleet-store';
 import {useFireOpsTheme} from '@/theme';
 
@@ -50,6 +51,7 @@ export default function SyncConflictScreen(){
         {state.reviewLoading&&<Text accessibilityLiveRegion="polite" style={styles.meta}>Loading the latest versions…</Text>}
         {!!state.reviewError&&<View accessibilityRole="alert" style={styles.notice}><Text style={styles.error}>{state.reviewError}</Text>{state.approval==='uncertain'?button('Retry approval confirmation',()=>void controller.approve(),offline):!locked&&button('Refresh review',()=>void controller.openReview(target),offline)}</View>}
         {state.decision&&<View accessibilityLiveRegion="polite" style={styles.notice}><Text accessibilityRole="header" style={styles.heading}>Conflict resolved</Text><Text style={styles.body}>{state.decision.outcomes.filter(item=>item.outcome==='kept').length} proposals kept · {state.decision.outcomes.filter(item=>item.outcome==='partially_kept').length} partly kept · {state.decision.outcomes.filter(item=>item.outcome==='not_selected').length} not kept.</Text><Text style={styles.meta}>Approved {date(state.decision.decidedAt)}. Other versions remain in audit history.</Text>{button('Return to dashboard',back)}</View>}
+        <SyncDeviceHistory key={`${target.entityType}:${target.entityId}`} controller={controller.history} offline={offline}/>
         {review&&<>
           <View style={styles.notice}><Text style={styles.body}>{review.candidates.length} competing {review.candidates.length===1?'proposal':'proposals'} · Shared revision {review.currentRevision}</Text><Text style={styles.meta}>Device times and connection labels are reported by the app. Server times are listed separately.</Text></View>
           {(review.currentRecord===null||review.candidates.some(item=>item.lifecycleChanged||item.reason!=='fields'))&&<View style={styles.notice}><Text style={styles.heading}>Record lifecycle changed</Text><Text style={styles.body}>{review.currentRecord===null?'This record was deleted. It can only be kept deleted here; restoring it requires a separate workflow.':'This record was deleted or re-created. Review every choice explicitly; only selected detail fields will change.'}</Text>{review.currentRecord===null&&button('Keep record deleted',()=>{setConfirmed(false);Object.keys(review.fields).forEach(key=>controller.choose(key,'current'))},locked)}</View>}

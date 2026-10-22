@@ -235,6 +235,7 @@ export default function IssueDetailScreen() {
 
               {(user?.role==='owner'||user?.role==='admin')&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
                 <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'issue',entityId:issue.id}))} style={styles.editButton}><Text style={styles.editButtonLabel}>{savedDetailBase?'Edit downloaded details':'Download / edit saved details'}</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={styles.editButton}><Text style={styles.editButtonLabel}>Inspect device edit history (online)</Text></Pressable>
                 <Text style={styles.sectionHelp}>{savedDetailBase?'Verified details downloaded. Title, description and priority can be saved offline in this editor.':'Open saved-detail editor online once to download verified details before editing offline.'} Status and updates stay online-only.</Text>
               </View>:null}
               {!editingDetails ? <View style={styles.section}>

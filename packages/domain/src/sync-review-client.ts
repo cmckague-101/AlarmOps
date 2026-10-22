@@ -1,3 +1,4 @@
+import {createDeviceHistoryClient,type DeviceHistoryTransport} from './sync-device-history';
 import {
   createSyncPatch, mergeSyncUpdate, suggestSyncReviewChoices, type FleetSyncReview,
   type FleetSyncReviewDecision, type FleetSyncReviewRequest, type SyncFieldValue, type SyncRecord, type SyncJsonValue,
@@ -7,6 +8,7 @@ import {
 export type SyncReviewTarget = { readonly entityType: 'vehicle' | 'issue'; readonly entityId: string };
 export type SyncConflictGroup = SyncReviewTarget & { readonly count: number; readonly receivedAt: string };
 export interface SyncReviewTransport {
+  history?: DeviceHistoryTransport;
   list(companyId: string, offset: number, limit: number): Promise<readonly unknown[]>;
   review(companyId: string, target: SyncReviewTarget): Promise<unknown>;
   approve(request: FleetSyncReviewRequest): Promise<unknown>;
@@ -138,6 +140,7 @@ export function syncReviewAuthorText(author: SyncReviewFieldProvenance | undefin
 /** Online review state shared by web/native. No offline writes or local persistence. */
 export function createSyncReviewClient(scope: {companyId: string; userId: string} | null, transport: SyncReviewTransport, createId: () => string) {
   scope = scope ? {...scope} : null;
+  const history=createDeviceHistoryClient(scope,transport.history);
   let state: SyncReviewClientState = {groups:[],status:scope?'loading':'disabled',listError:'',target:null,review:null,reviewLoading:false,reviewError:'',choices:{},approval:'idle',decision:null};
   const listeners = new Set<() => void>();
   let active = false; let generation = 0; let listVersion = 0; let reviewVersion = 0;
@@ -170,7 +173,7 @@ export function createSyncReviewClient(scope: {companyId: string; userId: string
   async function openReview(target: SyncReviewTarget) {
     if (!active || !scope || syncReviewLocked(state)) return;
     const epoch = generation; const version = ++reviewVersion;
-    request = null;
+    request = null;history.target(target);
     emit({target:{...target},review:null,choices:{},decision:null,reviewLoading:true,reviewError:''});
     try {
       const data = await transport.review(scope.companyId, target);
@@ -184,18 +187,19 @@ export function createSyncReviewClient(scope: {companyId: string; userId: string
     }
   }
   return {
+    history,
     getSnapshot: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     start() {
-      active = true; generation += 1;
+      active = true; generation += 1;history.start();
       if (request && state.approval === 'saving') emit({approval:'uncertain',reviewError:'Approval has not been confirmed. Retry confirmation using the same request.'});
       void refreshGroups();
     },
-    stop() { active = false; generation += 1; listVersion += 1; reviewVersion += 1; },
+    stop() { active = false; generation += 1; listVersion += 1; reviewVersion += 1;history.stop(); },
     refreshGroups, openReview,
     closeReview() {
       if (syncReviewLocked(state)) return false;
-      reviewVersion += 1; request = null;
+      reviewVersion += 1; request = null;history.target(null);
       emit({target:null,review:null,choices:{},decision:null,reviewError:'',reviewLoading:false}); return true;
     },
     choose(field: string, source: string) {

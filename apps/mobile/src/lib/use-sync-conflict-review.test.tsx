@@ -4,7 +4,7 @@ import {decisionFixture,reviewCandidate,reviewCompany,reviewEntity,reviewFixture
 
 const mocks=vi.hoisted(()=>{
   const query={select:vi.fn().mockReturnThis(),eq:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn()};
-  return {query,client:{from:vi.fn(()=>query),rpc:vi.fn()},session:{} as Record<string,unknown>,offline:false};
+  return {query,client:{from:vi.fn(()=>query),rpc:vi.fn(),auth:{getSession:vi.fn()}},session:{} as Record<string,unknown>,offline:false};
 });
 vi.mock('react-native',()=>({AppState:{currentState:'active',addEventListener:vi.fn(()=>({remove:vi.fn()}))}}));
 vi.mock('expo-router',()=>({useFocusEffect:vi.fn()}));
@@ -12,11 +12,13 @@ vi.mock('./supabase',()=>({supabase:mocks.client}));
 vi.mock('./fleet-store',()=>({createFleetId:()=> 'request-native'}));
 vi.mock('../providers/session-provider',()=>({useSession:()=>mocks.session}));
 vi.mock('../providers/network-provider',()=>({isOffline:()=>mocks.offline,useNetworkStatus:()=>({isOffline:mocks.offline})}));
+import {historySummary,historyReport} from '../../../../packages/domain/test-fixtures/sync-device-history';
 import {useSyncConflictReview} from './use-sync-conflict-review';
 function session(role='owner',demoMode=false,sessionId=reviewUser){return {demoMode,session:{user:{id:sessionId}},access:{status:'ready',value:{kind:'member',company:{id:reviewCompany},user:{id:reviewUser,role}}}}}
 function renderHook(){let result!:ReturnType<typeof useSyncConflictReview>;function Probe(){result=useSyncConflictReview();return null}renderToStaticMarkup(<Probe/>);return result}
 beforeEach(()=>{
   vi.clearAllMocks();mocks.offline=false;mocks.session=session();
+  mocks.client.auth.getSession.mockResolvedValue({data:{session:{user:{id:reviewUser},access_token:'native-bound-history'}},error:null});
   mocks.query.range.mockResolvedValue({data:[],error:null});
   mocks.client.rpc.mockImplementation(async(name)=>({data:name==='get_fleet_sync_review'?reviewFixture():decisionFixture(),error:null}));
 });
@@ -45,6 +47,19 @@ describe('mobile conflict review adapter (no native UI)',()=>{
     mocks.offline=true;await controller.approve();
     expect(mocks.client.rpc).not.toHaveBeenCalledWith('approve_fleet_sync_review',expect.anything());expect(controller.getSnapshot().approval).toBe('idle');
     expect(controller.getSnapshot().reviewError).toContain('No approval was sent');
+  });
+  it('uses account-bound uncached history RPCs and scoped report identities',async()=>{
+    const {controller}=renderHook();controller.start();await controller.openReview({entityType:'vehicle',entityId:reviewEntity});const setHeader=vi.fn();
+    mocks.client.rpc.mockImplementation((name)=>({setHeader:setHeader.mockImplementation(async()=>({data:name==='list_fleet_sync_device_history'?{items:[historySummary()],nextCursor:null}:historyReport(),error:null}))}));
+    await controller.history.list();await controller.history.inspect(controller.history.getSnapshot().items[0]);
+    expect(setHeader).toHaveBeenCalledWith('Authorization','Bearer native-bound-history');expect(mocks.client.rpc).toHaveBeenCalledWith('get_fleet_sync_device_history_report',{target_company_id:reviewCompany,target_entity_type:'vehicle',target_record_id:reviewEntity,submitter_id:reviewUser,submitted_operation_id:historySummary().operationId});expect(controller.history.getSnapshot().report).not.toBeNull();controller.stop();
+  });
+  it('does not issue history requests after account mismatch or connectivity loss during SDK restoration',async()=>{
+    for(const mismatch of [true,false]){
+      mocks.offline=false;const {controller}=renderHook();controller.start();await controller.openReview({entityType:'vehicle',entityId:reviewEntity});mocks.client.rpc.mockClear();
+      mocks.client.auth.getSession.mockImplementation(async()=>{if(!mismatch)mocks.offline=true;return {data:{session:{user:{id:mismatch?'other-user':reviewUser},access_token:'wrong'}},error:null}});
+      await controller.history.list();expect(mocks.client.rpc).not.toHaveBeenCalled();expect(controller.history.getSnapshot().items).toEqual([]);controller.stop();
+    }
   });
   it('treats undeployed migrations as unavailable without crashing the rest of the app',async()=>{
     mocks.query.range.mockResolvedValue({data:null,error:{code:'42P01'}});const {controller}=renderHook();controller.start();await controller.refreshGroups();

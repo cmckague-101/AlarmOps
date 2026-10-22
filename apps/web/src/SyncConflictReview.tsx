@@ -4,6 +4,7 @@ import {
   type SyncReviewClient,type SyncReviewClientState,type SyncReviewFieldProvenance,type SyncFieldValue,
 } from '@fireops/domain';
 import './sync-conflict-review.css';
+import {SyncDeviceHistory} from './SyncDeviceHistory';
 
 const date=(value?:string|null)=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString(undefined,{timeZoneName:'short'}):'Not recorded';
 function Author({value,receivedAt}:{value?:SyncReviewFieldProvenance;receivedAt?:string}){
@@ -31,6 +32,7 @@ export function SyncConflictReview({state,controller,onBack}:{state:SyncReviewCl
       {state.approval==='uncertain'?<button className="primary" onClick={()=>void controller.approve()}>Retry approval confirmation</button>:!locked&&state.target&&<button className="secondary" onClick={()=>void controller.openReview(state.target!)}>Refresh review</button>}
     </div>}
     {state.decision&&<section className="sync-review-result" role="status"><h2>Conflict resolved</h2><p>{state.decision.outcomes.filter(item=>item.outcome==='kept').length} proposals kept · {state.decision.outcomes.filter(item=>item.outcome==='partially_kept').length} partly kept · {state.decision.outcomes.filter(item=>item.outcome==='not_selected').length} not kept.</p><p>Approved {date(state.decision.decidedAt)}. Other versions remain in audit history.</p><button className="secondary" onClick={onBack}>Return to dashboard</button></section>}
+    <SyncDeviceHistory controller={controller.history}/>
     {review&&<form onSubmit={event=>{event.preventDefault();if(confirmed&&syncReviewCanApprove(state))void controller.approve()}}>
       <div className="sync-review-notice"><p>{review.candidates.length} competing {review.candidates.length===1?'proposal':'proposals'} · Shared revision {review.currentRevision}</p><p>Device times and connection labels are reported by the app; server times are listed separately.</p></div>
       {(review.currentRecord===null||review.candidates.some(item=>item.lifecycleChanged||item.reason!=='fields'))&&<div className="sync-review-notice" role="note"><strong>Record lifecycle changed</strong><p>{review.currentRecord===null?'This record was deleted. It can only be kept deleted here; restoring it requires a separate workflow.':'This record was deleted or re-created. Review all choices explicitly; only the selected detail fields will change.'}</p>{review.currentRecord===null&&<button type="button" className="secondary" disabled={locked} onClick={()=>{setConfirmed(false);Object.keys(review.fields).forEach(key=>controller.choose(key,'current'))}}>Keep record deleted</button>}</div>}

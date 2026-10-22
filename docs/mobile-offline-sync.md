@@ -330,11 +330,21 @@ All discarded local values and choices remain in scoped rebase history. Server b
 
 `20261113000100_fleet_sync_device_history.sql` adds an append-only, manager/company-scoped `fleet_sync_device_history` audit and `sync_fleet_update_with_history`. The wrapper uses the existing non-bypass executor and record-group-before-operation lock ordering, verifies scope/author/record identity, known same-record parent submissions, preserved original provenance, coherent snapshot chains, automatic merge results or explicit per-field choices, and exact final submitted body. Request size and chain length are bounded. It then calls the existing verified scalar/RLS endpoint and records all before/after versions and discarded local values in the **same server transaction**. History failures roll back business changes, conflicts, receipts and trigger effects. Exact retries reuse the original audit; different history for an existing operation fails. Current manager permissions are required even for replay.
 
-Original device save time/connectivity remain device-reported; local rebase `createdAt` is also device-reported. Audit receipt time and actor identity/name are recorded server-side. This history is **not** canonical revision provenance or a manager approval. Both review clients now call candidate bases the submitted verified base, rather than falsely claiming a rebased snapshot was the user's original local view. A dedicated history inspection UI remains to be added.
+Original device save time/connectivity remain device-reported; local rebase `createdAt` is also device-reported. Audit receipt time and actor identity/name are recorded server-side. This history is **not** canonical revision provenance or a manager approval. Both review clients now call candidate bases the submitted verified base, rather than falsely claiming a rebased snapshot was the user's original local view. The following slice adds a dedicated online history inspector.
 
 The native worker loads retained history before delivery and uses the atomic RPC whenever it exists. A ready continuation missing its history fails closed. Missing migration errors retain the original operation/history and show setup pending; there is no fallback that silently drops audit data. Only acknowledged submissions proceed to canonical reconciliation and synced/review states. This applies to newly delivered work; already-completed drafts from unreleased development builds are not automatically backfilled. Do not treat those earlier test builds as a supported production rollout.
 
 Targeted checks cover native transport/worker stable history retries and missing-history denial plus embedded PostgreSQL permissions, values, idempotency, conflicts, rejection of forged/mismatched reports and final audit-storage rollback. Full target-Supabase compatibility and multi-session validation remain required. No push, migration deployment or UI launch occurred.
+
+### Online device-history inspection (web and mobile)
+
+`20261114000100_fleet_sync_history_reads.sql` adds current-manager, RLS-enforced, security-invoker read RPCs. Record-scoped summaries use bounded 20-row keyset pages with server timestamp/actor/operation tie-breaking; complete snapshots are fetched only for one explicitly selected report. Reads remain available after record deletion, without recreating records or treating missing history as deletion proof. Report lookup binds company, entity, record, submitter and operation. Neither endpoint can write or approve anything.
+
+Web Command Center includes a record picker and record-ID input (including deleted records). Native vehicle/issue details and retained sync-status entries link to the same review/history screen. History loads independently of pending conflicts, so completed or rejected work remains inspectable. Both clients show saved/discarded proposals, original local view, downloaded rebase base, resulting submission, explicit choices or independent merge, authenticated submitter/device, reported original-save/rebase times and separate server receipt time. Full device-reported snapshots are inspectable. Resulting submissions are explicitly **not** presented as confirmed shared outcomes, canonical field authorship or manager approval sources.
+
+The shared inspector is online-only and memory-only, with separate list/detail epochs, cursor/scope validation and clearing on account/target disposal or permission failures. Authenticated POST RPCs bind the expected SDK account's bearer token; native rechecks connectivity after asynchronous session restoration. No HTTP fallback, offline history cache, queued history request, approval-source option or web offline capability was added. Missing migrations affect history inspection only, not existing review choices or immutable approval retries.
+
+Targeted tests cover controller scope/lifecycle/races, source/value distinctions, XSS-safe web content, native content with stub components, actual hook transports, manager-only database reads, deleted-record retention and tied-timestamp pagination with newer concurrent insertions. Target-Supabase multi-session validation and user-run UI testing remain pending. No push or deployment occurred.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
@@ -345,10 +355,11 @@ You do not need to push the site or apply Supabase changes while implementation 
 3. `20261111000100_fleet_sync_review.sql`
 4. `20261112000100_fleet_sync_record_read.sql`
 5. `20261113000100_fleet_sync_device_history.sql`
+6. `20261114000100_fleet_sync_history_reads.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
-Review UI and the native saved-detail editor report setup pending against an old database; existing online editors remain available. After the migrations and a successful per-record verified download, only the installed-app manager scalar editor can save offline. Attachment persistence, full catch-up, history inspection/older-build recovery and remaining workflow adapters are incomplete. Repeated scalar edits and explicit dependent-edit rebase are enabled only through the limited native adapter. No production sample conflicts are inserted. Deployment is not an announcement that all-feature offline mode is complete.
+Review UI and the native saved-detail editor report setup pending against an old database; existing online editors remain available. After the migrations and a successful per-record verified download, only the installed-app manager scalar editor can save offline. Attachment persistence, full catch-up, older-build recovery and remaining workflow adapters are incomplete. Repeated scalar edits and explicit dependent-edit rebase are enabled only through the limited native adapter. No production sample conflicts are inserted. Deployment is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
@@ -375,7 +386,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 ### Next implementation slices
 
 - Expand verified download coverage/freshness and complete authorized company-wide catch-up; retain per-record availability and pending overlays. Native scalar saves now use the provider-owned session; do not create competing `activate()` handles.
-- Add device-history inspection and older-development-build recovery, then expand dependent-edit adapters. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
+- Add older-development-build recovery, then expand dependent-edit adapters. Online device-history inspection is available on both clients. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
 - Add durable app-managed attachment files/manifests and restart/cleanup recovery tests.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Extend existing sync notices, owner/admin Alerts and conflict review/approval to remaining adapters with workflow-appropriate permissions/privacy.
