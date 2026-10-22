@@ -532,6 +532,10 @@ The worker preparer and settler now cover **inspection photos** as well as file 
 
 Attachment access (reserve, storage insert/read helpers, verification begin/complete, copy begin, explicit release) now goes through one replaceable `fleet_sync_attachment_user_allowed` hook added in place to the undeployed `20261117000100` and used by `20261118`–`20261121` (default owner/admin); uploaders can always read their own copy rows. `20261125000100_fleet_sync_shop_tech_photos.sql` widens it to **shop techs**. Their copies can be referenced only by their own inspections (per-proposer copy check plus the role trigger); vehicle documents, file slots and conflict review stay owner/admin, and firefighters still cannot upload sync files. The native provider enables the attachment controller for shop techs, so offline inspections can carry photos; the saved-detail editor still hides file slots/documents in crew mode. Tests extend `fleet-sync-inspections.test.mjs`.
 
+### Offline issue reports: server (not deployed)
+
+`20261126000100_fleet_sync_issue_create.sql` adds `sync_fleet_create(operation)`, an idempotent endpoint for **one new issue** (schema-version-1 `SyncOperation` with `mutation.kind = 'create'`, no dependencies). The full record is validated: reporter = caller, status Open, no notes yet, title/description non-blank, valid priority, ISO time, and a live vehicle in the company. It inserts through `apply_fleet_changes`, so the existing insert policy (owners/admins/shop techs) and member issue trigger still apply; firefighters are refused. An identity with any revision history (live or deleted) is refused with `23505`, so creates never overwrite or resurrect. Receipts are stored in `fleet_sync_submissions`; exact retries replay them and different work for the same operation ID is rejected. Tests: `supabase/tests/fleet-sync-issue-create.test.mjs`.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -553,6 +557,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 15. `20261123000100_fleet_sync_member_actions.sql`
 16. `20261124000100_fleet_sync_inspections.sql`
 17. `20261125000100_fleet_sync_shop_tech_photos.sql`
+18. `20261126000100_fleet_sync_issue_create.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
