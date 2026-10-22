@@ -8,6 +8,9 @@ import type {DetailTarget,OfflineDetailDraft,OfflineDetailEditor} from '@/lib/of
 import {useOfflineSync} from '@/providers/offline-sync-provider';
 import {OfflineVehicleDocumentForm} from '@/components/offline-vehicle-document-form';
 import {OfflineVehicleFileSlots} from '@/components/offline-vehicle-file-slots';
+import {OfflineVehicleStatus} from '@/components/offline-vehicle-status';
+import {OfflineIssueUpdates} from '@/components/offline-issue-updates';
+import {useFleetVehicles} from '@/lib/fleet-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -22,10 +25,11 @@ export default function SavedDetailsScreen(){
     <View style={styles.content}><Text accessibilityRole="alert" style={{color:theme.ink}}>{Platform.OS==='web'||demoMode?'Offline detail editing is available only in the installed mobile app with real company access.':!manager?access.status==='loading'||access.status==='idle'?'Checking company access…':'Current company owner/admin access is required.':!valid?'Invalid record link.':loading?'Opening device sync storage…':'Device sync storage is unavailable. Existing online editors remain available. Saved work has not been discarded.'}</Text>
       {manager&&valid&&!loading&&!demoMode&&Platform.OS!=='web'?<Pressable accessibilityRole="button" onPress={()=>void refresh()} style={styles.button}><Text style={{color:theme.ember}}>Retry device storage</Text></Pressable>:null}</View>
   </SafeAreaView>;
-  return <DetailForm key={`${member.user.id}:${member.company.id}:${member.user.role}:${entityType}:${entityId}`} editor={detailEditor} target={{entityType,entityId}}/>;
+  return <DetailForm key={`${member.user.id}:${member.company.id}:${member.user.role}:${entityType}:${entityId}`} editor={detailEditor} target={{entityType,entityId}} user={{id:member.user.id,name:member.user.name}} companyId={member.company.id}/>;
 }
 
-function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTarget}){
+function DetailForm({editor,target,user,companyId}:{editor:OfflineDetailEditor;target:DetailTarget;user:{id:string;name:string};companyId:string}){
+  const {crew}=useFleetVehicles(companyId);const activeCrew=crew.filter(member=>member.status==='Active');
   const theme=useFireOpsTheme();const router=useRouter();const {offline,state:syncState,attachmentController,syncAttachments}=useOfflineSync();
   const hasDownload=syncState.records.some(record=>record.entityType===target.entityType&&record.entityId===target.entityId&&record.record!==null);
   const [downloadedOnly,setDownloadedOnly]=useState(false);
@@ -57,7 +61,7 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
     <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':undefined} keyboardVerticalOffset={90}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.title,{color:theme.ink}]}>{saved?'Submitted detail copy':'Saved detail editor'}</Text>
-        <Text style={{color:theme.secondary}}>Owner/admin scalar details{target.entityType==='vehicle'?', vehicle files and new vehicle documents':''} only. Open this editor online once per record before using it offline. Inspection photos, status, assignments and other workflows require a connection.</Text>
+        <Text style={{color:theme.secondary}}>Owner/admin details, {target.entityType==='vehicle'?'status/assignment, vehicle files and new vehicle documents':'notes and resolve/reopen'} only. Open this editor online once per record before using it offline. Fire assignment, inspections and other workflows require a connection.</Text>
         {saved?<Text accessibilityRole="alert" style={[styles.label,{color:theme.ink}]}>Saved on device. Values below are your submitted version, not confirmed shared data.</Text>:null}
         {loading?<Text style={{color:theme.secondary}}>Loading verified details…</Text>:null}
         {draft?<>
@@ -67,6 +71,8 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
             {field==='priority'?<View style={styles.choices}>{['Low','Medium','High','Critical'].map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:form[field]===value,disabled:frozen}} disabled={frozen} onPress={()=>setForm(current=>({...current,[field]:value}))} style={[styles.choice,{borderColor:form[field]===value?theme.ember:theme.divider}]}><Text style={{color:form[field]===value?theme.ember:theme.ink}}>{value}</Text></Pressable>)}</View>:<TextInput accessibilityLabel={label} editable={!frozen} value={form[field]??''} onChangeText={value=>setForm(current=>({...current,[field]:value}))} keyboardType={field==='year'?'number-pad':'default'} autoCapitalize={field==='vin'||field==='plate'?'characters':'sentences'} multiline={field==='notes'||field==='description'} maxLength={field==='year'?4:field==='notes'||field==='description'?10000:field==='vin'?17:field==='plate'?20:200} textAlignVertical="top" style={[styles.input,{color:theme.ink,borderColor:theme.divider,backgroundColor:theme.paper},(field==='notes'||field==='description')&&styles.multiline]}/>}
           </View>)}
         </>:null}
+        {draft&&target.entityType==='vehicle'?<OfflineVehicleStatus editor={editor} entityId={target.entityId} record={draft.record} crew={activeCrew}/>:null}
+        {draft&&target.entityType==='issue'?<OfflineIssueUpdates editor={editor} entityId={target.entityId} record={draft.record} user={user}/>:null}
         {draft&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleFileSlots editor={editor} controller={attachmentController} entityId={target.entityId} record={draft.record} onSaved={syncAttachments}/>:null}
         {draft&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleDocumentForm controller={attachmentController} entityId={target.entityId} onSaved={syncAttachments}/>:null}
         {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}

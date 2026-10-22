@@ -34,7 +34,7 @@ There is no uncommitted implementation work. Last verified: **120 embedded Postg
 ## What currently works
 
 - Installed iOS/Android owners/admins can save downloaded vehicle/issue **scalar details** offline. Repeated saves are durable dependent operations; independent changes are rebased over verified canonical data, conflicts require explicit per-field rebase/review.
-- Fields: vehicle `unit,type,year,make,model,vin,plate,notes`; issue `title,description,priority`.
+- Fields: vehicle `unit,type,year,make,model,vin,plate,notes`, six file slots, `status/assignedTo/assignedFire` (invariant group); issue `title,description,priority`, `status/resolvedAt` (group) and append-only `updates`. Owners/admins only; firefighter self-claim/release still needs a connection.
 - Scoped SQLite outbox, stable per-user device IDs, verified raw-record cache, foreground/reconnect/manual worker, durable delivery/review recovery, retained-work sign-out guard, notices and `/sync-status`.
 - Backend revision fingerprints, idempotent receipts, audited three-way merge/conflicts and owner/admin review. Both clients have online review/history inspectors. Web online writers preserve captured revisions and immutable retry intent.
 - Opt-in bulk vehicle/issue inventory downloads with resumable pages, tombstones and coverage. Dataset fingerprint fences every page against changes (including behind-cursor inserts and ABA); not a timestamp/sequence high-water mark. Bounded full scans, not an optimized delta feed or background-service promise.
@@ -89,7 +89,7 @@ Native tests use Node `node:sqlite` (Node 22.13+). Database tests use local dev-
 
 ## Deployment and remaining scope
 
-All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261121000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `release-fleet-sync-attachment` and `copy-fleet-sync-attachment` Edge Functions. Note: undeployed migrations `20261110000100`/`20261111000100`/`20261117000100` were edited in place during development. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
+All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261122000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `release-fleet-sync-attachment` and `copy-fleet-sync-attachment` Edge Functions. Note: undeployed migrations `20261110000100`/`20261111000100`/`20261117000100` were edited in place during development. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
 
 All-feature offline remains unfinished. Beyond attachments: remaining workflows and permission/invariant-aware adapters (assignments/status, inspections, crew/qualifications, notes, documents, communications, training, inventory, tasks/preferences, financials, settings/integrations), their catch-up contracts, encryption/retention, recovery/compatibility/performance hardening, real validation and rollout preparation.
 

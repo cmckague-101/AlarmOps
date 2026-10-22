@@ -72,3 +72,26 @@ export function createVehicleSlotActions(options:{
     cancel(){pending=null},
   };
 }
+/**
+ * One saved detail change at a time on a fresh verified draft. The change is
+ * built once from that draft (so removals/appends match its base) and frozen:
+ * Retry resends the identical values on the same draft, never a new change.
+ */
+export function createDetailChangeActions(options:{prepare:()=>Promise<OfflineDetailDraft>;save:(draft:OfflineDetailDraft,values:SyncRecord,extras:DetailSaveExtras)=>Promise<unknown>;isCurrent:()=>boolean}){
+  let pending:{key:string;build:(draft:OfflineDetailDraft)=>{values:SyncRecord;extras?:DetailSaveExtras};draft:OfflineDetailDraft|null;change:{values:SyncRecord;extras:DetailSaveExtras}|null}|null=null;
+  async function commit(){
+    const current=pending!;
+    if(!current.draft){current.draft=await options.prepare();if(!options.isCurrent())return false}
+    if(!current.change){const built=current.build(current.draft);current.change={values:built.values,extras:built.extras??{}}}
+    await options.save(current.draft,current.change.values,current.change.extras);pending=null;return options.isCurrent();
+  }
+  return {
+    get pendingKey(){return pending?.key??null},
+    start(key:string,build:(draft:OfflineDetailDraft)=>{values:SyncRecord;extras?:DetailSaveExtras}){
+      if(pending)return Promise.reject(new Error('Finish or retry the previous change first.'));if(!options.isCurrent())return Promise.resolve(false);
+      pending={key,build,draft:null,change:null};return commit();
+    },
+    retry(){return pending?commit():Promise.resolve(false)},
+    cancel(){pending=null},
+  };
+}

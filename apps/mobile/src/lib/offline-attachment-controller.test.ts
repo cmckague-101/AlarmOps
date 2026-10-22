@@ -3,7 +3,7 @@ import type {OfflineOutboxSession} from './offline-outbox';
 import type {OfflineAttachmentVault} from './offline-attachment-vault';
 import type {OfflineAttachment} from './offline-attachment-types';
 import {createOfflineAttachmentController} from './offline-attachment-controller';
-import {createAttachmentDraftActions,createVehicleDocumentActions,createVehicleSlotActions,vehicleDocumentPickError} from './offline-attachment-actions';
+import {createAttachmentDraftActions,createDetailChangeActions,createVehicleDocumentActions,createVehicleSlotActions,vehicleDocumentPickError} from './offline-attachment-actions';
 const id='40000000-0000-4000-8000-000000000001';
 const scope={userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0000-4000-8000-000000000001'};
 const asset:OfflineAttachment={...scope,attachmentId:id,entityType:'vehicle',entityId:'30000000-0000-4000-8000-000000000001',name:'file.png',mimeType:'image/png',byteSize:5,sha256:'a'.repeat(64),deviceId:'phone',savedAt:'2026-01-01T00:00:00Z',connectivity:'offline',state:'ready',error:null};
@@ -105,5 +105,21 @@ describe('vehicle file slot actions',()=>{
   it('ignores late picker results and rejects unsupported files before staging',async()=>{
     const live={value:true};const f=slots({isCurrent:()=>live.value,pick:vi.fn(async()=>{live.value=false;return jpg})});expect(await f.actions.replace('photo')).toBe(false);expect(f.options.stage).not.toHaveBeenCalled();
     const g=slots({pick:vi.fn().mockResolvedValue({...jpg,mimeType:'text/html'})});await expect(g.actions.replace('photo')).rejects.toThrow(/JPEG/);expect(g.options.stage).not.toHaveBeenCalled();
+  });
+});
+describe('detail change actions',()=>{
+  const draft={entityType:'issue',entityId:'i',revision:'1',record:{updates:[{id:'old'}]},verifiedAt:'t'} as never;
+  it('builds a change once from its draft and retries the identical change',async()=>{
+    const save=vi.fn().mockRejectedValueOnce(new Error('disk full')).mockResolvedValue({});const prepare=vi.fn().mockResolvedValue(draft);let built=0;
+    const actions=createDetailChangeActions({prepare,save,isCurrent:()=>true});
+    await expect(actions.start('note',value=>({values:{updates:[{id:`n${++built}`},...(value.record.updates as never[])]}}))).rejects.toThrow('disk full');
+    await expect(actions.start('status',()=>({values:{status:'Resolved'}}))).rejects.toThrow(/previous change/);
+    expect(await actions.retry()).toBe(true);expect(built).toBe(1);expect(prepare).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0]).toEqual(save.mock.calls[1]);expect(save.mock.calls[0][1]).toEqual({updates:[{id:'n1'},{id:'old'}]});
+    expect(await actions.start('status',()=>({values:{status:'Open'},extras:{remove:['resolvedAt']}}))).toBe(true);expect(save).toHaveBeenLastCalledWith(draft,{status:'Open'},{remove:['resolvedAt']});
+  });
+  it('does not save after the screen or account changed during preparation',async()=>{
+    const live={value:true};const save=vi.fn();const actions=createDetailChangeActions({prepare:vi.fn(async()=>{live.value=false;return draft}),save,isCurrent:()=>live.value});
+    expect(await actions.start('status',()=>({values:{status:'Open'}}))).toBe(false);expect(save).not.toHaveBeenCalled();
   });
 });
