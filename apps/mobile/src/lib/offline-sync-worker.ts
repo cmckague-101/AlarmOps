@@ -21,6 +21,7 @@ function errorMessage(error:unknown):string{
   if(isSyncReviewUnavailable(error))return 'Sync is waiting for database setup. Saved work has not been discarded.';
   if(['401','PGRST301','PGRST302'].includes(offlineSyncErrorCode(error)))return 'Sign in again to finish syncing. Saved work remains on this device.';
   if(offlineSyncErrorCode(error)==='42501')return 'Current permissions do not allow this sync action. Verify company access before retrying.';
+  if(offlineSyncErrorCode(error)==='23505')return 'This record identity was already used. Saved work is retained; an existing or completed record was not replaced.';
   if(['22023','22P02','55000'].includes(offlineSyncErrorCode(error)))return 'This change needs validation or a fresh base revision before it can sync. Saved work remains on this device.';
   return 'Sync was interrupted. Saved work will be retried without creating a duplicate.';
 }
@@ -217,7 +218,7 @@ export function createOfflineSyncWorker(options:{
           if(!ready(version))break;
           const message=errorMessage(error);
           if(offlineSyncErrorCode(error)==='SYNC_STORAGE'){emit({error:message});break}
-          const blocked=['42501','22023','22P02','55000'].includes(offlineSyncErrorCode(error));
+          const blocked=['42501','22023','22P02','23505','55000'].includes(offlineSyncErrorCode(error));
           await session.finishAttempt(attempt,blocked?{kind:'blocked',error:message}:{kind:'retry',error:message,retryAt:now()+retryDelay(entry.attempts)});
           emit({error:message,setupPending:isSyncReviewUnavailable(error)});
           if(isSyncReviewUnavailable(error)||['42501','401','PGRST301','PGRST302'].includes(offlineSyncErrorCode(error)))break;

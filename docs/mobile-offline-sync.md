@@ -582,6 +582,16 @@ Verified setting acknowledgments replace disappearing pending overlays immediate
 
 Task UI retries retain their task UUID across failed local acknowledgment and connectivity changes. Availability retains its failed request/base, blocks changing an unconfirmed selection until retry and preserves rapid sequential reversals even before a render. Confirmed task completions remain hidden from stale list responses; new confirmed creations stay visible while list refresh is pending. Targeted checks: 65 mobile tests (20 production-hook/effect tests plus user-command, worker and transport suites), mobile typecheck, whitespace checks. Tests use an injected persistent hook-slot/effect harness, not mounted UI or visual tests. No deployment occurred.
 
+### Private task identity retirement and current-role enforcement
+
+Forward migration `20261129000100_personal_task_identities.sql` records **only opaque task UUIDs**, never task content, author/company links or fabricated creation/deletion times. It backfills current task IDs and successful task-command targets under task-then-receipt table locks. Already-deleted legacy IDs absent from both sources cannot be reconstructed; do not invent them or treat unsupported old builds as safely replayable.
+
+All task inserts (including web, legacy online and service writes) reserve their UUID transactionally after normal RLS/constraints. Reusing a retired UUID fails with `23505` and rolls back the new row. Task identity/company/owner cannot be reassigned. Successful absent-task completion also retires its target through an atomic receipt trigger; this is not an assertion that the task existed. Exact original operation replay still returns its original receipt without recreating deleted work. The worker treats identity collisions as actionable blocked work, never automatic retries or replacement UUIDs.
+
+The append-only, RLS-protected UUID set survives company/profile deletion without retaining any association to either. Clients cannot read or edit it; service role has read-only opaque IDs. Task content remains physically deleted on completion; existing private receipt retention is unchanged. Current task roles now constrain receipt access/creation too: revoked roles cannot bypass permission checks through cached replay or an absent-task completion, and canonical reads return permission denial rather than fabricated deletion.
+
+Tests cover both reproduced resurrection bugs (fresh operation and legacy online insert), live/receipt backfill, missing-task completion, private minimal schema, ownership immutability, company deletion, permission revocation, RLS/receipt-failure rollback and exact retries. No migrations were applied to Supabase. Real multi-session migration/insert races remain a rollout check.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -606,6 +616,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 18. `20261126000100_fleet_sync_issue_create.sql`
 19. `20261127000100_user_sync_commands.sql`
 20. `20261128000100_user_sync_availability_cas.sql`
+21. `20261129000100_personal_task_identities.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

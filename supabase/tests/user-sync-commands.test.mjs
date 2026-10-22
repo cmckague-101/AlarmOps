@@ -16,7 +16,13 @@ function command(user,entityType,entityId,cmd,payload,dependsOn=[]){
 const send=(op,user=op.provenance.userId)=>actor(user,async()=>(await row('select public.sync_user_command($1::jsonb) result',[JSON.stringify(op)])).result);
 const state=(user,entity,id)=>actor(user,async()=>(await row('select public.get_user_sync_state($1,$2,$3) result',[company,entity,id])).result);
 const task=(changes={})=>({subject:'Order filters',description:'Two cases',dueDate:'2026-01-05',...changes});
-before(async()=>{await loadUserSyncSchema(db)});
+const legacyLive=randomUUID(),legacyCompleted=randomUUID(),legacyAbsent=randomUUID();
+before(async()=>{await loadUserSyncSchema(db,async()=>{
+  await db.query('insert into public.companies values($1)',[company]);await db.query('insert into public.profiles values($1,$2)',[owner,'Owner']);await db.query('insert into public.company_members values($1,$2,$3)',[company,owner,'owner']);
+  await db.query('insert into public.personal_tasks(id,company_id,user_id,subject,due_date) values($1,$2,$3,$4,$5)',[legacyLive,company,owner,'Legacy online task','2026-01-05']);
+  const create=command(owner,'personal_task',legacyCompleted,'task.create',task());await send(create);await send(command(owner,'personal_task',legacyCompleted,'task.complete',{},[create.operationId]));
+  await send(command(owner,'personal_task',legacyAbsent,'task.complete',{}));
+})});
 beforeEach(async()=>{
   await db.exec('truncate public.companies cascade;truncate public.profiles cascade');
   await db.query('insert into public.companies values($1),($2)',[company,other]);
@@ -34,6 +40,57 @@ test('tasks are created with client IDs, replay idempotently and complete only a
   const done=await send(complete);assert.equal(done.record,null);assert.equal((await row('select count(*)::int count from public.personal_tasks')).count,0);
   assert.equal(BigInt((await state(tech,'personal_task',id)).revision)>=BigInt(done.revision),true);
   await assert.rejects(send({...create,mutation:{...create.mutation,payload:task({subject:'Other'})}}),error=>error.code==='22023');
+});
+test('completed task IDs cannot be recreated by a fresh operation or another user',async()=>{
+  const id=randomUUID();const create=command(tech,'personal_task',id,'task.create',task());const original=await send(create);
+  await send(command(tech,'personal_task',id,'task.complete',{},[create.operationId]));
+  assert.deepEqual(await send(create),original);assert.equal((await state(tech,'personal_task',id)).record,null);
+  await assert.rejects(send(command(tech,'personal_task',id,'task.create',task())),error=>error.code==='23505');
+  await assert.rejects(send(command(owner,'personal_task',id,'task.create',task())),error=>error.code==='23505');
+  assert.equal((await row('select count(*)::int count from public.personal_tasks where id=$1',[id])).count,0);
+});
+test('online task inserts also reserve IDs permanently and completion of an absent ID retires it',async()=>{
+  const id=randomUUID();const insert=()=>actor(owner,()=>db.query('insert into public.personal_tasks(id,company_id,user_id,subject,due_date) values($1,$2,$3,$4,$5)',[id,company,owner,'Online task','2026-01-05']));
+  await insert();await actor(owner,()=>db.query('delete from public.personal_tasks where id=$1',[id]));await assert.rejects(insert(),error=>error.code==='23505');
+  const absent=randomUUID();await send(command(tech,'personal_task',absent,'task.complete',{}));await assert.rejects(send(command(tech,'personal_task',absent,'task.create',task())),error=>error.code==='23505');
+});
+test('task identity migration backfills live rows and receipt targets without retaining private metadata',async()=>{
+  for(const id of [legacyLive,legacyCompleted,legacyAbsent]){
+    assert.equal((await row('select id from public.personal_task_identities where id=$1',[id])).id,id);
+    await assert.rejects(send(command(owner,'personal_task',id,'task.create',task())),error=>error.code==='23505');
+  }
+  assert.deepEqual((await db.query("select column_name from information_schema.columns where table_schema='public' and table_name='personal_task_identities' order by ordinal_position")).rows.map(column=>column.column_name),['id']);
+  await assert.rejects(actor(owner,()=>db.query('select * from public.personal_task_identities')),error=>error.code==='42501');
+  await assert.rejects(actor(owner,()=>db.query('insert into public.personal_task_identities values($1)',[randomUUID()])),error=>error.code==='42501');
+  await assert.rejects(db.query('delete from public.personal_task_identities where id=$1',[legacyLive]),error=>error.code==='42501');
+  await assert.rejects(db.query('update public.personal_task_identities set id=$1 where id=$2',[randomUUID(),legacyLive]),error=>error.code==='42501');
+});
+test('failed RLS and receipt writes roll back task identity reservation together',async()=>{
+  const denied=randomUUID();await assert.rejects(actor(crew,()=>db.query('insert into public.personal_tasks(id,company_id,user_id,subject,due_date) values($1,$2,$3,$4,$5)',[denied,company,crew,'Forbidden','2026-01-05'])),error=>error.code==='42501');
+  assert.equal(await row('select id from public.personal_task_identities where id=$1',[denied]),undefined);await send(command(owner,'personal_task',denied,'task.create',task()));
+  const id=randomUUID();const create=command(owner,'personal_task',id,'task.create',task());
+  await db.exec("create function public.sync_test_fail_task_receipt() returns trigger language plpgsql as $$ begin raise exception 'Receipt write failed'; end; $$;create trigger sync_test_fail_task_receipt before insert on public.user_sync_receipts for each row execute function public.sync_test_fail_task_receipt()");
+  try{
+    await assert.rejects(send(create),/Receipt write failed/);
+    assert.equal(await row('select id from public.personal_task_identities where id=$1',[id]),undefined);assert.equal(await row('select id from public.personal_tasks where id=$1',[id]),undefined);
+    assert.equal((await row('select count(*)::int count from public.user_sync_receipts where operation_id=$1',[create.operationId])).count,0);
+  }finally{await db.exec('drop trigger sync_test_fail_task_receipt on public.user_sync_receipts;drop function public.sync_test_fail_task_receipt()')}
+  await send(create);assert.equal((await row('select id from public.personal_task_identities where id=$1',[id])).id,id);
+});
+test('task ownership cannot move and opaque retirement survives company deletion',async()=>{
+  const id=randomUUID();await send(command(owner,'personal_task',id,'task.create',task()));
+  for(const [column,value] of [['id',randomUUID()],['company_id',other],['user_id',tech]])await assert.rejects(actor(null,()=>db.query(`update public.personal_tasks set ${column}=$1 where id=$2`,[value,id]),'service_role'),error=>error.code==='42501');
+  await db.query('delete from public.companies where id=$1',[company]);assert.equal((await row('select id from public.personal_task_identities where id=$1',[id])).id,id);
+  await assert.rejects(send({...command(outsider,'personal_task',id,'task.create',task()),companyId:other}),error=>error.code==='23505');
+});
+test('task role revocation denies completion, canonical reads and cached receipt replay',async()=>{
+  const id=randomUUID();const create=command(tech,'personal_task',id,'task.create',task());await send(create);
+  const complete=command(tech,'personal_task',id,'task.complete',{});await send(complete);
+  const live=randomUUID(),absent=randomUUID();await send(command(tech,'personal_task',live,'task.create',task()));
+  await db.query("update public.company_members set role='fire_fighter' where company_id=$1 and user_id=$2",[company,tech]);
+  for(const operation of [create,complete,command(tech,'personal_task',absent,'task.complete',{}),command(tech,'personal_task',live,'task.complete',{})])await assert.rejects(send(operation),error=>error.code==='42501');
+  await assert.rejects(state(tech,'personal_task',id),error=>error.code==='42501');
+  assert.equal(await row('select id from public.personal_task_identities where id=$1',[absent]),undefined);assert.equal((await row('select id from public.personal_tasks where id=$1',[live])).id,live);
 });
 test('tasks stay private and limited to eligible roles',async()=>{
   const id=randomUUID();await send(command(owner,'personal_task',id,'task.create',task()));

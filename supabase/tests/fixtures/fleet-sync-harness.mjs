@@ -45,7 +45,7 @@ export async function loadFleetSyncAttachmentSchema(db) {
 }
 
 /** Fleet sync schema plus the real user-owned tables and the user sync commands. */
-export async function loadUserSyncSchema(db) {
+export async function loadUserSyncSchema(db, beforeTaskIdentities = async () => {}) {
   await loadFleetSyncSchema(db);
   await db.exec(migration('20261107000100_personal_tasks'));
   const availability = migration('20260912000200_crew_availability');
@@ -53,4 +53,6 @@ export async function loadUserSyncSchema(db) {
   await db.exec(migration('20261108000100_dashboard_preferences'));
   await db.exec(migration('20261127000100_user_sync_commands'));
   await db.exec(migration('20261128000100_user_sync_availability_cas'));
+  await beforeTaskIdentities();
+  await db.exec(migration('20261129000100_personal_task_identities'));
 }

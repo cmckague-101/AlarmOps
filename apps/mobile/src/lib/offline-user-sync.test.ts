@@ -33,6 +33,12 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(f.transport.deliver.mock.calls.map(call=>call[0].mutation.kind==='command'&&call[0].mutation.command)).toEqual(['task.create','task.complete']);
     expect((await f.session.list()).every(entry=>entry.status==='synced')).toBe(true);expect(pendingTaskChanges(await f.session.list()).completed.size).toBe(0);
   });
+  it('blocks retired task identities without automatic retries or replacement IDs',async()=>{
+    const f=await setup();const saved=await f.sync.createTask({id:nextId(),subject:'Filters',description:'',dueDate:'2026-01-05'});
+    f.transport.deliver.mockRejectedValue({code:'23505'});await f.worker.wake();await f.worker.resume();
+    const retained=(await f.session.list())[0];expect(retained.status).toBe('blocked');expect(retained.error).toContain('identity was already used');expect(retained.operation).toEqual(saved.operation);expect(f.transport.deliver).toHaveBeenCalledTimes(1);expect(f.transport.canonical).not.toHaveBeenCalled();
+    await f.worker.retry(saved.operation.operationId);await f.worker.wake();expect(f.transport.deliver.mock.calls.map(call=>call[0])).toEqual([saved.operation,saved.operation]);expect(await f.session.list()).toHaveLength(1);
+  });
   it('labels availability that kept someone else’s newer value and overlays pending settings',async()=>{
     const f=await setup();await f.sync.setAvailability(true,false);await f.sync.setDashboard({fleet:false});
     expect(pendingAvailability(await f.session.list(),user)).toBe(true);expect(pendingDashboard(await f.session.list())).toEqual({fleet:false});
