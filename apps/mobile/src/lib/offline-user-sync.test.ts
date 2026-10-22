@@ -19,7 +19,7 @@ async function setup(){
   let revision=0;const transport={deliver:vi.fn<OfflineSyncTransport['deliver']>(async operation=>({kind:'applied',receivedAt:date,revision:String(++revision),record:operation.mutation.kind==='command'&&operation.mutation.command==='task.create'?{id:operation.entityId,...operation.mutation.payload}:null})),
     canonical:vi.fn(async(operation:SyncOperation)=>({revision:String(revision),record:operation.mutation.kind==='command'&&operation.mutation.command==='task.create'?{id:operation.entityId,...operation.mutation.payload}:null})),outcome:vi.fn().mockResolvedValue(null),readRecord:vi.fn()};
   let token=0;const worker=createOfflineSyncWorker({session,transport,canAccess:()=>true,canRun:()=>true,token:()=>`attempt-${++token}`,now:()=>0,timeoutMs:1000});cleanup.push(()=>worker.stop());
-  return {session,sync,transport,worker};
+  return {session,sync,transport,worker,sqlite};
 }
 describe('offline user-owned commands (actual SQLite)',()=>{
   it('creates and completes a task in order, overlaying pending changes until synced',async()=>{
@@ -40,6 +40,30 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     f.transport.canonical.mockResolvedValue({revision:'5',record:{id:user,available:false}} as never);
     await f.worker.wake();const entry=(await f.session.list()).find(item=>item.operation.entityType==='availability')!;
     expect(entry.status).toBe('synced');expect(offlineSyncEntryLabel(entry)).toMatch(/someone else was kept/);
+  });
+  it('chains repeated availability and independent dashboard edits without replacing earlier intent',async()=>{
+    const f=await setup();const first=await f.sync.setAvailability(true,false);const second=await f.sync.setAvailability(false,true);const third=await f.sync.setAvailability(true,false);
+    expect(second.operation.dependsOn).toEqual([first.operation.operationId]);expect(third.operation.dependsOn).toEqual([second.operation.operationId]);
+    await f.sync.setDashboard({fleet:false});await f.sync.setDashboard({tasks:false});expect(pendingDashboard(await f.session.list())).toEqual({fleet:false,tasks:false});expect(pendingAvailability(await f.session.list(),user)).toBe(true);
+    await f.worker.wake();expect((await f.session.list()).every(entry=>entry.status==='synced')).toBe(true);
+  });
+  it('atomically chains concurrent callers over the actual current command head',async()=>{
+    const f=await setup();const results=await Promise.all([f.sync.setDashboard({fleet:false}),f.sync.setDashboard({tasks:false}),f.sync.setDashboard({fleet:true})]);expect(results[1].operation.dependsOn).toEqual([results[0].operation.operationId]);expect(results[2].operation.dependsOn).toEqual([results[1].operation.operationId]);expect(pendingDashboard(await f.session.list())).toEqual({fleet:true,tasks:false});
+  });
+  it('retries a lost local acknowledgment with original identity, dependencies and provenance',async()=>{
+    const f=await setup();const seed=await f.sync.setDashboard({tasks:false});let lost=true;let offline=true;let time=date;
+    const sync=createOfflineUserSync({session:{...f.session,enqueue:async(...args:Parameters<typeof f.session.enqueue>)=>{const result=await f.session.enqueue(...args);if(lost){lost=false;throw new Error('Local acknowledgment lost')}return result}},id:nextId,now:()=>time,offline:()=>offline,canEdit:()=>true,changed:async()=>{}});
+    await expect(sync.setDashboard({fleet:false})).rejects.toThrow('acknowledgment');const original=(await f.session.list())[1];expect(original.operation.dependsOn).toEqual([seed.operation.operationId]);offline=false;time='2026-01-02T00:00:00Z';const retried=await sync.setDashboard({fleet:false});expect(retried.operation).toEqual(original.operation);expect(await f.session.list()).toHaveLength(2);
+    const later=await sync.setDashboard({fleet:false});expect(later.operation.operationId).not.toBe(original.operation.operationId);expect(later.operation.dependsOn).toEqual([original.operation.operationId]);
+  });
+  it('rolls back failed dependency insertion and retries the captured command',async()=>{
+    const f=await setup();const first=await f.sync.setDashboard({tasks:false});
+    f.sqlite.exec("CREATE TRIGGER fail_command_dependency BEFORE INSERT ON offline_dependencies BEGIN SELECT RAISE(ABORT,'Dependency write failed'); END");
+    await expect(f.sync.setDashboard({tasks:true})).rejects.toThrow('Dependency write failed');expect(await f.session.list()).toHaveLength(1);expect(pendingDashboard(await f.session.list())).toEqual({tasks:false});
+    f.sqlite.exec('DROP TRIGGER fail_command_dependency');const saved=await f.sync.setDashboard({tasks:true});expect(saved.operation.dependsOn).toEqual([first.operation.operationId]);expect(await f.session.list()).toHaveLength(2);
+  });
+  it('freezes input values before asynchronous device lookup',async()=>{
+    const f=await setup();const changes={fleet:false};const saving=f.sync.setDashboard(changes);changes.fleet=true;const saved=await saving;expect(saved.operation.mutation).toMatchObject({payload:{changes:{fleet:false}}});
   });
   it('allows only known user commands and routes them to the user endpoints',async()=>{
     const op:SyncOperation={schemaVersion:1,operationId:'o',companyId:company,entityType:'personal_task',entityId:'t',provenance:{userId:user,deviceId:'d',savedAt:date,connectivity:'offline'},dependsOn:['p'],mutation:{kind:'command',command:'task.complete',payload:{}}};

@@ -1,4 +1,4 @@
-import type {SyncOperation,SyncRecord} from '@fireops/domain';
+import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
@@ -27,13 +27,29 @@ export function pendingDashboard(entries:readonly OutboxEntry[]):Record<string,S
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
   const guard=()=>{if(!options.canEdit())throw new Error('Offline saving is unavailable for the current account.')};
+  type Save={operationId:string;savedAt:string;connectivity:'offline'|'online';operation?:SyncOperation;promise?:Promise<OutboxEntry>};
+  // Retain failed/uncertain local saves only. A later intentional save gets a new ID.
+  const saves=new Map<string,Save>();
   async function enqueue(entityType:string,entityId:string,command:string,payload:SyncRecord,projection:SyncRecord|null,dependsOn:string[]=[]):Promise<OutboxEntry>{
-    guard();const deviceId=await session.getDeviceId(options.id);guard();
-    const operation:SyncOperation={schemaVersion:1,operationId:options.id(),companyId:scope.companyId,entityType,entityId,
-      provenance:{userId:scope.userId,deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},dependsOn,mutation:{kind:'command',command,payload}};
-    const entry=await session.enqueue(operation,projection);
-    try{await options.changed()}catch{/* Committed command remains durable. */}
-    return entry;
+    guard();createSyncPatch({},payload);if(projection!==null)createSyncPatch({},projection);
+    const captured=JSON.parse(JSON.stringify({payload,projection,dependsOn})) as {payload:SyncRecord;projection:SyncRecord|null;dependsOn:string[]};
+    const key=JSON.stringify([entityType,entityId,command,captured],(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
+    let save=saves.get(key);
+    if(!save){save={operationId:options.id(),savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'};saves.set(key,save)}
+    if(save.promise)return save.promise;
+    const request=save;
+    request.promise=(async()=>{
+      if(!request.operation){
+        const deviceId=await session.getDeviceId(options.id);guard();
+        request.operation={schemaVersion:1,operationId:request.operationId,companyId:scope.companyId,entityType,entityId,
+          provenance:{userId:scope.userId,deviceId,savedAt:request.savedAt,connectivity:request.connectivity},dependsOn:captured.dependsOn,mutation:{kind:'command',command,payload:captured.payload}};
+      }
+      guard();const entry=await session.enqueue(request.operation,captured.projection,{sequenceCommand:true});
+      saves.delete(key);
+      try{await options.changed()}catch{/* Committed command remains durable. */}
+      return entry;
+    })();
+    try{return await request.promise}finally{request.promise=undefined}
   }
   return {
     createTask(task:OfflineTask){
@@ -44,7 +60,7 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     /** Completing a task created on this device waits for its create to sync. */
     async completeTask(id:string){
       if(!uuid.test(id))throw new Error('Invalid task.');
-      const create=(await session.list()).find(entry=>entry.operation.entityId===id&&entry.operation.mutation.kind==='command'&&entry.operation.mutation.command==='task.create');
+      const create=(await session.list()).find(entry=>entry.operation.entityType==='personal_task'&&entry.operation.entityId===id&&entry.operation.mutation.kind==='command'&&entry.operation.mutation.command==='task.create');
       return enqueue('personal_task',id,'task.complete',{},null,create?[create.operation.operationId]:[]);
     },
     /** `base` is the value shown on this device; if someone changed it since, the server keeps theirs. */

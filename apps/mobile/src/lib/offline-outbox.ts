@@ -493,13 +493,15 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         },
         removeRecord(entityType:string,entityId:string):Promise<void>{return write(async tx=>{await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,entityType,entityId)})},
         /** Commit projection and intent together. Re-enqueueing the same intent never regresses newer state. */
-        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean;continuationParent?:string;attachmentIds?:readonly string[]}): Promise<OutboxEntry> {
+        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean;continuationParent?:string;attachmentIds?:readonly string[];sequenceCommand?:boolean}): Promise<OutboxEntry> {
           guard();
-          const encoded = encodeOperation(operation, identity);
+          let encoded = encodeOperation(operation, identity);
           record(projection);
           // Detached before awaiting, including the dependency list and entity keys.
-          const saved = JSON.parse(encoded) as SyncOperation;
+          let saved = JSON.parse(encoded) as SyncOperation;
           const projected = JSON.stringify(projection);
+          const sequenceCommand=options?.sequenceCommand===true;
+          if(sequenceCommand&&saved.mutation.kind!=='command')throw new Error('Only commands can use automatic command sequencing.');
           const exclusiveRecord=options?.exclusiveRecord===true;
           const continuationParent=options?.continuationParent;const attachments=[...(options?.attachmentIds??[])].sort();attachments.forEach(attachmentId);
           if(new Set(attachments).size!==attachments.length)throw new Error('Duplicate attachment references.');
@@ -508,6 +510,11 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               'SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ?', ...ids, saved.operationId,
             );
             if (existing) {
+              if(sequenceCommand){
+                const original=entry(existing).operation;
+                if(saved.dependsOn.some(id=>!original.dependsOn.includes(id)))throw new Error('Saved command dependencies cannot be changed on retry.');
+                saved={...saved,dependsOn:[...original.dependsOn]};encoded=encodeOperation(saved,identity);
+              }
               if(!sameJson(existing.attachment_ids_json??'[]',JSON.stringify(attachments)))throw new Error('Saved attachment references cannot be changed on retry.');
               if (!sameJson(existing.operation_json, encoded) || !sameJson(existing.projection_json, projected)) {
                 const staged=continuationParent&&existing.continuation_json?await tx.getFirstAsync<{before_json:string}>('SELECT before_json FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence LIMIT 1',...ids,saved.operationId):null;
@@ -531,6 +538,9 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
               `SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND entity_type = ? AND entity_id = ?
                ORDER BY sequence DESC LIMIT 1`, ...ids, saved.entityType, saved.entityId,
             );
+            if(sequenceCommand&&previous&&(['pending','syncing','awaiting_review'].includes(previous.status)||(previous.status==='blocked'&&!previous.review_outcome_json))){
+              saved={...saved,dependsOn:[...new Set([...saved.dependsOn,previous.operation_id])]};encoded=encodeOperation(saved,identity);
+            }
             if(continuationParent){
               if(!previous||previous.operation_id!==continuationParent||saved.dependsOn.length!==1||saved.dependsOn[0]!==continuationParent||saved.mutation.kind!=='update'||!['vehicle','issue'].includes(saved.entityType))throw new Error('Record changed locally. Reopen the editor before saving another change.');
             }

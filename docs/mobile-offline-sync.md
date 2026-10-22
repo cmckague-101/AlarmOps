@@ -556,6 +556,12 @@ Tests: `supabase/tests/user-sync-commands.test.mjs` with a fixture loading the r
 
 When the installed app is offline, **Tasks** saves new tasks and completions on the device and overlays them on the last downloaded list (with a "saved on this device" count; the list reloads once they sync). **Availability** saves your own selection offline (changing someone else's needs a connection), and **dashboard customization** saves layout toggles offline, both overlaid until synced. Online behavior is unchanged; web stays online-only. Tests: `offline-user-sync.test.ts` (ordering, worker delivery, kept label, overlays, adapter/transport routing). No UI launch or visual test was run.
 
+### Ordered user commands and local acknowledgment recovery
+
+Repeated availability/dashboard saves now append immutable commands instead of failing the outbox's same-record ordering guard. The opt-in command sequencing path selects and links the actual unresolved head **inside the enqueue transaction**, including concurrent callers. Scalar continuations still require their existing verified rebase path; this option cannot be used for scalar updates. Exact command retries retain the original stored dependencies and cannot rewrite an attempted request.
+
+The user-command boundary freezes payloads, reported save time/connectivity and operation identity before asynchronous device lookup. A failed or uncertain local acknowledgment keeps that request for retry; concurrent identical saves coalesce. Only a successful durable acknowledgment permits a later intentional save to receive a new operation ID. Dependency/projection failures roll back together. Tests cover repeated toggles, independent layout changes, concurrent callers, lost acknowledgments after auto-linking, mutable caller input and SQL-triggered dependency failures. Web stays online-only; no server schema change is needed for this slice.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
