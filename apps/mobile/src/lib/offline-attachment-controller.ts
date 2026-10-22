@@ -41,6 +41,10 @@ export function createOfflineAttachmentController(options:{session:OfflineOutbox
     stage(input:Parameters<OfflineAttachmentVault['stage']>[0]){return action(input.attachmentId,()=>vault.stage(input))},
     repair(id:string,uri:string){return action(id,()=>vault.repair(id,uri))},
     discard(id:string){return action(id,()=>vault.discard(id))},
+    /** Stages one vehicle file durably for a slot change (bound later by the detail editor). */
+    stageVehicleFile(input:{attachmentId:string;entityId:string;uri:string;name:string;mimeType:string|null}){
+      return action(input.attachmentId,()=>vault.stage({attachmentId:input.attachmentId,entityType:'vehicle',entityId:input.entityId,uri:input.uri,name:input.name,mimeType:input.mimeType}));
+    },
     /** Saves bytes and an immutable vehicle-document intent on device. Retry with the same IDs. */
     saveVehicleDocument(input:{attachmentId:string;requestId:string;entityId:string;uri:string;name:string;mimeType:string|null;documentName:string}){
       if(!options.documents)return Promise.reject(new Error('Vehicle document sync is unavailable in this build.'));

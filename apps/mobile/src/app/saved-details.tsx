@@ -7,6 +7,7 @@ import {detailRecordHref,offlineDetailFields,offlineDetailFormChanges,offlineDet
 import type {DetailTarget,OfflineDetailDraft,OfflineDetailEditor} from '@/lib/offline-detail-editor';
 import {useOfflineSync} from '@/providers/offline-sync-provider';
 import {OfflineVehicleDocumentForm} from '@/components/offline-vehicle-document-form';
+import {OfflineVehicleFileSlots} from '@/components/offline-vehicle-file-slots';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -56,7 +57,7 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
     <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':undefined} keyboardVerticalOffset={90}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.title,{color:theme.ink}]}>{saved?'Submitted detail copy':'Saved detail editor'}</Text>
-        <Text style={{color:theme.secondary}}>Owner/admin scalar details{target.entityType==='vehicle'?' and new vehicle documents':''} only. Open this editor online once per record before using it offline. Photos, other files, status, assignments and other workflows require a connection.</Text>
+        <Text style={{color:theme.secondary}}>Owner/admin scalar details{target.entityType==='vehicle'?', vehicle files and new vehicle documents':''} only. Open this editor online once per record before using it offline. Inspection photos, status, assignments and other workflows require a connection.</Text>
         {saved?<Text accessibilityRole="alert" style={[styles.label,{color:theme.ink}]}>Saved on device. Values below are your submitted version, not confirmed shared data.</Text>:null}
         {loading?<Text style={{color:theme.secondary}}>Loading verified details…</Text>:null}
         {draft?<>
@@ -66,6 +67,7 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
             {field==='priority'?<View style={styles.choices}>{['Low','Medium','High','Critical'].map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:form[field]===value,disabled:frozen}} disabled={frozen} onPress={()=>setForm(current=>({...current,[field]:value}))} style={[styles.choice,{borderColor:form[field]===value?theme.ember:theme.divider}]}><Text style={{color:form[field]===value?theme.ember:theme.ink}}>{value}</Text></Pressable>)}</View>:<TextInput accessibilityLabel={label} editable={!frozen} value={form[field]??''} onChangeText={value=>setForm(current=>({...current,[field]:value}))} keyboardType={field==='year'?'number-pad':'default'} autoCapitalize={field==='vin'||field==='plate'?'characters':'sentences'} multiline={field==='notes'||field==='description'} maxLength={field==='year'?4:field==='notes'||field==='description'?10000:field==='vin'?17:field==='plate'?20:200} textAlignVertical="top" style={[styles.input,{color:theme.ink,borderColor:theme.divider,backgroundColor:theme.paper},(field==='notes'||field==='description')&&styles.multiline]}/>}
           </View>)}
         </>:null}
+        {draft&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleFileSlots editor={editor} controller={attachmentController} entityId={target.entityId} record={draft.record} onSaved={syncAttachments}/>:null}
         {draft&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleDocumentForm controller={attachmentController} entityId={target.entityId} onSaved={syncAttachments}/>:null}
         {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}
         {saved?<View style={styles.field}><Text style={{color:theme.secondary}}>Check Saved changes & sync for uploading, review or completion. Review may keep another version. Return to the record for current shared data.</Text><Pressable accessibilityRole="button" onPress={()=>router.replace('/sync-status' as never)} style={styles.button}><Text style={{color:theme.ember}}>Saved changes & sync</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>router.dismissTo(detailRecordHref(target))} style={styles.button}><Text style={{color:theme.ember}}>Back to record</Text></Pressable></View>:draft?<>

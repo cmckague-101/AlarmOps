@@ -3,7 +3,7 @@ import type {OfflineOutboxSession} from './offline-outbox';
 import type {OfflineAttachmentVault} from './offline-attachment-vault';
 import type {OfflineAttachment} from './offline-attachment-types';
 import {createOfflineAttachmentController} from './offline-attachment-controller';
-import {createAttachmentDraftActions,createVehicleDocumentActions,vehicleDocumentPickError} from './offline-attachment-actions';
+import {createAttachmentDraftActions,createVehicleDocumentActions,createVehicleSlotActions,vehicleDocumentPickError} from './offline-attachment-actions';
 const id='40000000-0000-4000-8000-000000000001';
 const scope={userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0000-4000-8000-000000000001'};
 const asset:OfflineAttachment={...scope,attachmentId:id,entityType:'vehicle',entityId:'30000000-0000-4000-8000-000000000001',name:'file.png',mimeType:'image/png',byteSize:5,sha256:'a'.repeat(64),deviceId:'phone',savedAt:'2026-01-01T00:00:00Z',connectivity:'offline',state:'ready',error:null};
@@ -82,5 +82,28 @@ describe('vehicle document picker actions',()=>{
     const actions=createVehicleDocumentActions({controller,isCurrent:()=>live.value,pick:async()=>{live.value=false;return pdf},createId:()=>'id'});
     expect(await actions.choose()).toBeNull();await expect(actions.save('vehicle','x')).rejects.toThrow(/Choose a file/);
     const other=createVehicleDocumentActions({controller,isCurrent:()=>true,pick:async()=>({...pdf,mimeType:'application/zip'}),createId:()=>'id'});await expect(other.choose()).rejects.toThrow(/JPEG/);expect(controller.saveVehicleDocument).not.toHaveBeenCalled();
+  });
+});
+describe('vehicle file slot actions',()=>{
+  const jpg={uri:'file:///front.jpg',name:'Front.jpg',mimeType:'image/jpeg',size:5};
+  function slots(overrides:Partial<Parameters<typeof createVehicleSlotActions>[0]>={}){
+    const staged={...asset,attachmentId:'40000000-0000-4000-8000-000000000007',name:'Front.jpg',mimeType:'image/jpeg'};const draft={entityType:'vehicle',entityId:asset.entityId,revision:'1',record:{},verifiedAt:'t'} as never;
+    const options={entityId:asset.entityId,isCurrent:()=>true,createId:()=>'40000000-0000-4000-8000-000000000007',stage:vi.fn().mockResolvedValue(staged),prepare:vi.fn().mockResolvedValue(draft),save:vi.fn().mockResolvedValue({}),pick:vi.fn().mockResolvedValue(jpg),...overrides};
+    return {options,draft,actions:createVehicleSlotActions(options)};
+  }
+  it('stages the file and saves the deterministic slot value bound to it',async()=>{
+    const f=slots();expect(await f.actions.replace('photo')).toBe(true);
+    expect(f.options.stage).toHaveBeenCalledWith({attachmentId:'40000000-0000-4000-8000-000000000007',entityId:asset.entityId,uri:jpg.uri,name:'Front.jpg',mimeType:'image/jpeg'});
+    expect(f.options.save).toHaveBeenCalledWith(f.draft,{photo:{name:'Front.jpg',type:'image/jpeg',dataUrl:'',path:`${scope.companyId}/${scope.userId}/sync-40000000-0000-4000-8000-000000000007`}},{attachmentIds:['40000000-0000-4000-8000-000000000007']});
+    expect(await f.actions.clear('insurance')).toBe(true);expect(f.options.save).toHaveBeenLastCalledWith(f.draft,{},{remove:['insurance']});
+  });
+  it('retries a failed save with the same file, draft and IDs and blocks other changes meanwhile',async()=>{
+    const f=slots();vi.mocked(f.options.save).mockRejectedValueOnce(new Error('disk full'));await expect(f.actions.replace('photo')).rejects.toThrow('disk full');expect(f.actions.pendingSlot).toBe('photo');
+    await expect(f.actions.clear('contract')).rejects.toThrow(/previous file change/);expect(await f.actions.retry()).toBe(true);
+    expect(vi.mocked(f.options.save).mock.calls[0]).toEqual(vi.mocked(f.options.save).mock.calls[1]);expect(f.options.prepare).toHaveBeenCalledOnce();expect(f.actions.pendingSlot).toBeNull();
+  });
+  it('ignores late picker results and rejects unsupported files before staging',async()=>{
+    const live={value:true};const f=slots({isCurrent:()=>live.value,pick:vi.fn(async()=>{live.value=false;return jpg})});expect(await f.actions.replace('photo')).toBe(false);expect(f.options.stage).not.toHaveBeenCalled();
+    const g=slots({pick:vi.fn().mockResolvedValue({...jpg,mimeType:'text/html'})});await expect(g.actions.replace('photo')).rejects.toThrow(/JPEG/);expect(g.options.stage).not.toHaveBeenCalled();
   });
 });

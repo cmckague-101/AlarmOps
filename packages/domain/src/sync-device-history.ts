@@ -1,5 +1,5 @@
 import {createSyncPatch,mergeSyncUpdate,type SyncOperation,type SyncRecord,type SyncFieldValue} from './offline-sync';
-import type {SyncReviewTarget} from './sync-review-client';
+import {syncReviewFileText,type SyncReviewTarget} from './sync-review-client';
 export type DeviceHistoryCursor={receivedAt:string;actorUserId:string;operationId:string};
 export type DeviceHistorySummary=DeviceHistoryCursor & SyncReviewTarget & {companyId:string;actorName:string|null};
 export type DeviceHistoryEntry={before:SyncOperation;after:SyncOperation;reason:string;createdAt:string};
@@ -52,7 +52,7 @@ export function deviceHistoryFields(entry:DeviceHistoryEntry){
   const slot=(record:SyncRecord,key:string):SyncFieldValue=>Object.prototype.hasOwnProperty.call(record,key)?{present:true,value:record[key]}:{present:false};
   return Object.keys(entry.before.mutation.patch).map(field=>({field,before:slot(entry.before.mutation.kind==='update'?entry.before.mutation.base:{},field),saved:slot(saved,field),downloaded:slot(entry.after.mutation.kind==='update'?entry.after.mutation.base:{},field),submitted:slot(submitted,field),choice:choices?String(choices[field]):'automatic independent merge'}));
 }
-export function deviceHistoryValueText(value:SyncFieldValue){return !value.present?'Not present':value.value===null?'Null':value.value===''?'Empty text':JSON.stringify(value.value,null,2)}
+export function deviceHistoryValueText(value:SyncFieldValue){return !value.present?'Not present':value.value===null?'Null':value.value===''?'Empty text':syncReviewFileText(value.value)??JSON.stringify(value.value,null,2)}
 export type DeviceHistoryState={target:SyncReviewTarget|null;items:DeviceHistorySummary[];nextCursor:DeviceHistoryCursor|null;loaded:boolean;loading:boolean;error:string;report:DeviceHistoryReport|null;reportLoading:boolean;reportError:string};
 const initial=():DeviceHistoryState=>({target:null,items:[],nextCursor:null,loaded:false,loading:false,error:'',report:null,reportLoading:false,reportError:''});
 /** Online-only, memory-only inspection; never supplies drafts or approval choices. */

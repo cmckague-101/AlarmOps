@@ -122,13 +122,21 @@ export function syncReviewCanApprove(state: SyncReviewClientState): boolean {
     && Object.keys(state.review.fields).every(key => Object.prototype.hasOwnProperty.call(state.choices, key));
 }
 export function syncReviewFieldLabel(key: string): string {
-  return ({unit:'Unit name',type:'Vehicle type',year:'Year',make:'Make',model:'Model',vin:'VIN',plate:'License plate',notes:'Notes',title:'Issue title',description:'Description',priority:'Priority'} as Record<string,string>)[key] ?? key;
+  return ({unit:'Unit name',type:'Vehicle type',year:'Year',make:'Make',model:'Model',vin:'VIN',plate:'License plate',notes:'Notes',title:'Issue title',description:'Description',priority:'Priority',
+    photo:'Vehicle photo',contract:'Contract',viprChecklist:'VIPR checklist',registration:'Registration',insurance:'Insurance',dotInspection:'DOT inspection'} as Record<string,string>)[key] ?? key;
+}
+/** Vehicle file values ({name,type,dataUrl,path}) as readable text; null for anything else. */
+export function syncReviewFileText(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const file = value as Record<string, unknown>;
+  if (typeof file.name !== 'string' || typeof file.type !== 'string' || typeof file.path !== 'string' || typeof file.dataUrl !== 'string') return null;
+  return `File: ${file.name} (${file.type})\nStored at: ${file.path}${file.path.includes('/sync-') ? '\nUploaded from a device and verified by the server' : ''}`;
 }
 export function syncReviewValueText(value: SyncFieldValue): string {
   if (!value.present) return 'Not set (removed)';
   if (value.value === null) return 'Not reported (null)';
   if (value.value === '') return 'Empty text';
-  return typeof value.value === 'object' ? JSON.stringify(value.value, null, 2) : String(value.value);
+  return syncReviewFileText(value.value) ?? (typeof value.value === 'object' ? JSON.stringify(value.value, null, 2) : String(value.value));
 }
 export function syncReviewAuthorText(author: SyncReviewFieldProvenance | undefined): string {
   if (!author) return 'Unknown author';

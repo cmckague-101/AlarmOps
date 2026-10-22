@@ -106,3 +106,12 @@ describe('scoped online conflict review controller',()=>{
     expect(syncReviewValueText({present:true,value:''})).toBe('Empty text');expect(syncReviewValueText({present:true,value:false})).toBe('false');expect(syncReviewValueText({present:true,value:0})).toBe('0');
   });
 });
+describe('vehicle file review text',()=>{
+  it('labels slots and shows files by name, type and storage path',async()=>{
+    const {syncReviewFieldLabel,syncReviewValueText,syncReviewFileText}=await import('./sync-review-client');
+    expect(syncReviewFieldLabel('dotInspection')).toBe('DOT inspection');
+    const text=syncReviewValueText({present:true,value:{name:'Front.jpg',type:'image/jpeg',dataUrl:'',path:'c/u/sync-a'}});
+    expect(text).toContain('File: Front.jpg (image/jpeg)');expect(text).toContain('Stored at: c/u/sync-a');expect(text).toContain('verified by the server');
+    expect(syncReviewFileText({name:'x'})).toBeNull();expect(syncReviewValueText({present:false})).toBe('Not set (removed)');
+  });
+});

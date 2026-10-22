@@ -479,6 +479,12 @@ The worker's new `prepareAttachments` hook runs before delivery (5-minute budget
 
 After a final result, `createSlotAttachmentSettler` (run with attachment sync) releases file bindings. Files whose slot the server kept are unbound and their device copies removed only once a verified cached vehicle at/after the result revision holds the exact proposed value; files not kept (rejected/partly kept) are unbound but stay on the device for explicit discard. `releaseOperationAttachments` refuses non-final operations. Tests: `offline-attachment-slots.test.ts` (binding/validation, prepare-before-deliver ordering, pending/blocked preparation, confirmation gating, clearing, final-result rules).
 
+### Single-slot vehicle files: UI (native editor; shared review text)
+
+The native vehicle saved-detail editor now has a **Vehicle files** section for photo, contract, VIPR checklist, registration, insurance and DOT inspection: **Add/Replace…** (JPEG/PNG/WebP/GIF/PDF, 8 MB) and **Clear**. Each change stages the file durably, prepares a fresh verified draft and saves one slot change (`createVehicleSlotActions`); a failed save keeps the same file, draft and IDs for **Retry**, other slot changes wait, and **Cancel** leaves any staged file as an unbound draft the user can discard. Late picker results after a route/account change are ignored. The section says files are unencrypted device copies, may need owner/admin review if someone else changed the same slot, and that previous files are never deleted.
+
+Shared `syncReviewFieldLabel`/`syncReviewValueText` (and device-history text) now label the six slots and show file values as name, declared type and storage path (noting server-verified device uploads) on **both web and mobile** review/history screens instead of raw JSON. Web stays online-only; no image previews were added to review. Tests: slot action exact retry/clear/fencing, review text; web review/history markup tests still pass. No UI launch or visual test was run.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
