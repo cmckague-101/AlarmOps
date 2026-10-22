@@ -540,6 +540,16 @@ Attachment access (reserve, storage insert/read helpers, verification begin/comp
 
 The adapter block now admits exactly one kind of create: a dependency-free **new issue**, delivered to `sync_fleet_create` by the account-bound transport (other creates stay online-only). The editor's `createIssue(record)` validates the report as the server does, refuses roles not allowed to report (crew: shop techs only, via the crew allowlist's `create` marker), and saves it durably with an exclusive record lock; retrying the identical record reuses its operation, while a changed record must start a new report. The read model previews a pending report as a labeled local proposal until a verified record exists, after which the shared record wins. **New issue** saves offline in the installed app (owners/admins and shop techs; firefighters cannot report issues at all), keeping the same report identity and time across retries. Adding notes to a just-reported issue needs its verified record (after sync). Tests: report validation/retry/sync in `offline-status-assignments.test.ts`, create routing in `offline-sync-transport.test.ts`, adapter rules in `offline-sync-protocol.test.ts`, preview in `offline-fleet-model.test.ts`. No UI launch or visual test was run.
 
+### User-owned data: personal tasks, availability, dashboard layout (server; not deployed)
+
+These tables have no fleet revision ledger and are private or self-service, so they use a separate **command** contract instead of field merges and manager review. `20261127000100_user_sync_commands.sql` adds `sync_user_command(operation)` for schema-version-1 operations with `mutation.kind = 'command'`, plus `get_user_sync_state(company, entityType, entityId)` for reconciliation. Receipts in private `user_sync_receipts` are idempotent per user/company/operation (different work for the same ID is rejected); revisions are the receipt sequence. A command whose dependencies this user has not applied is refused (`55000`), so a completion can never run before its create.
+
+- `personal_task` — `task.create` (client UUID; subject/description/due date validated; an identity already used, including someone else's, is refused) and `task.complete` (deletes, as online; completing an absent task is a no-op). The existing RLS still limits tasks to their owner in owner/admin/shop-tech roles; reviewers never see them.
+- `availability` — `availability.set {available, base}` for the caller only. Applied when the current value still equals the device's base; if someone (for example an owner) changed it since, the current value is **kept** and the receipt carries `keptCurrent`.
+- `dashboard` — `dashboard.set {changes}` merges changed keys over the user's current layout (`null` removes a key); later arrival wins per key.
+
+Tests: `supabase/tests/user-sync-commands.test.mjs` with a fixture loading the real tasks/availability/dashboard migrations (ordering via dependencies, idempotency, privacy and roles, kept availability, per-key merge, private receipts, forged provenance).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -562,6 +572,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 16. `20261124000100_fleet_sync_inspections.sql`
 17. `20261125000100_fleet_sync_shop_tech_photos.sql`
 18. `20261126000100_fleet_sync_issue_create.sql`
+19. `20261127000100_user_sync_commands.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

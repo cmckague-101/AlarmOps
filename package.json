@@ -23,7 +23,7 @@
     "test": "npm run test:db-grants && npm run test:db-audit && npm run test:db-sync && npm run test --workspaces --if-present",
     "test:db-grants": "node --test supabase/tests/data-api-grants.test.mjs",
     "test:db-audit": "node --test supabase/tests/company-audit-log.test.mjs",
-    "test:db-sync": "node --test supabase/tests/fleet-sync.test.mjs supabase/tests/fleet-sync-conflicts.test.mjs supabase/tests/fleet-sync-review.test.mjs supabase/tests/fleet-sync-device-history.test.mjs supabase/tests/fleet-sync-attachment-uploads.test.mjs supabase/tests/fleet-sync-document-attach.test.mjs supabase/tests/fleet-sync-vehicle-file-slots.test.mjs supabase/tests/fleet-sync-status-assignments.test.mjs supabase/tests/fleet-sync-member-actions.test.mjs supabase/tests/fleet-sync-inspections.test.mjs supabase/tests/fleet-sync-issue-create.test.mjs"
+    "test:db-sync": "node --test supabase/tests/fleet-sync.test.mjs supabase/tests/fleet-sync-conflicts.test.mjs supabase/tests/fleet-sync-review.test.mjs supabase/tests/fleet-sync-device-history.test.mjs supabase/tests/fleet-sync-attachment-uploads.test.mjs supabase/tests/fleet-sync-document-attach.test.mjs supabase/tests/fleet-sync-vehicle-file-slots.test.mjs supabase/tests/fleet-sync-status-assignments.test.mjs supabase/tests/fleet-sync-member-actions.test.mjs supabase/tests/fleet-sync-inspections.test.mjs supabase/tests/fleet-sync-issue-create.test.mjs supabase/tests/user-sync-commands.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.11",

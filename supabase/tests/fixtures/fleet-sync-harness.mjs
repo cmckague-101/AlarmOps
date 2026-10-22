@@ -43,3 +43,13 @@ export async function loadFleetSyncAttachmentSchema(db) {
   await db.exec(migration('20261125000100_fleet_sync_shop_tech_photos'));
   await db.exec(migration('20261126000100_fleet_sync_issue_create'));
 }
+
+/** Fleet sync schema plus the real user-owned tables and the user sync commands. */
+export async function loadUserSyncSchema(db) {
+  await loadFleetSyncSchema(db);
+  await db.exec(migration('20261107000100_personal_tasks'));
+  const availability = migration('20260912000200_crew_availability');
+  await db.exec(availability.slice(0, availability.indexOf('alter publication supabase_realtime')));
+  await db.exec(migration('20261108000100_dashboard_preferences'));
+  await db.exec(migration('20261127000100_user_sync_commands'));
+}
