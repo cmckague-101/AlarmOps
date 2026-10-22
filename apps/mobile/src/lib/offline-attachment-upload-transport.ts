@@ -12,7 +12,7 @@ const exists=(error:{statusCode?:unknown;status?:unknown;message?:unknown})=>Str
  * never a service key. Storage RLS independently requires the caller's own
  * reservation for the exact path, so a replaced session cannot upload there.
  */
-export function createNativeAttachmentUploadTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,readBytes:(uri:string)=>Promise<ArrayBuffer>):AttachmentUploadTransport & AttachmentDocumentTransport{
+export function createNativeAttachmentUploadTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,readBytes:(uri:string)=>Promise<ArrayBuffer>):AttachmentUploadTransport & Required<AttachmentDocumentTransport>{
   const identity={...scope};
   async function token(signal:AbortSignal){
     if(signal.aborted||!canRun())throw paused();
@@ -37,6 +37,7 @@ export function createNativeAttachmentUploadTransport(client:SupabaseClient,scop
     },
     async verify(manifest,signal){scoped(manifest);return invoke('verify-fleet-sync-attachment',{companyId:manifest.companyId,attachmentId:manifest.attachmentId},signal)},
     async attach(request,signal){scoped({userId:request.provenance.userId,companyId:request.companyId});return invoke('attach-fleet-sync-document',request,signal)},
+    async release(target,signal){scoped(target);return invoke('release-fleet-sync-attachment',{companyId:target.companyId,attachmentId:target.attachmentId},signal)},
   };
   async function invoke(name:string,body:unknown,signal:AbortSignal){
     const bearer=await token(signal);

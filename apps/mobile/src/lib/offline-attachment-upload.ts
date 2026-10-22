@@ -43,6 +43,7 @@ export function createOfflineAttachmentUploader(options:{session:OfflineOutboxSe
     const previous=await session.getAttachmentUpload(id);guard(signal);if(previous?.receipt)return previous;
     if(!attachmentUploadContentType(manifest))return session.recordAttachmentUpload(id,{stage:'blocked',error:'This file type cannot be uploaded to fleet records. The device copy is retained.'});
     let reservation=previous?.reservation??null;
+    if(!previous){await session.markAttachmentRemoteAttempt(id);guard(signal)}
     try{
       reservation=decodeAttachmentUploadReservation(await transport.reserve(manifest,signal),manifest);guard(signal);
       const remote=attachmentUploadStage(reservation);

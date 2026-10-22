@@ -6,7 +6,7 @@ vi.mock('expo-router',()=>({useFocusEffect:vi.fn()}));
 vi.mock('expo-document-picker',()=>({getDocumentAsync:vi.fn()}));
 vi.mock('../theme',()=>({useFireOpsTheme:()=>({ink:'#111',secondary:'#555',divider:'#aaa',danger:'#900'})}));
 import {OfflineAttachmentDrafts} from '../components/offline-attachment-drafts';
-const state:AttachmentDraftState={checking:false,checked:true,busyId:null,error:null,syncing:false,syncError:null,items:[{attachmentId:'40000000-0000-4000-8000-000000000001',userId:'user',companyId:'company',entityType:'vehicle',entityId:'vehicle',name:'<private-photo>.png',mimeType:'image/png',byteSize:5,sha256:'a'.repeat(64),deviceId:'phone',savedAt:'2026-01-01T00:00:00Z',connectivity:'offline',state:'ready',error:null,operationIds:['operation'],upload:null,document:null}]};
+const state:AttachmentDraftState={checking:false,checked:true,busyId:null,error:null,syncing:false,syncError:null,items:[{attachmentId:'40000000-0000-4000-8000-000000000001',userId:'user',companyId:'company',entityType:'vehicle',entityId:'vehicle',name:'<private-photo>.png',mimeType:'image/png',byteSize:5,sha256:'a'.repeat(64),deviceId:'phone',savedAt:'2026-01-01T00:00:00Z',connectivity:'offline',state:'ready',error:null,operationIds:['operation'],upload:null,document:null,remoteRelease:null}]};
 const controller={} as OfflineAttachmentController;
 describe('native attachment draft inspection with stub components, no app/UI launch',()=>{
   it('shows device-only status/provenance, encryption warning and exact-byte recovery',()=>{
@@ -28,7 +28,7 @@ describe('vehicle document progress labels',()=>{
   });
   it('labels applied and rejected results truthfully and allows explicit release',()=>{
     const applied=renderToStaticMarkup(<OfflineAttachmentDrafts controller={controller} state={{...state,items:[{...item,operationIds:[],upload,document:{...document,stage:'applied',result:{kind:'applied',receivedAt:item.savedAt,revision:'4',documentId:item.attachmentId,path:'p'}}}]}}/>);
-    expect(applied).toContain('attached to the shared vehicle (revision 4)');expect(applied).not.toMatch(/<button disabled="">[^<]*Discard unbound device copy/);
+    expect(applied).toContain('attached to the shared vehicle (revision 4)');expect(applied).toContain('removed once the refreshed vehicle shows it');expect(applied).not.toMatch(/<button disabled="">[^<]*Discard unbound device copy/);
     const rejected=renderToStaticMarkup(<OfflineAttachmentDrafts controller={controller} state={{...state,items:[{...item,operationIds:[],upload,document:{...document,stage:'rejected',result:{kind:'rejected',receivedAt:item.savedAt,reason:'record_deleted'}}}]}}/>);
     expect(rejected).toContain('the vehicle was deleted');expect(rejected).toContain('Files are retained');
   });

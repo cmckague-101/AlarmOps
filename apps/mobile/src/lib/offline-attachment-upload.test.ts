@@ -6,12 +6,12 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import type {AttachmentUploadManifest} from '@fireops/domain';
+import type {AttachmentUploadManifest,SyncRecord} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineAttachmentVault,type OfflineAttachmentFiles} from './offline-attachment-vault';
 import {createOfflineAttachmentUploader,type AttachmentUploadTransport} from './offline-attachment-upload';
 import {createNativeAttachmentUploadTransport} from './offline-attachment-upload-transport';
-import {createOfflineAttachmentDocumentSync,type AttachmentDocumentTransport} from './offline-attachment-documents';
+import {createOfflineAttachmentDocumentSync,documentConfirmedInRecord,type AttachmentDocumentTransport} from './offline-attachment-documents';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001',entity='30000000-0000-4000-8000-000000000001';
 const scope={userId:user,companyId:company};const id=(n:number)=>`40000000-0000-4000-8000-${String(n).padStart(12,'0')}`;const date='2026-01-01T00:00:00.000Z';
 const objectId='50000000-0000-4000-8000-000000000001';const bytes=new Uint8Array([0,255,1,9,17]);const sha=createHash('sha256').update(bytes).digest('hex');
@@ -128,10 +128,10 @@ describe('saved vehicle-document intents for verified bytes (actual SQLite)',()=
   const requestId='60000000-0000-4000-8000-000000000001';
   const applied=(f:{manifest:AttachmentUploadManifest})=>({kind:'completed',result:{kind:'applied',receivedAt:'2026-01-03T00:00:00Z',revision:'2',documentId:id(1),path:`${company}/${user}/sync-${id(1)}`}});
   async function documents(){
-    const f=await setup();const attach=vi.fn<AttachmentDocumentTransport['attach']>().mockResolvedValue(applied(f));
-    const sync=createOfflineAttachmentDocumentSync({session:f.session,uploader:f.uploader,transport:{attach},canRun:()=>f.mode.run});
+    const f=await setup();const attach=vi.fn<AttachmentDocumentTransport['attach']>().mockResolvedValue(applied(f));const release=vi.fn<NonNullable<AttachmentDocumentTransport['release']>>().mockResolvedValue({kind:'released'});
+    const sync=createOfflineAttachmentDocumentSync({session:f.session,uploader:f.uploader,transport:{attach,release},canRun:()=>f.mode.run,discard:value=>f.vault.discard(value)});
     const saved=await f.session.requestAttachmentDocument(id(1),{requestId,documentName:' Registration ',savedAt:'2026-01-03T00:00:00.000Z',connectivity:'offline'});
-    return {...f,attach,sync,saved};
+    return {...f,attach,release,sync,saved};
   }
   it('persists an immutable request, uploads verified bytes first and records the business result once',async()=>{
     const f=await documents();expect(f.saved).toMatchObject({stage:'pending',request:{documentName:'Registration',entityId:entity,attachmentId:id(1),provenance:{userId:user,deviceId:id(99),connectivity:'offline'}}});
@@ -170,5 +170,48 @@ describe('saved vehicle-document intents for verified bytes (actual SQLite)',()=
     const value=createNativeAttachmentUploadTransport(client as unknown as SupabaseClient,scope,()=>true,async()=>new ArrayBuffer(0));const f=await documents();
     await value.attach(f.saved.request,f.signal);expect(client.functions.invoke).toHaveBeenCalledWith('attach-fleet-sync-document',expect.objectContaining({body:f.saved.request,headers:{Authorization:'Bearer bound-token'}}));
     await expect(value.attach({...f.saved.request,companyId:id(5)},f.signal)).rejects.toMatchObject({code:'42501'});
+  });
+});
+
+describe('attachment release policy (actual SQLite)',()=>{
+  const requestId='60000000-0000-4000-8000-000000000001';const docPath=`${company}/${user}/sync-${id(1)}`;
+  async function policy(){
+    const f=await setup();const attach=vi.fn<AttachmentDocumentTransport['attach']>().mockResolvedValue({kind:'completed',result:{kind:'applied',receivedAt:'2026-01-03T00:00:00Z',revision:'2',documentId:id(1),path:docPath}});
+    const release=vi.fn<NonNullable<AttachmentDocumentTransport['release']>>().mockResolvedValue({kind:'released'});
+    const sync=createOfflineAttachmentDocumentSync({session:f.session,uploader:f.uploader,transport:{attach,release},canRun:()=>f.mode.run,discard:value=>f.vault.discard(value)});return {...f,attach,release,sync};
+  }
+  const refreshed=(documents:SyncRecord[],revision='2')=>({revision,record:{id:entity,unit:'E1',documents}});
+  it('queues server release on explicit discard, keeps it across restart while offline, then releases once',async()=>{
+    const f=await policy();await f.uploader.upload(id(1),f.signal);await f.vault.discard(id(1));
+    expect(await f.session.listAttachmentReleases()).toMatchObject([{state:'pending',error:null}]);expect(await f.store.countUnresolvedForUser(user)).toBe(1);
+    f.store.pause();f.close();const again=await setup(f.root);expect((await again.session.listAttachmentReleases())[0].state).toBe('pending');
+    const release=vi.fn().mockResolvedValue({kind:'released'});const sync=createOfflineAttachmentDocumentSync({session:again.session,uploader:again.uploader,transport:{attach:vi.fn(),release},canRun:()=>true});
+    await sync.run(again.signal);expect(release).toHaveBeenCalledExactlyOnceWith({companyId:company,userId:user,attachmentId:id(1)},again.signal);
+    expect((await again.session.listAttachmentReleases())[0]).toMatchObject({state:'released',error:null});expect(await again.store.countUnresolvedForUser(user)).toBe(0);
+    await sync.run(again.signal);expect(release).toHaveBeenCalledOnce();await again.session.recordAttachmentRelease(id(1),{state:'pending',error:'late'});expect((await again.session.listAttachmentReleases())[0].state).toBe('released');
+  });
+  it('keeps busy or unconfirmed releases pending and records servers with nothing to release',async()=>{
+    const local=await policy();await local.vault.discard(id(1));expect(await local.session.listAttachmentReleases()).toEqual([]);expect(await local.store.countUnresolvedForUser(user)).toBe(0);
+    const f=await policy();f.transport.reserve.mockRejectedValueOnce(new Error('response lost'));await expect(f.uploader.upload(id(1),f.signal)).rejects.toThrow('response lost');await f.vault.discard(id(1));f.release.mockResolvedValueOnce({kind:'in_use'});await f.sync.run(f.signal);
+    expect((await f.session.listAttachmentReleases())[0]).toMatchObject({state:'pending',error:expect.stringContaining('still in use')});
+    f.release.mockRejectedValueOnce(new Error('offline'));await f.sync.run(f.signal);expect((await f.session.listAttachmentReleases())[0]).toMatchObject({state:'pending',error:'offline'});
+    f.release.mockResolvedValueOnce({kind:'not_found'});await f.sync.run(f.signal);expect((await f.session.listAttachmentReleases())[0].state).toBe('none');
+  });
+  it('removes the device copy only after a verified vehicle revision shows the applied document',async()=>{
+    const f=await policy();await f.session.requestAttachmentDocument(id(1),{requestId,documentName:'Registration',savedAt:date,connectivity:'offline'});
+    await f.sync.run(f.signal);expect((await f.session.getAttachment(id(1)))?.state).toBe('ready');
+    await f.session.putRecord('vehicle',entity,refreshed([{id:id(1),name:'Registration',file:{path:'other'}}]));await f.sync.run(f.signal);expect((await f.session.getAttachment(id(1)))?.state).toBe('ready');
+    await f.session.putRecord('vehicle',entity,refreshed([{id:id(1),name:'Registration',file:{path:docPath}}],'3'));await f.sync.run(f.signal);
+    expect((await f.session.getAttachment(id(1)))?.state).toBe('discarded');expect(existsSync(f.file(id(1),'blob'))).toBe(false);expect((await f.session.getAttachmentDocument(id(1)))?.stage).toBe('applied');
+    expect((await f.session.listAttachmentReleases())[0]).toMatchObject({state:'released'});expect(f.release).toHaveBeenCalledOnce();
+  });
+  it('confirms documents by id, path and revision, never by name',()=>{
+    const document={attachmentId:id(1),request:{entityId:entity},result:{kind:'applied',revision:'5',path:docPath}} as never;
+    const record=(revision:string,documents:unknown)=>[{entityType:'vehicle',entityId:entity,revision,record:{id:entity,documents}}];
+    expect(documentConfirmedInRecord(document,record('5',[{id:id(1),file:{path:docPath}}]))).toBe(true);
+    expect(documentConfirmedInRecord(document,record('4',[{id:id(1),file:{path:docPath}}]))).toBe(false);
+    expect(documentConfirmedInRecord(document,record('6',[{id:id(2),name:'same',file:{path:docPath}}]))).toBe(false);
+    expect(documentConfirmedInRecord(document,[{entityType:'vehicle',entityId:entity,revision:'7',record:null}])).toBe(false);
+    expect(documentConfirmedInRecord({...(document as object),result:null} as never,record('5',[{id:id(1),file:{path:docPath}}]))).toBe(false);
   });
 });

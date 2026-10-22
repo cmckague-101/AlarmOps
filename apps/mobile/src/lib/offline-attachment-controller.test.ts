@@ -9,7 +9,7 @@ const scope={userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0
 const asset:OfflineAttachment={...scope,attachmentId:id,entityType:'vehicle',entityId:'30000000-0000-4000-8000-000000000001',name:'file.png',mimeType:'image/png',byteSize:5,sha256:'a'.repeat(64),deviceId:'phone',savedAt:'2026-01-01T00:00:00Z',connectivity:'offline',state:'ready',error:null};
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(yes=>{resolve=yes});return {promise,resolve}}
 function fixture(){
-  const session={scope,listAttachments:vi.fn().mockResolvedValue([asset]),listAttachmentReferences:vi.fn().mockResolvedValue([{attachmentId:id,operationId:'operation'}]),listAttachmentUploads:vi.fn().mockResolvedValue([]),listAttachmentDocuments:vi.fn().mockResolvedValue([])};
+  const session={scope,listAttachments:vi.fn().mockResolvedValue([asset]),listAttachmentReferences:vi.fn().mockResolvedValue([{attachmentId:id,operationId:'operation'}]),listAttachmentUploads:vi.fn().mockResolvedValue([]),listAttachmentDocuments:vi.fn().mockResolvedValue([]),listAttachmentReleases:vi.fn().mockResolvedValue([])};
   const vault={recover:vi.fn().mockResolvedValue(undefined),stage:vi.fn().mockResolvedValue(asset),repair:vi.fn().mockResolvedValue(asset),discard:vi.fn().mockResolvedValue(undefined),dispose:vi.fn()};const mode={allowed:true};
   const controller=createOfflineAttachmentController({session:session as unknown as OfflineOutboxSession,vault:vault as unknown as OfflineAttachmentVault,canAccess:()=>mode.allowed});return {controller,session,vault,mode};
 }

@@ -67,8 +67,8 @@ Remote attachment ownership, byte receipts and the first business-reference adap
 
 1. Real Supabase validation: Storage API insert/select under the new RLS (including any implicit RETURNING), `upsert:false` duplicate errors, authenticated object reads (404 vs 400), `remove`, Edge Function wall-clock vs the 10-minute verification lease, and `auth.uid()` evaluation in `fleet_sync_attachment_uploader_allowed` (it sets `request.jwt.claim.sub` locally).
 2. Other file slots: vehicle photo/contract/registration/insurance/DOT/VIPR (single-slot replacement has conflict semantics), inspection photos, issue files (no issue file field exists), replace/remove documents. Each needs its own adapter; do not reuse the append-only document path for replacements.
-3. Retention/cleanup policy for `fleet-sync-files` objects after a document is applied or rejected (nothing deletes them today) and an explicit release path for unattached reservations (quota).
-4. Encryption/retention/access-revocation policy for device copies before sensitive workflows or broad rollout. Device copies are **not encrypted by FireOps**.
+3. Retention policy is decided and implemented (see "Attachment retention and release policy" in `docs/mobile-offline-sync.md`): staging deleted after applied, explicit user release otherwise, device copy auto-removed after a confirmed attach.
+4. Device copies are **not encrypted by FireOps**; that is accepted only for non-sensitive vehicle documents. App-level encryption is required before crew, qualifications, payroll, receipts or invoices accept offline files.
 
 Beyond attachments: remaining workflow adapters listed below.
 
@@ -89,7 +89,7 @@ Native tests use Node `node:sqlite` (Node 22.13+). Database tests use local dev-
 
 ## Deployment and remaining scope
 
-All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261119000100`, plus the `verify-fleet-sync-attachment` and `attach-fleet-sync-document` Edge Functions. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
+All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261120000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document` and `release-fleet-sync-attachment` Edge Functions. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
 
 All-feature offline remains unfinished. Beyond attachments: remaining workflows and permission/invariant-aware adapters (assignments/status, inspections, crew/qualifications, notes, documents, communications, training, inventory, tasks/preferences, financials, settings/integrations), their catch-up contracts, encryption/retention, recovery/compatibility/performance hardening, real validation and rollout preparation.
 

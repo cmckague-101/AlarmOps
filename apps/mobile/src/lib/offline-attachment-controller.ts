@@ -2,7 +2,7 @@ import type {OfflineOutboxSession} from './offline-outbox';
 import type {OfflineAttachment,OfflineAttachmentDocument,OfflineAttachmentUpload} from './offline-attachment-types';
 import type {OfflineAttachmentDocumentSync} from './offline-attachment-documents';
 import type {OfflineAttachmentVault} from './offline-attachment-vault';
-export type AttachmentDraft=OfflineAttachment & {operationIds:readonly string[];upload:OfflineAttachmentUpload|null;document:OfflineAttachmentDocument|null};
+export type AttachmentDraft=OfflineAttachment & {operationIds:readonly string[];upload:OfflineAttachmentUpload|null;document:OfflineAttachmentDocument|null;remoteRelease:{state:'pending'|'released'|'attached'|'none';error:string|null}|null};
 export type AttachmentDraftState={items:readonly AttachmentDraft[];checking:boolean;checked:boolean;busyId:string|null;error:string|null;syncing:boolean;syncError:string|null};
 export const emptyAttachmentDraftState:AttachmentDraftState={items:[],checking:false,checked:false,busyId:null,error:null,syncing:false,syncError:null};
 /** `documents` delivers saved vehicle-document intents; without it, drafts stay local only. */
@@ -12,8 +12,9 @@ export function createOfflineAttachmentController(options:{session:OfflineOutbox
   const valid=(version:number)=>active&&epoch===version&&options.canAccess();
   const guard=()=>{if(!active||!options.canAccess())throw new Error('Attachment account or permissions changed.');if(state.checking||state.busyId)throw new Error('Another attachment check is in progress. Wait and retry.')};
   async function items():Promise<AttachmentDraft[]>{
-    const [assets,references,uploads,documents]=await Promise.all([session.listAttachments(),session.listAttachmentReferences(),session.listAttachmentUploads(),session.listAttachmentDocuments()]);
-    return assets.map(asset=>({...asset,operationIds:references.filter(ref=>ref.attachmentId===asset.attachmentId).map(ref=>ref.operationId),upload:uploads.find(item=>item.attachmentId===asset.attachmentId)??null,document:documents.find(item=>item.attachmentId===asset.attachmentId)??null}));
+    const [assets,references,uploads,documents,releases]=await Promise.all([session.listAttachments(),session.listAttachmentReferences(),session.listAttachmentUploads(),session.listAttachmentDocuments(),session.listAttachmentReleases()]);
+    return assets.map(asset=>{const release=releases.find(item=>item.attachment.attachmentId===asset.attachmentId);
+      return {...asset,operationIds:references.filter(ref=>ref.attachmentId===asset.attachmentId).map(ref=>ref.operationId),upload:uploads.find(item=>item.attachmentId===asset.attachmentId)??null,document:documents.find(item=>item.attachmentId===asset.attachmentId)??null,remoteRelease:release?{state:release.state,error:release.error}:null};});
   }
   const message=(error:unknown)=>error instanceof Error?error.message:'Attachment work could not be confirmed. Retained data was not discarded.';
   async function action<T>(id:string,task:()=>Promise<T>):Promise<T>{

@@ -329,10 +329,10 @@ describe('durable mobile outbox', () => {
 
   it('rejects unsupported database versions without modifying existing data', async () => {
     const { db, sqlite } = database();
-    sqlite.exec('PRAGMA user_version = 10; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    sqlite.exec('PRAGMA user_version = 11; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
     await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
     expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 10 });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 11 });
   });
 
   it('upgrades v1 storage without losing queued work, projections or ordering', async () => {
@@ -341,7 +341,7 @@ describe('durable mobile outbox', () => {
     const restored=(await createOfflineOutbox(db)).activate(scope);
     expect((await restored.list())[0]).toMatchObject({status:'pending',delivery:null,reviewOutcome:null,noticeDismissed:false});
     expect(await restored.getProjection('vehicle','vehicle-1')).toEqual({operationId:'op-1',record:{name:'Saved'}});
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:9});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
   });
 
   it('persists delivery before catch-up and retains it across retries without replacing local data', async () => {
@@ -440,7 +440,7 @@ describe('verified offline detail bases',()=>{
     sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=2;');
     const migrated=(await createOfflineOutbox(db)).activate(scope);
     expect(await migrated.list()).toHaveLength(1);expect(await migrated.listRecords()).toEqual([]);
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:9});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
   });
   it('commits canonical raw data and completion together, without downgrading a newer download',async()=>{
     const {session,sqlite}=await setup();await session.enqueue(operation(),{name:'pending'});const {attempt}=(await session.claimNext('token',0))!;
@@ -502,7 +502,7 @@ describe('older-build device history recovery',()=>{
   });
   it('upgrades v5 without losing history confirmations or business intent',async()=>{
     const f=await oldCompletedHistory();await f.session.confirmHistoryBackup(f.child.operation.operationId,await f.session.listRebases(f.child.operation.operationId),f.proof);const before=await f.session.list();f.editor.dispose();f.store.pause();
-    f.sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=5;');const restored=(await createOfflineOutbox(f.db)).activate(scope);expect(await restored.list()).toEqual(before);expect(await restored.getFleetDownload()).toBeNull();expect(f.sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:9});
+    f.sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=5;');const restored=(await createOfflineOutbox(f.db)).activate(scope);expect(await restored.list()).toEqual(before);expect(await restored.getFleetDownload()).toBeNull();expect(f.sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
   });
   it('does not let one missing submission prevent other history backups',async()=>{
     const f=await oldCompletedHistory();const id=f.child.operation.operationId;

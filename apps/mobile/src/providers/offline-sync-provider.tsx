@@ -73,7 +73,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const canUploadAttachments=()=>canUseAttachments()&&!isOffline();
         const attachmentTransport=createNativeAttachmentUploadTransport(client,identity,canUploadAttachments,uri=>new File(uri).arrayBuffer());
         const uploader=createOfflineAttachmentUploader({session:scoped,vault,transport:attachmentTransport,canRun:canUploadAttachments});
-        const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments});
+        const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments,discard:id=>vault.discard(id)});
         const attachmentAbort=new AbortController();
         const attachments=createOfflineAttachmentController({session:scoped,vault,canAccess:canUseAttachments,documents,changed:()=>{void created.wake()}});
         const syncAttachments=()=>{if(canUploadAttachments())void attachments.sync(attachmentAbort.signal)};
@@ -106,7 +106,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   useEffect(()=>{if(!attachmentController)return;if(foreground&&manager)void attachmentController.resume().then(()=>{if(!offline)syncAttachments?.()});else attachmentController.pause();return()=>attachmentController.pause()},[attachmentController,syncAttachments,foreground,manager,offline]);
   useEffect(()=>{
     if(!attachmentController||!syncAttachments)return;
-    const timer=setInterval(()=>{if(runtime.current.foreground&&!isOffline()&&attachmentController.getSnapshot().items.some(item=>item.document&&item.document.stage==='pending'))syncAttachments()},15_000);
+    const timer=setInterval(()=>{if(runtime.current.foreground&&!isOffline()&&attachmentController.getSnapshot().items.some(item=>item.document?.stage==='pending'||(item.document?.stage==='applied'&&!['discarding','discarded'].includes(item.state))||item.remoteRelease?.state==='pending'))syncAttachments()},15_000);
     return()=>clearInterval(timer);
   },[attachmentController,syncAttachments]);
   useEffect(()=>{

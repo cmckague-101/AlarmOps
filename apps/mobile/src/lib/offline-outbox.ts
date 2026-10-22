@@ -231,7 +231,15 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         stage TEXT NOT NULL CHECK(stage IN ('pending','applied','rejected','blocked')),result_json TEXT,error TEXT,attempts INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
         PRIMARY KEY(user_id,company_id,attachment_id)); PRAGMA user_version=9;`);current=9;
     }
-    if (current !== 9) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===9){
+      // Remote staging release queued by an explicit discard of an attempted upload: pending → released | attached | none.
+      await tx.execAsync(`ALTER TABLE offline_attachments ADD COLUMN remote_release TEXT CHECK(remote_release IN ('pending','released','attached','none'));
+        ALTER TABLE offline_attachments ADD COLUMN remote_release_error TEXT;
+        ALTER TABLE offline_attachments ADD COLUMN remote_attempted INTEGER NOT NULL DEFAULT 0 CHECK(remote_attempted IN (0,1));
+        UPDATE offline_attachments SET remote_attempted=1 WHERE EXISTS (SELECT 1 FROM offline_attachment_uploads u WHERE u.user_id=offline_attachments.user_id AND u.company_id=offline_attachments.company_id AND u.attachment_id=offline_attachments.attachment_id);
+        PRAGMA user_version=10;`);current=10;
+    }
+    if (current !== 10) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -250,7 +258,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         `SELECT (SELECT count(*) FROM offline_operations WHERE user_id = ? AND
          (status IN ('pending','syncing','awaiting_review') OR (status = 'blocked' AND review_outcome_json IS NULL)
            OR (history_backed_up=0 AND json_extract(continuation_json,'$.phase')='ready'))) +
-         (SELECT count(*) FROM offline_attachments WHERE user_id=? AND state<>'discarded') AS count`, userId,userId,
+         (SELECT count(*) FROM offline_attachments WHERE user_id=? AND (state<>'discarded' OR remote_release='pending')) AS count`, userId,userId,
       ))?.count ?? 0);
     },
     activate(scope: OutboxScope) {
@@ -353,7 +361,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             if(previous){if(!sameJson(previous.manifest_json,encoded)||['discarding','discarded'].includes(previous.state))throw new Error('Attachment identity was reused for different or discarded work.');return asset(previous)}
             const total=await tx.getFirstAsync<{bytes:number}>("SELECT coalesce(sum(byte_size),0) AS bytes FROM offline_attachments WHERE user_id=? AND state<>'discarded'",identity.userId);
             if((total?.bytes??0)+saved.byteSize>offlineAttachmentUserQuota)throw new Error('Device attachment quota exceeded. Keep or discard retained files before adding more.');
-            await tx.runAsync("INSERT INTO offline_attachments VALUES(?,?,?,?,?,'staging',NULL)",...ids,saved.attachmentId,encoded,saved.byteSize);return {...JSON.parse(encoded),state:'staging',error:null};
+            await tx.runAsync("INSERT INTO offline_attachments(user_id,company_id,attachment_id,manifest_json,byte_size,state,error) VALUES(?,?,?,?,?,'staging',NULL)",...ids,saved.attachmentId,encoded,saved.byteSize);return {...JSON.parse(encoded),state:'staging',error:null};
           });
         },
         readyAttachment(id:string):Promise<boolean>{attachmentId(id);return write(async tx=>(await tx.runAsync("UPDATE offline_attachments SET state='ready',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state IN ('staging','missing','ready')",...ids,id)).changes===1)},
@@ -362,7 +370,8 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           const bound=await tx.getFirstAsync<{count:number}>('SELECT count(*) AS count FROM offline_attachment_refs WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);if(bound?.count)throw new Error('Saved changes still reference this file. It cannot be discarded.');
           const document=await tx.getFirstAsync<{stage:string}>('SELECT stage FROM offline_attachment_documents WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
           if(document&&['pending','blocked'].includes(document.stage))throw new Error('A saved vehicle document request still needs this file. It cannot be discarded.');
-          await tx.runAsync("UPDATE offline_attachments SET state='discarding',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state<>'discarded'",...ids,id);
+          // Explicit discard also releases any server staging upload; queued so it works offline.
+          await tx.runAsync("UPDATE offline_attachments SET state='discarding',error=NULL,remote_release=coalesce(remote_release,CASE WHEN remote_attempted=1 THEN 'pending' END) WHERE user_id=? AND company_id=? AND attachment_id=? AND state<>'discarded'",...ids,id);
         })},
         finishAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='discarded',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state='discarding'",...ids,id)})},
         listAttachmentUploads():Promise<OfflineAttachmentUpload[]>{return read(async()=>{
@@ -416,6 +425,16 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           const stage=result?result.kind:next.blocked?'blocked':'pending';const error=result?null:next.blocked??next.error??null;const attempts=previous.attempts+(next.attempt?1:0);const updatedAt=new Date().toISOString();
           await tx.runAsync('UPDATE offline_attachment_documents SET stage=?,result_json=?,error=?,attempts=?,updated_at=? WHERE user_id=? AND company_id=? AND attachment_id=?',stage,result?JSON.stringify(result):null,error,attempts,updatedAt,...ids,id);
           return {...previous,stage,result,error,attempts,updatedAt};
+        })},
+        /** Persisted before the first reserve request, so a lost response can still be released later. */
+        markAttachmentRemoteAttempt(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync('UPDATE offline_attachments SET remote_attempted=1 WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id)})},
+        listAttachmentReleases():Promise<{attachment:OfflineAttachment;state:'pending'|'released'|'attached'|'none';error:string|null}[]>{return read(async()=>{
+          const rows=await db.getAllAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null;remote_release:'pending'|'released'|'attached'|'none';remote_release_error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND remote_release IS NOT NULL ORDER BY attachment_id',...ids);
+          return rows.map(row=>({attachment:asset(row),state:row.remote_release,error:row.remote_release_error}));
+        })},
+        /** Final release states never return to pending. */
+        recordAttachmentRelease(id:string,next:{state:'pending'|'released'|'attached'|'none';error?:string|null}):Promise<void>{attachmentId(id);return write(async tx=>{
+          await tx.runAsync("UPDATE offline_attachments SET remote_release=?,remote_release_error=? WHERE user_id=? AND company_id=? AND attachment_id=? AND remote_release='pending'",next.state,next.state==='pending'?next.error??null:null,...ids,id);
         })},
         getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
         restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
