@@ -284,6 +284,7 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.continuation?.phase==='waiting')return entry.status==='blocked'?'Saved later edit — explicit rebase needed':'Saved later edit — waiting for earlier changes';
   if(entry.reviewOutcome?.outcome==='partially_kept')return 'Reviewed — some changes were kept';
   if(entry.reviewOutcome?.outcome==='not_selected'||entry.status==='not_selected')return 'Reviewed — another version was kept';
+  if(entry.status==='synced'&&(entry.delivery as {keptCurrent?:unknown}|null)?.keptCurrent===true)return 'Synced — a newer change by someone else was kept';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';
   if(entry.reviewOutcome?.outcome==='kept')return 'Reviewed — changes accepted; shared-data refresh pending';
   if(entry.status==='awaiting_review')return 'Uploaded — awaiting owner/admin review';

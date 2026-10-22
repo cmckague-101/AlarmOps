@@ -89,7 +89,7 @@ Native tests use Node `node:sqlite` (Node 22.13+). Database tests use local dev-
 
 ## Deployment and remaining scope
 
-All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261126000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `release-fleet-sync-attachment` and `copy-fleet-sync-attachment` Edge Functions. Note: undeployed migrations `20261110000100`/`20261111000100`/`20261117000100` were edited in place during development. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
+All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261127000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `release-fleet-sync-attachment` and `copy-fleet-sync-attachment` Edge Functions. Note: undeployed migrations `20261110000100`/`20261111000100`/`20261117000100` were edited in place during development. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
 
 All-feature offline remains unfinished. Beyond attachments: remaining workflows and permission/invariant-aware adapters (assignments/status, inspections, crew/qualifications, notes, documents, communications, training, inventory, tasks/preferences, financials, settings/integrations), their catch-up contracts, encryption/retention, recovery/compatibility/performance hardening, real validation and rollout preparation.
 

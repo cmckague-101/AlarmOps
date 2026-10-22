@@ -550,6 +550,12 @@ These tables have no fleet revision ledger and are private or self-service, so t
 
 Tests: `supabase/tests/user-sync-commands.test.mjs` with a fixture loading the real tasks/availability/dashboard migrations (ordering via dependencies, idempotency, privacy and roles, kept availability, per-key merge, private receipts, forged provenance).
 
+### User-owned data: client (native)
+
+`offline-user-sync.ts` enqueues the user commands on the provider's existing scoped session (any current member; the server enforces task roles): `createTask` (client UUID), `completeTask` (depends on a still-unsynced create of the same task), `setAvailability(available, base)` (own only; `base` = the value shown) and `setDashboard(changes)`. The adapter block admits only these commands, the account-bound transport sends them to `sync_user_command` and reconciles through `get_user_sync_state`, and a kept availability shows **"Synced — a newer change by someone else was kept"**. Commands count as retained work in the sign-out guard like any saved change.
+
+When the installed app is offline, **Tasks** saves new tasks and completions on the device and overlays them on the last downloaded list (with a "saved on this device" count; the list reloads once they sync). **Availability** saves your own selection offline (changing someone else's needs a connection), and **dashboard customization** saves layout toggles offline, both overlaid until synced. Online behavior is unchanged; web stays online-only. Tests: `offline-user-sync.test.ts` (ordering, worker delivery, kept label, overlays, adapter/transport routing). No UI launch or visual test was run.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

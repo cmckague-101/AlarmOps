@@ -2,6 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import type {OutboxScope} from './offline-outbox';
 import type {OfflineSyncTransport} from './offline-sync-worker';
+import {isUserSyncOperation,userSyncCommands} from './offline-user-sync';
 
 /** Bind each request to the verified local session token; never use a service key. */
 export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>>{
@@ -22,6 +23,7 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
   return {
     deliver(operation,signal,history=[]){
       recordArgs(operation);
+      if(isUserSyncOperation(operation))return invoke('sync_user_command',{operation},signal);
       if(operation.mutation.kind==='create')return invoke('sync_fleet_create',{operation},signal);
       return history.length?invoke('sync_fleet_update_with_history',{operation,device_history:history},signal):invoke('sync_fleet_update',{operation},signal);
     },
@@ -29,7 +31,7 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
       recordArgs(operation);
       return invoke('backfill_fleet_sync_device_history',{operation,device_history:history},signal);
     },
-    canonical(operation,signal){return invoke('get_fleet_sync_record',recordArgs(operation),signal)},
+    canonical(operation,signal){const args=recordArgs(operation);return userSyncCommands[operation.entityType]?invoke('get_user_sync_state',args,signal):invoke('get_fleet_sync_record',args,signal)},
     downloadPage(progress,signal){return invoke('download_fleet_sync_page',{target_company_id:identity.companyId,expected_snapshot:progress.snapshotToken,record_cursor:progress.cursor},signal)},
     readRecord(target,signal){return invoke('get_fleet_sync_record',{target_company_id:identity.companyId,entity_type:target.entityType,record_id:target.entityId},signal)},
     outcome(operation,signal){

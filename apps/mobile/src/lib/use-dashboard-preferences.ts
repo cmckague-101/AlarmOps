@@ -1,6 +1,8 @@
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {parseDashboardPreferences, type DashboardItem, type DashboardPreferences} from '@fireops/domain';
 import {supabase} from './supabase';
+import {pendingDashboard} from './offline-user-sync';
+import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 
 type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean};
 const states=new Map<string,State>();
@@ -13,7 +15,11 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
   const key=`${demoMode?'demo':'user'}:${userId??''}`;
   const remote=!!supabase&&!!userId&&validId(userId)&&!demoMode;
   if(!states.has(key))states.set(key,{items:{},loading:remote,saving:false,error:''});
-  const state=useSyncExternalStore(subscribe,()=>states.get(key)!,()=>states.get(key)!);
+  const stored=useSyncExternalStore(subscribe,()=>states.get(key)!,()=>states.get(key)!);
+  // Offline: layout changes are saved on device and overlaid until synced.
+  const offlineSync=useOptionalOfflineSync();const userSync=demoMode?null:offlineSync?.userSync??null;const offline=!!offlineSync?.offline;
+  const pendingItems=pendingDashboard(offlineSync?.state.entries??[]);
+  const state=Object.keys(pendingItems).length?{...stored,items:{...stored.items,...pendingItems} as DashboardPreferences}:stored;
   useEffect(()=>{
     if(!remote)return;
     let active=true;
@@ -29,6 +35,12 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
   },[key,remote,userId,attempt]);
   async function save(id:DashboardItem,enabled:boolean){
     const previous=states.get(key)!;
+    if(offline&&userSync){
+      if(previous.saving)return;publish(key,{...previous,saving:true,error:''});
+      try{await userSync.setDashboard({[id]:enabled});publish(key,{...states.get(key)!,saving:false})}
+      catch(error){publish(key,{...states.get(key)!,saving:false,error:error instanceof Error?error.message:'Dashboard preferences could not be saved on this device.'})}
+      return;
+    }
     if(previous.saving||previous.loading||previous.loadFailed)return;
     const items={...previous.items,[id]:enabled};
     publish(key,{...previous,saving:true,error:''});
