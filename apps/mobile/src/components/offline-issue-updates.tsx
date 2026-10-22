@@ -8,7 +8,7 @@ import {createFleetId} from '../lib/fleet-store';
 import {useFireOpsTheme} from '../theme';
 
 /** Notes are appended (never conflict); resolve/reopen is a separate change that may need review. */
-export function OfflineIssueUpdates({editor,entityId,record,user,onSaved}:{editor:OfflineDetailEditor;entityId:string;record:SyncRecord;user:{id:string;name:string};onSaved?:()=>void}){
+export function OfflineIssueUpdates({editor,entityId,record,user,notesOnly=false,onSaved}:{editor:OfflineDetailEditor;entityId:string;record:SyncRecord;user:{id:string;name:string};notesOnly?:boolean;onSaved?:()=>void}){
   const theme=useFireOpsTheme();const live=useRef(true);const current=useRef(editor);current.current=editor;
   useFocusEffect(useCallback(()=>{live.current=true;return()=>{live.current=false}},[]));
   const isCurrent=()=>live.current&&current.current===editor;
@@ -32,7 +32,7 @@ export function OfflineIssueUpdates({editor,entityId,record,user,onSaved}:{edito
     <Text style={meta}>Downloaded status: {String(record.status??'Open')}. Notes are added to the shared list when synced and never replace other notes. Resolve/reopen is checked against the current server state and may need owner/admin review.</Text>
     {failed?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Retry saving this change',()=>void run(saved||'Change',()=>actions.retry(),()=>setText('')))}{button('Cancel this change',()=>{actions.cancel();setFailed(false);setError('')})}</View>:<>
       <TextInput accessibilityLabel="Issue update" editable={!busy} value={text} onChangeText={setText} maxLength={2000} multiline textAlignVertical="top" placeholder="Add an update" placeholderTextColor={theme.secondary} style={[body,{borderWidth:1,borderColor:theme.divider,borderRadius:10,minHeight:96,padding:12}]}/>
-      <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Save update on device',addNote,!text.trim())}{button(resolved?'Reopen issue':'Resolve issue',toggle)}</View>
+      <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Save update on device',addNote,!text.trim())}{notesOnly?null:button(resolved?'Reopen issue':'Resolve issue',toggle)}</View>
     </>}
     {saved&&!failed?<Text accessibilityRole="alert" style={body}>{saved} — saved on device, waiting to sync.</Text>:null}
     {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}

@@ -35,7 +35,7 @@ after(async()=>{await db.close()});
 test('crew can read verified records and inventory pages but not review or history',async()=>{
   assert.deepEqual((await read(crew)).record,baseVehicle);assert.equal((await read(crew,'issue',issue)).revision,'1');
   await assert.rejects(read(tech,'issue',issue),error=>error.code==='42501');await assert.rejects(read(crew,'issue',ownerIssue),error=>error.code==='42501');
-  const page=await call('select public.download_fleet_sync_page($1,null,null) result',[company],crew);assert.equal(page.total,1);assert.equal(page.issues,0);assert.deepEqual(page.records.map(item=>item.entityType),['vehicle']);
+  const page=await call('select public.download_fleet_sync_page($1,null,null) result',[company],crew);assert.equal(page.total,1);assert.equal(page.issues,0);assert.equal(page.scope,'vehicles');assert.deepEqual(page.records.map(item=>item.entityType),['vehicle']);
   assert.equal((await call('select public.download_fleet_sync_page($1,null,null) result',[company],owner)).total,3);
   await assert.rejects(read(outsider),error=>error.code==='42501');
   await assert.rejects(call('select public.get_fleet_sync_review($1,$2,$3) result',[company,'vehicle',vehicle],crew),error=>error.code==='42501');

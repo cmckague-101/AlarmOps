@@ -43,7 +43,7 @@ begin
       order by collection,record_id limit 26
   )
   select jsonb_build_object('companyId',target_company_id,'snapshotToken',inventory.token,'total',inventory.total,'vehicles',inventory.vehicles,'issues',inventory.issues,
-    'serverRequestAt',statement_timestamp(),'authorized',(select allowed from access_check),'invalid',inventory.invalid
+    'serverRequestAt',statement_timestamp(),'scope',case when public.is_company_owner(target_company_id,auth.uid()) then 'all' else 'vehicles' end,'authorized',(select allowed from access_check),'invalid',inventory.invalid
       or exists(select 1 from public.fleet_vehicles v where v.company_id=target_company_id and not exists(select 1 from latest l where l.collection='vehicles' and l.record_id=v.record_id))
       or (public.is_company_owner(target_company_id,auth.uid()) and exists(select 1 from public.fleet_issues i where i.company_id=target_company_id and not exists(select 1 from latest l where l.collection='issues' and l.record_id=i.record_id))),
     'records',coalesce((select jsonb_agg(jsonb_build_object('entityType',case collection when 'vehicles' then 'vehicle' else 'issue' end,'entityId',record_id,'revision',version::text,'record',case when deleted then null else data end) order by collection,record_id) from selected),'[]'::jsonb))

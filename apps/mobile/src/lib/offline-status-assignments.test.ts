@@ -11,13 +11,13 @@ const baseVehicle={id:vehicle,unit:'E1',status:'Assigned',assignedTo:crew,notes:
 const baseIssue={id:issue,vehicleId:vehicle,title:'Leak',status:'Open',updates:[]};
 const cleanup:(()=>void)[]=[];afterEach(()=>{for(const fn of cleanup.splice(0).reverse())fn()});
 let ids=0;const nextId=()=>`40000000-0000-4000-8000-${String(++ids).padStart(12,'0')}`;
-async function setup(){
+async function setup(restricted=false){
   const sqlite=new DatabaseSync(':memory:');cleanup.push(()=>sqlite.close());
   const tx:OutboxSqlConnection={async execAsync(sql){sqlite.exec(sql)},async runAsync(sql,...args){return {changes:Number(sqlite.prepare(sql).run(...args).changes)}},async getFirstAsync<T>(sql:string,...args:OutboxSqlValue[]){return (sqlite.prepare(sql).get(...args) as T|undefined)??null},async getAllAsync<T>(sql:string,...args:OutboxSqlValue[]){return sqlite.prepare(sql).all(...args) as T[]}};
   const db:OutboxDatabase={...tx,async withExclusiveTransactionAsync(fn){sqlite.exec('BEGIN IMMEDIATE');try{await fn(tx);sqlite.exec('COMMIT')}catch(error){sqlite.exec('ROLLBACK');throw error}}};
   const store=await createOfflineOutbox(db);const session=store.activate(scope);
   await session.putRecord('vehicle',vehicle,{revision:'1',record:baseVehicle});await session.putRecord('issue',issue,{revision:'1',record:baseIssue});
-  const editor=createOfflineDetailEditor({session,readRecord:vi.fn(),canEdit:()=>true,offline:()=>true,id:nextId,now:()=>date,changed:async()=>{}});cleanup.push(()=>editor.dispose());
+  const editor=createOfflineDetailEditor({session,readRecord:vi.fn(),canEdit:()=>true,offline:()=>true,id:nextId,now:()=>date,changed:async()=>{},restrictFields:()=>restricted?{vehicle:['status','assignedTo','assignedFire'],issue:['updates']}:null});cleanup.push(()=>editor.dispose());
   const transport={deliver:vi.fn<OfflineSyncTransport['deliver']>(),canonical:vi.fn(),outcome:vi.fn().mockResolvedValue(null),readRecord:vi.fn()};
   let token=0;const worker=createOfflineSyncWorker({session,transport,canAccess:()=>true,canRun:()=>true,token:()=>`attempt-${++token}`,now:()=>0,timeoutMs:1000});cleanup.push(()=>worker.stop());
   return {session,editor,transport,worker};
@@ -57,5 +57,26 @@ describe('offline status, assignment and issue updates (actual SQLite)',()=>{
     g.transport.deliver.mockResolvedValueOnce({kind:'applied',receivedAt:date,revision:'3',record:reassigned});g.transport.canonical.mockResolvedValue({revision:'3',record:reassigned});
     await g.worker.wake();const later=(await g.session.list()).find(item=>item.operation.operationId!==parent.operation.operationId);
     expect(later).toMatchObject({status:'blocked',error:expect.stringContaining('explicitly rebase')});expect(g.transport.deliver).toHaveBeenCalledOnce();
+  });
+});
+
+describe('crew offline actions (actual SQLite)',()=>{
+  it('lets crew claim for themselves and add notes, but nothing else',async()=>{
+    const f=await setup(true);await f.session.putRecord('vehicle',vehicle,{revision:'2',record:{id:vehicle,unit:'E1',status:'Ready'}});
+    const draft=await f.editor.prepare({entityType:'vehicle',entityId:vehicle});
+    await expect(f.editor.save(draft,{notes:'x'})).rejects.toThrow(/Your role/);
+    await expect(f.editor.save(draft,{status:'Assigned',assignedTo:crew})).rejects.toThrow(/for yourself/);
+    expect((await f.editor.save(draft,{status:'Assigned',assignedTo:user})).operation.mutation.kind).toBe('update');
+    const issueDraft=await f.editor.prepare({entityType:'issue',entityId:issue});
+    await expect(f.editor.save(issueDraft,{status:'Resolved',resolvedAt:date})).rejects.toThrow(/Your role/);
+    expect((await f.editor.save(issueDraft,{updates:[note('Crew note')]})).operation.mutation.kind).toBe('update');
+  });
+  it('completes a vehicle-only inventory without treating cached issues as missing',async()=>{
+    const f=await setup(true);await f.session.restartFleetDownload('crew-plan');const expected=(await f.session.getFleetDownload())!;
+    const page={companyId:company,snapshotToken:'a'.repeat(64),serverRequestAt:date,scope:'vehicles' as const,total:1,vehicles:1,issues:0,records:[{entityType:'vehicle' as const,entityId:vehicle,revision:'1',record:baseVehicle}],nextCursor:null};
+    expect(await f.session.applyFleetDownloadPage(expected,page)).toBe(true);expect((await f.session.getFleetDownload())?.complete).toBe(true);
+    expect((await f.session.listRecords()).some(row=>row.entityType==='issue')).toBe(true);
+    const g=await setup(false);await g.session.restartFleetDownload('owner-plan');const all=(await g.session.getFleetDownload())!;
+    await expect(g.session.applyFleetDownloadPage(all,{...page,scope:'all'})).rejects.toThrow(/omitted previously verified/);
   });
 });

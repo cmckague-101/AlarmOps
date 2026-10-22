@@ -517,10 +517,10 @@ export default function VehicleDetailScreen() {
         {vehicle ? (
           <>
             {pendingDetails?.[`vehicle:${vehicle.id}`]?<Text accessibilityRole="alert" style={styles.stateText}>{pendingDetails[`vehicle:${vehicle.id}`]}</Text>:null}
-            {canManage&&Platform.OS!=='web'&&!demoMode?<View>
-              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{savedDetailBase?'Edit downloaded details':'Download / edit saved details'}</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={styles.retryButton}><Text style={styles.retryLabel}>Inspect device edit history (online)</Text></Pressable>
-              <Text style={styles.stateText}>{savedDetailBase?'Verified details downloaded. Scalar detail edits can be saved offline in this editor.':'Open saved-detail editor online once to download a verified base for offline edits.'} Files, status and assignments stay online-only.</Text>
+            {(canManage||user?.role==='fire_fighter'||user?.role==='shop_tech')&&Platform.OS!=='web'&&!demoMode?<View>
+              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{canManage?(savedDetailBase?'Edit downloaded details':'Download / edit saved details'):(savedDetailBase?'Claim / release offline':'Download for offline claim / release')}</Text></Pressable>
+              {canManage?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={styles.retryButton}><Text style={styles.retryLabel}>Inspect device edit history (online)</Text></Pressable>:null}
+              <Text style={styles.stateText}>{savedDetailBase?(canManage?'Verified details downloaded. Details, status/assignment and vehicle files can be saved offline in this editor.':'Verified vehicle downloaded. You can claim, release or clear its fire offline.'):'Open the saved-detail editor online once to download a verified base for offline changes.'} Inspections and fire assignment stay online-only.</Text>
             </View>:null}
             <View style={styles.identity}>
               {photoUrl ? (

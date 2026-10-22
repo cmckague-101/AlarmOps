@@ -51,6 +51,8 @@ export function createOfflineDetailEditor(options:{
   session:OfflineOutboxSession;readRecord:(target:DetailTarget,signal:AbortSignal)=>Promise<unknown>;
   canEdit:()=>boolean;offline:()=>boolean;id:()=>string;now?:()=>string;changed:()=>Promise<void>;
   downloaded?:()=>Promise<void>;reserve?:(target:DetailTarget,owner:string)=>()=>void;
+  /** Crew roles: only these fields may change (the server and role triggers enforce the same). Null = owner/admin. */
+  restrictFields?:()=>Readonly<Record<DetailTarget['entityType'],readonly string[]>>|null;
 }){
   let disposed=false;
   const requests=new Set<AbortController>();
@@ -122,6 +124,9 @@ export function createOfflineDetailEditor(options:{
         const patch=createSyncPatch(base.record,projected);
         if(!Object.keys(patch).length)throw new Error('No detail changes to save.');
         const problem=fleetSyncRecordProblem(base.entityType,base.record,projected);if(problem)throw new Error(problem);
+        const restricted=options.restrictFields?.()??null;
+        if(restricted&&Object.keys(patch).some(field=>!restricted[base.entityType].includes(field)))throw new Error('Your role can only claim/release vehicles or add notes to issues you reported offline.');
+        if(restricted&&typeof projected.assignedTo==='string'&&projected.assignedTo!==base.record.assignedTo&&projected.assignedTo!==options.session.scope.userId)throw new Error('You can only claim vehicles for yourself.');
         owned.values=clone(values);owned.extras=saved;
         owned.operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:base.entityType,entityId:base.entityId,
           provenance:{userId:options.session.scope.userId,deviceId:owned.deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},

@@ -510,6 +510,12 @@ Submit/read access now goes through replaceable hooks added in place to the unde
 
 Tests: `supabase/tests/fleet-sync-member-actions.test.mjs` (read scope, claim/fire-clear/release, refused transitions with no partial writes, field allowlist, own-issue single notes with concurrent notes kept, review candidate + outcome). Client wiring follows.
 
+### Crew offline vehicle claims and issue notes: client (native)
+
+The provider now treats **fire_fighter/shop_tech** as sync roles for record refresh, the read model and the saved-detail editor (attachments, files and documents stay owner/admin). Issues cached under an earlier owner/admin role are hidden from crew unless they reported them, until the next refresh removes unreadable records. The editor takes `restrictFields` (crew: vehicle `status/assignedTo/assignedFire`, issue `updates`) and refuses claiming for anyone else before saving; the server and role triggers enforce the same. Inventory pages now carry `scope` (`all` | `vehicles`; older servers default to `all`); a vehicle-only crew inventory completes without treating cached issues as missing, and pages that mix in issues are rejected.
+
+Crew screens: vehicle detail shows **Claim / release offline** (saved-detail editor with Claim this vehicle, Release this vehicle, Clear fire assignment); issue detail shows **Add notes offline** only on issues they reported (notes only; resolve/reopen needs a connection). Device edit history inspection stays owner/admin. Tests: crew restriction and vehicle-only completion in `offline-status-assignments.test.ts`, scope decoding in `offline-fleet-download.test.ts`. No UI launch or visual test was run.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

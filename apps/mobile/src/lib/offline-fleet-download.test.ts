@@ -10,7 +10,7 @@ const scope={userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0
 const id=(n:number)=>`30000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const token='a'.repeat(64);const date='2026-01-01T12:00:00Z';
 const record=(n:number)=>({entityType:'vehicle' as const,entityId:id(n),revision:'1',record:{id:id(n),unit:`E${n}`,notes:'Base'}});
-function page(last=false):FleetDownloadPage{return {companyId:scope.companyId,snapshotToken:token,serverRequestAt:date,total:26,vehicles:25,issues:0,records:last?[{entityType:'vehicle',entityId:id(26),revision:'2',record:null}]:Array.from({length:25},(_,i)=>record(i+1)),nextCursor:last?null:{entityType:'vehicle',entityId:id(25)}}}
+function page(last=false):FleetDownloadPage{return {companyId:scope.companyId,snapshotToken:token,serverRequestAt:date,scope:'all',total:26,vehicles:25,issues:0,records:last?[{entityType:'vehicle',entityId:id(26),revision:'2',record:null}]:Array.from({length:25},(_,i)=>record(i+1)),nextCursor:last?null:{entityType:'vehicle',entityId:id(25)}}}
 const cleanup:(()=>void)[]=[];afterEach(()=>{for(const fn of cleanup.splice(0).reverse())fn()});
 async function setup(path=':memory:'){
   const sqlite=new DatabaseSync(path);let closed=false;const close=()=>{if(!closed){sqlite.close();closed=true}};cleanup.push(close);
@@ -80,5 +80,15 @@ describe('foreground download worker',()=>{
     const operation={schemaVersion:1 as const,operationId:id(90),companyId:scope.companyId,entityType:'vehicle' as const,entityId:id(1),provenance:{userId:scope.userId,deviceId:'phone',savedAt:date,connectivity:'offline' as const},dependsOn:[],mutation:{kind:'update' as const,baseRevision:'1',base:record(1).record,patch:{notes:{present:true as const,value:'Saved intent'}}}};
     await f.session.enqueue(operation,{...record(1).record,notes:'Saved intent'});f.transport.deliver.mockRejectedValue({code:'42501'});f.transport.downloadPage.mockReset().mockRejectedValue({code:'42501'});await f.worker.startFleetDownload();
     expect(await f.session.listRecords()).toEqual([]);expect((await f.session.list())[0].operation).toEqual(operation);expect(await f.session.getProjection('vehicle',id(1))).toMatchObject({operationId:operation.operationId,record:{notes:'Saved intent'}});expect((await f.session.getFleetDownload())?.complete).toBe(false);expect(f.worker.getSnapshot().downloadError).toContain('incomplete');
+  });
+});
+describe('inventory scope',()=>{
+  it('accepts vehicle-only crew pages and rejects issues inside them',async()=>{
+    const {decodeFleetDownloadPage}=await import('./offline-fleet-download');
+    const base={companyId:'10000000-0000-4000-8000-000000000001',snapshotToken:'a'.repeat(64),serverRequestAt:'2026-01-01T00:00:00Z',total:0,vehicles:0,issues:0,records:[],nextCursor:null};
+    expect(decodeFleetDownloadPage({...base,scope:'vehicles'},base.companyId,{snapshotToken:null,cursor:null}).scope).toBe('vehicles');
+    expect(decodeFleetDownloadPage(base,base.companyId,{snapshotToken:null,cursor:null}).scope).toBe('all');
+    expect(()=>decodeFleetDownloadPage({...base,scope:'vehicles',issues:1,total:1},base.companyId,{snapshotToken:null,cursor:null})).toThrow();
+    expect(()=>decodeFleetDownloadPage({...base,scope:'everything'},base.companyId,{snapshotToken:null,cursor:null})).toThrow();
   });
 });

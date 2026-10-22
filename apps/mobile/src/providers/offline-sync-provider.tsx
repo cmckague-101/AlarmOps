@@ -33,7 +33,9 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const key=userId&&companyId?`${userId}:${companyId}`:null;
   const [foreground,setForeground]=useState(AppState.currentState==='active');
   const manager=member?.user.role==='owner'||member?.user.role==='admin';
-  const runtime=useRef({key,foreground,manager});runtime.current={key,foreground,manager};
+  // Crew may sync vehicle claims/release and notes on their own issues; attachments stay owner/admin.
+  const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech';const syncRole=manager||crew;
+  const runtime=useRef({key,foreground,manager,syncRole});runtime.current={key,foreground,manager,syncRole};
   const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void}|null>(null);
   const [bootAttempt,setBootAttempt]=useState(0);
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
@@ -74,7 +76,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const attachmentTransport=createNativeAttachmentUploadTransport(client,identity,canUploadAttachments,uri=>new File(uri).arrayBuffer());
         const uploader=createOfflineAttachmentUploader({session:scoped,vault,transport:attachmentTransport,canRun:canUploadAttachments});
         // Vehicle file slots: files are uploaded and proven before the worker sends the record change.
-        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.manager,token:createFleetId,
+        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.syncRole,token:createFleetId,
           prepareAttachments:createSlotAttachmentPreparer({session:scoped,uploader,transport:attachmentTransport})});
         const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments,discard:id=>vault.discard(id),
           settle:createSlotAttachmentSettler({session:scoped,discard:id=>vault.discard(id)})});
@@ -82,11 +84,14 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const attachments=createOfflineAttachmentController({session:scoped,vault,canAccess:canUseAttachments,documents,changed:()=>{void created.wake()}});
         const syncAttachments=()=>{if(canUploadAttachments())void attachments.sync(attachmentAbort.signal)};
         const gate=createFleetEditGate(scoped,canAccess);
-        const model=bindOfflineFleet({model:{scope:identity,records:[],entries:[],offline:isOffline(),loaded:false},current:canAccess,visible:()=>runtime.current.manager,
+        const model=bindOfflineFleet({model:{scope:identity,records:[],entries:[],offline:isOffline(),loaded:false},current:canAccess,visible:()=>runtime.current.syncRole,
           legacy:gate.legacy,refresh:()=>{void created.wake()}});
-        const publish=()=>{const snapshot=created.getSnapshot();model.publish({scope:identity,records:snapshot.records,entries:snapshot.entries,offline:isOffline(),loaded:snapshot.loaded})};
+        // Issues cached under an earlier owner/admin role stay hidden from crew until refresh removes them.
+        const visibleRecords=(records:ReturnType<typeof created.getSnapshot>['records'])=>runtime.current.manager?records:records.filter(row=>row.entityType==='vehicle'||(row.record as {createdById?:unknown}|null)?.createdById===identity.userId);
+        const publish=()=>{const snapshot=created.getSnapshot();model.publish({scope:identity,records:visibleRecords(snapshot.records),entries:snapshot.entries,offline:isOffline(),loaded:snapshot.loaded})};
         const unpublish=created.subscribe(publish);
-        const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,reserve:(target,owner)=>gate.acquire([target],owner),downloaded:()=>created.refresh(),canEdit:()=>canAccess()&&runtime.current.manager&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
+        const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,reserve:(target,owner)=>gate.acquire([target],owner),downloaded:()=>created.refresh(),canEdit:()=>canAccess()&&runtime.current.syncRole&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
+          restrictFields:()=>runtime.current.manager?null:{vehicle:['status','assignedTo','assignedFire'],issue:['updates']},
           changed:async()=>{await created.refresh();void created.wake()}});
         const unregister=registerOfflineSyncSession(identity.userId,{pause:()=>{created.pause();attachments.pause()},resume:()=>{void created.resume();void attachments.resume()}});
         const auth=client.auth.onAuthStateChange((_event,next)=>{
@@ -126,7 +131,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const dismiss=useCallback(async()=>{await worker?.dismiss()},[worker]);
   const downloadFleet=useCallback(async()=>{await worker?.startFleetDownload()},[worker]);
   const stopFleetDownload=useCallback(async()=>{await worker?.stopFleetDownload()},[worker]);
-  const value=useMemo<ContextValue>(()=>({attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&manager?binding.editor:null,hasSavedDetails:binding?.key===key&&manager&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload}),[attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
+  const value=useMemo<ContextValue>(()=>({attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&syncRole?binding.editor:null,hasSavedDetails:binding?.key===key&&syncRole&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload}),[attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useOfflineSync(){const value=useContext(Context);if(!value)throw new Error('useOfflineSync must be inside OfflineSyncProvider');return value}

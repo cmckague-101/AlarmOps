@@ -475,8 +475,9 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             if(saved.nextCursor===null){
               const counts=await tx.getFirstAsync<{total:number;vehicles:number;issues:number}>(`SELECT count(*) AS total,coalesce(sum(entity_type='vehicle' AND alive=1),0) AS vehicles,coalesce(sum(entity_type='issue' AND alive=1),0) AS issues FROM offline_fleet_download_members WHERE user_id=? AND company_id=?`,...ids);
               if(!counts||counts.total!==saved.total||counts.vehicles!==saved.vehicles||counts.issues!==saved.issues)throw new Error('Inventory coverage counts do not match verified pages.');
-              const missing=await tx.getFirstAsync<{count:number}>(`SELECT count(*) AS count FROM offline_records r WHERE r.user_id=? AND r.company_id=? AND NOT EXISTS
-                (SELECT 1 FROM offline_fleet_download_members m WHERE m.user_id=r.user_id AND m.company_id=r.company_id AND m.entity_type=r.entity_type AND m.entity_id=r.entity_id)`,...ids);
+              // A vehicle-only (crew) inventory says nothing about cached issues.
+              const missing=await tx.getFirstAsync<{count:number}>(`SELECT count(*) AS count FROM offline_records r WHERE r.user_id=? AND r.company_id=? AND (?='all' OR r.entity_type='vehicle') AND NOT EXISTS
+                (SELECT 1 FROM offline_fleet_download_members m WHERE m.user_id=r.user_id AND m.company_id=r.company_id AND m.entity_type=r.entity_type AND m.entity_id=r.entity_id)`,...ids,saved.scope);
               if(missing?.count)throw new Error('Inventory omitted previously verified records. No deletion was assumed.');
             }
             const progress:FleetDownloadProgress={generationId:current.generationId,snapshotToken:saved.snapshotToken,cursor:saved.nextCursor,complete:saved.nextCursor===null,received,total:saved.total,vehicles:saved.vehicles,issues:saved.issues,serverRequestAt:saved.serverRequestAt,lastCompletedAt:saved.nextCursor===null?saved.serverRequestAt:current.lastCompletedAt};

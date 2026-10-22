@@ -2,7 +2,8 @@ import {createSyncPatch,type SyncRecord} from '@fireops/domain';
 import {decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 export type FleetDownloadCursor={entityType:'vehicle'|'issue';entityId:string};
 export type FleetDownloadProgress={generationId:string;snapshotToken:string|null;cursor:FleetDownloadCursor|null;complete:boolean;received:number;total:number;vehicles:number;issues:number;lastCompletedAt:string|null;serverRequestAt:string|null};
-export type FleetDownloadPage={companyId:string;snapshotToken:string;records:(FleetDownloadCursor&CanonicalSyncRecord)[];nextCursor:FleetDownloadCursor|null;total:number;vehicles:number;issues:number;serverRequestAt:string};
+/** `vehicles`: crew inventories cover vehicles only; their issues are verified per record. */
+export type FleetDownloadPage={companyId:string;snapshotToken:string;records:(FleetDownloadCursor&CanonicalSyncRecord)[];nextCursor:FleetDownloadCursor|null;total:number;vehicles:number;issues:number;serverRequestAt:string;scope:'all'|'vehicles'};
 export const initialFleetDownload=(generationId:string):FleetDownloadProgress=>({generationId,snapshotToken:null,cursor:null,complete:false,received:0,total:0,vehicles:0,issues:0,lastCompletedAt:null,serverRequestAt:null});
 const object=(value:unknown):Record<string,unknown>=>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid fleet download');return value as Record<string,unknown>};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -27,9 +28,12 @@ export function decodeFleetDownloadPage(value:unknown,companyId:string,expected:
   if(data.companyId!==companyId||typeof data.snapshotToken!=='string'||!/^[0-9a-f]{64}$/.test(data.snapshotToken)||(expected.snapshotToken!==null&&expected.snapshotToken!==data.snapshotToken))throw new Error('Fleet download scope or snapshot changed');
   for(const key of ['total','vehicles','issues'])if(typeof data[key]!=='number'||!Number.isSafeInteger(data[key])||(data[key] as number)<0)throw new Error('Invalid fleet inventory counts');
   if((data.vehicles as number)+(data.issues as number)>(data.total as number)||typeof data.serverRequestAt!=='string'||!Number.isFinite(Date.parse(data.serverRequestAt))||!Array.isArray(data.records)||data.records.length>25)throw new Error('Invalid fleet inventory page');
+  // Older servers omit scope and always return everything.
+  const scope=data.scope===undefined?'all':data.scope;if(scope!=='all'&&scope!=='vehicles')throw new Error('Invalid fleet inventory scope');
+  if(scope==='vehicles'&&data.issues!==0)throw new Error('Vehicle-only inventory reported issues');
   let previous=expected.cursor?fleetDownloadKey(expected.cursor):'';
-  const records=data.records.map(raw=>{const target=cursor(raw);const key=fleetDownloadKey(target);if(key<=previous)throw new Error('Fleet inventory page repeated or reordered');previous=key;return {...target,...decodeCanonicalSyncRecord(target,raw,'1')}});
+  const records=data.records.map(raw=>{const target=cursor(raw);if(scope==='vehicles'&&target.entityType!=='vehicle')throw new Error('Vehicle-only inventory returned an issue');const key=fleetDownloadKey(target);if(key<=previous)throw new Error('Fleet inventory page repeated or reordered');previous=key;return {...target,...decodeCanonicalSyncRecord(target,raw,'1')}});
   const nextCursor=data.nextCursor===null?null:cursor(data.nextCursor);
   if(nextCursor&&(records.length!==25||fleetDownloadKey(nextCursor)!==previous))throw new Error('Invalid next fleet cursor');
-  return {companyId,snapshotToken:data.snapshotToken,records,nextCursor,total:data.total as number,vehicles:data.vehicles as number,issues:data.issues as number,serverRequestAt:data.serverRequestAt};
+  return {companyId,snapshotToken:data.snapshotToken,records,nextCursor,total:data.total as number,vehicles:data.vehicles as number,issues:data.issues as number,serverRequestAt:data.serverRequestAt,scope};
 }
