@@ -1,4 +1,4 @@
-import type {AttachmentUploadReceipt,AttachmentUploadReservation} from '@fireops/domain';
+import type {AttachmentDocumentRequest,AttachmentDocumentResult,AttachmentUploadReceipt,AttachmentUploadReservation} from '@fireops/domain';
 export const offlineAttachmentMaxBytes=10*1024*1024;
 export const offlineAttachmentUserQuota=100*1024*1024;
 export type OfflineAttachmentState='staging'|'ready'|'missing'|'discarding'|'discarded';
@@ -21,3 +21,5 @@ export function validateAttachmentIntent(value:OfflineAttachmentIntent,scope:{us
  */
 export type OfflineAttachmentUploadStage='reserved'|'uploading'|'stored'|'verified'|'blocked';
 export type OfflineAttachmentUpload={attachmentId:string;stage:OfflineAttachmentUploadStage;reservation:AttachmentUploadReservation|null;receipt:AttachmentUploadReceipt|null;error:string|null;attempts:number;updatedAt:string};
+/** Saved intent to reference verified bytes as one vehicle document. `applied` is the server's business result. */
+export type OfflineAttachmentDocument={attachmentId:string;request:AttachmentDocumentRequest;stage:'pending'|'applied'|'rejected'|'blocked';result:AttachmentDocumentResult|null;error:string|null;attempts:number;createdAt:string;updatedAt:string};

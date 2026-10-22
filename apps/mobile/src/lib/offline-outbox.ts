@@ -1,5 +1,5 @@
-import { createSyncPatch, mergeSyncUpdate, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
-import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage} from './offline-attachment-types';
+import { createSyncPatch, mergeSyncUpdate, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, decodeAttachmentDocumentResult, createAttachmentDocumentRequest, type AttachmentDocumentRequest, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage,type OfflineAttachmentDocument} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
@@ -226,7 +226,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         stage TEXT NOT NULL CHECK(stage IN ('reserved','uploading','stored','verified','blocked')),reservation_json TEXT,receipt_json TEXT,error TEXT,
         attempts INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,company_id,attachment_id)); PRAGMA user_version=8;`);current=8;
     }
-    if (current !== 8) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===8){
+      await tx.execAsync(`CREATE TABLE offline_attachment_documents(user_id TEXT NOT NULL,company_id TEXT NOT NULL,attachment_id TEXT NOT NULL,request_json TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK(stage IN ('pending','applied','rejected','blocked')),result_json TEXT,error TEXT,attempts INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id,company_id,attachment_id)); PRAGMA user_version=9;`);current=9;
+    }
+    if (current !== 9) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -298,6 +303,16 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         if((row.stage==='verified')!==!!reservation?.receipt||(row.receipt_json!==null)!==!!reservation?.receipt)throw new Error('Invalid saved attachment upload receipt.');
         return {attachmentId:row.attachment_id,stage:row.stage,reservation,receipt:reservation?.receipt??null,error:row.error,attempts:row.attempts,updatedAt:row.updated_at};
       }
+      async function attachmentDocument(connection:OutboxSqlConnection,row:DocumentRow):Promise<OfflineAttachmentDocument>{
+        const saved=await connection.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,row.attachment_id);
+        if(!saved||!['pending','applied','rejected','blocked'].includes(row.stage))throw new Error('Invalid saved document request.');
+        const manifest=decodeAttachmentUploadManifest((({state:_s,error:_e,...value})=>value)(asset(saved)));const stored=JSON.parse(row.request_json) as AttachmentDocumentRequest;
+        const request=createAttachmentDocumentRequest(manifest,{requestId:stored.requestId,documentName:stored.documentName,deviceId:stored.provenance?.deviceId,savedAt:stored.provenance?.savedAt,connectivity:stored.provenance?.connectivity});
+        if(JSON.stringify(request)!==row.request_json)throw new Error('Invalid saved document request.');
+        const result=row.result_json?decodeAttachmentDocumentResult(JSON.parse(row.result_json),request):null;
+        if((result?.kind??null)!==(['applied','rejected'].includes(row.stage)?row.stage:null))throw new Error('Invalid saved document result.');
+        return {attachmentId:row.attachment_id,request,stage:row.stage,result,error:row.error,attempts:row.attempts,createdAt:row.created_at,updatedAt:row.updated_at};
+      }
       async function downloadProgress(connection:OutboxSqlConnection):Promise<FleetDownloadProgress|null>{
         const row=await connection.getFirstAsync<{progress_json:string}>('SELECT progress_json FROM offline_fleet_downloads WHERE user_id=? AND company_id=?',...ids);
         return row?decodeFleetDownloadProgress(JSON.parse(row.progress_json)):null;
@@ -345,6 +360,8 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         missingAttachment(id:string,error:string):Promise<void>{attachmentId(id);required(error,'attachment error');return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='missing',error=? WHERE user_id=? AND company_id=? AND attachment_id=? AND state IN ('staging','ready','missing')",error,...ids,id)})},
         beginAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{
           const bound=await tx.getFirstAsync<{count:number}>('SELECT count(*) AS count FROM offline_attachment_refs WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);if(bound?.count)throw new Error('Saved changes still reference this file. It cannot be discarded.');
+          const document=await tx.getFirstAsync<{stage:string}>('SELECT stage FROM offline_attachment_documents WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          if(document&&['pending','blocked'].includes(document.stage))throw new Error('A saved vehicle document request still needs this file. It cannot be discarded.');
           await tx.runAsync("UPDATE offline_attachments SET state='discarding',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state<>'discarded'",...ids,id);
         })},
         finishAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='discarded',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state='discarding'",...ids,id)})},
@@ -371,6 +388,34 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             stage=excluded.stage,reservation_json=excluded.reservation_json,receipt_json=excluded.receipt_json,error=excluded.error,attempts=excluded.attempts,updated_at=excluded.updated_at`,
             ...ids,id,next.stage,reservation?JSON.stringify(reservation):null,receipt?JSON.stringify(receipt):null,error,attempts,updatedAt);
           return {attachmentId:id,stage:next.stage,reservation,receipt,error,attempts,updatedAt};
+        })},
+        listAttachmentDocuments():Promise<OfflineAttachmentDocument[]>{return read(async()=>{
+          const rows=await db.getAllAsync<DocumentRow>('SELECT * FROM offline_attachment_documents WHERE user_id=? AND company_id=? ORDER BY created_at,attachment_id',...ids);
+          const out:OfflineAttachmentDocument[]=[];for(const row of rows)out.push(await attachmentDocument(db,row));return out;
+        })},
+        getAttachmentDocument(id:string):Promise<OfflineAttachmentDocument|null>{attachmentId(id);return read(async()=>{
+          const row=await db.getFirstAsync<DocumentRow>('SELECT * FROM offline_attachment_documents WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);return row?attachmentDocument(db,row):null;
+        })},
+        /** Durable intent to reference ready bytes as one vehicle document. Immutable once saved. */
+        requestAttachmentDocument(id:string,input:{requestId:string;documentName:string;savedAt:string;connectivity:OfflineAttachmentIntent['connectivity']}):Promise<OfflineAttachmentDocument>{attachmentId(id);return write(async tx=>{
+          const row=await tx.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          if(!row)throw new Error('Attachment is not saved in this account/company.');const saved=asset(row);if(saved.state!=='ready')throw new Error('A verified device copy is required before attaching.');
+          const device=await tx.getFirstAsync<{device_id:string}>('SELECT device_id FROM offline_devices WHERE user_id=?',identity.userId);if(!device)throw new Error('Device identity is unavailable.');
+          const request=createAttachmentDocumentRequest(decodeAttachmentUploadManifest((({state:_s,error:_e,...value})=>value)(saved)),{...input,deviceId:device.device_id});
+          const previousRow=await tx.getFirstAsync<DocumentRow>('SELECT * FROM offline_attachment_documents WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          if(previousRow){const previous=await attachmentDocument(tx,previousRow);if(previous.request.requestId!==request.requestId||previous.request.documentName!==request.documentName)throw new Error('This file already has a different saved document request.');return previous}
+          const now=new Date().toISOString();
+          await tx.runAsync("INSERT INTO offline_attachment_documents VALUES(?,?,?,?,'pending',NULL,NULL,0,?,?)",...ids,id,JSON.stringify(request),now,now);
+          return {attachmentId:id,request,stage:'pending',result:null,error:null,attempts:0,createdAt:now,updatedAt:now};
+        })},
+        /** A server result is final: later writes return it unchanged. */
+        recordAttachmentDocument(id:string,next:{result?:unknown;blocked?:string;error?:string|null;attempt?:boolean}):Promise<OfflineAttachmentDocument>{attachmentId(id);return write(async tx=>{
+          const row=await tx.getFirstAsync<DocumentRow>('SELECT * FROM offline_attachment_documents WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          if(!row)throw new Error('Document request is unavailable.');const previous=await attachmentDocument(tx,row);if(previous.result)return previous;
+          const result=next.result===undefined?null:decodeAttachmentDocumentResult(next.result,previous.request);
+          const stage=result?result.kind:next.blocked?'blocked':'pending';const error=result?null:next.blocked??next.error??null;const attempts=previous.attempts+(next.attempt?1:0);const updatedAt=new Date().toISOString();
+          await tx.runAsync('UPDATE offline_attachment_documents SET stage=?,result_json=?,error=?,attempts=?,updated_at=? WHERE user_id=? AND company_id=? AND attachment_id=?',stage,result?JSON.stringify(result):null,error,attempts,updatedAt,...ids,id);
+          return {...previous,stage,result,error,attempts,updatedAt};
         })},
         getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
         restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
@@ -779,4 +824,5 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
 
 export type OfflineOutboxStore = Awaited<ReturnType<typeof createOfflineOutbox>>;
 type UploadRow={attachment_id:string;stage:OfflineAttachmentUploadStage;reservation_json:string|null;receipt_json:string|null;error:string|null;attempts:number;updated_at:string};
+type DocumentRow={attachment_id:string;request_json:string;stage:OfflineAttachmentDocument['stage'];result_json:string|null;error:string|null;attempts:number;created_at:string;updated_at:string};
 export type OfflineOutboxSession = ReturnType<OfflineOutboxStore['activate']>;

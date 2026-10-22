@@ -424,6 +424,14 @@ Flow (Edge Function `attach-fleet-sync-document`): `begin_fleet_sync_document_at
 
 **Applied is a business document reference, not deletion of the sync object, review approval or a reason to release local bytes automatically.** Native wiring follows. Shared `createAttachmentDocumentRequest`/`decodeAttachmentDocumentResult` are in the domain module. Tests: `supabase/tests/fleet-sync-document-attach.test.mjs` (atomic append and replay without extra side effects, concurrent edits, quota release, request immutability, copy-proof mismatch/replacement, deleted record, demotion, service-only proof, append-only links) and `attach-fleet-sync-document/logic.spec.ts`.
 
+### Native vehicle-document intents for verified bytes (library implemented; not enabled in UI)
+
+SQLite migrates **v8 → v9**, adding scoped `offline_attachment_documents`. `requestAttachmentDocument` commits one immutable request per ready vehicle attachment (stable request ID, trimmed document name, the account's stable device ID, device-reported save time/connectivity); a different later request for the same file is refused. Stages: `pending` (saved on device, not yet confirmed), `blocked` (permission/conflict/invalid), and server-final `applied` or `rejected`. Results are decoded against the exact request (document ID and deterministic `sync-<attachment>` path) and are immutable once stored; forged or mismatched results leave the request pending.
+
+`offline-attachment-documents.ts` uploads/verifies bytes first (via the uploader) and only then sends the unchanged request through the account-bound `attach-fleet-sync-document` transport. Busy/missing-copy/network outcomes keep the same request pending for retry; revoked access and server conflicts block. **Safe reference release:** local bytes with a pending or blocked document request cannot be discarded; after a server-final result, discarding remains an explicit user action and is never automatic. Applied documents do not delete local or remote sync bytes. Local vehicle data refreshes through existing canonical reconciliation; no local projection claims the document before the server result.
+
+Still not enabled: no provider/worker scheduling, picker or UI calls these modules yet. Tests extend `offline-attachment-upload.test.ts` (immutable request, upload-before-attach ordering, restart retention, discard protection then explicit release, uncertain retries with one request body, blocking, forged results, server rejection retention, account isolation, token binding).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

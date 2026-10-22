@@ -11,6 +11,7 @@ import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type Ou
 import {createOfflineAttachmentVault,type OfflineAttachmentFiles} from './offline-attachment-vault';
 import {createOfflineAttachmentUploader,type AttachmentUploadTransport} from './offline-attachment-upload';
 import {createNativeAttachmentUploadTransport} from './offline-attachment-upload-transport';
+import {createOfflineAttachmentDocumentSync,type AttachmentDocumentTransport} from './offline-attachment-documents';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001',entity='30000000-0000-4000-8000-000000000001';
 const scope={userId:user,companyId:company};const id=(n:number)=>`40000000-0000-4000-8000-${String(n).padStart(12,'0')}`;const date='2026-01-01T00:00:00.000Z';
 const objectId='50000000-0000-4000-8000-000000000001';const bytes=new Uint8Array([0,255,1,9,17]);const sha=createHash('sha256').update(bytes).digest('hex');
@@ -120,5 +121,54 @@ describe('account-bound native attachment transport',()=>{
     expect(f.client.functions.invoke).toHaveBeenCalledWith('verify-fleet-sync-attachment',expect.objectContaining({body:{companyId:company,attachmentId:id(1)},headers:{Authorization:'Bearer bound-token'}}));
     f.client.functions.invoke.mockResolvedValueOnce({data:null,error:{context:new Response('{}',{status:403})}});await expect(f.value.verify(manifest,f.signal)).rejects.toMatchObject({code:'42501'});
     const network=new Error('offline');f.client.functions.invoke.mockResolvedValueOnce({data:null,error:network});await expect(f.value.verify(manifest,f.signal)).rejects.toBe(network);
+  });
+});
+
+describe('saved vehicle-document intents for verified bytes (actual SQLite)',()=>{
+  const requestId='60000000-0000-4000-8000-000000000001';
+  const applied=(f:{manifest:AttachmentUploadManifest})=>({kind:'completed',result:{kind:'applied',receivedAt:'2026-01-03T00:00:00Z',revision:'2',documentId:id(1),path:`${company}/${user}/sync-${id(1)}`}});
+  async function documents(){
+    const f=await setup();const attach=vi.fn<AttachmentDocumentTransport['attach']>().mockResolvedValue(applied(f));
+    const sync=createOfflineAttachmentDocumentSync({session:f.session,uploader:f.uploader,transport:{attach},canRun:()=>f.mode.run});
+    const saved=await f.session.requestAttachmentDocument(id(1),{requestId,documentName:' Registration ',savedAt:'2026-01-03T00:00:00.000Z',connectivity:'offline'});
+    return {...f,attach,sync,saved};
+  }
+  it('persists an immutable request, uploads verified bytes first and records the business result once',async()=>{
+    const f=await documents();expect(f.saved).toMatchObject({stage:'pending',request:{documentName:'Registration',entityId:entity,attachmentId:id(1),provenance:{userId:user,deviceId:id(99),connectivity:'offline'}}});
+    await expect(f.session.requestAttachmentDocument(id(1),{requestId,documentName:'Other',savedAt:date,connectivity:'online'})).rejects.toThrow(/different saved document/);
+    f.attach.mockImplementationOnce(async request=>{expect((await f.session.getAttachmentUpload(id(1)))?.stage).toBe('verified');expect(request).toEqual(f.saved.request);return applied(f)});
+    const [done]=await f.sync.run(f.signal);expect(done).toMatchObject({stage:'applied',result:{kind:'applied',revision:'2'},error:null,attempts:1});
+    expect(await f.session.recordAttachmentDocument(id(1),{blocked:'late'})).toEqual(done);await f.sync.run(f.signal);expect(f.attach).toHaveBeenCalledOnce();
+    f.store.pause();f.close();const again=await setup(f.root);expect(await again.session.getAttachmentDocument(id(1))).toEqual(done);
+  });
+  it('protects requested bytes from discard until a final result, then allows explicit release',async()=>{
+    const f=await documents();await expect(f.vault.discard(id(1))).rejects.toThrow(/document request still needs/);
+    await f.sync.run(f.signal);await f.vault.discard(id(1));expect((await f.session.getAttachment(id(1)))?.state).toBe('discarded');
+  });
+  it('waits for verification and retries the same request after uncertain results',async()=>{
+    const f=await documents();f.transport.verify.mockResolvedValueOnce({kind:'in_progress'});
+    expect((await f.sync.run(f.signal))[0]).toMatchObject({stage:'pending',error:expect.stringContaining('not verified')});expect(f.attach).not.toHaveBeenCalled();
+    f.attach.mockRejectedValueOnce(new Error('network lost'));expect((await f.sync.run(f.signal))[0]).toMatchObject({stage:'pending',error:'network lost',attempts:1});
+    f.attach.mockResolvedValueOnce({kind:'copy_missing'});expect((await f.sync.run(f.signal))[0]).toMatchObject({stage:'pending',attempts:2});
+    expect((await f.sync.run(f.signal))[0].stage).toBe('applied');expect(new Set(f.attach.mock.calls.map(call=>JSON.stringify(call[0]))).size).toBe(1);
+  });
+  it('blocks revoked access/conflicts, keeps server rejections, and rejects forged results',async()=>{
+    const f=await documents();f.attach.mockResolvedValueOnce({kind:'access_revoked'});expect((await f.sync.run(f.signal))[0]).toMatchObject({stage:'blocked',error:expect.stringContaining('owner/admin')});
+    await expect(f.vault.discard(id(1))).rejects.toThrow(/still needs/);
+    const g=await documents();g.attach.mockResolvedValueOnce({kind:'completed',result:{kind:'applied',receivedAt:date,revision:'2',documentId:id(1),path:'elsewhere'}});
+    expect((await g.sync.run(g.signal))[0]).toMatchObject({stage:'pending',result:null});
+    g.attach.mockResolvedValueOnce({kind:'completed',result:{kind:'rejected',receivedAt:date,reason:'record_deleted'}});expect((await g.sync.run(g.signal))[0]).toMatchObject({stage:'rejected',result:{reason:'record_deleted'}});
+    expect((await g.session.getAttachment(id(1)))?.state).toBe('ready');
+  });
+  it('rejects issue/unready attachments and isolates requests by account',async()=>{
+    const f=await documents();const other=f.store.activate({...scope,userId:id(3)});expect(await other.listAttachmentDocuments()).toEqual([]);
+    await expect(other.requestAttachmentDocument(id(1),{requestId,documentName:'x',savedAt:date,connectivity:'offline'})).rejects.toThrow(/not saved/);
+    const g=await setup();await g.session.missingAttachment(id(1),'gone');await expect(g.session.requestAttachmentDocument(id(1),{requestId,documentName:'x',savedAt:date,connectivity:'offline'})).rejects.toThrow(/verified device copy/);
+  });
+  it('binds the attach call to the scoped transport token',async()=>{
+    const client={auth:{getSession:vi.fn().mockResolvedValue({data:{session:{user:{id:user},access_token:'bound-token'}},error:null})},functions:{invoke:vi.fn().mockResolvedValue({data:{kind:'completed'},error:null})}};
+    const value=createNativeAttachmentUploadTransport(client as unknown as SupabaseClient,scope,()=>true,async()=>new ArrayBuffer(0));const f=await documents();
+    await value.attach(f.saved.request,f.signal);expect(client.functions.invoke).toHaveBeenCalledWith('attach-fleet-sync-document',expect.objectContaining({body:f.saved.request,headers:{Authorization:'Bearer bound-token'}}));
+    await expect(value.attach({...f.saved.request,companyId:id(5)},f.signal)).rejects.toMatchObject({code:'42501'});
   });
 });

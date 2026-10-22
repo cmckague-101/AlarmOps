@@ -2,6 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {attachmentUploadBucket} from '@fireops/domain';
 import type {OutboxScope} from './offline-outbox';
 import type {AttachmentUploadTransport} from './offline-attachment-upload';
+import type {AttachmentDocumentTransport} from './offline-attachment-documents';
 
 const paused=()=>Object.assign(new Error('Attachment upload paused'),{code:'SYNC_PAUSED'});
 const exists=(error:{statusCode?:unknown;status?:unknown;message?:unknown})=>String(error.statusCode??error.status??'')==='409'||/already exists|duplicate/i.test(String(error.message??''));
@@ -11,7 +12,7 @@ const exists=(error:{statusCode?:unknown;status?:unknown;message?:unknown})=>Str
  * never a service key. Storage RLS independently requires the caller's own
  * reservation for the exact path, so a replaced session cannot upload there.
  */
-export function createNativeAttachmentUploadTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,readBytes:(uri:string)=>Promise<ArrayBuffer>):AttachmentUploadTransport{
+export function createNativeAttachmentUploadTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,readBytes:(uri:string)=>Promise<ArrayBuffer>):AttachmentUploadTransport & AttachmentDocumentTransport{
   const identity={...scope};
   async function token(signal:AbortSignal){
     if(signal.aborted||!canRun())throw paused();
@@ -34,18 +35,20 @@ export function createNativeAttachmentUploadTransport(client:SupabaseClient,scop
       const {error}=await client.storage.from(attachmentUploadBucket).upload(reservation.path,body,{contentType:reservation.contentType,upsert:false});
       if(!error)return 'stored';if(exists(error as never))return 'exists';throw error;
     },
-    async verify(manifest,signal){
-      scoped(manifest);const bearer=await token(signal);
-      const {data,error}=await client.functions.invoke('verify-fleet-sync-attachment',{body:{companyId:manifest.companyId,attachmentId:manifest.attachmentId},headers:{Authorization:`Bearer ${bearer}`},signal} as never);
-      if(!error)return data;
-      // Structured verifier outcomes (mismatch/in progress/revoked) arrive as HTTP errors.
-      const response=(error as {context?:Response}).context;
-      if(response&&typeof response.json==='function'){
-        const parsed=await response.json().catch(()=>null) as {kind?:unknown}|null;
-        if(response.status===403)throw Object.assign(new Error('Company owner/admin access is required to upload this file.'),{code:'42501'});
-        if(parsed&&typeof parsed.kind==='string')return parsed;
-      }
-      throw error;
-    },
+    async verify(manifest,signal){scoped(manifest);return invoke('verify-fleet-sync-attachment',{companyId:manifest.companyId,attachmentId:manifest.attachmentId},signal)},
+    async attach(request,signal){scoped({userId:request.provenance.userId,companyId:request.companyId});return invoke('attach-fleet-sync-document',request,signal)},
   };
+  async function invoke(name:string,body:unknown,signal:AbortSignal){
+    const bearer=await token(signal);
+    const {data,error}=await client.functions.invoke(name,{body,headers:{Authorization:`Bearer ${bearer}`},signal} as never);
+    if(!error)return data;
+    // Structured verifier outcomes (mismatch/in progress/revoked) arrive as HTTP errors.
+    const response=(error as {context?:Response}).context;
+    if(response&&typeof response.json==='function'){
+      const parsed=await response.json().catch(()=>null) as {kind?:unknown}|null;
+      if(response.status===403)throw Object.assign(new Error('Company owner/admin access is required to upload this file.'),{code:'42501'});
+      if(parsed&&typeof parsed.kind==='string')return parsed;
+    }
+      throw error;
+  }
 }

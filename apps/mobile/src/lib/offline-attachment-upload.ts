@@ -46,7 +46,7 @@ export function createOfflineAttachmentUploader(options:{session:OfflineOutboxSe
     try{
       reservation=decodeAttachmentUploadReservation(await transport.reserve(manifest,signal),manifest);guard(signal);
       const remote=attachmentUploadStage(reservation);
-      if(remote==='verified')return session.recordAttachmentUpload(id,{stage:'verified',reservation});
+      if(remote==='verified')return await session.recordAttachmentUpload(id,{stage:'verified',reservation});
       if(remote==='reserved'){
         // Persist uncertainty first: after this point bytes may reach the server.
         await session.recordAttachmentUpload(id,{stage:'uploading',reservation,attempt:true});guard(signal);
