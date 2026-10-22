@@ -17,7 +17,7 @@ export async function prepareOfflineSyncSignOut(userId:string,isCurrent:()=>Prom
     const count=await store.countUnresolvedForUser(userId);
     if(!await current())return false;
     if(!count)return true;
-    const accepted=await confirm(`${count} ${count===1?'change is':'changes are'} waiting for upload, verification or review. Signing out pauses syncing. Work will be kept on this device for this account; sign back in to continue. Changes not yet uploaded have no server backup.`);
+    const accepted=await confirm(`${count} ${count===1?'item of retained work is':'items of retained work are'} waiting for upload, verification, review or attachment recovery. Signing out pauses syncing. Work will be kept on this device for this account; sign back in to continue. Changes not yet uploaded have no server backup.`);
     return accepted&&await current();
   }catch{
     if(!await current())return false;

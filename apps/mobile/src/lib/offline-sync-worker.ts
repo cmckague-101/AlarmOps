@@ -186,7 +186,7 @@ export function createOfflineSyncWorker(options:{
         const claimed=await session.claimNext(options.token(),now());if(!ready(version)||!claimed)break;
         const {entry,attempt}=claimed;
         try{
-          const block=offlineSyncAdapterBlock(entry.operation,entry.continuation?.phase==='ready');
+          const block=entry.attachmentIds?.length?'This attachment workflow is not enabled for upload. Attachment intent is retained on this device; no files were uploaded.':offlineSyncAdapterBlock(entry.operation,entry.continuation?.phase==='ready');
           if(block){await persist(()=>session.finishAttempt(attempt,{kind:'blocked',error:block}));await refresh();continue}
           let delivery=entry.delivery;
           if(!delivery){

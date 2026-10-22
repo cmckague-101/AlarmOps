@@ -1,4 +1,5 @@
 import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
@@ -27,6 +28,7 @@ export type OutboxEntry = {
   readonly reviewOutcome: SyncReviewOutcome | null;
   readonly noticeDismissed: boolean;
   readonly historyBackupPending?: boolean;
+  readonly attachmentIds?:readonly string[];
   readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready';readonly explicit?:boolean};
 };
 export type ContinuationReview={readonly operation:SyncOperation;readonly parentId:string;readonly current:CanonicalSyncRecord;readonly fields:Readonly<Record<string,{before:SyncFieldValue;saved:SyncFieldValue;current:SyncFieldValue}>>};
@@ -51,7 +53,7 @@ type Row = {
   user_id: string; company_id: string; entity_type: string; entity_id: string;
   sequence: number; operation_id: string; operation_json: string; projection_json: string;
   status: SyncOperationStatus; attempts: number; error: string | null; receipt_json: string | null;
-  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number; continuation_json?:string|null; history_backed_up?:number;
+  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number; continuation_json?:string|null; history_backed_up?:number; attachment_ids_json?:string;
 };
 
 const schema = `
@@ -154,7 +156,10 @@ function entry(row: Row): OutboxEntry {
   if (row.review_outcome_json && !reviewOutcome) throw new Error('Invalid saved review outcome.');
   const continuation=row.continuation_json?JSON.parse(row.continuation_json):undefined;
   if(continuation&&(!['waiting','ready'].includes(continuation.phase)||typeof continuation.parentId!=='string'||!(continuation.phase==='ready'&&continuation.explicit===true&&operation.dependsOn.length===0)&&(operation.dependsOn.length!==1||operation.dependsOn[0]!==continuation.parentId)))throw new Error('Invalid continuation metadata.');
+  const attachmentIds=row.attachment_ids_json?JSON.parse(row.attachment_ids_json):[];
+  if(!Array.isArray(attachmentIds)||new Set(attachmentIds).size!==attachmentIds.length)throw new Error('Invalid saved attachment references.');attachmentIds.forEach(attachmentId);
   return {
+    ...(attachmentIds.length?{attachmentIds}:{}),
     ...(continuation?{continuation}:{}),
     historyBackupPending:continuation?.phase==='ready'&&row.history_backed_up!==1,
     sequence: row.sequence, operation, projection: JSON.parse(row.projection_json),
@@ -211,7 +216,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
       await tx.execAsync(`CREATE TABLE offline_fleet_downloads(user_id TEXT NOT NULL,company_id TEXT NOT NULL,progress_json TEXT NOT NULL,PRIMARY KEY(user_id,company_id));
         CREATE TABLE offline_fleet_download_members(user_id TEXT NOT NULL,company_id TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,alive INTEGER NOT NULL CHECK(alive IN (0,1)),PRIMARY KEY(user_id,company_id,entity_type,entity_id)); PRAGMA user_version=6;`);current=6;
     }
-    if (current !== 6) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===6){
+      await tx.execAsync(`ALTER TABLE offline_operations ADD COLUMN attachment_ids_json TEXT NOT NULL DEFAULT '[]';
+        CREATE TABLE offline_attachments(user_id TEXT NOT NULL,company_id TEXT NOT NULL,attachment_id TEXT NOT NULL,manifest_json TEXT NOT NULL,byte_size INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('staging','ready','missing','discarding','discarded')),error TEXT,PRIMARY KEY(user_id,company_id,attachment_id));
+        CREATE TABLE offline_attachment_refs(user_id TEXT NOT NULL,company_id TEXT NOT NULL,operation_id TEXT NOT NULL,attachment_id TEXT NOT NULL,PRIMARY KEY(user_id,company_id,operation_id,attachment_id)); PRAGMA user_version=7;`);current=7;
+    }
+    if (current !== 7) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -227,9 +237,10 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
     countUnresolvedForUser(userId: string): Promise<number> {
       required(userId, 'user ID');
       return serialize(async () => (await db.getFirstAsync<{count:number}>(
-        `SELECT count(*) AS count FROM offline_operations WHERE user_id = ? AND
+        `SELECT (SELECT count(*) FROM offline_operations WHERE user_id = ? AND
          (status IN ('pending','syncing','awaiting_review') OR (status = 'blocked' AND review_outcome_json IS NULL)
-           OR (history_backed_up=0 AND json_extract(continuation_json,'$.phase')='ready'))`, userId,
+           OR (history_backed_up=0 AND json_extract(continuation_json,'$.phase')='ready'))) +
+         (SELECT count(*) FROM offline_attachments WHERE user_id=? AND state<>'discarded') AS count`, userId,userId,
       ))?.count ?? 0);
     },
     activate(scope: OutboxScope) {
@@ -270,6 +281,10 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           DO UPDATE SET revision=excluded.revision,record_json=excluded.record_json,verified_at=excluded.verified_at`,...ids,entityType,entityId,value.revision,JSON.stringify(value.record),new Date().toISOString());
         return value;
       }
+      function asset(row:{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}):OfflineAttachment{
+        const value=JSON.parse(row.manifest_json) as OfflineAttachmentIntent;validateAttachmentIntent(value,identity);
+        if(value.attachmentId!==row.attachment_id||!['staging','ready','missing','discarding','discarded'].includes(row.state))throw new Error('Invalid saved attachment manifest.');return {...value,state:row.state,error:row.error};
+      }
       async function downloadProgress(connection:OutboxSqlConnection):Promise<FleetDownloadProgress|null>{
         const row=await connection.getFirstAsync<{progress_json:string}>('SELECT progress_json FROM offline_fleet_downloads WHERE user_id=? AND company_id=?',...ids);
         return row?decodeFleetDownloadProgress(JSON.parse(row.progress_json)):null;
@@ -297,6 +312,25 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           if(row)return row.device_id;
           const value=createId();required(value,'device ID');await tx.runAsync('INSERT INTO offline_devices VALUES (?,?)',identity.userId,value);return value;
         })},
+        listAttachments():Promise<OfflineAttachment[]>{return read(async()=> (await db.getAllAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? ORDER BY attachment_id',...ids)).map(asset))},
+        getAttachment(id:string):Promise<OfflineAttachment|null>{attachmentId(id);return read(async()=>{const row=await db.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);return row?asset(row):null})},
+        reserveAttachment(intent:OfflineAttachmentIntent):Promise<OfflineAttachment>{
+          createSyncPatch({},intent as unknown as SyncRecord);validateAttachmentIntent(intent,identity);const encoded=JSON.stringify(intent);const saved=JSON.parse(encoded) as OfflineAttachmentIntent;
+          return write(async tx=>{
+            const previous=await tx.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,saved.attachmentId);
+            if(previous){if(!sameJson(previous.manifest_json,encoded)||['discarding','discarded'].includes(previous.state))throw new Error('Attachment identity was reused for different or discarded work.');return asset(previous)}
+            const total=await tx.getFirstAsync<{bytes:number}>("SELECT coalesce(sum(byte_size),0) AS bytes FROM offline_attachments WHERE user_id=? AND state<>'discarded'",identity.userId);
+            if((total?.bytes??0)+saved.byteSize>offlineAttachmentUserQuota)throw new Error('Device attachment quota exceeded. Keep or discard retained files before adding more.');
+            await tx.runAsync("INSERT INTO offline_attachments VALUES(?,?,?,?,?,'staging',NULL)",...ids,saved.attachmentId,encoded,saved.byteSize);return {...JSON.parse(encoded),state:'staging',error:null};
+          });
+        },
+        readyAttachment(id:string):Promise<boolean>{attachmentId(id);return write(async tx=>(await tx.runAsync("UPDATE offline_attachments SET state='ready',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state IN ('staging','missing','ready')",...ids,id)).changes===1)},
+        missingAttachment(id:string,error:string):Promise<void>{attachmentId(id);required(error,'attachment error');return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='missing',error=? WHERE user_id=? AND company_id=? AND attachment_id=? AND state IN ('staging','ready','missing')",error,...ids,id)})},
+        beginAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{
+          const bound=await tx.getFirstAsync<{count:number}>('SELECT count(*) AS count FROM offline_attachment_refs WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);if(bound?.count)throw new Error('Saved changes still reference this file. It cannot be discarded.');
+          await tx.runAsync("UPDATE offline_attachments SET state='discarding',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state<>'discarded'",...ids,id);
+        })},
+        finishAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='discarded',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state='discarding'",...ids,id)})},
         getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
         restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
           const previous=await downloadProgress(tx);if(expectedGeneration!==undefined&&previous?.generationId!==expectedGeneration)return false;const progress={...initialFleetDownload(generationId),lastCompletedAt:previous?.lastCompletedAt??null};
@@ -346,7 +380,7 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         },
         removeRecord(entityType:string,entityId:string):Promise<void>{return write(async tx=>{await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=? AND entity_type=? AND entity_id=?',...ids,entityType,entityId)})},
         /** Commit projection and intent together. Re-enqueueing the same intent never regresses newer state. */
-        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean;continuationParent?:string}): Promise<OutboxEntry> {
+        enqueue(operation: SyncOperation, projection: SyncRecord | null, options?:{exclusiveRecord?:boolean;continuationParent?:string;attachmentIds?:readonly string[]}): Promise<OutboxEntry> {
           guard();
           const encoded = encodeOperation(operation, identity);
           record(projection);
@@ -354,12 +388,14 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           const saved = JSON.parse(encoded) as SyncOperation;
           const projected = JSON.stringify(projection);
           const exclusiveRecord=options?.exclusiveRecord===true;
-          const continuationParent=options?.continuationParent;
+          const continuationParent=options?.continuationParent;const attachments=[...(options?.attachmentIds??[])].sort();attachments.forEach(attachmentId);
+          if(new Set(attachments).size!==attachments.length)throw new Error('Duplicate attachment references.');
           return write(async (tx) => {
             const existing = await tx.getFirstAsync<Row>(
               'SELECT * FROM offline_operations WHERE user_id = ? AND company_id = ? AND operation_id = ?', ...ids, saved.operationId,
             );
             if (existing) {
+              if(!sameJson(existing.attachment_ids_json??'[]',JSON.stringify(attachments)))throw new Error('Saved attachment references cannot be changed on retry.');
               if (!sameJson(existing.operation_json, encoded) || !sameJson(existing.projection_json, projected)) {
                 const staged=continuationParent&&existing.continuation_json?await tx.getFirstAsync<{before_json:string}>('SELECT before_json FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence LIMIT 1',...ids,saved.operationId):null;
                 if(!staged||!sameJson(staged.before_json,encoded)||!sameJson(existing.projection_json,projected))throw new Error('Offline operation ID was reused for different work.');
@@ -388,12 +424,18 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             if (previous && (['pending','syncing','awaiting_review'].includes(previous.status)||(previous.status==='blocked'&&!previous.review_outcome_json)) && !saved.dependsOn.includes(previous.operation_id)) {
               throw new Error('A later edit must depend on the previous unsynced edit.');
             }
+            for(const id of attachments){
+              const row=await tx.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+              if(!row)throw new Error('Attachment is not saved in this account/company.');const value=asset(row);
+              if(value.state!=='ready'||value.entityType!==saved.entityType||value.entityId!==saved.entityId)throw new Error('Attachment is unavailable or belongs to another record.');
+            }
             await tx.runAsync(
               `INSERT INTO offline_operations
-               (user_id, company_id, operation_id, entity_type, entity_id, operation_json, projection_json, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-              ...ids, saved.operationId, saved.entityType, saved.entityId, encoded, projected,
+               (user_id, company_id, operation_id, entity_type, entity_id, operation_json, projection_json, status,attachment_ids_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending',?)`,
+              ...ids, saved.operationId, saved.entityType, saved.entityId, encoded, projected,JSON.stringify(attachments),
             );
+            for(const id of attachments)await tx.runAsync('INSERT INTO offline_attachment_refs VALUES(?,?,?,?)',...ids,saved.operationId,id);
             if(continuationParent)await tx.runAsync('UPDATE offline_operations SET continuation_json=? WHERE user_id=? AND company_id=? AND operation_id=?',JSON.stringify({parentId:continuationParent,phase:'waiting'}),...ids,saved.operationId);
             for (const dependency of saved.dependsOn) {
               await tx.runAsync('INSERT INTO offline_dependencies VALUES (?, ?, ?, ?)', ...ids, saved.operationId, dependency);
