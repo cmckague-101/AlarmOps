@@ -137,6 +137,36 @@ $$;
 revoke all on function public.merge_fleet_sync_fields(jsonb, jsonb, jsonb, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.merge_fleet_sync_fields(jsonb, jsonb, jsonb, jsonb) to fireops_sync_writer;
 
+-- One allowlist/value check shared by submission (purpose 'sync') and review
+-- approval (purpose 'review', which revalidates possibly old candidates).
+-- Later adapters extend it with `create or replace`; never relax a field here.
+create function public.validate_fleet_sync_detail_field(company uuid, proposer uuid, entity text, record_uuid uuid, field text, slot jsonb, purpose text)
+returns void language plpgsql stable set search_path = '' as $$
+declare
+  field_value jsonb := slot -> 'value';
+  value_text text := slot ->> 'value';
+begin
+  if field <> all(case entity when 'vehicle' then array['unit','type','year','make','model','vin','plate','notes'] else array['title','description','priority'] end) then
+    if purpose in ('review','review-field') then raise exception 'Field requires a different review adapter' using errcode = '22023'; end if;
+    raise exception 'Field requires a different sync adapter: %', field using errcode = '22023';
+  end if;
+  if purpose = 'review-field' then return; end if; -- allowlist only
+  if slot -> 'present' = 'false'::jsonb then
+    if field not in ('vin','plate','notes') then raise exception 'Required detail field cannot be removed' using errcode = '22023'; end if;
+  elsif field = 'year' then
+    if jsonb_typeof(field_value) is distinct from 'number' or value_text !~ '^[0-9]{4}$' then raise exception 'Invalid vehicle year' using errcode = '22023'; end if;
+  else
+    if jsonb_typeof(field_value) is distinct from 'string' or char_length(value_text) > (case when field in ('notes','description') then 10000 else 200 end) then
+      raise exception 'Invalid detail field value' using errcode = '22023';
+    end if;
+    if field in ('unit','type','make','model','title') and btrim(value_text) = '' then raise exception 'Detail field cannot be blank' using errcode = '22023'; end if;
+    if field = 'priority' and value_text not in ('Low','Medium','High','Critical') then raise exception 'Invalid issue priority' using errcode = '22023'; end if;
+  end if;
+end;
+$$;
+revoke all on function public.validate_fleet_sync_detail_field(uuid, uuid, text, uuid, text, jsonb, text) from public, anon, authenticated, service_role;
+grant execute on function public.validate_fleet_sync_detail_field(uuid, uuid, text, uuid, text, jsonb, text) to fireops_sync_writer;
+
 -- No privilege escalation through generic JSON: this adapter admits only manager
 -- scalar-detail updates. Other workflows must implement their own allowlists,
 -- permission checks and transactional invariants, not relax this function.
@@ -173,10 +203,6 @@ declare
   field_context jsonb := '{}'::jsonb;
   applied_version bigint;
   item record;
-  allowed text[];
-  slot jsonb;
-  field_value jsonb;
-  value_text text;
 begin
   if actor is null then raise exception 'Authentication required' using errcode = '42501'; end if;
   if jsonb_typeof(operation) is distinct from 'object' or octet_length(operation::text) > 1048576 then
@@ -226,22 +252,8 @@ begin
   -- Validate explicit presence markers and construct the original proposal.
   candidate := public.merge_fleet_sync_fields(base_data, base_data, patch) -> 'record';
   if base_data ->> 'id' is distinct from record_uuid::text then raise exception 'Base record identity mismatch' using errcode = '22023'; end if;
-  allowed := case entity when 'vehicle' then array['unit','type','year','make','model','vin','plate','notes']
-    else array['title','description','priority'] end;
   for item in select key, value from jsonb_each(patch) loop
-    if item.key <> all(allowed) then raise exception 'Field requires a different sync adapter: %', item.key using errcode = '22023'; end if;
-    slot := item.value; field_value := slot -> 'value'; value_text := slot ->> 'value';
-    if slot -> 'present' = 'false'::jsonb then
-      if item.key not in ('vin','plate','notes') then raise exception 'Required detail field cannot be removed' using errcode = '22023'; end if;
-    elsif item.key = 'year' then
-      if jsonb_typeof(field_value) <> 'number' or value_text !~ '^[0-9]{4}$' then raise exception 'Invalid vehicle year' using errcode = '22023'; end if;
-    else
-      if jsonb_typeof(field_value) is distinct from 'string' or char_length(value_text) > (case when item.key in ('notes','description') then 10000 else 200 end) then
-        raise exception 'Invalid detail field value' using errcode = '22023';
-      end if;
-      if item.key in ('unit','type','make','model','title') and btrim(value_text) = '' then raise exception 'Detail field cannot be blank' using errcode = '22023'; end if;
-      if item.key = 'priority' and value_text not in ('Low','Medium','High','Critical') then raise exception 'Invalid issue priority' using errcode = '22023'; end if;
-    end if;
+    perform public.validate_fleet_sync_detail_field(company, actor, entity, record_uuid, item.key, item.value, 'sync');
   end loop;
   if jsonb_typeof(operation -> 'dependsOn') is distinct from 'array' then raise exception 'Invalid sync dependencies' using errcode = '22023'; end if;
   if jsonb_array_length(operation -> 'dependsOn') > 100

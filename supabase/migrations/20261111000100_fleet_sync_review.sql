@@ -236,7 +236,6 @@ declare
   snapshot jsonb; choices jsonb; current_data jsonb; approved jsonb; before_version bigint; after_version bigint;
   sources jsonb := '{}'::jsonb; source text; option_value jsonb; selected_provenance jsonb;
   key_name text; candidate jsonb; field_name text; kept text[]; discarded text[]; outcome text;
-  allowed text[]; value_text text;
   outcomes jsonb := '[]'::jsonb; decision_uuid uuid := gen_random_uuid(); decision_time timestamptz;
   candidate_ids uuid[]; actor_label text; table_name text; collection_name text; applied_version bigint; result jsonb;
 begin
@@ -275,9 +274,9 @@ begin
   approved := current_data;
   before_version := (snapshot ->> 'currentRevision')::bigint;
   after_version := before_version;
-  allowed := case entity when 'vehicle' then array['unit','type','year','make','model','vin','plate','notes'] else array['title','description','priority'] end;
   for key_name in select jsonb_object_keys(choices) order by 1 loop
-    if key_name <> all(allowed) then raise exception 'Field requires a different review adapter' using errcode = '22023'; end if;
+    -- Unknown fields fail before any source lookup; values are revalidated below.
+    perform public.validate_fleet_sync_detail_field(company, null, entity, record_uuid, key_name, '{"present":false}'::jsonb, 'review-field');
     if jsonb_typeof(choices -> key_name) is distinct from 'string' then raise exception 'A choice must identify its source' using errcode = '22023'; end if;
     source := choices ->> key_name;
     if source='current' then
@@ -290,17 +289,7 @@ begin
       if option_value is null then raise exception 'Choice does not identify an offered candidate field' using errcode = '22023'; end if;
       -- Revalidate selected values under this adapter's current rules, not just
       -- the rules that admitted a potentially old candidate.
-      value_text := option_value ->> 'value';
-      if option_value -> 'present'='false'::jsonb then
-        if key_name not in ('vin','plate','notes') then raise exception 'Required detail field cannot be removed' using errcode = '22023'; end if;
-      elsif key_name='year' then
-        if jsonb_typeof(option_value -> 'value') is distinct from 'number' or value_text !~ '^[0-9]{4}$' then raise exception 'Invalid vehicle year' using errcode = '22023'; end if;
-      else
-        if jsonb_typeof(option_value -> 'value') is distinct from 'string'
-          or char_length(value_text) > (case when key_name in ('notes','description') then 10000 else 200 end) then raise exception 'Invalid detail field value' using errcode = '22023'; end if;
-        if key_name in ('unit','type','make','model','title') and btrim(value_text)='' then raise exception 'Detail field cannot be blank' using errcode = '22023'; end if;
-        if key_name='priority' and value_text not in ('Low','Medium','High','Critical') then raise exception 'Invalid issue priority' using errcode = '22023'; end if;
-      end if;
+      perform public.validate_fleet_sync_detail_field(company, null, entity, record_uuid, key_name, option_value, 'review');
     end if;
     if approved is not null then
       approved := case when option_value -> 'present'='true'::jsonb then jsonb_set(approved,array[key_name],option_value -> 'value',true) else approved-key_name end;
