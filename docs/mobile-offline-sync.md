@@ -516,6 +516,10 @@ The provider now treats **fire_fighter/shop_tech** as sync roles for record refr
 
 Crew screens: vehicle detail shows **Claim / release offline** (saved-detail editor with Claim this vehicle, Release this vehicle, Clear fire assignment); issue detail shows **Add notes offline** only on issues they reported (notes only; resolve/reopen needs a connection). Device edit history inspection stays owner/admin. Tests: crew restriction and vehicle-only completion in `offline-status-assignments.test.ts`, scope decoding in `offline-fleet-download.test.ts`. No UI launch or visual test was run.
 
+### Offline vehicle inspections: server (not deployed)
+
+`20261124000100_fleet_sync_inspections.sql` adds `inspections` to the vehicle adapter as an **append-only** list, like issue notes: a proposal must prepend exactly one new inspection to the exact base list, and the server prepends it to the *current* list, so concurrent inspections never conflict or disappear. Edits and deletions stay online-only, and reviewers cannot pick `inspections` as a source. Each entry is validated: own `inspectorId`, inspector name, incident text, ISO time, 1–100 uniquely identified items with valid kinds/results/defect notes, a result for pass/fail items and a photo for photo items. Every photo must be a **server-proven fleet-files copy for this vehicle**, using the shared `validate_fleet_sync_vehicle_file` check that file slots now also call. An applied inspection adds the same "inspection completed · N failed checks · incident" activity entry online saves add, plus device-reported provenance, in the same transaction. Shop techs may submit inspections (their role trigger still requires exactly one own inspection and nothing else); attachment uploads remain owner/admin, so shop-tech offline inspections cannot carry photos yet. Tests: `supabase/tests/fleet-sync-inspections.test.mjs`.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -535,6 +539,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 13. `20261121000100_fleet_sync_vehicle_file_slots.sql` (deploy `copy-fleet-sync-attachment`)
 14. `20261122000100_fleet_sync_status_assignments.sql`
 15. `20261123000100_fleet_sync_member_actions.sql`
+16. `20261124000100_fleet_sync_inspections.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
