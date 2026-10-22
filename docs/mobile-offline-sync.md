@@ -461,6 +461,16 @@ After a document result is `applied`, the runner removes the device copy automat
 
 Tests (`offline-attachment-upload.test.ts`, real SQLite/files): queued release across restart, single delivery and immutability, local-only drafts, lost reserve response, busy/offline/not-found outcomes, auto-removal gated on revision/ID/path, and `documentConfirmedInRecord` rules.
 
+### Single-slot vehicle files: server adapter (migration and Edge Function added; not deployed)
+
+Vehicle `photo`, `contract`, `viprChecklist`, `registration`, `insurance` and `dotInspection` now travel through the **existing verified detail-update RPC** as ordinary indivisible fields. Three-way merge, whole-operation conflicts, owner/admin review on web and mobile, submitter outcomes, device history and older-build recovery therefore apply unchanged. An overlap (someone else replaced the same slot since the device's base) becomes a pending review candidate; nothing is overwritten. Clearing a slot is an ordinary optional-field removal. Replacing a slot never deletes the previous file.
+
+The scalar allowlist/value checks were factored into one shared `validate_fleet_sync_detail_field(company, proposer, entity, record, field, slot, purpose)` used by submission and approval (edited in place in the undeployed `20261110000100`/`20261111000100`; behavior unchanged, all earlier tests pass). `20261121000100_fleet_sync_vehicle_file_slots.sql` replaces it so a slot value must be exactly `{name, type, dataUrl:'', path}` with `path = company/user/sync-<attachment>`, where that upload is receipt-verified, reserved **for this vehicle**, has the same name/declared type, and has a service-proven `fleet-files` copy whose storage object is still the proven one. Submitters may only propose their own uploads; approval revalidates the chosen candidate's copy at decision time (any current manager can read copy proofs for review).
+
+`begin_fleet_sync_attachment_copy` (uploader JWT) registers the copy and returns either a copy plan or the server-built slot value; service-only `record_fleet_sync_attachment_copy` records the hash proof and queues a `copied` staging release (the fleet-files copy is canonical from then on). A verified upload has exactly one use: a vehicle document or a slot copy, never both. User-released uploads cannot be copied. New Edge Function `copy-fleet-sync-attachment` reuses the attach function's bounded copy-and-prove routine, then releases staging through the normal release path (cleanup failure never fails the result). Domain helpers: `vehicleFileSlots`, `vehicleSlotFileValue`, `decodeVehicleSlotCopy`.
+
+Tests: `supabase/tests/fleet-sync-vehicle-file-slots.test.mjs` (apply and replay, old file retained, clearing, unproven/foreign/misbound/hand-written values, removed copies, issue rejection, overlap → review → approval with copy revalidation, single use, release, service-only immutable proof) and `copy-fleet-sync-attachment/logic.spec.ts`. Native wiring and UI follow.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -477,6 +487,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 10. `20261118000100_fleet_sync_attachment_verification.sql` (deploy the `verify-fleet-sync-attachment` Edge Function with it)
 11. `20261119000100_fleet_sync_document_attach.sql` (deploy the `attach-fleet-sync-document` Edge Function with it)
 12. `20261120000100_fleet_sync_attachment_release.sql` (redeploy `attach-fleet-sync-document`; deploy `release-fleet-sync-attachment`)
+13. `20261121000100_fleet_sync_vehicle_file_slots.sql` (deploy `copy-fleet-sync-attachment`)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

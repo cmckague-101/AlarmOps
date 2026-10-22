@@ -59,3 +59,13 @@ describe('released staging copies',()=>{
     expect(()=>decodeAttachmentUploadReservation(reservation({object:stored,receipt:receipt(),release:removed}),manifest)).toThrow(/still exists/);
   });
 });
+describe('vehicle file slot values',()=>{
+  it('builds the deterministic proven-copy value and rejects mismatched copy results',async()=>{
+    const {vehicleSlotFileValue,decodeVehicleSlotCopy,isVehicleFileSlot}=await import('./attachment-upload');
+    const value=vehicleSlotFileValue(manifest);expect(value).toEqual({name:'Photo.jpg',type:'image/jpeg',dataUrl:'',path:`${manifest.companyId}/${manifest.userId}/sync-${manifest.attachmentId}`});
+    expect(decodeVehicleSlotCopy({kind:'ready',value},manifest)).toEqual(value);
+    for(const bad of [{kind:'copy',value},{kind:'ready',value:{...value,path:'x'}},{kind:'ready',value:{...value,extra:1}},{kind:'ready'}])expect(()=>decodeVehicleSlotCopy(bad,manifest)).toThrow();
+    for(const change of [{entityType:'issue'},{mimeType:null},{byteSize:8*1024*1024+1}])expect(()=>vehicleSlotFileValue({...manifest,...change} as never)).toThrow();
+    expect(isVehicleFileSlot('photo')).toBe(true);expect(isVehicleFileSlot('documents')).toBe(false);
+  });
+});

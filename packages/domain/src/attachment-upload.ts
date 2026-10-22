@@ -100,3 +100,21 @@ export function decodeAttachmentDocumentResult(value:unknown,expected:Attachment
   if(data.kind==='rejected'&&['record_deleted','invalid_documents','document_id_conflict'].includes(data.reason as string))return {kind:'rejected',receivedAt:data.receivedAt as string,reason:data.reason as 'record_deleted'};
   throw new Error('Unrecognized attachment document result.');
 }
+
+/** Single-slot vehicle files updated through the verified detail-update path. */
+export const vehicleFileSlots=['photo','contract','viprChecklist','registration','insurance','dotInspection'] as const;
+export type VehicleFileSlot=typeof vehicleFileSlots[number];
+export type VehicleSlotFileValue={name:string;type:AttachmentUploadContentType;dataUrl:'';path:string};
+export const isVehicleFileSlot=(field:string):field is VehicleFileSlot=>(vehicleFileSlots as readonly string[]).includes(field);
+/** Deterministic value the server accepts only after it proved the fleet-files copy. */
+export function vehicleSlotFileValue(manifest:AttachmentUploadManifest):VehicleSlotFileValue{
+  const type=attachmentUploadContentType(manifest);
+  if(manifest.entityType!=='vehicle'||!type)throw new Error('Only supported vehicle uploads can fill a vehicle file slot.');
+  if(manifest.byteSize>attachmentDocumentMaxBytes)throw new Error('Vehicle files must be 8 MB or smaller.');
+  return {name:manifest.name,type,dataUrl:'',path:`${manifest.companyId}/${manifest.userId}/sync-${attachmentUploadPath(manifest).split('/')[2]}`};
+}
+export function decodeVehicleSlotCopy(value:unknown,manifest:AttachmentUploadManifest):VehicleSlotFileValue{
+  const data=object(value);const expected=vehicleSlotFileValue(manifest);const file=data.value===undefined?null:object(data.value);
+  if(data.kind!=='ready'||!file||Object.keys(file).length!==4||(['name','type','dataUrl','path'] as const).some(key=>file[key]!==expected[key]))throw new Error('Vehicle file copy does not match the retained upload.');
+  return expected;
+}
