@@ -62,3 +62,26 @@ export function attachmentUploadStage(reservation:AttachmentUploadReservation):A
   if(!reservation.object)return 'reserved';
   return reservation.object.byteSize!==null&&reservation.object.byteSize!==reservation.manifest.byteSize?'stored_size_mismatch':'stored_unverified';
 }
+
+/** One vehicle-document reference for verified bytes. Issues have no file field yet. */
+export type AttachmentDocumentRequest={schemaVersion:1;requestId:string;companyId:string;entityType:'vehicle';entityId:string;attachmentId:string;documentName:string;provenance:{userId:string;deviceId:string;savedAt:string;connectivity:'online'|'offline'|'unknown'}};
+export type AttachmentDocumentResult=
+  |{kind:'applied';receivedAt:string;revision:string;documentId:string;path:string}
+  |{kind:'rejected';receivedAt:string;reason:'record_deleted'|'invalid_documents'|'document_id_conflict'};
+export function createAttachmentDocumentRequest(manifest:AttachmentUploadManifest,input:{requestId:string;documentName:string;deviceId:string;savedAt:string;connectivity:AttachmentUploadManifest['connectivity']}):AttachmentDocumentRequest{
+  if(manifest.entityType!=='vehicle')throw new Error('Only vehicle documents can reference uploaded files.');
+  const documentName=input.documentName.trim();
+  if(!uuid.test(input.requestId)||!documentName||documentName.length>120||/[\u0000-\u001f\u007f]/.test(documentName))throw new Error('Invalid attachment document request.');
+  if(!input.deviceId.trim()||input.deviceId.trim().length>200||!time(input.savedAt)||!reportedTime.test(input.savedAt))throw new Error('Invalid attachment document provenance.');
+  return {schemaVersion:1,requestId:input.requestId,companyId:manifest.companyId,entityType:'vehicle',entityId:manifest.entityId,attachmentId:manifest.attachmentId,documentName,provenance:{userId:manifest.userId,deviceId:input.deviceId,savedAt:input.savedAt,connectivity:input.connectivity}};
+}
+export function decodeAttachmentDocumentResult(value:unknown,expected:AttachmentDocumentRequest):AttachmentDocumentResult{
+  const data=object(value);
+  if(!time(data.receivedAt))throw new Error('Invalid attachment document result.');
+  if(data.kind==='applied'){
+    if(typeof data.revision!=='string'||!/^[1-9][0-9]*$/.test(data.revision)||data.documentId!==expected.attachmentId||data.path!==`${expected.companyId}/${expected.provenance.userId}/sync-${expected.attachmentId}`)throw new Error('Attachment document result does not match the request.');
+    return {kind:'applied',receivedAt:data.receivedAt as string,revision:data.revision,documentId:data.documentId as string,path:data.path as string};
+  }
+  if(data.kind==='rejected'&&['record_deleted','invalid_documents','document_id_conflict'].includes(data.reason as string))return {kind:'rejected',receivedAt:data.receivedAt as string,reason:data.reason as 'record_deleted'};
+  throw new Error('Unrecognized attachment document result.');
+}

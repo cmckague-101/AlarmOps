@@ -81,6 +81,15 @@ $$;
 revoke all on function public.fleet_sync_attachment_reservation_json(public.fleet_sync_attachment_uploads) from public, anon, authenticated;
 grant execute on function public.fleet_sync_attachment_reservation_json(public.fleet_sync_attachment_uploads) to fireops_sync_writer, service_role;
 
+-- Unattached remote bytes per user. Replaced by attach adapters so applied
+-- business references stop counting; nothing here deletes objects.
+create function public.fleet_sync_attachment_quota_usage(actor uuid)
+returns table(retained_bytes bigint, retained_count int) language sql stable set search_path = '' as $$
+  select coalesce(sum(u.byte_size), 0)::bigint, count(*)::int from public.fleet_sync_attachment_uploads u where u.user_id = actor;
+$$;
+revoke all on function public.fleet_sync_attachment_quota_usage(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.fleet_sync_attachment_quota_usage(uuid) to fireops_sync_writer;
+
 grant create on schema public to fireops_sync_writer;
 create function public.reserve_fleet_sync_attachment(manifest jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
@@ -146,8 +155,8 @@ begin
   end if;
   -- Bound remote bytes not yet attached to any business record. Attaching
   -- adapters must release quota explicitly; nothing here deletes objects.
-  select coalesce(sum(u.byte_size), 0), count(*) into retained_bytes, retained_count
-    from public.fleet_sync_attachment_uploads u where u.user_id = actor;
+  select q.retained_bytes, q.retained_count into retained_bytes, retained_count
+    from public.fleet_sync_attachment_quota_usage(actor) q;
   if retained_bytes + size > 104857600 or retained_count >= 500 then
     raise exception 'Attachment upload quota exceeded' using errcode = '53400';
   end if;

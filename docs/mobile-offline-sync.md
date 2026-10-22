@@ -416,6 +416,14 @@ Native SQLite migrates **v7 → v8**, adding scoped `offline_attachment_uploads`
 
 **A verified upload is not attached or synced.** No operation, record, reference or file release changes. The uploader is not yet called by the provider/worker or any UI; it stays disabled until the business-reference/review adapter exists. Tests (`offline-attachment-upload.test.ts`, real SQLite/files) cover restart retention, pre-send uncertainty, lost responses, mismatch re-upload, blocking, forged/replaced receipts, changed reservations, pause, account isolation and transport binding. Updated v1–v7 upgrade tests expect v8.
 
+### Vehicle document reference adapter for verified uploads (server; not deployed)
+
+`20261119000100_fleet_sync_document_attach.sql` adds the first business-reference adapter: append exactly **one vehicle document** for a receipt-verified upload. Issues have no file field, so issue uploads can be byte-verified but not attached. Each attachment gets one immutable request (`schemaVersion`, `requestId`, scope, vehicle, attachment, document name, device-reported provenance); a different request for the same attachment, or a reused request ID, fails with `PT409`.
+
+Flow (Edge Function `attach-fleet-sync-document`): `begin_fleet_sync_document_attach` (uploader JWT) validates current owner/admin access, receipt and target, and registers the request. The service function reads the verified sync object through a hard byte bound, checks it still matches the receipt, uploads it with `upsert:false` to deterministic legacy path `company/user/sync-<attachment>` in `fleet-files` (which existing web/mobile viewers already sign), and hashes any pre-existing destination instead of trusting it. `record_fleet_sync_document_copy` (service only) records the copy's storage object ID only when observed size/SHA-256 equal the receipt; mismatched deterministic copies are removed and retried. `complete_fleet_sync_document_attach` (uploader JWT) takes the record-group lock before the row lock, requires the proven copy object to still be stored, and appends `{id: attachmentId, name, file:{name,type,dataUrl:'',path}}` through `apply_fleet_changes` with the current version — existing RLS, member guards, revisions and side effects apply; concurrent unrelated edits/documents are preserved. The result (`applied` with revision/path, or `rejected` for `record_deleted`, `invalid_documents`, `document_id_conflict`) is stored once with the request and returned on every replay; deleted vehicles are never resurrected and the sync object stays retained. Applied references stop counting toward the unattached upload quota (quota helper now replaceable; the undeployed upload migration was adjusted to call it).
+
+**Applied is a business document reference, not deletion of the sync object, review approval or a reason to release local bytes automatically.** Native wiring follows. Shared `createAttachmentDocumentRequest`/`decodeAttachmentDocumentResult` are in the domain module. Tests: `supabase/tests/fleet-sync-document-attach.test.mjs` (atomic append and replay without extra side effects, concurrent edits, quota release, request immutability, copy-proof mismatch/replacement, deleted record, demotion, service-only proof, append-only links) and `attach-fleet-sync-document/logic.spec.ts`.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -430,6 +438,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 8. `20261116000100_fleet_sync_download.sql`
 9. `20261117000100_fleet_sync_attachment_uploads.sql`
 10. `20261118000100_fleet_sync_attachment_verification.sql` (deploy the `verify-fleet-sync-attachment` Edge Function with it)
+11. `20261119000100_fleet_sync_document_attach.sql` (deploy the `attach-fleet-sync-document` Edge Function with it)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

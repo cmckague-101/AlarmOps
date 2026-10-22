@@ -33,3 +33,16 @@ describe('attachment upload contract',()=>{
   });
 });
 function attachmentLimit(){return 10*1024*1024+1}
+describe('attachment document reference contract',()=>{
+  const input={requestId:'60000000-0000-4000-8000-000000000001',documentName:' Registration ',deviceId:'device-1',savedAt:'2026-01-03T00:00:00.000Z',connectivity:'offline' as const};
+  it('builds a vehicle-only immutable request and validates applied/rejected results',async()=>{
+    const {createAttachmentDocumentRequest,decodeAttachmentDocumentResult}=await import('./attachment-upload');
+    const request=createAttachmentDocumentRequest(manifest,input);expect(request).toMatchObject({entityType:'vehicle',entityId:manifest.entityId,attachmentId:manifest.attachmentId,documentName:'Registration',provenance:{userId:manifest.userId}});
+    expect(()=>createAttachmentDocumentRequest({...manifest,entityType:'issue'},input)).toThrow(/vehicle/);expect(()=>createAttachmentDocumentRequest(manifest,{...input,documentName:' '})).toThrow();
+    const applied={kind:'applied',receivedAt:'2026-01-03T00:00:01Z',revision:'2',documentId:manifest.attachmentId,path:`${manifest.companyId}/${manifest.userId}/sync-${manifest.attachmentId}`};
+    expect(decodeAttachmentDocumentResult(applied,request)).toEqual(applied);
+    for(const change of [{path:'other'},{documentId:'x'},{revision:'0'},{kind:'synced'}])expect(()=>decodeAttachmentDocumentResult({...applied,...change},request)).toThrow();
+    expect(decodeAttachmentDocumentResult({kind:'rejected',receivedAt:applied.receivedAt,reason:'record_deleted'},request).kind).toBe('rejected');
+    expect(()=>decodeAttachmentDocumentResult({kind:'rejected',receivedAt:applied.receivedAt,reason:'other'},request)).toThrow();
+  });
+});
