@@ -28,6 +28,10 @@ describe('authenticated native sync RPC transport',()=>{
     f.builder.abortSignal.mockResolvedValue({data:null,error});await expect(f.transport.backfillHistory!(operation,f.signal,history)).rejects.toBe(error);
     expect(f.client.rpc).toHaveBeenCalledExactlyOnceWith('backfill_fleet_sync_device_history',{operation,device_history:history});expect(f.builder.setHeader).toHaveBeenCalledWith('Authorization','Bearer bound-user-token');
   });
+  it('uses account-bound POST inventory pages without HTTP-cache fallback',async()=>{
+    const f=setup();const progress={snapshotToken:'a'.repeat(64),cursor:{entityType:'vehicle' as const,entityId:'30000000-0000-4000-8000-000000000001'}};
+    await f.transport.downloadPage!(progress,f.signal);expect(f.client.rpc).toHaveBeenCalledExactlyOnceWith('download_fleet_sync_page',{target_company_id:scope.companyId,expected_snapshot:progress.snapshotToken,record_cursor:progress.cursor});expect(f.builder.setHeader).toHaveBeenCalledWith('Authorization','Bearer bound-user-token');
+  });
   it('rejects other users/companies before issuing an RPC',async()=>{
     const f=setup();for(const foreign of [{...operation,companyId:'other'},{...operation,provenance:{...operation.provenance,userId:'other'}}]){
       for(const method of [f.transport.deliver,f.transport.canonical,f.transport.outcome])await expect(Promise.resolve().then(()=>method(foreign,f.signal))).rejects.toMatchObject({code:'42501'});

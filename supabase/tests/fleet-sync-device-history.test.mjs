@@ -90,6 +90,44 @@ test('recovering history for an already-deleted record cannot resurrect it',asyn
   const f=await fixture();const receipt=await sync(f.wire);await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'delete',recordId:id,expectedVersion:3}])]));
   assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.equal((await row('select count(*)::int count from public.fleet_vehicles')).count,0);assert.equal((await row('select count(*)::int count from public.fleet_sync_device_history')).count,1);
 });
+const download=(token=null,cursor=null,user=owner)=>actor(user,async()=>(await row('select public.download_fleet_sync_page($1,$2,$3::jsonb) result',[company,token,cursor?JSON.stringify(cursor):null])).result);
+test('verified inventory pages contain current raw records and ledger-proven tombstones only',async()=>{
+  const first=await download();assert.equal(first.total,1);assert.equal(first.vehicles,1);assert.equal(first.issues,0);assert.match(first.snapshotToken,/^[0-9a-f]{64}$/);assert.deepEqual(first.records,[{entityType:'vehicle',entityId:id,revision:'1',record:base}]);assert.equal(first.nextCursor,null);
+  await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'delete',recordId:id,expectedVersion:1}])]));
+  const deleted=await download();assert.equal(deleted.total,1);assert.equal(deleted.vehicles,0);assert.equal(deleted.records[0].record,null);assert.equal(deleted.records[0].revision,'2');assert.notEqual(deleted.snapshotToken,first.snapshotToken);
+});
+test('inventory covers both allowed entity types and excludes foreign-company records',async()=>{
+  const issue={id,vehicleId:id,title:'Issue',description:'Details',priority:'Medium',status:'Open',createdById:owner,updates:[]};
+  await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'issues',event:'insert',recordId:id,data:issue}])]));
+  await actor(outsider,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[other,JSON.stringify([{collection:'vehicles',event:'insert',recordId:id,data:{...base,notes:'Other company secret'}}])]));
+  const result=await download();assert.equal(result.total,2);assert.equal(result.issues,1);assert.deepEqual(result.records.map(item=>item.entityType),['issue','vehicle']);assert.deepEqual(result.records[0].record,issue);assert.equal(JSON.stringify(result).includes('Other company secret'),false);
+});
+test('bulk inventory pages are fenced against inserts behind the cursor and ABA field changes',async()=>{
+  const changes=Array.from({length:26},(_,i)=>{const recordId=`30000000-0000-4000-8000-${String(i+2).padStart(12,'0')}`;return {collection:'vehicles',event:'insert',recordId,data:{...base,id:recordId}}});
+  await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify(changes)]));const first=await download();assert.equal(first.records.length,25);assert.ok(first.nextCursor);const last=await download(first.snapshotToken,first.nextCursor);assert.equal(last.records.length,2);assert.equal(last.nextCursor,null);
+  const earlier='30000000-0000-4000-8000-000000000000';await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'insert',recordId:earlier,data:{...base,id:earlier}}])]));await assert.rejects(download(first.snapshotToken,first.nextCursor),error=>error.code==='PT409');
+  const next=await download();await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'update',recordId:id,expectedVersion:1,data:{...base,notes:'Changed'}}])]));await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'update',recordId:id,expectedVersion:2,data:base}])]));await assert.rejects(download(next.snapshotToken,next.nextCursor),error=>error.code==='PT409');
+});
+test('bulk downloads enforce current manager scope and do not export other fleet workflows',async()=>{
+  for(const user of [crew,outsider,null])await assert.rejects(download(null,null,user),error=>error.code==='42501');
+  const first=await download();await actor(owner,()=>db.query('insert into public.fleet_crew(company_id,record_id,data,updated_by) values($1,$2,$3::jsonb,$4)',[company,id,JSON.stringify({id,name:'Private crew data'}),owner]));const next=await download();assert.equal(next.snapshotToken,first.snapshotToken);assert.equal(JSON.stringify(next).includes('Private crew data'),false);
+  await db.query("update public.company_members set role='fire_fighter' where user_id=$1",[owner]);await assert.rejects(download(),error=>error.code==='42501');
+});
+test('a row hidden by RLS cannot become a fabricated deletion or verified base',async()=>{
+  await db.exec('create policy hide_download_test on public.fleet_vehicles as restrictive for select to authenticated using(false)');
+  try{await assert.rejects(download(),error=>error.code==='42501')}finally{await db.exec('drop policy hide_download_test on public.fleet_vehicles')}
+  assert.equal((await row('select count(*)::int count from public.fleet_vehicles')).count,1);
+});
+test('empty authorized inventories are valid but untracked live records are not',async()=>{
+  const empty=await actor(outsider,async()=>(await row('select public.download_fleet_sync_page($1) result',[other])).result);assert.equal(empty.total,0);assert.deepEqual(empty.records,[]);assert.equal(empty.nextCursor,null);
+  await db.exec('alter table public.fleet_vehicles disable trigger user');const untracked='30000000-0000-4000-8000-000000000099';
+  try{await db.query('insert into public.fleet_vehicles(company_id,record_id,data,updated_by) values($1,$2,$3::jsonb,$4)',[company,untracked,JSON.stringify({...base,id:untracked}),owner])}finally{await db.exec('alter table public.fleet_vehicles enable trigger user')}
+  await assert.rejects(download(),error=>error.code==='42501');
+});
+test('bulk download rejects cursors without a snapshot and detects inconsistent ledger fingerprints',async()=>{
+  await assert.rejects(download(null,{entityType:'vehicle',entityId:id}),error=>error.code==='22023');
+  await db.exec('alter table public.fleet_vehicles disable trigger user');await db.query('update public.fleet_vehicles set data=$1::jsonb',[JSON.stringify({...base,notes:'Untracked'})]);await db.exec('alter table public.fleet_vehicles enable trigger user');await assert.rejects(download(),error=>error.code==='42501');
+});
 const listHistory=(cursor=null,user=owner,target=id)=>actor(user,async()=>(await row('select public.list_fleet_sync_device_history($1,$2,$3,$4::jsonb) result',[company,'vehicle',target,cursor?JSON.stringify(cursor):null])).result);
 const readHistory=(operationId,user=owner,target=id)=>actor(user,async()=>(await row('select public.get_fleet_sync_device_history_report($1,$2,$3,$4,$5) result',[company,'vehicle',target,owner,operationId])).result);
 test('online history inspection returns scoped summaries and complete original snapshots',async()=>{

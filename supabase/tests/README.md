@@ -12,8 +12,9 @@ Runs embedded PostgreSQL (PGlite, a development-only dependency) against
 `20261111000100_fleet_sync_review.sql`,
 `20261112000100_fleet_sync_record_read.sql`,
 `20261113000100_fleet_sync_device_history.sql`,
-`20261114000100_fleet_sync_history_reads.sql`, and
-`20261115000100_fleet_sync_history_recovery.sql`, a minimal auth/company fixture, and
+`20261114000100_fleet_sync_history_reads.sql`,
+`20261115000100_fleet_sync_history_recovery.sql`, and
+`20261116000100_fleet_sync_download.sql`, a minimal auth/company fixture, and
 production fleet RLS policies/functions. Checks real grants, RLS, triggers,
 transaction rollback, revision fingerprints/tombstones, idempotent receipts,
 verified field merges, persistent conflict/provenance records, guarded approvals,
@@ -29,6 +30,11 @@ newer insertions between pages. Full snapshots are fetched one report at a time.
 Older-build recovery requires an existing matching submission/hash and never
 replays an unknown business operation. Tests verify unchanged newer/deleted
 records, pending-review deduplication, actor checks and exact cached retries.
+Bulk inventory tests verify raw records/tombstones, same-snapshot scope and
+fingerprints, missing/hidden/untracked row denial, entity/tenant isolation,
+bounded pagination and invalidation after behind-cursor inserts or ABA edits.
+The fingerprint is not a timestamp/sequence high-water mark; real overlapping
+transaction/commit-order tests still require separate target-database sessions.
 
 The SQL merge and domain unit tests share
 `packages/domain/test-fixtures/offline-sync-merge.json` at the repository root.

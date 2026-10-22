@@ -11,7 +11,7 @@ import {supabase} from '../lib/supabase';
 import {useSession} from './session-provider';
 import {isOffline,useNetworkStatus} from './network-provider';
 
-type ContextValue={detailEditor:OfflineDetailEditor|null;hasSavedDetails:boolean;state:OfflineSyncState;available:boolean;loading:boolean;offline:boolean;refresh:()=>Promise<void>;retry:(operationId:string)=>Promise<void>;dismiss:()=>Promise<void>};
+type ContextValue={detailEditor:OfflineDetailEditor|null;hasSavedDetails:boolean;state:OfflineSyncState;available:boolean;loading:boolean;offline:boolean;refresh:()=>Promise<void>;retry:(operationId:string)=>Promise<void>;dismiss:()=>Promise<void>;downloadFleet:()=>Promise<void>;stopFleetDownload:()=>Promise<void>};
 const Context=createContext<ContextValue|null>(null);
 const emptySubscribe=()=>()=>{};
 const emptySnapshot=()=>emptyOfflineSyncState;
@@ -86,14 +86,16 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
     if(!worker)return;
     const timer=setInterval(()=>{
       const snapshot=worker.getSnapshot();
-      const pending=snapshot.entries.some(entry=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
+      const pending=!!snapshot.download&&!snapshot.download.complete||snapshot.entries.some(entry=>entry.historyBackupPending||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
       if(runtime.current.foreground&&!isOffline()&&(pending||snapshot.error))void worker.wake();
     },15_000);return()=>clearInterval(timer);
   },[worker]);
   const refresh=useCallback(async()=>{if(worker)await worker.resume();else if(key)setBootAttempt(value=>value+1)},[worker,key]);
   const retry=useCallback(async(id:string)=>{if(worker){await worker.retry(id);await worker.wake()}},[worker]);
   const dismiss=useCallback(async()=>{await worker?.dismiss()},[worker]);
-  const value=useMemo<ContextValue>(()=>({detailEditor:binding?.key===key&&manager?binding.editor:null,hasSavedDetails:binding?.key===key&&manager&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss}),[binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss]);
+  const downloadFleet=useCallback(async()=>{await worker?.startFleetDownload()},[worker]);
+  const stopFleetDownload=useCallback(async()=>{await worker?.stopFleetDownload()},[worker]);
+  const value=useMemo<ContextValue>(()=>({detailEditor:binding?.key===key&&manager?binding.editor:null,hasSavedDetails:binding?.key===key&&manager&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload}),[binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useOfflineSync(){const value=useContext(Context);if(!value)throw new Error('useOfflineSync must be inside OfflineSyncProvider');return value}

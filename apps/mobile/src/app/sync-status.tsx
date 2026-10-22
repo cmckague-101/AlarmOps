@@ -8,7 +8,7 @@ import {continuationReviewHref} from '../lib/offline-rebase-form';
 import {useFireOpsTheme} from '../theme';
 
 export default function SyncStatusScreen(){
-  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
+  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor,downloadFleet,stopFleetDownload}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
   useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
   const [history,setHistory]=useState(false);
   const visible=history?state.entries:state.entries.filter(offlineSyncVisible);
@@ -20,6 +20,15 @@ export default function SyncStatusScreen(){
       <Text style={[styles.meta,{color:theme.secondary}]}>{offline?'Offline — uploads are paused.':'Sync resumes while the app is open and connected.'} Downloaded owner/admin vehicle/issue scalar details support offline saves; other workflows still require a connection.</Text>
       {loading&&<Text accessibilityLiveRegion="polite" style={{color:theme.secondary}}>Loading this account's saved changes…</Text>}
       {button(state.busy?'Checking sync…':'Check sync / retry due changes',()=>void refresh(),state.busy||loading)}
+      {detailEditor&&<View style={[styles.entry,{borderColor:theme.divider}]}>
+        <Text style={[styles.title,{color:theme.ink}]}>Vehicle / issue detail downloads</Text>
+        <Text style={[styles.meta,{color:theme.secondary}]}>Opt in to company-wide verified records for the limited saved-detail editor. Full raw vehicle/issue records are stored on this device; attachment bytes and other workflows are not downloaded.</Text>
+        <Text style={[styles.meta,{color:theme.secondary}]}>{state.records.filter(row=>row.record!==null&&row.entityType==='vehicle').length} saved vehicles · {state.records.filter(row=>row.record!==null&&row.entityType==='issue').length} saved issues.</Text>
+        {state.download?<Text style={[styles.meta,{color:theme.secondary}]}>{state.download.complete?'Verified inventory scan completed':'Inventory scan incomplete'} · {state.download.received}/{state.download.total} tracked records checked (includes proven deletions). Last completed scan server request time: {state.download.lastCompletedAt?new Date(state.download.lastCompletedAt).toLocaleString(undefined,{timeZoneName:'short'}):'Not recorded'}. A completed scan is not a promise that no newer shared edits exist.</Text>:<Text style={[styles.meta,{color:theme.secondary}]}>Automatic company-wide catch-up is off. Individually downloaded records remain available.</Text>}
+        {!!state.downloadError&&<Text accessibilityRole="alert" style={{color:theme.danger}}>{state.downloadError}</Text>}
+        {button(state.busy?'Checking downloads…':state.download&&!state.download.complete?'Resume verified download':'Download / refresh all vehicle and issue details',()=>void (state.download&&!state.download.complete?refresh():downloadFleet()),offline||state.busy||loading)}
+        {(state.download||state.downloadError||state.error)&&button('Stop company-wide catch-up (keep saved data)',()=>void stopFleetDownload())}
+      </View>}
       {!!state.error&&<View accessibilityRole="alert" style={styles.entry}><Text style={{color:theme.danger}}>{state.error}</Text></View>}
       {!!state.entries.length&&button(history?'Hide completed history':'Show completed history',()=>setHistory(value=>!value))}
       {visible.map(entry=><View key={entry.operation.operationId} style={[styles.entry,{borderColor:theme.divider}]}>

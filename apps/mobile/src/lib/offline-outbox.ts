@@ -1,4 +1,5 @@
 import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
@@ -206,7 +207,11 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
     if(current===4){
       await tx.execAsync('ALTER TABLE offline_operations ADD COLUMN history_backed_up INTEGER NOT NULL DEFAULT 0 CHECK(history_backed_up IN (0,1)); PRAGMA user_version=5;');current=5;
     }
-    if (current !== 5) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===5){
+      await tx.execAsync(`CREATE TABLE offline_fleet_downloads(user_id TEXT NOT NULL,company_id TEXT NOT NULL,progress_json TEXT NOT NULL,PRIMARY KEY(user_id,company_id));
+        CREATE TABLE offline_fleet_download_members(user_id TEXT NOT NULL,company_id TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,alive INTEGER NOT NULL CHECK(alive IN (0,1)),PRIMARY KEY(user_id,company_id,entity_type,entity_id)); PRAGMA user_version=6;`);current=6;
+    }
+    if (current !== 6) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -265,6 +270,10 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           DO UPDATE SET revision=excluded.revision,record_json=excluded.record_json,verified_at=excluded.verified_at`,...ids,entityType,entityId,value.revision,JSON.stringify(value.record),new Date().toISOString());
         return value;
       }
+      async function downloadProgress(connection:OutboxSqlConnection):Promise<FleetDownloadProgress|null>{
+        const row=await connection.getFirstAsync<{progress_json:string}>('SELECT progress_json FROM offline_fleet_downloads WHERE user_id=? AND company_id=?',...ids);
+        return row?decodeFleetDownloadProgress(JSON.parse(row.progress_json)):null;
+      }
       async function continuationReview(connection:OutboxSqlConnection,operationId:string):Promise<ContinuationReview>{
         const row=await connection.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId);
         if(!row)throw new Error('Later edit is unavailable.');const child=entry(row);
@@ -288,6 +297,46 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           if(row)return row.device_id;
           const value=createId();required(value,'device ID');await tx.runAsync('INSERT INTO offline_devices VALUES (?,?)',identity.userId,value);return value;
         })},
+        getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
+        restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
+          const previous=await downloadProgress(tx);if(expectedGeneration!==undefined&&previous?.generationId!==expectedGeneration)return false;const progress={...initialFleetDownload(generationId),lastCompletedAt:previous?.lastCompletedAt??null};
+          await tx.runAsync('DELETE FROM offline_fleet_download_members WHERE user_id=? AND company_id=?',...ids);
+          await tx.runAsync('INSERT INTO offline_fleet_downloads VALUES(?,?,?) ON CONFLICT(user_id,company_id) DO UPDATE SET progress_json=excluded.progress_json',...ids,JSON.stringify(progress));return true;
+        })},
+        invalidateFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
+          if(expectedGeneration!==undefined&&(await downloadProgress(tx))?.generationId!==expectedGeneration)return false;
+          await tx.runAsync('DELETE FROM offline_records WHERE user_id=? AND company_id=?',...ids);
+          await tx.runAsync('DELETE FROM offline_projections WHERE user_id=? AND company_id=? AND operation_id IS NULL',...ids);
+          await tx.runAsync('DELETE FROM offline_fleet_download_members WHERE user_id=? AND company_id=?',...ids);
+          await tx.runAsync('UPDATE offline_fleet_downloads SET progress_json=? WHERE user_id=? AND company_id=?',JSON.stringify(initialFleetDownload(generationId)),...ids);return true;
+        })},
+        stopFleetDownload():Promise<void>{return write(async tx=>{
+          await tx.runAsync('DELETE FROM offline_fleet_downloads WHERE user_id=? AND company_id=?',...ids);
+          await tx.runAsync('DELETE FROM offline_fleet_download_members WHERE user_id=? AND company_id=?',...ids);
+        })},
+        applyFleetDownloadPage(expected:FleetDownloadProgress,page:FleetDownloadPage):Promise<boolean>{
+          const request=JSON.parse(JSON.stringify(expected)) as FleetDownloadProgress;const saved=decodeFleetDownloadPage(page,identity.companyId,request);
+          return write(async tx=>{
+            const current=await downloadProgress(tx);if(!current||!sameJson(JSON.stringify(current),JSON.stringify(request)))return false;
+            if(current.complete)throw new Error('Completed inventory needs a fresh scan.');
+            if(current.snapshotToken!==null&&(current.total!==saved.total||current.vehicles!==saved.vehicles||current.issues!==saved.issues))throw new Error('Inventory counts changed within a snapshot.');
+            const received=current.received+saved.records.length;
+            if(received>saved.total||(saved.nextCursor===null?received!==saved.total:received>=saved.total))throw new Error('Incomplete or inconsistent inventory page.');
+            for(const item of saved.records){
+              await confirmed(tx,item.entityType,item.entityId,item);
+              await tx.runAsync('INSERT INTO offline_fleet_download_members VALUES(?,?,?,?,?)',...ids,item.entityType,item.entityId,item.record===null?0:1);
+            }
+            if(saved.nextCursor===null){
+              const counts=await tx.getFirstAsync<{total:number;vehicles:number;issues:number}>(`SELECT count(*) AS total,coalesce(sum(entity_type='vehicle' AND alive=1),0) AS vehicles,coalesce(sum(entity_type='issue' AND alive=1),0) AS issues FROM offline_fleet_download_members WHERE user_id=? AND company_id=?`,...ids);
+              if(!counts||counts.total!==saved.total||counts.vehicles!==saved.vehicles||counts.issues!==saved.issues)throw new Error('Inventory coverage counts do not match verified pages.');
+              const missing=await tx.getFirstAsync<{count:number}>(`SELECT count(*) AS count FROM offline_records r WHERE r.user_id=? AND r.company_id=? AND NOT EXISTS
+                (SELECT 1 FROM offline_fleet_download_members m WHERE m.user_id=r.user_id AND m.company_id=r.company_id AND m.entity_type=r.entity_type AND m.entity_id=r.entity_id)`,...ids);
+              if(missing?.count)throw new Error('Inventory omitted previously verified records. No deletion was assumed.');
+            }
+            const progress:FleetDownloadProgress={generationId:current.generationId,snapshotToken:saved.snapshotToken,cursor:saved.nextCursor,complete:saved.nextCursor===null,received,total:saved.total,vehicles:saved.vehicles,issues:saved.issues,serverRequestAt:saved.serverRequestAt,lastCompletedAt:saved.nextCursor===null?saved.serverRequestAt:current.lastCompletedAt};
+            await tx.runAsync('UPDATE offline_fleet_downloads SET progress_json=? WHERE user_id=? AND company_id=?',JSON.stringify(progress),...ids);return true;
+          });
+        },
         listRecords():Promise<CachedOfflineRecord[]>{return read(async()=>{
           const rows=await db.getAllAsync<{entity_type:'vehicle'|'issue';entity_id:string;revision:string;record_json:string;verified_at:string}>('SELECT * FROM offline_records WHERE user_id=? AND company_id=?',...ids);
           return rows.map(row=>({...decodeCanonicalSyncRecord({entityId:row.entity_id},{revision:row.revision,record:JSON.parse(row.record_json)},'1'),entityType:row.entity_type,entityId:row.entity_id,verifiedAt:row.verified_at}));

@@ -1,5 +1,6 @@
 import {isSyncReviewUnavailable,type SyncOperation} from '@fireops/domain';
 import type {CachedOfflineRecord,OfflineOutboxSession,OutboxEntry,OutboxRebase} from './offline-outbox';
+import {decodeFleetDownloadPage,type FleetDownloadProgress} from './offline-fleet-download';
 import {decodeCanonicalSyncRecord,decodeSyncOutcome,decodeSyncReceipt,offlineSyncAdapterBlock} from './offline-sync-protocol';
 
 export interface OfflineSyncTransport{
@@ -7,10 +8,11 @@ export interface OfflineSyncTransport{
   backfillHistory?(operation:SyncOperation,signal:AbortSignal,history:readonly OutboxRebase[]):Promise<unknown>;
   canonical(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
+  downloadPage?(progress:Pick<FleetDownloadProgress,'snapshotToken'|'cursor'>,signal:AbortSignal):Promise<unknown>;
   readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
 }
-export type OfflineSyncState={readonly records:readonly CachedOfflineRecord[];readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean};
-export const emptyOfflineSyncState:OfflineSyncState={records:[],entries:[],busy:false,loaded:false,error:null,setupPending:false};
+export type OfflineSyncState={readonly records:readonly CachedOfflineRecord[];readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean;readonly download?:FleetDownloadProgress|null;readonly downloadError?:string|null};
+export const emptyOfflineSyncState:OfflineSyncState={records:[],entries:[],busy:false,loaded:false,error:null,setupPending:false,download:null,downloadError:null};
 export function offlineSyncErrorCode(error:unknown):string{return error&&typeof error==='object'?String((error as {code?:unknown}).code??''):''}
 const coded=(message:string,code:string)=>Object.assign(new Error(message),{code});
 const retryDelay=(attempts:number)=>Math.min(300_000,1000*2**Math.min(attempts,8));
@@ -38,9 +40,9 @@ export function createOfflineSyncWorker(options:{
   const ready=(version:number)=>valid(version)&&options.canRun();
   async function refresh(){
     const version=epoch;if(!valid(version))return;
-    try{const [entries,records]=await Promise.all([session.list(),options.canReadRecords?.()?session.listRecords():Promise.resolve([])]);if(valid(version)){
+    try{const [entries,records,download]=await Promise.all([session.list(),options.canReadRecords?.()?session.listRecords():Promise.resolve([]),options.canReadRecords?.()?session.getFleetDownload():Promise.resolve(null)]);if(valid(version)){
       const unfinished=entries.some(entry=>entry.historyBackupPending||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
-      emit({entries,records,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
+      emit({entries,records,download,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
     }}
     catch{if(valid(version))emit({loaded:true,error:'Device sync storage could not be read. Saved work has not been discarded.'})}
   }
@@ -143,6 +145,38 @@ export function createOfflineSyncWorker(options:{
     if(problem)emit(problem);
     return !problem;
   }
+  async function downloadFleet(version:number):Promise<boolean>{
+    if(!options.canReadRecords?.())return false;
+    let progress=await persist(()=>session.getFleetDownload());if(!progress)return false;
+    let restarts=0;
+    try{
+      if(!transport.downloadPage)throw coded('Fleet download needs pending database setup','PGRST202');
+      if(progress.complete){if(!await persist(()=>session.restartFleetDownload(options.token(),progress!.generationId)))return true;progress=(await session.getFleetDownload())!;if(!progress)return true}
+      emit({downloadError:null});
+      for(let page=0;page<100&&ready(version)&&options.canReadRecords();page++){
+        try{
+          const request=progress;
+          const raw=await rpc(version,signal=>transport.downloadPage!(request,signal));
+          if(!ready(version)||!options.canReadRecords())return true;
+          const value=decodeFleetDownloadPage(raw,session.scope.companyId,request);
+          if(!await persist(()=>session.applyFleetDownloadPage(request,value)))return true;
+          await refresh();progress=(await session.getFleetDownload())!;
+          if(!progress||progress.complete)return true;
+        }catch(error){
+          if(!ready(version))return true;
+          if(offlineSyncErrorCode(error)==='PT409'&&restarts++<2){if(!await persist(()=>session.restartFleetDownload(options.token(),progress!.generationId)))return true;progress=(await session.getFleetDownload())!;if(!progress)return true;await refresh();continue}
+          throw error;
+        }
+      }
+    }catch(error){
+      if(ready(version)){
+        if((await session.getFleetDownload())?.generationId!==progress?.generationId)return true;
+        if(offlineSyncErrorCode(error)==='42501'&&!await persist(()=>session.invalidateFleetDownload(options.token(),progress!.generationId)))return true;
+        emit({downloadError:isSyncReviewUnavailable(error)?'Fleet download needs pending database migrations.':offlineSyncErrorCode(error)==='PT409'?'Fleet kept changing during download. Verified pages are retained; resume the scan.':'Fleet download is incomplete. Verify connection, access and device storage. Saved edits have not been discarded.'});
+      }
+    }
+    return true;
+  }
   async function run(version:number){
     try{
       await refresh();if(!ready(version))return;emit({busy:true});
@@ -179,7 +213,11 @@ export function createOfflineSyncWorker(options:{
           if(isSyncReviewUnavailable(error)||['42501','401','PGRST301','PGRST302'].includes(offlineSyncErrorCode(error)))break;
         }
       }
-      if(ready(version)&&await recoverHistory(version))await refreshCachedRecords(version);
+      if(ready(version)){
+        const recovered=await recoverHistory(version);const historyIssue=!recovered?{error:state.error,setupPending:state.setupPending}:null;
+        if(ready(version)&&!await downloadFleet(version))await refreshCachedRecords(version);
+        if(ready(version)&&historyIssue)emit(historyIssue);
+      }
     }catch{
       if(valid(version))emit({error:'Device sync storage could not be updated. Saved work has not been discarded.'});
     }finally{
@@ -209,6 +247,16 @@ export function createOfflineSyncWorker(options:{
     },
     pause(){epoch+=1;recovering=null;requestAbort?.abort();requestAbort=null;emit({busy:false})},
     stop(){stopped=true;epoch+=1;recovering=null;requestAbort?.abort();requestAbort=null},
+    async startFleetDownload(){
+      if(!ready(epoch)||!options.canReadRecords?.())return;
+      const version=epoch;try{await session.restartFleetDownload(options.token());if(running)await running;if(ready(version))await startRun()}
+      catch{if(valid(version))emit({downloadError:'Device storage could not start the download. Saved work has not been discarded.'})}
+    },
+    async stopFleetDownload(){
+      const version=epoch;if(!valid(version))return;
+      try{await session.stopFleetDownload();if(valid(version)){emit({downloadError:null});await refresh()}}
+      catch{if(valid(version))emit({downloadError:'Download settings could not be saved. Saved work has not been discarded.'})}
+    },
     async retry(operationId:string){
       const version=epoch;if(!valid(version))return;
       try{await session.retryBlocked(operationId);if(valid(version))await refresh()}catch{if(valid(version))emit({error:'Device sync storage could not be updated. Saved work has not been discarded.'})}
@@ -246,9 +294,11 @@ export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail
   else if(history.length)message=`${history.length} device ${history.length===1?'history backup is':'history backups are'} pending`;
   else if(pending.length)message=pending.every(entry=>entry.delivery?.kind==='applied'||entry.reviewOutcome?.outcome==='kept')?'Uploaded — confirming shared data':state.busy?`Syncing ${pending.length} saved ${pending.length===1?'change':'changes'}`:`${pending.length} saved ${pending.length===1?'change is':'changes are'} waiting to sync`;
   else if(completed.length)message=completed.length===1?offlineSyncEntryLabel(completed[0]):`${completed.length} changes finished syncing or review — see details`;
+  else if(state.downloadError)message='Fleet download needs attention';
+  else if(state.download&&!state.download.complete)message=state.busy?'Downloading verified fleet details':'Fleet detail download incomplete';
   else if(state.error)message='Sync needs attention';
   if(state.error&&/storage|notices could not be dismissed/i.test(state.error))return {message:'Sync status needs attention',detail:state.error,dismissible:false};
-  return message?{message,detail:state.error??(state.setupPending?'Waiting for database sync setup. Saved work has not been discarded.':null),dismissible:!!completed.length&&!blocked.length&&!review.length&&!pending.length&&!history.length}:null;
+  return message?{message,detail:state.error??state.downloadError??(state.setupPending?'Waiting for database sync setup. Saved work has not been discarded.':null),dismissible:!!completed.length&&!blocked.length&&!review.length&&!pending.length&&!history.length&&!state.downloadError&&(!state.download||state.download.complete)}:null;
 }
 export function offlineSyncVisible(entry:OutboxEntry):boolean{
   return !!entry.historyBackupPending||!entry.noticeDismissed||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
