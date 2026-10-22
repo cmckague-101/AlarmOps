@@ -80,3 +80,20 @@ describe('crew offline actions (actual SQLite)',()=>{
     await expect(g.session.applyFleetDownloadPage(all,{...page,scope:'all'})).rejects.toThrow(/omitted previously verified/);
   });
 });
+describe('offline issue reports (actual SQLite)',()=>{
+  const report=(changes:Record<string,unknown>={})=>({id:'50000000-0000-4000-8000-000000000009',vehicleId:vehicle,title:'Leak',description:'Coolant',priority:'High',status:'Open',updates:[],createdBy:'Owner',createdById:user,createdAt:date,...changes}) as SyncRecord;
+  it('saves one report durably, retries the same operation and syncs it through the create endpoint',async()=>{
+    const f=await setup();
+    for(const bad of [report({createdById:crew}),report({status:'Resolved'}),report({title:' '}),report({extra:1})])await expect(f.editor.createIssue(bad)).rejects.toThrow();
+    const first=await f.editor.createIssue(report());expect(first.operation.mutation).toEqual({kind:'create',record:report()});
+    expect((await f.editor.createIssue(report())).operation.operationId).toBe(first.operation.operationId);
+    await expect(f.editor.createIssue(report({title:'Changed'}))).rejects.toThrow(/original issue/);
+    const created={kind:'applied' as const,receivedAt:date,revision:'1',record:report()};
+    f.transport.deliver.mockImplementationOnce(async operation=>{expect(operation.mutation.kind).toBe('create');return created});f.transport.canonical.mockResolvedValue({revision:'1',record:report()});
+    await f.worker.wake();expect((await f.session.list())[0].status).toBe('synced');
+    expect((await f.session.listRecords()).find(row=>row.entityId===report().id)?.revision).toBe('1');
+  });
+  it('lets restricted roles report only when allowed',async()=>{
+    const f=await setup(true);await expect(f.editor.createIssue(report())).rejects.toThrow(/cannot report/);
+  });
+});

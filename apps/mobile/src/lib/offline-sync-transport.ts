@@ -22,6 +22,7 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
   return {
     deliver(operation,signal,history=[]){
       recordArgs(operation);
+      if(operation.mutation.kind==='create')return invoke('sync_fleet_create',{operation},signal);
       return history.length?invoke('sync_fleet_update_with_history',{operation,device_history:history},signal):invoke('sync_fleet_update',{operation},signal);
     },
     backfillHistory(operation,signal,history){

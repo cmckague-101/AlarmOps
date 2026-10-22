@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { canOpenVehicleIssue, type IssuePriority } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
+import { useOfflineSync } from '@/providers/offline-sync-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 const priorities: IssuePriority[] = ['Low', 'Medium', 'High', 'Critical'];
@@ -27,6 +28,9 @@ export default function NewIssueScreen() {
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  // Offline reports are saved on device through the verified editor and synced later.
+  const { offline, detailEditor } = useOfflineSync();
+  const offlineReport = useRef<Record<string, unknown> | null>(null);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
   if (user && !canOpenVehicleIssue(user.role)) return <Redirect href="/(tabs)/fleet" />;
@@ -37,6 +41,23 @@ export default function NewIssueScreen() {
     if (!valid || !user) return;
     setSaving(true);
     setSaveError('');
+    if (offline && Platform.OS !== 'web') {
+      try {
+        if (!detailEditor) throw new Error('Offline issue reports need saved device data. Reconnect to report this issue.');
+        // The same report (identity and time) is retried until saved; edits start a new report.
+        const draft = { vehicleId, title: title.trim(), description: description.trim(), priority, status: 'Open' as const, updates: [] as never[], createdBy: user.name, createdById: user.id };
+        const previous = offlineReport.current;
+        const report = previous && Object.entries(draft).every(([key, value]) => JSON.stringify(previous[key]) === JSON.stringify(value)) ? previous : { id: createFleetId(), ...draft, createdAt: new Date().toISOString() };
+        offlineReport.current = report;
+        await detailEditor.createIssue(report as never);
+        router.back();
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Issue could not be saved on this device. Try again.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     try {
       await saveFleetRecord('issues', {
         id: createFleetId(),
@@ -65,7 +86,7 @@ export default function NewIssueScreen() {
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
           <View style={styles.headingGroup}>
             <Text style={styles.title}>Report vehicle issue</Text>
-            <Text style={styles.subtitle}>Give your company enough detail to triage and repair it.</Text>
+            <Text style={styles.subtitle}>Give your company enough detail to triage and repair it.{offline ? ' Offline: the report is saved on this device and syncs when connected.' : ''}</Text>
           </View>
 
           {loading ? <Text style={styles.help}>Loading vehicle…</Text> : selectedVehicle ? (

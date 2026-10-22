@@ -94,7 +94,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const publish=()=>{const snapshot=created.getSnapshot();model.publish({scope:identity,records:visibleRecords(snapshot.records),entries:snapshot.entries,offline:isOffline(),loaded:snapshot.loaded})};
         const unpublish=created.subscribe(publish);
         const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,reserve:(target,owner)=>gate.acquire([target],owner),downloaded:()=>created.refresh(),canEdit:()=>canAccess()&&runtime.current.syncRole&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
-          restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:['updates']},
+          restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:runtime.current.shopTech?['updates','create']:['updates']},
           changed:async()=>{await created.refresh();void created.wake()}});
         const unregister=registerOfflineSyncSession(identity.userId,{pause:()=>{created.pause();attachments.pause()},resume:()=>{void created.resume();void attachments.resume()}});
         const auth=client.auth.onAuthStateChange((_event,next)=>{

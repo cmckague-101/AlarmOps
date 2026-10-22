@@ -52,4 +52,8 @@ describe('authenticated native sync RPC transport',()=>{
     const f=setup();const error={code:'PGRST202',message:'Missing function'};f.builder.abortSignal.mockResolvedValue({data:null,error});
     await expect(f.transport.canonical(operation,f.signal)).rejects.toBe(error);
   });
+  it('routes new issue reports to the create endpoint',async()=>{
+    const f=setup();const create:SyncOperation={...operation,entityType:'issue',mutation:{kind:'create',record:{id:'vehicle-1'}}};
+    await f.transport.deliver(create,f.signal);expect(f.client.rpc).toHaveBeenCalledWith('sync_fleet_create',{operation:create});
+  });
 });

@@ -70,6 +70,7 @@ export function createOfflineDetailEditor(options:{
   let disposed=false;
   const requests=new Set<AbortController>();
   const rebaseReviews=new WeakMap<ContinuationReview,ContinuationReview>();
+  const creates=new Map<string,SyncOperation>();
   const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord;extras?:{remove:string[];attachmentIds:string[]}}>();
   function guard(){if(disposed||!options.canEdit())throw new Error('This offline editor is no longer available for the current account or permissions.')}
   async function available(target:DetailTarget){
@@ -125,6 +126,26 @@ export function createOfflineDetailEditor(options:{
       const operation=owned.operation;const release=options.reserve?.({entityType:operation.entityType as DetailTarget['entityType'],entityId:operation.entityId},operation.operationId)??(()=>{});
       let entry:OutboxEntry;try{entry=await options.session.rebaseContinuation(owned,choices)}finally{release()}
       try{await options.changed()}catch{/* Committed local decision remains durable. */}return entry;
+    },
+    /** Saves one new issue report on device. Retrying the same record reuses its operation. */
+    async createIssue(record:SyncRecord):Promise<OutboxEntry>{
+      guard();const value=clone(record);const id=value.id;
+      if(typeof id!=='string'||!uuid.test(id)||Object.keys(value).sort().join()!=='createdAt,createdBy,createdById,description,id,priority,status,title,updates,vehicleId'
+        ||value.createdById!==options.session.scope.userId||value.status!=='Open'||!Array.isArray(value.updates)||value.updates.length||typeof value.vehicleId!=='string'||!uuid.test(value.vehicleId)
+        ||!shortText(value.title)||!shortText(value.description,10000)||!['Low','Medium','High','Critical'].includes(value.priority as string)||!shortText(value.createdBy)||typeof value.createdAt!=='string'||!Number.isFinite(Date.parse(value.createdAt)))
+        throw new Error('Check the issue title, description, priority and vehicle.');
+      const restricted=options.restrictFields?.()??null;if(restricted&&!restricted.issue.includes('create'))throw new Error('Your role cannot report issues offline.');
+      let operation=creates.get(id);
+      if(operation&&JSON.stringify(operation.mutation.kind==='create'&&operation.mutation.record)!==JSON.stringify(value))throw new Error('Retry the original issue or start a new report.');
+      if(!operation){
+        const deviceId=await options.session.getDeviceId(options.id);guard();
+        operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:'issue',entityId:id,
+          provenance:{userId:options.session.scope.userId,deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},dependsOn:[],mutation:{kind:'create',record:value}};
+        creates.set(id,operation);
+      }
+      const entry=await options.session.enqueue(clone(operation),value,{exclusiveRecord:true});
+      try{await options.changed()}catch{/* Committed report remains durable. */}
+      return entry;
     },
     async save(draft:OfflineDetailDraft,values:SyncRecord,extras:DetailSaveExtras={}):Promise<OutboxEntry>{
       guard();const owned=drafts.get(draft);if(!owned)throw new Error('Reload verified details before saving.');

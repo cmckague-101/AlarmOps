@@ -21,6 +21,8 @@ describe('native sync acknowledgment validation',()=>{
     expect(offlineSyncAdapterBlock(operation)).toBeNull();
     expect(offlineSyncAdapterBlock({...operation,dependsOn:['parent']})).toContain('rebase');
     expect(offlineSyncAdapterBlock({...operation,mutation:{kind:'command',command:'pay',payload:{}}})).toContain('not enabled');
+    expect(offlineSyncAdapterBlock({...operation,entityType:'issue',mutation:{kind:'create',record:{id:'x'}}})).toBeNull();
+    expect(offlineSyncAdapterBlock({...operation,entityType:'vehicle',mutation:{kind:'create',record:{id:'x'}}})).toContain('not enabled');
     expect(offlineSyncAdapterBlock({...operation,mutation:{kind:'update',baseRevision:'1',base:{},patch:{documents:{present:true,value:[]}}}})).toContain('dedicated offline adapter');
   });
 });

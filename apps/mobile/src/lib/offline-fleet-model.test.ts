@@ -117,3 +117,14 @@ describe('provider-owned fleet bridge',()=>{
     await expect(guardOfflineFleetWrite({...scope,userId:'other'},[target],'legacy')).rejects.toThrow('account changed');
   });
 });
+describe('local issue reports',()=>{
+  it('previews a pending report until a verified record exists',()=>{
+    const issue={id:'issue-1',vehicleId:'vehicle',title:'Leak',description:'d',priority:'High',status:'Open',updates:[],createdBy:'U',createdById:'user',createdAt:'2026-01-01T00:00:00Z'};
+    const original=entry().operation;
+    const create=entry('create',2,{operation:{...original,entityType:'issue',entityId:'issue-1',mutation:{kind:'create',record:issue}},projection:issue});
+    const pending=projectOfflineFleet([],model({entries:[create]}));
+    expect(pending.records.find(row=>row.entityId==='issue-1')?.record).toEqual(issue);expect(pending.pending['issue:issue-1']).toMatch(/^Local proposal/);
+    const confirmed=projectOfflineFleet([{entityType:'issue',entityId:'issue-1',revision:'1',record:{...issue,title:'Server'}}],model({entries:[create]}));
+    expect(confirmed.records.find(row=>row.entityId==='issue-1')?.record?.title).toBe('Server');
+  });
+});
