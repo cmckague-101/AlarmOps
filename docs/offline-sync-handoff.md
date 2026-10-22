@@ -18,19 +18,18 @@ Continue toward safe **all-feature mobile-only offline editing**, in tested, com
 
 ## Exact checkpoint
 
-Latest implementation commits:
+Latest implementation commits (newest first):
 
-- `94f44e7` — provider-owned attachment inspection, exact-byte repair and guarded cleanup.
-- `e465acd` — durable attachment bytes, SHA-256, manifests and atomic outbox references.
-- `d327255` — verified bulk fleet download and resumable inventory catch-up.
-- `5bf58ab` — older-build history recovery without replaying completed business changes.
-- `dd61e78` — web/mobile retained device-history inspection.
-- `83a5788` — atomic server backup of device rebase history.
+- `0fb0b86` — vehicle documents bounded to the 8 MiB `fleet-files` limit (SQL, domain, UI).
+- `a8bc612` — native vehicle-document UI in the saved-detail editor; provider wiring of uploads/attach on the existing session.
+- `5b06006` — SQLite v9 immutable vehicle-document intents, attach runner, discard protection.
+- `8b61de2` — server vehicle-document adapter (`20261119000100`, `attach-fleet-sync-document`).
+- `dac7f6d` — SQLite v8 upload progress, uploader and account-bound transport.
+- `c7eb542` — trusted byte verifier (`20261118000100`, `verify-fleet-sync-attachment`).
+- `c84a8e3` — upload reservations, private `fleet-sync-files` bucket and Storage RLS (`20261117000100`); the former untracked `attachment-upload.ts` draft is now reviewed, tested and exported.
+- Earlier: `94f44e7`, `e465acd`, `d327255`, `5bf58ab`, `dd61e78`, `83a5788`.
 
-**Uncommitted implementation draft:** `packages/domain/src/attachment-upload.ts`.
-It is newly written, untracked, **unwired and untested**. It defines tentative manifest/reservation/upload-receipt types and validators with a proposed `fleet-sync-files` bucket and stable company/user/attachment path. It is not exported from the domain index. Review/change it rather than assuming its contract is final. No reservation RPC, new bucket, verifier endpoint or remote upload flow has been implemented for it yet.
-
-Last verified implementation checks (before that draft): **244 targeted mobile tests**, mobile typecheck, whitespace checks. Earlier bulk-download slice also passed **107 embedded PostgreSQL/grant tests**. Real Supabase, device and multi-session validation remains outstanding.
+There is no uncommitted implementation work. Last verified: **120 embedded PostgreSQL sync tests + 5 grant checks**, **171 targeted mobile tests**, domain attachment tests, Edge Function logic specs (Vitest, since Deno is not installed here), mobile/domain typechecks and whitespace checks. Real Supabase Storage/Edge Function, device and multi-session validation remains outstanding.
 
 ## What currently works
 
@@ -41,7 +40,7 @@ Last verified implementation checks (before that draft): **244 targeted mobile t
 - Opt-in bulk vehicle/issue inventory downloads with resumable pages, tombstones and coverage. Dataset fingerprint fences every page against changes (including behind-cursor inserts and ABA); not a timestamp/sequence high-water mark. Bounded full scans, not an optimized delta feed or background-service promise.
 - Older completed device rebase history can be backed up only when the original server submission/hash exists. Unknown submissions are never replayed.
 
-## Attachment foundation: implemented, but NOT business file sync
+## Attachment foundation (local) — now extended by remote upload and vehicle-document adapters
 
 Key files:
 
@@ -58,29 +57,20 @@ SQLite reserves immutable scoped metadata before copying bytes. Native files use
 
 Atomic operation/reference/projection binding requires ready same-account/company/record manifests. Referenced files cannot be discarded, including after a business outcome; no safe bound-file release exists yet. The generic scalar worker blocks attachment-bearing operations so it cannot silently upload scalar fields and drop files. All non-discarded manifests count as retained work; sign-out counts are work items, not solely operations.
 
-The provider reuses its existing outbox session (no competing `activate()` handles). Inspection hides scoped metadata after account/role changes. Restore accepts **only original bytes**, preserving metadata and references; old final bytes are removed only after a matching partial exists. Picker/confirmation responses are fenced against route/account changes. No new business attachment picker or upload action is enabled. Existing connected file editors remain unchanged.
+The provider reuses its existing outbox session (no competing `activate()` handles). Inspection hides scoped metadata after account/role changes. Restore accepts **only original bytes**, preserving metadata and references; old final bytes are removed only after a matching partial exists. Picker/confirmation responses are fenced against route/account changes. The only enabled business attachment flow is **Add vehicle document** in the vehicle saved-detail editor (verified upload → proven `fleet-files` copy → appended document via `apply_fleet_changes`). All other file editors remain online-only and unchanged.
 
 **Bytes are not encrypted by this foundation. Sensitive-file intake remains disabled.** SDK-compatible `expo-crypto ~57.0.3` was added for SHA-256 and is lazily loaded; installed custom native builds need the matching module for hashing. The repository audit returned 35 advisories (7 moderate, 25 high, 3 critical); no `expo-crypto` advisory entry was returned. No broad audit fix was applied.
 
 ## Immediate next work
 
-Implement remote attachment ownership and byte receipts, then dedicated business-reference adapters:
+Remote attachment ownership, byte receipts and the first business-reference adapter (one appended **vehicle document**) are implemented end to end; see the attachment sections of `docs/mobile-offline-sync.md`. Remaining attachment work:
 
-1. Immutable, idempotent upload reservation scoped to authenticated actor/company/record and retained manifest. Stable object ID/path; reject different content/provenance on retry. Validate current permissions, quotas and target availability without changing the business record.
-2. Private immutable upload storage and RLS. Consider a separate bucket so legacy `fleet-files` cleanup cannot delete staged/reviewed objects. Deny unsafe overwrite/deletion; do not assume a successful SDK upload or client-supplied metadata proves hash/ownership.
-3. Server-side actual-byte size/SHA-256 verification and immutable receipt, linked to the owned object/version. Recheck current access when issuing/replaying proof. Server/service keys must never reach clients. Bound stream reads; authenticate before privileged operations. Handle replacement/deletion and role-revocation races.
-4. Native stable retries: distinguish never sent, uncertain upload, verified uploaded bytes, awaiting attachment/review and fully reconciled business reference. Persist acknowledgments before cleanup. Preserve original IDs/payloads through restart/account changes.
-5. Dedicated record mutation/review adapter and explicit safe reference release. **Uploaded is not attached or synced.** Retain losing/conflicting file candidates and any still-referenced bytes; no blind orphan deletion.
-6. Encryption/retention/access-revocation policy before sensitive workflows or broad rollout.
+1. Real Supabase validation: Storage API insert/select under the new RLS (including any implicit RETURNING), `upsert:false` duplicate errors, authenticated object reads (404 vs 400), `remove`, Edge Function wall-clock vs the 10-minute verification lease, and `auth.uid()` evaluation in `fleet_sync_attachment_uploader_allowed` (it sets `request.jwt.claim.sub` locally).
+2. Other file slots: vehicle photo/contract/registration/insurance/DOT/VIPR (single-slot replacement has conflict semantics), inspection photos, issue files (no issue file field exists), replace/remove documents. Each needs its own adapter; do not reuse the append-only document path for replacements.
+3. Retention/cleanup policy for `fleet-sync-files` objects after a document is applied or rejected (nothing deletes them today) and an explicit release path for unattached reservations (quota).
+4. Encryption/retention/access-revocation policy for device copies before sensitive workflows or broad rollout. Device copies are **not encrypted by FireOps**.
 
-Inspect existing policies/functions before implementing:
-
-- `apps/mobile/src/lib/fleet-files.ts` (current online upload/open/delete behavior).
-- `supabase/functions/delete-fleet-files/index.ts` (privileged cleanup; currently hardcoded legacy `fleet-files`).
-- Existing `storage.objects` policies in migrations.
-- `supabase/tests/fixtures/fleet-sync-harness.mjs` and `fleet-sync.sql`. Embedded fixture currently has auth/company/fleet boundaries, **not a Storage service implementation**. New Storage policies need explicit relevant fixtures and real target-Supabase validation.
-
-Suggested implementation slices: backend reservation/RLS tests → trusted byte verifier and recovery tests → native receipt persistence/transport → business-reference/review adapter. Keep incomplete adapters disabled. The tentative domain draft is a starting point, not a security-reviewed implementation.
+Beyond attachments: remaining workflow adapters listed below.
 
 ## Validation commands
 
@@ -89,8 +79,9 @@ Examples; choose only tests relevant to each slice:
 ```sh
 npm run typecheck --workspace @fireops/mobile
 npm run typecheck --workspace @fireops/domain
-npm run test --workspace @fireops/mobile -- src/lib/offline-attachment-vault.test.ts src/lib/offline-attachment-files-native.test.ts src/lib/offline-attachment-controller.test.ts src/lib/offline-attachment-drafts.test.tsx src/lib/offline-outbox.test.ts src/lib/offline-sync-worker.test.ts src/lib/offline-sync-sign-out.test.ts
-node --test supabase/tests/fleet-sync-device-history.test.mjs supabase/tests/data-api-grants.test.mjs
+npm run test --workspace @fireops/mobile -- src/lib/offline-attachment-vault.test.ts src/lib/offline-attachment-files-native.test.ts src/lib/offline-attachment-controller.test.ts src/lib/offline-attachment-drafts.test.tsx src/lib/offline-outbox.test.ts src/lib/offline-sync-worker.test.ts src/lib/offline-sync-sign-out.test.ts src/lib/offline-attachment-upload.test.ts
+node --test supabase/tests/fleet-sync-attachment-uploads.test.mjs supabase/tests/fleet-sync-document-attach.test.mjs supabase/tests/data-api-grants.test.mjs
+(cd packages/domain && npx vitest run --root ../../supabase/functions/verify-fleet-sync-attachment && npx vitest run --root ../../supabase/functions/attach-fleet-sync-document)
 git diff --check
 ```
 
@@ -98,7 +89,7 @@ Native tests use Node `node:sqlite` (Node 22.13+). Database tests use local dev-
 
 ## Deployment and remaining scope
 
-All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261116000100`. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
+All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261119000100`, plus the `verify-fleet-sync-attachment` and `attach-fleet-sync-document` Edge Functions. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
 
 All-feature offline remains unfinished. Beyond attachments: remaining workflows and permission/invariant-aware adapters (assignments/status, inspections, crew/qualifications, notes, documents, communications, training, inventory, tasks/preferences, financials, settings/integrations), their catch-up contracts, encryption/retention, recovery/compatibility/performance hardening, real validation and rollout preparation.
 
@@ -109,4 +100,4 @@ All-feature offline remains unfinished. Beyond attachments: remaining workflows 
 - Modified `supabase/.temp/{gotrue-version,rest-version,storage-migration,storage-version}`.
 - Untracked `jobs/usfs-dispatch/__pycache__/`.
 
-Do not erase, restore, commit or include those in implementation commits. Keep the uncommitted upload-contract draft separate from this unrelated list: it is intentional in-progress implementation work to continue.
+Do not erase, restore, commit or include those in implementation commits.
