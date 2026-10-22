@@ -380,6 +380,16 @@ The native implementation uses SDK-compatible `expo-crypto ~57.0.3` for SHA-256,
 
 Tests use actual SQLite/files for close/reopen, picker loss, disk-full copy/metadata failures, promotion recovery, corruption, exact retries, atomic bindings, cleanup interruption, quotas, account replacement and v6 upgrades. Native API tests cover sandbox paths, byte hashing, local-only sources, managed-file borrowing refusal and web disablement. Validation: **231 native tests**, mobile typecheck and whitespace checks passed. No server migration, upload, deployment or visual testing occurred.
 
+### Provider-owned attachment inspection and explicit repair
+
+The existing native sync provider now owns the vault/controller through its **existing scoped outbox session**, not a competing `activate()` handle. Current account/company, manager role, foreground state and sign-out pause fence file work. Background, role/account changes and teardown clear published metadata and invalidate late acknowledgments; returning to the account resumes integrity checks and pending cleanup. Crypto remains lazily loaded, so ordinary scalar work does not require a crypto call when there are no retained file manifests.
+
+Saved changes & sync lists retained attachment drafts only when present (or checking/error). It separates verified local copies, unconfirmed staging, unavailable/unverified bytes, pending cleanup and discarded metadata. Original reported time/connectivity/device, declared MIME, byte count, SHA-256 and operation bindings are inspectable. A root notice explicitly says these drafts have **no confirmed server backup or shared-record attachment**. Checks are not uploads. Sensitive-file intake remains disabled; existing file-edit/upload workflows remain online-only.
+
+Explicit **Restore exact original bytes** uses a local picker with a current-scope guard after selection. Repair requires the original SHA-256 and byte length, preserves metadata/reference intent, marks verification pending before copying, and removes a corrupt final file only after a matching partial exists. Interrupted repair is recoverable from that partial. It can restore a referenced file without changing its operation or bytes' meaning. Different selected content never replaces the original intent. Unbound deletion requires explicit confirmation and a fresh reference check; bound files stay protected. Picker/dialog responses after an account/role/route change are ignored. No new business file selection, automatic upload, remote cleanup or file-reference mutation was enabled.
+
+Tests exercise real-file repair (including interrupted repair and immutable bindings), controller availability/late-result fencing and picker/confirmation guards. Native content tests use stub components without mounting the app or launching UI. Validation: **244 native tests**, mobile typecheck and whitespace checks passed. Encryption, remote object verification, upload acknowledgment recovery, permission-aware attachment adapters and safe bound-file release remain pending. Nothing was pushed or deployed.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -423,7 +433,7 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 
 - Expand verified download coverage/freshness and complete authorized company-wide catch-up; retain per-record availability and pending overlays. Native scalar saves now use the provider-owned session; do not create competing `activate()` handles.
 - Add durable attachment bytes/manifests and remaining workflow/dependency adapters. Verified vehicle/issue bulk downloads and bounded reconnect inventory catch-up are implemented; other domains still need their own authorization-aware download/catch-up contracts. Online device-history inspection is available on both clients; guarded older-build history backup is implemented. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
-- Wire the attachment vault through the provider, add device-draft inspection/recovery, then implement remote upload/ownership/reference receipts before enabling any business attachment adapter. Durable app-managed files/manifests and restart/cleanup recovery are implemented; encryption and bound-file release remain pending.
+- Implement remote upload/ownership/reference receipts before enabling any business attachment adapter. Provider-owned draft inspection, exact-byte repair and guarded cleanup are implemented. Durable app-managed files/manifests and restart/cleanup recovery are implemented; encryption and bound-file release remain pending.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Extend existing sync notices, owner/admin Alerts and conflict review/approval to remaining adapters with workflow-appropriate permissions/privacy.
 

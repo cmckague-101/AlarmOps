@@ -312,6 +312,10 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           if(row)return row.device_id;
           const value=createId();required(value,'device ID');await tx.runAsync('INSERT INTO offline_devices VALUES (?,?)',identity.userId,value);return value;
         })},
+        listAttachmentReferences():Promise<{attachmentId:string;operationId:string}[]>{return read(async()=>{
+          const rows=await db.getAllAsync<{attachment_id:string;operation_id:string}>('SELECT attachment_id,operation_id FROM offline_attachment_refs WHERE user_id=? AND company_id=? ORDER BY operation_id',...ids);
+          return rows.map(row=>{attachmentId(row.attachment_id);required(row.operation_id,'operation ID');return {attachmentId:row.attachment_id,operationId:row.operation_id}});
+        })},
         listAttachments():Promise<OfflineAttachment[]>{return read(async()=> (await db.getAllAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? ORDER BY attachment_id',...ids)).map(asset))},
         getAttachment(id:string):Promise<OfflineAttachment|null>{attachmentId(id);return read(async()=>{const row=await db.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);return row?asset(row):null})},
         reserveAttachment(intent:OfflineAttachmentIntent):Promise<OfflineAttachment>{

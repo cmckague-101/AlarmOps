@@ -5,8 +5,10 @@ import {useOfflineSync} from '../providers/offline-sync-provider';
 import {useFireOpsTheme} from '../theme';
 
 export function OfflineSyncNotice({topInset=0}:{topInset?:number}){
-  const {state,available,dismiss}=useOfflineSync();const theme=useFireOpsTheme();
-  const notice=available?offlineSyncNotice(state):null;if(!notice)return null;
+  const {state,available,dismiss,attachmentState}=useOfflineSync();const theme=useFireOpsTheme();
+  const files=attachmentState.items.filter(item=>item.state!=='discarded').length;
+  const fileNotice=attachmentState.error?{message:'Attachment recovery needs attention',detail:attachmentState.error,dismissible:false}:files?{message:`${files} attachment ${files===1?'draft is':'drafts are'} on this device only`,detail:'No server backup or shared-record attachment is confirmed. See details before clearing app data.',dismissible:false}:null;
+  const notice=available?(offlineSyncNotice(state)??fileNotice):null;if(!notice)return null;
   return <View accessibilityLiveRegion="polite" style={[styles.notice,{backgroundColor:theme.paper,borderColor:theme.divider,paddingTop:8+topInset}]}>
     <View style={styles.copy}><Text style={[styles.title,{color:theme.ink}]}>{notice.message}</Text>{notice.detail&&<Text style={{color:theme.secondary,fontSize:12}}>{notice.detail}</Text>}</View>
     <Pressable accessibilityRole="button" accessibilityLabel="Open saved changes and sync status" onPress={()=>router.push('/sync-status' as never)} style={styles.button}><Text style={{color:theme.ember,fontWeight:'700'}}>Details</Text></Pressable>

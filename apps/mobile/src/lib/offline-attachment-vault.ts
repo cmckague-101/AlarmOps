@@ -30,7 +30,7 @@ export function createOfflineAttachmentVault(options:{session:OfflineOutboxSessi
     if(!await session.readyAttachment(asset.attachmentId))throw new Error('Attachment was discarded while it was being saved.');guard();
     const saved=await session.getAttachment(asset.attachmentId);guard();if(!saved||saved.state!=='ready')throw new Error('Attachment save was not confirmed.');return saved;
   }
-  async function failure(id:string):Promise<boolean>{if(allowed())try{await session.missingAttachment(id,'Device copy is incomplete or inconsistent. Reselect the original file or explicitly discard an unbound draft.');return true}catch{/* Preserve original manifest and bytes on storage failure. */}return false}
+  async function failure(id:string):Promise<boolean>{if(allowed())try{await session.missingAttachment(id,'Device copy is incomplete, unavailable or unverified. Reselect the original file or explicitly discard an unbound draft.');return true}catch{/* Preserve original manifest and bytes on storage failure. */}return false}
   const vault={
     dispose(){disposed=true},
     stage(input:{attachmentId:string;entityType:'vehicle'|'issue';entityId:string;uri:string;name:string;mimeType:string|null}):Promise<OfflineAttachment>{
@@ -60,6 +60,18 @@ export function createOfflineAttachmentVault(options:{session:OfflineOutboxSessi
         }catch(error){if(reserved)await failure(request.attachmentId);throw error}
       });
     },
+    repair(id:string,uri:string):Promise<OfflineAttachment>{attachmentId(id);return run(async()=>{
+      const asset=await session.getAttachment(id);guard();if(!asset||['discarding','discarded'].includes(asset.state))throw new Error('Attachment is unavailable for repair.');
+      const source=await files.source(uri);guard();if(!matches(asset,source))throw new Error('Only the exact original bytes can repair this attachment. Its intent was not changed.');
+      await session.missingAttachment(id,'Restoring the original device copy; verification is pending.');guard();
+      try{
+        await files.remove(id,'part');guard();await files.copy(uri,id,asset.byteSize);guard();
+        if(!matches(asset,await files.inspect(id,'part')))throw new Error('Repair copy does not match the original bytes.');guard();
+        // Explicit repair may remove a corrupt/missing final file only after a
+        // verified replacement exists. A crash leaves the partial recoverable.
+        await files.remove(id,'blob');guard();return await finish(asset);
+      }catch(error){await failure(id);throw error}
+    })},
     recover():Promise<void>{return run(async()=>{
       for(const asset of await session.listAttachments()){
         guard();if(asset.state==='discarding'||asset.state==='discarded'){

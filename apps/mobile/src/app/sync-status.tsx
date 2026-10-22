@@ -5,10 +5,11 @@ import {SectionScreen} from '../components/section-screen';
 import {useOfflineSync} from '../providers/offline-sync-provider';
 import {offlineSyncEntryLabel,offlineSyncVisible} from '../lib/offline-sync-worker';
 import {continuationReviewHref} from '../lib/offline-rebase-form';
+import {OfflineAttachmentDrafts} from '../components/offline-attachment-drafts';
 import {useFireOpsTheme} from '../theme';
 
 export default function SyncStatusScreen(){
-  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor,downloadFleet,stopFleetDownload}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
+  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor,downloadFleet,stopFleetDownload,attachmentController,attachmentState}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
   useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
   const [history,setHistory]=useState(false);
   const visible=history?state.entries:state.entries.filter(offlineSyncVisible);
@@ -30,6 +31,7 @@ export default function SyncStatusScreen(){
         {(state.download||state.downloadError||state.error)&&button('Stop company-wide catch-up (keep saved data)',()=>void stopFleetDownload())}
       </View>}
       {!!state.error&&<View accessibilityRole="alert" style={styles.entry}><Text style={{color:theme.danger}}>{state.error}</Text></View>}
+      {attachmentController&&<OfflineAttachmentDrafts key={`${attachmentController.scope.userId}:${attachmentController.scope.companyId}`} controller={attachmentController} state={attachmentState}/>}
       {!!state.entries.length&&button(history?'Hide completed history':'Show completed history',()=>setHistory(value=>!value))}
       {visible.map(entry=><View key={entry.operation.operationId} style={[styles.entry,{borderColor:theme.divider}]}>
         <Text style={[styles.title,{color:theme.ink}]}>{entry.operation.entityType} · {entry.operation.entityId.slice(-8)}</Text>

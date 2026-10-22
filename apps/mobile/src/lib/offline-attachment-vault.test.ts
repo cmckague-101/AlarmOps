@@ -48,6 +48,13 @@ describe('durable scoped attachment vault (actual SQLite and files)',()=>{
   it('detects corruption before file access and never overwrites inconsistent final bytes',async()=>{
     const f=await setup();await f.vault.stage(f.input);writeFileSync(f.path(id(1),'blob'),'wrong');await expect(f.vault.localUri(id(1))).rejects.toThrow('integrity');await expect(f.vault.stage(f.input)).rejects.toThrow('repair');expect(readFileSync(f.path(id(1),'blob'),'utf8')).toBe('wrong');expect((await f.session.getAttachment(id(1)))?.state).toBe('missing');
   });
+  it('repairs bound corrupt copies only with exact original bytes without changing metadata or references',async()=>{
+    const f=await setup();const original=await f.vault.stage(f.input);await f.session.enqueue(f.operation,{id:entity},{attachmentIds:[id(1)]});writeFileSync(f.path(id(1),'blob'),'bad');await expect(f.vault.localUri(id(1))).rejects.toThrow('integrity');const wrong=join(f.root,'wrong');writeFileSync(wrong,'not original');await expect(f.vault.repair(id(1),pathToFileURL(wrong).href)).rejects.toThrow('exact original');expect(readFileSync(f.path(id(1),'blob'),'utf8')).toBe('bad');
+    expect(await f.vault.repair(id(1),f.input.uri)).toEqual(original);expect((await f.session.list())[0].attachmentIds).toEqual([id(1)]);expect(await f.session.listAttachmentReferences()).toEqual([{attachmentId:id(1),operationId:f.operation.operationId}]);
+  });
+  it('recovers interrupted explicit repair from verified partial bytes',async()=>{
+    const f=await setup();const original=await f.vault.stage(f.input);writeFileSync(f.path(id(1),'blob'),'bad');vi.mocked(f.files.promote).mockRejectedValueOnce(new Error('interrupted repair'));await expect(f.vault.repair(id(1),f.input.uri)).rejects.toThrow('interrupted repair');expect((await f.session.getAttachment(id(1)))?.state).toBe('missing');unlinkSync(f.picked);await f.vault.recover();expect(await f.session.getAttachment(id(1))).toEqual(original);
+  });
   it('rejects different retry bytes, names, targets and path identities',async()=>{
     const f=await setup();vi.mocked(f.files.copy).mockRejectedValueOnce(new Error('disk full'));await expect(f.vault.stage(f.input)).rejects.toThrow();writeFileSync(f.picked,'different');await expect(f.vault.stage(f.input)).rejects.toThrow('differ');await expect(f.vault.stage({...f.input,name:'other.png'})).rejects.toThrow('reused');await expect(f.vault.stage({...f.input,entityId:id(2)})).rejects.toThrow('reused');expect(()=>f.vault.stage({...f.input,attachmentId:'../escape'})).toThrow('identity');
   });
