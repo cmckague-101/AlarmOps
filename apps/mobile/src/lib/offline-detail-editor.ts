@@ -1,4 +1,4 @@
-import {addedIssueUpdates,createSyncPatch,fleetSyncFields,fleetSyncRecordProblem,isVehicleFileSlot,issueStatuses,vehicleStatuses,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {addedIssueUpdates,addedListEntries,createSyncPatch,fleetSyncFields,fleetSyncRecordProblem,isVehicleFileSlot,issueStatuses,vehicleStatuses,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import {projectOfflineFleet} from './offline-fleet-model';
 import type {OfflineOutboxSession,OutboxEntry,ContinuationReview} from './offline-outbox';
 import {decodeCanonicalSyncRecord} from './offline-sync-protocol';
@@ -13,11 +13,17 @@ const syncFilePath=/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/sync-([0-9a-f]{8}-[0-9a-f]{4}
 export type DetailSaveExtras={readonly remove?:readonly string[];readonly attachmentIds?:readonly string[]};
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const active=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
+function validateSyncFile(value:unknown,attachmentIds:readonly string[]){
+  const file=value as Record<string,unknown>|null;const match=typeof file?.path==='string'?syncFilePath.exec(file.path):null;
+  if(!file||typeof file!=='object'||Array.isArray(file)||Object.keys(file).sort().join()!=='dataUrl,name,path,type'||file.dataUrl!==''||typeof file.name!=='string'||typeof file.type!=='string'||!match||!attachmentIds.includes(match[1]))
+    throw new Error('Vehicle files must reference a saved device file.');
+}
 /** File slots accept only the deterministic proven-copy value for a bound attachment (the server rechecks the proof). */
 export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord,extras:DetailSaveExtras={},context:{userId?:string;base?:SyncRecord}={}){
   createSyncPatch({},values);
   for(const field of extras.remove??[])if(!removable[entityType].includes(field)||field in values)throw new Error('This field cannot be cleared here.');
   if('updates' in values&&(Object.keys(values).length!==1||(extras.remove??[]).length))throw new Error('Issue updates are saved separately from other issue changes.');
+  if('inspections' in values&&(Object.keys(values).length!==1||(extras.remove??[]).length))throw new Error('Inspections are saved separately from other vehicle changes.');
   for(const [field,value] of Object.entries(values)){
     if(!fields[entityType].includes(field))throw new Error('This field is not enabled for offline editing.');
     if(field==='status'){
@@ -32,10 +38,17 @@ export function validateOfflineDetailValues(entityType:DetailTarget['entityType'
     }else if(field==='updates'){
       const added=addedIssueUpdates(context.base?.updates,value);
       for(const entry of added)if(Object.keys(entry).sort().join()!=='createdAt,createdBy,createdById,id,text'||!uuid.test(entry.id)||entry.createdById!==context.userId||!shortText(entry.text,2000)||!shortText(entry.createdBy)||typeof entry.createdAt!=='string'||!Number.isFinite(Date.parse(entry.createdAt as string)))throw new Error('Invalid issue update.');
+    }else if(field==='inspections'){
+      const [entry]=addedListEntries(context.base?.inspections,value,1);const items=entry.items as Record<string,unknown>[]|undefined;
+      if(Object.keys(entry).sort().join()!=='assignmentIncident,createdAt,id,inspectorId,inspectorName,items'||!uuid.test(entry.id)||entry.inspectorId!==context.userId||!shortText(entry.inspectorName)
+        ||typeof entry.assignmentIncident!=='string'||entry.assignmentIncident.length>200||typeof entry.createdAt!=='string'||!Number.isFinite(Date.parse(entry.createdAt as string))||!Array.isArray(items)||!items.length||items.length>100)throw new Error('Invalid inspection.');
+      for(const item of items){
+        if(item.kind==='photo'&&!item.photo)throw new Error(`${String(item.label)} photo is required.`);
+        if(item.kind!=='photo'&&!['Pass','Fail'].includes(item.result as string))throw new Error('Choose Pass or Fail for every check.');
+        if(item.photo)validateSyncFile(item.photo,extras.attachmentIds??[]);
+      }
     }else if(isVehicleFileSlot(field)){
-      const file=value as Record<string,unknown>|null;const match=typeof file?.path==='string'?syncFilePath.exec(file.path):null;
-      if(!file||typeof file!=='object'||Array.isArray(file)||Object.keys(file).sort().join()!=='dataUrl,name,path,type'||file.dataUrl!==''||typeof file.name!=='string'||typeof file.type!=='string'||!match||!(extras.attachmentIds??[]).includes(match[1]))
-        throw new Error('Vehicle files must reference a saved device file.');
+      validateSyncFile(value,extras.attachmentIds??[]);
     }else if(field==='year'){
       if(typeof value!=='number'||!Number.isInteger(value)||value<1000||value>9999)throw new Error('Vehicle year must contain four digits.');
     }else{

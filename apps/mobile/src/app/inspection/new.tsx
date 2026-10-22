@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { canInspectVehicle, type VehicleInspection } from "@fireops/domain";
+import { canInspectVehicle, vehicleSlotFileValue, type AttachmentUploadManifest, type SyncRecord, type VehicleInspection } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -9,6 +9,8 @@ import { uploadFleetFile, removeFleetFiles } from "@/lib/fleet-files";
 import { createFleetId, saveFleetInspection, useFleetVehicles, type FleetVehicleFile } from "@/lib/fleet-store";
 import { useInspectionTemplate } from "@/lib/inspection-template-store";
 import { useSession } from "@/providers/session-provider";
+import { useOfflineSync } from "@/providers/offline-sync-provider";
+import { createDetailChangeActions } from "@/lib/offline-attachment-actions";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
 type CheckItem = VehicleInspection["items"][number];
@@ -32,6 +34,11 @@ export default function NewInspectionScreen() {
   const [error, setError] = useState("");
   const uploadedPaths = useRef(new Set<string>());
   const saved = useRef(false);
+  // Offline: photos are staged on device and the inspection is saved through the verified editor.
+  const { offline, detailEditor, attachmentController, state: syncState } = useOfflineSync();
+  const offlineReady = offline && Platform.OS !== "web" && !!detailEditor && syncState.records.some((row) => row.entityType === "vehicle" && row.entityId === vehicleId && row.record !== null);
+  const stagedPhotos = useRef(new Map<string, string>());
+  const offlineSave = useRef<ReturnType<typeof createDetailChangeActions> | null>(null);
 
   useEffect(() => { if (!templateLoading && !templateInitialized.current) { setItems(templateItems.map((item) => ({ id: item.id, label: item.label, kind: item.kind, ...(item.kind === "photo" ? {} : { result: "Pass" as const }) }))); templateInitialized.current = true; } }, [templateItems, templateLoading]);
 
@@ -66,6 +73,21 @@ export default function NewInspectionScreen() {
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.85 });
     if (result.canceled) return;
     const asset = result.assets[0];
+    if (offline) {
+      if (!offlineReady || !attachmentController) { setError(offlineReady ? "Offline photos need owner/admin access in this version. Reconnect to attach photos." : "Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
+      setUploading(index);
+      try {
+        const attachmentId = createFleetId();
+        const staged = await attachmentController.stageVehicleFile({ attachmentId, entityId: vehicleId, uri: asset.uri, name: asset.fileName ?? "inspection-photo.jpg", mimeType: asset.mimeType ?? "image/jpeg" });
+        const { state: _state, error: _error, ...manifest } = staged;
+        const itemId = items[index]?.id;
+        if (itemId) stagedPhotos.current.set(itemId, attachmentId);
+        updateItem(index, { photo: vehicleSlotFileValue(manifest as AttachmentUploadManifest) });
+      } catch (stageError) {
+        setError(stageError instanceof Error ? stageError.message : "Photo could not be saved on this device.");
+      } finally { setUploading(null); }
+      return;
+    }
     setUploading(index);
     try {
       const previous = items[index]?.photo as FleetVehicleFile | undefined;
@@ -86,6 +108,27 @@ export default function NewInspectionScreen() {
     if (!vehicle || !user || saving || uploading !== null) return;
     const missingPhoto = items.find((item) => item.kind === "photo" && !item.photo);
     if (missingPhoto) { setError(`${missingPhoto.label} photo is required.`); return; }
+    if (offline) {
+      if (!offlineReady || !detailEditor) { setError("Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
+      if (items.some((item) => item.photo && !item.photo.path?.includes("/sync-"))) { setError("Some photos were uploaded online. Reconnect to submit, or attach them again offline."); return; }
+      setSaving(true); setError("");
+      try {
+        const editor = detailEditor;
+        offlineSave.current ??= createDetailChangeActions({ isCurrent: () => true, prepare: () => editor.prepare({ entityType: "vehicle", entityId: vehicleId }), save: (draft, values, extras) => editor.save(draft, values, extras) });
+        const actions = offlineSave.current;
+        // A failed editor save never committed (validation or rolled-back SQLite), so a corrected
+        // resubmission starts a fresh change instead of retrying stale values.
+        const done = await actions.start("inspection", (draft) => ({
+          values: { inspections: [{ id: createFleetId(), assignmentIncident: assignmentIncident.trim(), inspectorId: user.id, inspectorName: user.name, createdAt: new Date().toISOString(), items } as unknown as SyncRecord, ...((draft.record.inspections as SyncRecord[] | undefined) ?? [])] },
+          extras: { attachmentIds: items.flatMap((item) => item.photo ? [stagedPhotos.current.get(item.id)].filter((id): id is string => !!id) : []) },
+        }));
+        if (done) { saved.current = true; router.back(); }
+      } catch (saveError) {
+        offlineSave.current?.cancel();
+        setError(saveError instanceof Error ? saveError.message : "Inspection could not be saved on this device.");
+      } finally { setSaving(false); }
+      return;
+    }
     setSaving(true); setError("");
     try {
       await saveFleetInspection(vehicle, { id: createFleetId(), assignmentIncident: assignmentIncident.trim(), inspectorId: user.id, inspectorName: user.name, createdAt: new Date().toISOString(), items }, user);
@@ -100,7 +143,7 @@ export default function NewInspectionScreen() {
     <Stack.Screen options={{ title: "Inspect vehicle" }} />
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} keyboardShouldPersistTaps="handled">
-        <View style={styles.heading}><Text style={styles.title}>{vehicle?.name ?? "Vehicle inspection"}</Text><Text style={styles.subtitle}>Complete readiness checklist. Pass selected by default.</Text></View>
+        <View style={styles.heading}><Text style={styles.title}>{vehicle?.name ?? "Vehicle inspection"}</Text><Text style={styles.subtitle}>Complete readiness checklist. Pass selected by default.</Text>{offline ? <Text style={styles.help}>{offlineReady ? "Offline: this inspection and its photos are saved on this device and sync when connected. Photos are not encrypted by FireOps." : "Offline: download this vehicle online first (saved-detail editor) to inspect it offline."}</Text> : null}</View>
         {loading ? <Text style={styles.help}>Loading vehicle…</Text> : !vehicle ? <Text style={styles.error}>Vehicle not found.</Text> : <>
           <View style={styles.field}><Text style={styles.label}>Assignment / Incident</Text><TextInput value={assignmentIncident} onChangeText={setAssignmentIncident} maxLength={200} placeholder="Assignment or incident name" placeholderTextColor={theme.secondary} style={styles.input}/></View>
           <View style={styles.field}><Text style={styles.label}>Inspector</Text><View style={styles.readonly}><Text style={styles.readonlyText}>{user?.name ?? "Current user"}</Text></View></View>

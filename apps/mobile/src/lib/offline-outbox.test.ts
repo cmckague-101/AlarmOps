@@ -694,7 +694,7 @@ describe('atomic native detail-edit boundary',()=>{
   });
   it('rejects unsupported fields and invalid values without saving anything',async()=>{
     const {editor,session}=await detailSetup();const draft=await editor.prepare({entityType:'vehicle',entityId:rawVehicle.id});
-    for(const values of [{inspections:[]},{status:'Parked'},{status:'Assigned'},{year:24},{unit:''},{notes:null},{notes:'x'.repeat(10001)},{notes:undefined}])await expect(editor.save(draft,values as unknown as SyncRecord)).rejects.toThrow();
+    for(const values of [{documents:[]},{status:'Parked'},{status:'Assigned'},{year:24},{unit:''},{notes:null},{notes:'x'.repeat(10001)},{notes:undefined}])await expect(editor.save(draft,values as unknown as SyncRecord)).rejects.toThrow();
     await expect(editor.save(draft,{notes:'base'})).rejects.toThrow('No detail changes');expect(await session.list()).toEqual([]);
   });
   it('deduplicates concurrent saves and refuses changed retry payloads',async()=>{

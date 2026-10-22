@@ -62,7 +62,7 @@ describe('scoped fleet display projection',()=>{
     const original=entry().operation;
     const foreign=entry('foreign',1,{operation:{...original,companyId:'foreign'}});
     const wrongUser=entry('wrong',1,{operation:{...original,provenance:{...original.provenance,userId:'other'}}});
-    const unsupported=entry('unsupported',1,{operation:{...original,mutation:{kind:'update',baseRevision:'1',base:raw,patch:{inspections:{present:true,value:[]}}}}});
+    const unsupported=entry('unsupported',1,{operation:{...original,mutation:{kind:'update',baseRevision:'1',base:raw,patch:{documents:{present:true,value:[]}}}}});
     expect(projectOfflineFleet([],model({entries:[foreign,wrongUser]})).pending).toEqual({});
     expect(projectOfflineFleet([],model({entries:[unsupported]})).records[0].record).toEqual(raw);
   });

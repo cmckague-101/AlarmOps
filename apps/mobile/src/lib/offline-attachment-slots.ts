@@ -12,10 +12,22 @@ const message=(error:unknown,fallback:string)=>error instanceof Error&&error.mes
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const blockedKinds:Record<string,string>={access_revoked:'Company owner/admin access is required to upload this file.',conflict:'This upload is already used for another vehicle file. Nothing was replaced.',invalid:'This file cannot fill a vehicle file slot.',not_found:'The server has no reservation for this file.'};
 
-/** Slot fields whose proposed value references `attachmentId`. */
-export function slotsReferencing(entry:OutboxEntry,attachmentId:string):string[]{
-  return Object.entries(entry.operation.mutation.kind==='update'?entry.operation.mutation.patch:{}).filter(([field,slot])=>isVehicleFileSlot(field)&&slot.present&&typeof (slot.value as {path?:unknown}|null)?.path==='string'&&(slot.value as {path:string}).path.endsWith(`/sync-${attachmentId}`)).map(([field])=>field);
+const patchOf=(entry:OutboxEntry)=>entry.operation.mutation.kind==='update'?entry.operation.mutation.patch:{};
+const referencesFile=(value:unknown,attachmentId:string)=>typeof (value as {path?:unknown}|null)?.path==='string'&&(value as {path:string}).path.endsWith(`/sync-${attachmentId}`);
+/** The newly added inspection of an append-only inspection change. */
+function addedInspection(entry:OutboxEntry):Record<string,unknown>|null{
+  const slot=patchOf(entry).inspections;const list=slot?.present&&Array.isArray(slot.value)?slot.value:null;
+  return list&&list[0]&&typeof list[0]==='object'?list[0] as Record<string,unknown>:null;
 }
+/** Every proposed file value referencing `attachmentId`: file slots and new-inspection photos. */
+export function fileReferences(entry:OutboxEntry,attachmentId:string):{field:string;value:unknown}[]{
+  const refs:{field:string;value:unknown}[]=Object.entries(patchOf(entry)).filter(([field,slot])=>isVehicleFileSlot(field)&&slot.present&&referencesFile(slot.value,attachmentId)).map(([field,slot])=>({field,value:slot.present?slot.value:null}));
+  const items=addedInspection(entry)?.items;
+  if(Array.isArray(items))for(const item of items as Record<string,unknown>[])if(referencesFile(item.photo,attachmentId))refs.push({field:'inspections',value:item.photo});
+  return refs;
+}
+/** Slot fields whose proposed value references `attachmentId`. */
+export const slotsReferencing=(entry:OutboxEntry,attachmentId:string)=>[...new Set(fileReferences(entry,attachmentId).map(ref=>ref.field))];
 
 /**
  * Worker hook: every bound file must have verified bytes and a server-proven
@@ -29,8 +41,8 @@ export function createSlotAttachmentPreparer(options:{session:OfflineOutboxSessi
       const asset=await session.getAttachment(id);if(!asset)return {kind:'blocked',error:'A file referenced by this change is unavailable on this device.'};
       const {state:_state,error:_error,...intent}=asset;const manifest=decodeAttachmentUploadManifest(intent);
       let expected;try{expected=vehicleSlotFileValue(manifest)}catch(error){return {kind:'blocked',error:message(error,'This file cannot fill a vehicle file slot.')}}
-      const slots=slotsReferencing(entry,id);
-      if(!slots.length||slots.some(field=>!same((entry.operation.mutation as {patch:Record<string,{value?:unknown}>}).patch[field].value,expected)))return {kind:'blocked',error:'This change does not reference its saved file exactly. Nothing was sent.'};
+      const refs=fileReferences(entry,id);
+      if(!refs.length||refs.some(ref=>!same(ref.value,expected)))return {kind:'blocked',error:'This change does not reference its saved file exactly. Nothing was sent.'};
       try{
         const upload=await uploader.upload(id,signal);
         if(upload.stage==='blocked')return {kind:'blocked',error:upload.error??'File upload is blocked.'};
@@ -51,7 +63,7 @@ export function createSlotAttachmentPreparer(options:{session:OfflineOutboxSessi
 
 /** Kept slot fields of a final operation, or null while its result is not final. */
 export function settledSlotFields(entry:OutboxEntry):{kept:string[];revision:string|null}|null{
-  const outcome=entry.reviewOutcome;const slots=Object.keys(entry.operation.mutation.kind==='update'?entry.operation.mutation.patch:{}).filter(isVehicleFileSlot);
+  const outcome=entry.reviewOutcome;const slots=Object.keys(patchOf(entry)).filter(field=>isVehicleFileSlot(field)||field==='inspections');
   if(entry.status==='synced')return {kept:outcome&&outcome.outcome!=='kept'?slots.filter(field=>outcome.keptFields.includes(field)):slots,revision:outcome?.revision??(entry.receipt?.kind==='applied'?entry.receipt.revision:null)};
   if(entry.status==='not_selected'||(entry.status==='blocked'&&outcome))return {kept:outcome?slots.filter(field=>outcome.keptFields.includes(field)):[],revision:outcome?.revision??null};
   return null;
@@ -60,6 +72,10 @@ export function settledSlotFields(entry:OutboxEntry):{kept:string[];revision:str
 export function slotConfirmedInRecord(entry:OutboxEntry,field:string,revision:string|null,records:readonly CachedOfflineRecord[]):boolean{
   const cached=records.find(item=>item.entityType==='vehicle'&&item.entityId===entry.operation.entityId);const patch=entry.operation.mutation.kind==='update'?entry.operation.mutation.patch:{};
   if(!revision||!cached?.record||BigInt(cached.revision)<BigInt(revision))return false;
+  if(field==='inspections'){
+    const added=addedInspection(entry);const list=(cached.record as SyncRecord).inspections;
+    return !!added&&Array.isArray(list)&&list.some(item=>same(item,added));
+  }
   return same((cached.record as SyncRecord)[field],patch[field]?.present?patch[field].value:undefined);
 }
 

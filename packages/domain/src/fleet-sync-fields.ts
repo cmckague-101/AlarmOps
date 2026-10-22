@@ -6,7 +6,7 @@ import {vehicleFileSlots} from './attachment-upload';
 export type FleetSyncEntity='vehicle'|'issue';
 export const fleetSyncScalarFields:Readonly<Record<FleetSyncEntity,readonly string[]>>={vehicle:['unit','type','year','make','model','vin','plate','notes'],issue:['title','description','priority']};
 export const fleetSyncFields:Readonly<Record<FleetSyncEntity,readonly string[]>>={
-  vehicle:[...fleetSyncScalarFields.vehicle,...vehicleFileSlots,'status','assignedTo','assignedFire'],
+  vehicle:[...fleetSyncScalarFields.vehicle,...vehicleFileSlots,'status','assignedTo','assignedFire','inspections'],
   issue:[...fleetSyncScalarFields.issue,'status','resolvedAt','updates'],
 };
 /** Invariant groups conflict as one unit when any member changed concurrently. */
@@ -15,26 +15,31 @@ export const vehicleStatuses=['Ready','Assigned','Out of service'] as const;
 export const issueStatuses=['Open','Resolved'] as const;
 export const isFleetSyncField=(entity:string,field:string)=>(entity==='vehicle'||entity==='issue')&&fleetSyncFields[entity].includes(field);
 
-type UpdateEntry=Record<string,unknown>&{id:string};
-const entries=(value:unknown):UpdateEntry[]=>{if(value===undefined)return [];if(!Array.isArray(value))throw new Error('Issue updates must be a list.');return value as UpdateEntry[]};
+type ListEntry=Record<string,unknown>&{id:string};
+/** Append-only list fields: entries are only ever prepended (server merges onto the current list). */
+export const fleetSyncAppendFields:Readonly<Record<FleetSyncEntity,{field:string;max:number}>>={vehicle:{field:'inspections',max:1},issue:{field:'updates',max:20}};
+const entries=(value:unknown):ListEntry[]=>{if(value===undefined)return [];if(!Array.isArray(value))throw new Error('Expected a list.');return value as ListEntry[]};
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 /** Entries a proposal prepended to its base list; anything else is not an append. */
-export function addedIssueUpdates(baseUpdates:unknown,proposed:unknown):UpdateEntry[]{
-  const base=entries(baseUpdates);const next=entries(proposed);const count=next.length-base.length;
-  if(count<1||count>20||!same(next.slice(count),base))throw new Error('Issue updates can only add new entries.');
+export function addedListEntries(baseList:unknown,proposed:unknown,max:number):ListEntry[]{
+  const base=entries(baseList);const next=entries(proposed);const count=next.length-base.length;
+  if(count<1||count>max||!same(next.slice(count),base))throw new Error('Only new entries can be added.');
   return next.slice(0,count);
 }
+export const addedIssueUpdates=(baseUpdates:unknown,proposed:unknown)=>addedListEntries(baseUpdates,proposed,fleetSyncAppendFields.issue.max);
 /** Prepends added entries to the current list, skipping ids already present. */
-export function appendIssueUpdates(baseRecord:SyncRecord,currentRecord:SyncRecord,proposed:unknown):UpdateEntry[]{
-  const added=addedIssueUpdates(baseRecord.updates,proposed);const current=entries(currentRecord.updates);
+export function appendListEntries(entity:FleetSyncEntity,baseRecord:SyncRecord,currentRecord:SyncRecord,proposed:unknown):ListEntry[]{
+  const {field,max}=fleetSyncAppendFields[entity];const added=addedListEntries(baseRecord[field],proposed,max);const current=entries(currentRecord[field]);
   return [...added.filter(entry=>!current.some(item=>item.id===entry.id)),...current];
 }
+export const appendIssueUpdates=(baseRecord:SyncRecord,currentRecord:SyncRecord,proposed:unknown)=>appendListEntries('issue',baseRecord,currentRecord,proposed);
 export function mergeFleetSyncDetail(entity:FleetSyncEntity,base:SyncRecord,current:SyncRecord|null,patch:SyncPatch):SyncMergeResult{
-  if(entity==='issue'&&Object.prototype.hasOwnProperty.call(patch,'updates')){
-    if(Object.keys(patch).length!==1)throw new Error('Issue updates are saved separately from other issue changes.');
-    const slot=patch.updates;if(!slot.present)throw new Error('Issue updates cannot be removed.');
+  const {field}=fleetSyncAppendFields[entity];
+  if(Object.prototype.hasOwnProperty.call(patch,field)){
+    if(Object.keys(patch).length!==1)throw new Error(`${entity==='issue'?'Issue updates':'Inspections'} are saved separately from other changes.`);
+    const slot=patch[field];if(!slot.present)throw new Error('Append-only lists cannot be removed.');
     if(current===null)return mergeSyncUpdate(base,current,patch);
-    return {kind:'merged',record:{...current,updates:appendIssueUpdates(base,current,slot.value) as never},changedFields:['updates']} as SyncMergeResult;
+    return {kind:'merged',record:{...current,[field]:appendListEntries(entity,base,current,slot.value) as never},changedFields:[field]} as SyncMergeResult;
   }
   return mergeSyncUpdate(base,current,patch,{fieldGroups:fleetSyncFieldGroups[entity]});
 }

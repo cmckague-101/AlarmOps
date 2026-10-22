@@ -101,3 +101,26 @@ describe('final result rules for file slots',()=>{
     expect(slotConfirmedInRecord(value,'photo','2',records('3',{path:'q'}))).toBe(false);expect(slotConfirmedInRecord(value,'photo',null,records('3',{path:'p'}))).toBe(false);
   });
 });
+describe('offline inspections with photos (actual SQLite and files)',()=>{
+  const inspection=(photo:unknown,changes:Record<string,unknown>={})=>({id:'50000000-0000-4000-8000-000000000001',assignmentIncident:'Ridge',inspectorId:user,inspectorName:'Owner',createdAt:date,items:[{id:'i1',label:'Tires',kind:'pass_fail',result:'Pass'},{id:'i2',label:'Interior',kind:'photo',...(photo===undefined?{}:{photo})}],...changes}) as unknown as SyncRecord;
+  it('binds inspection photos, proves them before delivery and removes the device copy once confirmed',async()=>{
+    const f=await setup();const draft=await f.editor.prepare({entityType:'vehicle',entityId:entity});const entry=inspection(f.value);
+    await expect(f.editor.save(draft,{inspections:[inspection(undefined)]})).rejects.toThrow(/photo is required/);
+    await expect(f.editor.save(draft,{inspections:[entry]})).rejects.toThrow(/saved device file/);
+    await expect(f.editor.save(draft,{inspections:[entry],notes:'x'},{attachmentIds:[id(1)]})).rejects.toThrow(/separately/);
+    await expect(f.editor.save(draft,{inspections:[inspection(f.value,{inspectorId:'20000000-0000-4000-8000-000000000009'})]},{attachmentIds:[id(1)]})).rejects.toThrow(/Invalid inspection/);
+    const saved=await f.editor.save(draft,{inspections:[entry]},{attachmentIds:[id(1)]});expect(saved.attachmentIds).toEqual([id(1)]);
+    const shared={...base,inspections:[entry]};
+    f.syncTransport.deliver.mockImplementationOnce(async()=>{expect(f.copy).toHaveBeenCalledOnce();return {kind:'applied',receivedAt:date,revision:'2',record:shared}});
+    f.syncTransport.canonical.mockResolvedValue({revision:'2',record:base});
+    await f.worker.wake();expect((await f.session.list())[0].status).toBe('synced');
+    await f.settle(f.signal);expect((await f.session.getAttachment(id(1)))?.state).toBe('ready');
+    await f.session.putRecord('vehicle',entity,{revision:'3',record:shared});await f.settle(f.signal);expect((await f.session.getAttachment(id(1)))?.state).toBe('discarded');
+  });
+  it('blocks an inspection whose photo does not match its bound file',async()=>{
+    const f=await setup();const draft=await f.editor.prepare({entityType:'vehicle',entityId:entity});
+    const entry=(await f.editor.save(draft,{inspections:[inspection(f.value)]},{attachmentIds:[id(1)]}));
+    const forged={...entry,operation:{...entry.operation,mutation:{...entry.operation.mutation,patch:{inspections:{present:true,value:[inspection({...f.value,name:'Other.jpg'})]}}}}} as OutboxEntry;
+    expect(await f.prepare(forged,f.signal)).toMatchObject({kind:'blocked'});
+  });
+});

@@ -25,7 +25,8 @@ export function projectOfflineFleet(remote:readonly FleetModelRecord[],local:Off
     pending[key]=offlineSyncEntryLabel(entry);
     if(op.mutation.kind!=='update'||entry.reviewOutcome&&entry.reviewOutcome.outcome!=='kept')continue;
     // File slots are not overlaid: their copy may not exist until the change syncs.
-    if(Object.keys(op.mutation.patch).some(field=>!fleetSyncFields[op.entityType as 'vehicle'|'issue'].includes(field)||isVehicleFileSlot(field)))continue;
+    // Inspections are not overlaid either: their photos may not be copied yet.
+    if(Object.keys(op.mutation.patch).some(field=>!fleetSyncFields[op.entityType as 'vehicle'|'issue'].includes(field)||isVehicleFileSlot(field)||field==='inspections'))continue;
     const confirmed=records.get(key);
     const current=confirmed?.record??op.mutation.base;
     let merged;try{merged=op.mutation.patch.updates?mergeFleetSyncDetail('issue',op.mutation.base,current,op.mutation.patch):mergeSyncUpdate(current,current,op.mutation.patch)}catch{continue}

@@ -35,7 +35,8 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const manager=member?.user.role==='owner'||member?.user.role==='admin';
   // Crew may sync vehicle claims/release and notes on their own issues; attachments stay owner/admin.
   const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech';const syncRole=manager||crew;
-  const runtime=useRef({key,foreground,manager,syncRole});runtime.current={key,foreground,manager,syncRole};
+  const shopTech=member?.user.role==='shop_tech';
+  const runtime=useRef({key,foreground,manager,syncRole,shopTech});runtime.current={key,foreground,manager,syncRole,shopTech};
   const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void}|null>(null);
   const [bootAttempt,setBootAttempt]=useState(0);
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
@@ -91,7 +92,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const publish=()=>{const snapshot=created.getSnapshot();model.publish({scope:identity,records:visibleRecords(snapshot.records),entries:snapshot.entries,offline:isOffline(),loaded:snapshot.loaded})};
         const unpublish=created.subscribe(publish);
         const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,reserve:(target,owner)=>gate.acquire([target],owner),downloaded:()=>created.refresh(),canEdit:()=>canAccess()&&runtime.current.syncRole&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
-          restrictFields:()=>runtime.current.manager?null:{vehicle:['status','assignedTo','assignedFire'],issue:['updates']},
+          restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:['updates']},
           changed:async()=>{await created.refresh();void created.wake()}});
         const unregister=registerOfflineSyncSession(identity.userId,{pause:()=>{created.pause();attachments.pause()},resume:()=>{void created.resume();void attachments.resume()}});
         const auth=client.auth.onAuthStateChange((_event,next)=>{
