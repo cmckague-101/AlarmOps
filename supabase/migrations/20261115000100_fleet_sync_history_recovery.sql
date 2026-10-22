@@ -14,7 +14,7 @@ declare
 begin
   if actor is null then raise exception 'Authentication required' using errcode='42501'; end if;
   company := (operation->>'companyId')::uuid;
-  if company is null or not public.is_company_owner(company,actor) then raise exception 'Company manager access required' using errcode='42501'; end if;
+  if company is null or not public.fleet_sync_submitter_allowed(company,actor) then raise exception 'Company manager access required' using errcode='42501'; end if;
   op_id := (operation->>'operationId')::uuid;record_uuid := (operation->>'entityId')::uuid;entity := operation->>'entityType';
   if op_id is null or record_uuid is null or entity is null or entity not in ('vehicle','issue') or (operation#>>'{provenance,userId}')::uuid is distinct from actor then
     raise exception 'Invalid history recovery identity' using errcode='22023';

@@ -3,6 +3,22 @@
 -- dedicated permission/invariant adapters before they can use this endpoint.
 begin;
 
+-- Replaceable access hooks. Defaults: current owners/admins only. A later
+-- adapter widens them for crew roles with restricted fields; the production
+-- RLS/role triggers still guard every resulting write.
+create function public.fleet_sync_submitter_allowed(company uuid, actor uuid)
+returns boolean language sql stable set search_path = '' as $$ select public.is_company_owner(company, actor); $$;
+create function public.fleet_sync_reader_allowed(company uuid, actor uuid)
+returns boolean language sql stable set search_path = '' as $$ select public.is_company_owner(company, actor); $$;
+-- Raises when this submitter may not propose these fields.
+create function public.validate_fleet_sync_submitter_patch(company uuid, actor uuid, entity text, patch jsonb)
+returns void language sql stable set search_path = '' as $$ select; $$;
+revoke all on function public.fleet_sync_submitter_allowed(uuid, uuid), public.fleet_sync_reader_allowed(uuid, uuid),
+  public.validate_fleet_sync_submitter_patch(uuid, uuid, text, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.fleet_sync_submitter_allowed(uuid, uuid), public.fleet_sync_reader_allowed(uuid, uuid),
+  public.validate_fleet_sync_submitter_patch(uuid, uuid, text, jsonb) to fireops_sync_writer;
+
+
 create table public.fleet_sync_submissions (
   company_id uuid not null references public.companies(id) on delete cascade,
   actor_user_id uuid not null,
@@ -27,10 +43,11 @@ revoke all on public.fleet_sync_submissions from public, anon, authenticated, se
 grant select on public.fleet_sync_submissions to service_role;
 grant select, insert on public.fleet_sync_submissions to fireops_sync_writer;
 create policy "sync writer reads manager submissions" on public.fleet_sync_submissions
-  for select to fireops_sync_writer using (public.is_company_owner(company_id, (select auth.uid())));
+  for select to fireops_sync_writer using (public.is_company_owner(company_id, (select auth.uid()))
+    or (actor_user_id = (select auth.uid()) and public.fleet_sync_submitter_allowed(company_id, (select auth.uid()))));
 create policy "sync writer creates own manager submission" on public.fleet_sync_submissions
   for insert to fireops_sync_writer with check (
-    actor_user_id = (select auth.uid()) and public.is_company_owner(company_id, (select auth.uid()))
+    actor_user_id = (select auth.uid()) and public.fleet_sync_submitter_allowed(company_id, (select auth.uid()))
   );
 
 create table public.fleet_sync_conflicts (
@@ -67,14 +84,14 @@ create policy "managers read company sync conflicts" on public.fleet_sync_confli
   for select to authenticated using (public.is_company_owner(company_id, (select auth.uid())));
 create policy "sync writer creates manager conflict" on public.fleet_sync_conflicts
   for insert to fireops_sync_writer with check (
-    actor_user_id = (select auth.uid()) and public.is_company_owner(company_id, (select auth.uid()))
+    actor_user_id = (select auth.uid()) and public.fleet_sync_submitter_allowed(company_id, (select auth.uid()))
   );
 
 -- The non-bypass executor can verify bases/read provenance, but only for a
 -- currently managed company. Ordinary clients still have no ledger ACL.
 grant select on public.fleet_sync_revisions to fireops_sync_writer;
 create policy "sync writer reads managed fleet revisions" on public.fleet_sync_revisions
-  for select to fireops_sync_writer using (public.is_company_owner(company_id, (select auth.uid())));
+  for select to fireops_sync_writer using (public.fleet_sync_reader_allowed(company_id, (select auth.uid())));
 
 -- SQL counterpart of @fireops/domain mergeSyncUpdate, covered by shared fixtures.
 -- SQL NULL current_data means an authoritative deletion; JSON null is invalid.
@@ -240,7 +257,7 @@ begin
   record_uuid := (operation ->> 'entityId')::uuid;
   if company is null or operation_uuid is null or record_uuid is null then raise exception 'Missing sync identity' using errcode = '22023'; end if;
   -- Both initial submissions AND receipt replay require current manager access.
-  if not public.is_company_owner(company, actor) then raise exception 'Company manager access required' using errcode = '42501'; end if;
+  if not public.fleet_sync_submitter_allowed(company, actor) then raise exception 'Company manager access required' using errcode = '42501'; end if;
   entity := operation ->> 'entityType';
   collection_name := case entity when 'vehicle' then 'vehicles' when 'issue' then 'issues' end;
   table_name := case entity when 'vehicle' then 'fleet_vehicles' when 'issue' then 'fleet_issues' end;
@@ -275,6 +292,7 @@ begin
   for item in select key, value from jsonb_each(patch) loop
     perform public.validate_fleet_sync_detail_field(company, actor, entity, record_uuid, item.key, item.value, 'sync');
   end loop;
+  perform public.validate_fleet_sync_submitter_patch(company, actor, entity, patch);
   if jsonb_typeof(operation -> 'dependsOn') is distinct from 'array' then raise exception 'Invalid sync dependencies' using errcode = '22023'; end if;
   if jsonb_array_length(operation -> 'dependsOn') > 100
     or exists (select 1 from jsonb_array_elements(operation -> 'dependsOn') dependency where jsonb_typeof(dependency) <> 'string')

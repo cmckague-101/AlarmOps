@@ -11,7 +11,7 @@ declare
   current_version bigint;
   deleted boolean;
 begin
-  if auth.uid() is null or not public.is_company_owner(target_company_id,auth.uid()) then
+  if auth.uid() is null or not public.fleet_sync_reader_allowed(target_company_id,auth.uid()) then
     raise exception 'Company manager access required' using errcode = '42501';
   end if;
   if target_company_id is null or record_id is null or table_name is null then

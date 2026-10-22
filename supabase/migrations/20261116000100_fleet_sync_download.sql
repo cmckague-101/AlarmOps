@@ -11,7 +11,7 @@ declare
   response jsonb;
   page jsonb;
 begin
-  if auth.uid() is null or target_company_id is null or not public.is_company_owner(target_company_id,auth.uid()) then raise exception 'Company manager access required' using errcode='42501'; end if;
+  if auth.uid() is null or target_company_id is null or not public.fleet_sync_reader_allowed(target_company_id,auth.uid()) then raise exception 'Company manager access required' using errcode='42501'; end if;
   if expected_snapshot is not null and expected_snapshot !~ '^[0-9a-f]{64}$' then raise exception 'Invalid inventory fingerprint' using errcode='22023'; end if;
   if record_cursor is not null then
     if expected_snapshot is null or jsonb_typeof(record_cursor) is distinct from 'object' then raise exception 'Inventory cursor needs its fingerprint' using errcode='22023'; end if;
@@ -21,7 +21,7 @@ begin
   end if;
   -- All row contents, ledger proofs, counts, token and page share ONE SQL
   -- snapshot. A live row hidden by RLS is unavailability, never a deletion.
-  with access_check as materialized (select public.is_company_owner(target_company_id,auth.uid()) as allowed), latest as materialized (
+  with access_check as materialized (select public.fleet_sync_reader_allowed(target_company_id,auth.uid()) as allowed), latest as materialized (
     select distinct on (r.collection,r.record_id) r.* from public.fleet_sync_revisions r
       where r.company_id=target_company_id and r.collection in ('vehicles','issues')
       order by r.collection,r.record_id,r.version desc

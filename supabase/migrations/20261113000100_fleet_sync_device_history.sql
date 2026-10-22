@@ -22,7 +22,7 @@ grant select,insert on public.fleet_sync_device_history to fireops_sync_writer;
 create policy "managers read device-reported sync history" on public.fleet_sync_device_history
   for select to authenticated using (public.is_company_owner(company_id,(select auth.uid())));
 create policy "writer records own device-reported history" on public.fleet_sync_device_history
-  for insert to fireops_sync_writer with check (actor_user_id=(select auth.uid()) and public.is_company_owner(company_id,(select auth.uid())));
+  for insert to fireops_sync_writer with check (actor_user_id=(select auth.uid()) and public.fleet_sync_submitter_allowed(company_id,(select auth.uid())));
 
 grant create on schema public to fireops_sync_writer;
 create function public.sync_fleet_update_with_history(operation jsonb, device_history jsonb)
@@ -52,7 +52,7 @@ declare
 begin
   if actor is null then raise exception 'Authentication required' using errcode='42501'; end if;
   company := (operation->>'companyId')::uuid;
-  if company is null or not public.is_company_owner(company,actor) then raise exception 'Company manager access required' using errcode='42501'; end if;
+  if company is null or not public.fleet_sync_submitter_allowed(company,actor) then raise exception 'Company manager access required' using errcode='42501'; end if;
   op_id := (operation->>'operationId')::uuid; record_uuid := (operation->>'entityId')::uuid; entity := operation->>'entityType';
   if op_id is null or record_uuid is null or entity not in ('vehicle','issue') or entity is null then raise exception 'Invalid history identity' using errcode='22023'; end if;
   if jsonb_typeof(device_history) is distinct from 'array' then raise exception 'Invalid device history' using errcode='22023'; end if;
