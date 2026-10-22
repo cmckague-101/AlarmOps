@@ -98,3 +98,40 @@ test('rechecks current manager access; only the service verifier records copy pr
   await assert.rejects(db.query("update public.fleet_sync_attachment_links set result='{\"kind\":\"rejected\"}'"),/append-only/);
   await assert.rejects(db.query('delete from public.fleet_sync_attachment_links'),/append-only/);
 });
+
+const userRelease=(value,user=owner)=>call('select public.request_fleet_sync_attachment_release($1,$2) result',[company,value.attachmentId],user);
+const appliedRelease=value=>call('select public.request_fleet_sync_attachment_applied_release($1,$2,$3) result',[company,value.userId,value.attachmentId],null,'service_role');
+const confirmRelease=value=>call('select public.confirm_fleet_sync_attachment_release($1,$2,$3) result',[company,value.userId,value.attachmentId],null,'service_role');
+const removeStaging=value=>db.query("delete from storage.objects where bucket_id='fleet-sync-files' and name=$1",[`${company}/${value.userId}/${value.attachmentId}`]);
+const reservationOf=value=>call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(value)]);
+test('applied documents release their staging copy only after Storage removal; audit and replay remain',async()=>{
+  const value=await verified();await assert.rejects(appliedRelease(value),error=>error.code==='PT409');
+  const {req}=await copied(value);const result=await complete(req);
+  const requested=await appliedRelease(value);assert.equal(requested.kind,'remove');assert.equal(requested.path,`${company}/${owner}/${value.attachmentId}`);
+  assert.equal((await confirmRelease(value)).kind,'remove_pending');await removeStaging(value);assert.deepEqual(await confirmRelease(value),{kind:'released',reason:'applied'});
+  assert.equal((await appliedRelease(value)).kind,'released');const reservation=await reservationOf(value);assert.equal(reservation.release.reason,'applied');assert.ok(reservation.release.objectRemovedAt);assert.equal(reservation.object,null);assert.ok(reservation.receipt);
+  assert.deepEqual(await begin(req),{kind:'completed',result});assert.equal((await row("select count(*)::int count from storage.objects where bucket_id='fleet-files'")).count,1);
+  await assert.rejects(call('select public.request_fleet_sync_attachment_applied_release($1,$2,$3) result',[company,owner,value.attachmentId]),error=>error.code==='42501');
+});
+test('explicit user release frees quota and permanently stops upload, verification, receipts and attach',async()=>{
+  const value=manifest();const reservation=await reservationOf(value);await actor(owner,()=>db.query("insert into storage.objects(bucket_id,name,owner_id,metadata) values('fleet-sync-files',$1,$2,'{\"size\":1024}')",[reservation.path,owner]));
+  const usage=async()=>(await call('select row_to_json(q) result from public.fleet_sync_attachment_quota_usage($1) q',[owner],owner,'fireops_sync_writer')).retained_count;assert.equal(await usage(),1);
+  assert.equal((await userRelease(value)).kind,'remove');assert.equal(await usage(),0);
+  await assert.rejects(call('select public.begin_fleet_sync_attachment_verification($1,$2) result',[company,value.attachmentId]),error=>error.code==='55000');
+  await assert.rejects(db.query("update public.fleet_sync_attachment_uploads set verified_object_id=gen_random_uuid(),verified_at=now(),receipt='{}' where attachment_id=$1",[value.attachmentId]),error=>error.code==='55000');
+  await removeStaging(value);assert.equal((await confirmRelease(value)).kind,'released');assert.equal((await userRelease(value)).kind,'released');
+  await assert.rejects(actor(owner,()=>db.query("insert into storage.objects(bucket_id,name,owner_id) values('fleet-sync-files',$1,$2)",[reservation.path,owner])),error=>error.code==='42501');
+  assert.equal((await reservationOf(value)).release.reason,'user_released');
+  const verifiedValue=await verified();await userRelease(verifiedValue);await assert.rejects(begin(request(verifiedValue)),error=>error.code==='55000');
+});
+test('user release waits for pending document requests and verification leases; attached files are not released',async()=>{
+  const pending=await verified();await begin(request(pending));await assert.rejects(userRelease(pending),error=>error.code==='PT409');
+  const value=manifest();const reservation=await reservationOf(value);await actor(owner,()=>db.query("insert into storage.objects(bucket_id,name,owner_id) values('fleet-sync-files',$1,$2)",[reservation.path,owner]));
+  await call('select public.begin_fleet_sync_attachment_verification($1,$2) result',[company,value.attachmentId]);await assert.rejects(userRelease(value),error=>error.code==='PT409');
+  const attached=await verified();const {req}=await copied(attached);await complete(req);assert.equal((await userRelease(attached)).kind,'attached');
+  const rejected=await verified();const done=await copied(rejected);await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'delete',recordId:vehicle,expectedVersion:2}])]));
+  assert.equal((await complete(done.req)).kind,'rejected');assert.equal((await userRelease(rejected)).kind,'remove');
+  for(const user of [crew,admin])await assert.rejects(userRelease(rejected,user),error=>['42501','P0002'].includes(error.code));
+  await assert.rejects(actor(owner,()=>db.query("insert into public.fleet_sync_attachment_releases(company_id,user_id,attachment_id,reason) values($1,$2,$3,'applied')",[company,owner,pending.attachmentId])),error=>error.code==='42501');
+  await assert.rejects(db.query("update public.fleet_sync_attachment_releases set reason='applied'"),/append-only/);
+});

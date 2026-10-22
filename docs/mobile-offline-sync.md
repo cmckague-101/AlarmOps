@@ -440,6 +440,19 @@ The provider builds the uploader/document runner on its **existing scoped sessio
 
 Not included: vehicle photos/named file slots (contract, registration, insurance, DOT, VIPR), inspection photos, issue files (no issue file field), replacing/removing documents, and sensitive/crew/payroll files. **Device copies are not encrypted by FireOps.** Web remains online-only; web viewers sign the attached `fleet-files` path like any other vehicle document. Tests: controller document actions/sync fencing, picker preflight and stable retry IDs, and truthful drafts labels (static markup with stub components). No UI launch or visual test was run.
 
+### Attachment retention and release policy (decided; server implemented)
+
+Decisions (non-production project):
+
+1. **Device encryption:** non-sensitive vehicle documents may use unencrypted app-managed device copies now. App-level encryption is **required before** any sensitive workflow (crew, qualifications, payroll, receipts, invoices) accepts offline files.
+2. **Applied documents:** the service deletes the `fleet-sync-files` staging object once the document result is applied; the `fleet-files` copy is canonical. Reservation, receipt, request and release audit rows are kept.
+3. **Unattached or rejected uploads:** released only by an **explicit user release**, which deletes the staging object and frees quota. Nothing expires silently.
+4. **Device copy after attach:** removed automatically once the applied result is stored **and** a verified canonical vehicle record at or after that revision contains the document (metadata kept). Implemented in the native slice below.
+
+`20261120000100_fleet_sync_attachment_release.sql` adds append-only `fleet_sync_attachment_releases` (`applied` | `user_released`, requested time, Storage removal time). Removal is confirmed only when the Storage object is really gone. Triggers make a user-released upload permanently unable to start verification, receive a receipt or start a document request; the storage INSERT helper also refuses released paths. Quota excludes released and applied uploads. `request_fleet_sync_attachment_release` (uploader JWT, current manager) refuses while a document request is pending or a verification lease is active, returns `attached` for applied documents, and allows rejected/unattached uploads. Service-only `request_…_applied_release` requires an applied result; `confirm_…_release` records removal. Reservation JSON now includes `release`; the domain decoder accepts a receipt without an object only after release and reports stage `released`.
+
+Edge Functions: `attach-fleet-sync-document` releases the staging copy after an applied result (fresh or replay); cleanup failure never changes the business response and is retried by later replays. New `release-fleet-sync-attachment` performs explicit user release. Tests: 3 new embedded PostgreSQL tests and Vitest specs for both functions.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -455,6 +468,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 9. `20261117000100_fleet_sync_attachment_uploads.sql`
 10. `20261118000100_fleet_sync_attachment_verification.sql` (deploy the `verify-fleet-sync-attachment` Edge Function with it)
 11. `20261119000100_fleet_sync_document_attach.sql` (deploy the `attach-fleet-sync-document` Edge Function with it)
+12. `20261120000100_fleet_sync_attachment_release.sql` (redeploy `attach-fleet-sync-document`; deploy `release-fleet-sync-attachment`)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

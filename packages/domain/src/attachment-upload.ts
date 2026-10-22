@@ -9,9 +9,11 @@ export type AttachmentUploadManifest={attachmentId:string;userId:string;companyI
 export type AttachmentUploadReceipt={schemaVersion:1;kind:'uploaded';companyId:string;userId:string;attachmentId:string;entityType:'vehicle'|'issue';entityId:string;bucket:typeof attachmentUploadBucket;path:string;byteSize:number;sha256:string;objectId:string;verifiedAt:string};
 /** Storage metadata is reported by the Storage service and is NOT byte proof. */
 export type AttachmentUploadObject={objectId:string;updatedAt:string;byteSize:number|null};
-export type AttachmentUploadReservation={schemaVersion:1;manifest:AttachmentUploadManifest;bucket:typeof attachmentUploadBucket;path:string;contentType:AttachmentUploadContentType;receivedAt:string;object:AttachmentUploadObject|null;receipt:AttachmentUploadReceipt|null};
+/** Staging copy released: applied documents (service) or an explicit user release. */
+export type AttachmentUploadRelease={reason:'applied'|'user_released';requestedAt:string;objectRemovedAt:string|null};
+export type AttachmentUploadReservation={schemaVersion:1;manifest:AttachmentUploadManifest;bucket:typeof attachmentUploadBucket;path:string;contentType:AttachmentUploadContentType;receivedAt:string;object:AttachmentUploadObject|null;receipt:AttachmentUploadReceipt|null;release:AttachmentUploadRelease|null};
 /** never_sent/reserved need upload; stored_unverified needs the trusted verifier; mismatch needs investigation, not overwrite. */
-export type AttachmentUploadStage='reserved'|'stored_unverified'|'stored_size_mismatch'|'verified';
+export type AttachmentUploadStage='reserved'|'stored_unverified'|'stored_size_mismatch'|'verified'|'released';
 const fields=['attachmentId','userId','companyId','entityType','entityId','name','mimeType','byteSize','sha256','deviceId','savedAt','connectivity'] as const;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Same shape the server accepts for device-reported save times.
@@ -54,10 +56,20 @@ export function decodeAttachmentUploadReservation(value:unknown,expected:Attachm
     stored={objectId:item.objectId,updatedAt:item.updatedAt as string,byteSize:item.byteSize as number|null};
   }
   const receipt=data.receipt===null?null:decodeAttachmentUploadReceipt(data.receipt,expected);
-  if(receipt&&(!stored||stored.objectId!==receipt.objectId))throw new Error('Verified remote object is unavailable or was replaced.');
-  return {schemaVersion:1,manifest,bucket:attachmentUploadBucket,path:data.path as string,contentType,receivedAt:data.receivedAt as string,object:stored,receipt};
+  let release:AttachmentUploadRelease|null=null;
+  if(data.release!==undefined&&data.release!==null){
+    const item=object(data.release);
+    if(!['applied','user_released'].includes(item.reason as string)||!time(item.requestedAt)||(item.objectRemovedAt!==null&&!time(item.objectRemovedAt)))throw new Error('Invalid upload release.');
+    if(item.reason==='applied'&&!receipt)throw new Error('Only verified uploads are released as applied documents.');
+    if(item.objectRemovedAt!==null&&stored)throw new Error('Released remote object still exists.');
+    release={reason:item.reason as AttachmentUploadRelease['reason'],requestedAt:item.requestedAt as string,objectRemovedAt:item.objectRemovedAt as string|null};
+  }
+  // After release the staging object is legitimately gone; otherwise a receipt needs its exact object.
+  if(receipt&&(stored?stored.objectId!==receipt.objectId:!release))throw new Error('Verified remote object is unavailable or was replaced.');
+  return {schemaVersion:1,manifest,bucket:attachmentUploadBucket,path:data.path as string,contentType,receivedAt:data.receivedAt as string,object:stored,receipt,release};
 }
 export function attachmentUploadStage(reservation:AttachmentUploadReservation):AttachmentUploadStage{
+  if(reservation.release)return 'released';
   if(reservation.receipt)return 'verified';
   if(!reservation.object)return 'reserved';
   return reservation.object.byteSize!==null&&reservation.object.byteSize!==reservation.manifest.byteSize?'stored_size_mismatch':'stored_unverified';

@@ -7,14 +7,15 @@ const stream=(...chunks:number[][])=>new ReadableStream<Uint8Array>({start(contr
 const applied={kind:'applied',revision:'2',documentId:'a',path:'c/u/sync-a'};
 function deps(overrides:Partial<AttachDeps>={}):AttachDeps{
   return {begin:vi.fn().mockResolvedValue(copy),complete:vi.fn().mockResolvedValue(applied),open:vi.fn(async()=>stream([1,2,3])),put:vi.fn().mockResolvedValue('stored'),remove:vi.fn().mockResolvedValue(undefined),
-    sha256:vi.fn().mockResolvedValue('a'.repeat(64)),recordCopy:vi.fn().mockResolvedValue({kind:'ready'}),...overrides};
+    sha256:vi.fn().mockResolvedValue('a'.repeat(64)),recordCopy:vi.fn().mockResolvedValue({kind:'ready'}),
+    release:{request:vi.fn().mockResolvedValue({kind:'remove',reason:'applied',path:'c/u/a'}),remove:vi.fn().mockResolvedValue(undefined),confirm:vi.fn().mockResolvedValue({kind:'released'})},...overrides};
 }
 describe('attach verified sync bytes as a vehicle document',()=>{
   it('extracts only the identity used for service copy proof',()=>{
     expect(input).toMatchObject({companyId:'c',userId:'u',attachmentId:'a'});expect(parseAttachRequest({companyId:'c',attachmentId:'a'})).toBeNull();expect(parseAttachRequest(null)).toBeNull();
   });
   it('copies verified source bytes, proves the stored copy, then completes with the original request',async()=>{
-    const d=deps();expect(await attachFleetSyncDocument(input,d)).toEqual({status:200,body:{kind:'completed',result:applied}});
+    const d=deps();expect(await attachFleetSyncDocument(input,d)).toEqual({status:200,body:{kind:'completed',result:applied,stagingReleased:true}});expect(d.release.remove).toHaveBeenCalledWith('c/u/a');
     expect(d.open).toHaveBeenCalledWith('fleet-sync-files','c/u/a');expect(d.put).toHaveBeenCalledWith('c/u/sync-a',new Uint8Array([1,2,3]),'application/pdf');
     expect(d.recordCopy).toHaveBeenCalledWith(input,3,'a'.repeat(64));expect(d.complete).toHaveBeenCalledWith(request);
   });
@@ -34,5 +35,10 @@ describe('attach verified sync bytes as a vehicle document',()=>{
     expect((await attachFleetSyncDocument(input,deps({recordCopy:vi.fn().mockResolvedValue({kind:'access_revoked'})}))).status).toBe(403);
     const missing=deps({recordCopy:vi.fn().mockResolvedValue({kind:'missing'})});expect((await attachFleetSyncDocument(input,missing)).status).toBe(409);expect(missing.complete).not.toHaveBeenCalled();
     expect((await attachFleetSyncDocument(input,deps({complete:vi.fn().mockResolvedValue({kind:'odd'})}))).status).toBe(502);
+  });
+  it('releases staging only for applied results and never fails the business result on cleanup errors',async()=>{
+    const rejected=deps({complete:vi.fn().mockResolvedValue({kind:'rejected',reason:'record_deleted',receivedAt:'t'})});expect((await attachFleetSyncDocument(input,rejected)).body.stagingReleased).toBe(false);expect(rejected.release.request).not.toHaveBeenCalled();
+    const failing=deps();failing.release.remove=vi.fn().mockRejectedValue(new Error('storage down'));const result=await attachFleetSyncDocument(input,failing);expect(result.status).toBe(200);expect(result.body).toMatchObject({result:applied,stagingReleased:false});
+    const replay=deps({begin:vi.fn().mockResolvedValue({kind:'completed',result:applied})});expect((await attachFleetSyncDocument(input,replay)).body.stagingReleased).toBe(true);
   });
 });

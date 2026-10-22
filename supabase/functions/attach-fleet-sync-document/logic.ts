@@ -1,4 +1,5 @@
 import {readBounded} from '../verify-fleet-sync-attachment/logic.ts';
+import {releaseStagingObject,type ReleaseDeps} from '../release-fleet-sync-attachment/logic.ts';
 
 // Copies receipt-verified sync bytes into the legacy fleet-files bucket, proves
 // the copy by hashing what is stored there, then completes the record mutation
@@ -12,6 +13,8 @@ export type AttachDeps = {
   remove(path: string): Promise<void>;
   sha256(bytes: Uint8Array): Promise<string>;
   recordCopy(request: {companyId: string; userId: string; attachmentId: string}, size: number | null, digest: string | null): Promise<unknown>;
+  /** Service-side release of an applied document's staging object. */
+  release: ReleaseDeps;
 };
 export type AttachResult = {status: number; body: Record<string, unknown>};
 const record = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -37,9 +40,19 @@ async function observe(deps: AttachDeps, bucket: 'fleet-sync-files' | 'fleet-fil
   return bytes ? {bytes, size: bytes.byteLength, digest: await deps.sha256(bytes)} : {bytes: null, size: limit + 1, digest: null};
 }
 
+// Applied documents no longer need the staging copy. Cleanup failure never
+// changes the business result; a later replay retries it.
+async function completed(input: NonNullable<ReturnType<typeof parseAttachRequest>>, deps: AttachDeps, result: unknown): Promise<AttachResult> {
+  let stagingReleased = false;
+  if (record(result)?.kind === 'applied') {
+    try { stagingReleased = (await releaseStagingObject(input, deps.release)).kind === 'released'; } catch { stagingReleased = false; }
+  }
+  return {status: 200, body: {kind: 'completed', result, stagingReleased}};
+}
+
 export async function attachFleetSyncDocument(input: NonNullable<ReturnType<typeof parseAttachRequest>>, deps: AttachDeps): Promise<AttachResult> {
   const started = record(await deps.begin(input.request));
-  if (started?.kind === 'completed') return {status: 200, body: {kind: 'completed', result: started.result}};
+  if (started?.kind === 'completed') return completed(input, deps, started.result);
   if (started?.kind !== 'ready') {
     const copy = plan(started);
     if (!copy) return {status: 502, body: {error: 'Attachment could not start.'}};
@@ -60,5 +73,5 @@ export async function attachFleetSyncDocument(input: NonNullable<ReturnType<type
   }
   const result = record(await deps.complete(input.request));
   if (!result || (result.kind !== 'applied' && result.kind !== 'rejected')) return {status: 502, body: {error: 'Attachment result was not recognized.'}};
-  return {status: 200, body: {kind: 'completed', result}};
+  return completed(input, deps, result);
 }

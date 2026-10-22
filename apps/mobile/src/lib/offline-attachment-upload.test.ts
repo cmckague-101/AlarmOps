@@ -103,7 +103,7 @@ describe('account-bound native attachment transport',()=>{
     return {builder,bucket,client,mode,readBytes,value:createNativeAttachmentUploadTransport(client as unknown as SupabaseClient,scope,()=>mode.run,readBytes),signal:new AbortController().signal};
   }
   const manifest:AttachmentUploadManifest={attachmentId:id(1),userId:user,companyId:company,entityType:'vehicle',entityId:entity,name:'photo.png',mimeType:'image/png',byteSize:5,sha256:sha,deviceId:id(99),savedAt:date,connectivity:'offline'};
-  const reserved={schemaVersion:1 as const,manifest,bucket:'fleet-sync-files' as const,path,contentType:'image/png' as const,receivedAt:date,object:null,receipt:null};
+  const reserved={schemaVersion:1 as const,manifest,bucket:'fleet-sync-files' as const,path,contentType:'image/png' as const,receivedAt:date,object:null,receipt:null,release:null};
   it('reserves with the bound user token and uploads without overwrite',async()=>{
     const f=transport();await f.value.reserve(manifest,f.signal);expect(f.client.rpc).toHaveBeenCalledWith('reserve_fleet_sync_attachment',{manifest});expect(f.builder.setHeader).toHaveBeenCalledWith('Authorization','Bearer bound-token');
     expect(await f.value.upload(reserved,'file:///copy',f.signal)).toBe('stored');expect(f.client.storage.from).toHaveBeenCalledWith('fleet-sync-files');expect(f.bucket.upload).toHaveBeenCalledWith(path,expect.any(ArrayBuffer),{contentType:'image/png',upsert:false});

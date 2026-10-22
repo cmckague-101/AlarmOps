@@ -3,7 +3,7 @@ import {attachmentUploadContentType,attachmentUploadPath,attachmentUploadStage,d
 const manifest:AttachmentUploadManifest={attachmentId:'40000000-0000-4000-8000-000000000001',userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0000-4000-8000-000000000001',entityType:'vehicle',entityId:'30000000-0000-4000-8000-000000000001',name:'Photo.jpg',mimeType:'image/jpeg',byteSize:1024,sha256:'a'.repeat(64),deviceId:'device-1',savedAt:'2026-01-01T12:00:00.000Z',connectivity:'offline'};
 const path=`${manifest.companyId}/${manifest.userId}/${manifest.attachmentId}`;
 const objectId='50000000-0000-4000-8000-000000000001';
-const reservation=(changes:Record<string,unknown>={})=>({schemaVersion:1,manifest,bucket:'fleet-sync-files',path,contentType:'image/jpeg',receivedAt:'2026-01-02T00:00:00Z',object:null,receipt:null,...changes});
+const reservation=(changes:Record<string,unknown>={})=>({schemaVersion:1,manifest,bucket:'fleet-sync-files',path,contentType:'image/jpeg',receivedAt:'2026-01-02T00:00:00Z',object:null,receipt:null,release:null,...changes});
 const receipt=(changes:Record<string,unknown>={})=>({schemaVersion:1,kind:'uploaded',companyId:manifest.companyId,userId:manifest.userId,attachmentId:manifest.attachmentId,entityType:'vehicle',entityId:manifest.entityId,bucket:'fleet-sync-files',path,byteSize:1024,sha256:'a'.repeat(64),objectId,verifiedAt:'2026-01-02T00:01:00Z',...changes});
 const stored={objectId,updatedAt:'2026-01-02T00:00:30Z',byteSize:1024};
 describe('attachment upload contract',()=>{
@@ -44,5 +44,18 @@ describe('attachment document reference contract',()=>{
     for(const change of [{path:'other'},{documentId:'x'},{revision:'0'},{kind:'synced'}])expect(()=>decodeAttachmentDocumentResult({...applied,...change},request)).toThrow();
     expect(decodeAttachmentDocumentResult({kind:'rejected',receivedAt:applied.receivedAt,reason:'record_deleted'},request).kind).toBe('rejected');
     expect(()=>decodeAttachmentDocumentResult({kind:'rejected',receivedAt:applied.receivedAt,reason:'other'},request)).toThrow();
+  });
+});
+describe('released staging copies',()=>{
+  const removed={reason:'applied',requestedAt:'2026-01-03T00:00:00Z',objectRemovedAt:'2026-01-03T00:00:01Z'};
+  it('accepts receipts without objects only after release and classifies them as released',()=>{
+    const value=decodeAttachmentUploadReservation(reservation({receipt:receipt(),release:removed}),manifest);expect(attachmentUploadStage(value)).toBe('released');expect(value.release).toEqual(removed);
+    expect(attachmentUploadStage(decodeAttachmentUploadReservation(reservation({object:stored,receipt:receipt(),release:{...removed,objectRemovedAt:null}}),manifest))).toBe('released');
+    expect(attachmentUploadStage(decodeAttachmentUploadReservation(reservation({release:{...removed,reason:'user_released'}}),manifest))).toBe('released');
+    expect(decodeAttachmentUploadReservation((({release:_r,...rest})=>rest)(reservation()),manifest).release).toBeNull();
+  });
+  it('rejects inconsistent releases',()=>{
+    for(const release of [{...removed,reason:'expired'},{...removed,requestedAt:'never'},removed])expect(()=>decodeAttachmentUploadReservation(reservation({release}),manifest)).toThrow();
+    expect(()=>decodeAttachmentUploadReservation(reservation({object:stored,receipt:receipt(),release:removed}),manifest)).toThrow(/still exists/);
   });
 });

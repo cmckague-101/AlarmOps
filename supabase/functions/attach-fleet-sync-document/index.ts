@@ -73,6 +73,11 @@ Deno.serve(async (request) => {
       },
       remove: async (path) => { const {error} = await admin.storage.from('fleet-files').remove([path]); if (error) throw error; },
       sha256: async (bytes) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join(''),
+      release: {
+        request: (value) => rpc(admin, 'request_fleet_sync_attachment_applied_release', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
+        remove: async (path) => { const {error} = await admin.storage.from('fleet-sync-files').remove([path]); if (error) throw error; },
+        confirm: (value) => rpc(admin, 'confirm_fleet_sync_attachment_release', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
+      },
       recordCopy: (value, size, digest) => rpc(admin, 'record_fleet_sync_document_copy', {
         target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId, observed_size: size, observed_digest: digest,
       }),
