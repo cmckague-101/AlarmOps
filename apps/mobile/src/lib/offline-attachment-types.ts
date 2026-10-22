@@ -1,3 +1,4 @@
+import type {AttachmentUploadReceipt,AttachmentUploadReservation} from '@fireops/domain';
 export const offlineAttachmentMaxBytes=10*1024*1024;
 export const offlineAttachmentUserQuota=100*1024*1024;
 export type OfflineAttachmentState='staging'|'ready'|'missing'|'discarding'|'discarded';
@@ -13,3 +14,10 @@ export function validateAttachmentIntent(value:OfflineAttachmentIntent,scope:{us
   if(!Number.isSafeInteger(value.byteSize)||value.byteSize<=0||value.byteSize>offlineAttachmentMaxBytes||typeof value.sha256!=='string'||!/^[0-9a-f]{64}$/.test(value.sha256))throw new Error('Invalid attachment bytes or digest.');
   if(typeof value.deviceId!=='string'||!value.deviceId.trim()||typeof value.savedAt!=='string'||!Number.isFinite(Date.parse(value.savedAt))||!['online','offline','unknown'].includes(value.connectivity))throw new Error('Invalid attachment provenance.');
 }
+/**
+ * Remote byte progress, separate from local readiness. `uploading` means bytes
+ * may have been sent (uncertain); `verified` is a server byte receipt only —
+ * never a business-record attachment, review outcome or sync completion.
+ */
+export type OfflineAttachmentUploadStage='reserved'|'uploading'|'stored'|'verified'|'blocked';
+export type OfflineAttachmentUpload={attachmentId:string;stage:OfflineAttachmentUploadStage;reservation:AttachmentUploadReservation|null;receipt:AttachmentUploadReceipt|null;error:string|null;attempts:number;updatedAt:string};

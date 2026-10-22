@@ -408,6 +408,14 @@ Tests: `supabase/tests/fleet-sync-attachment-uploads.test.mjs` uses a new minima
 
 Embedded PostgreSQL tests extend `fleet-sync-attachment-uploads.test.mjs`: single receipt and replay, concurrent-lease denial, mismatch/removal/re-upload ordering, replaced object, demotion, expiry, service-only completion and append-only history. No native transport or business attachment is enabled yet.
 
+### Native attachment byte upload and receipt persistence (library implemented; not enabled in UI)
+
+Native SQLite migrates **v7 → v8**, adding scoped `offline_attachment_uploads` alongside, never inside, local readiness metadata. Stages: `reserved` (server knows the immutable intent), `uploading` (**persisted before bytes are sent**; a lost response is uncertain), `stored` (an object exists but is unverified), `verified` (the trusted verifier's receipt) and `blocked` (permission, conflicting identity, rejected declaration or unsupported declared type). Every saved reservation/receipt is re-decoded against the retained manifest; a changed server reservation is rejected, and only a matching receipt can mark bytes verified. Once a receipt is stored, later writes return it unchanged.
+
+`offline-attachment-upload.ts` reserves, persists uncertainty, uploads the integrity-checked managed copy and asks the verifier. Retries always use the original attachment ID/path. After a lost response, a reservation showing a stored object skips re-sending bytes and only verifies. Verifier mismatch returns the draft to `reserved` for an upload of the original bytes; busy/expired verification stays `stored`. Pause/abort stops without recording failure. Per-attachment attempts are single-flight. `offline-attachment-upload-transport.ts` binds RPC/function calls to the verified local session token, rejects foreign account/company scope and changed device copies before sending, uploads with `upsert:false`, treats an existing object as `exists` (not proof) and surfaces structured verifier outcomes from HTTP errors. Storage RLS independently requires the caller's own reservation for that path.
+
+**A verified upload is not attached or synced.** No operation, record, reference or file release changes. The uploader is not yet called by the provider/worker or any UI; it stays disabled until the business-reference/review adapter exists. Tests (`offline-attachment-upload.test.ts`, real SQLite/files) cover restart retention, pre-send uncertainty, lost responses, mismatch re-upload, blocking, forged/replaced receipts, changed reservations, pause, account isolation and transport binding. Updated v1–v7 upgrade tests expect v8.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

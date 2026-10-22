@@ -1,5 +1,5 @@
-import { createSyncPatch, mergeSyncUpdate, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
-import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent} from './offline-attachment-types';
+import { createSyncPatch, mergeSyncUpdate, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 
@@ -221,7 +221,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         CREATE TABLE offline_attachments(user_id TEXT NOT NULL,company_id TEXT NOT NULL,attachment_id TEXT NOT NULL,manifest_json TEXT NOT NULL,byte_size INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('staging','ready','missing','discarding','discarded')),error TEXT,PRIMARY KEY(user_id,company_id,attachment_id));
         CREATE TABLE offline_attachment_refs(user_id TEXT NOT NULL,company_id TEXT NOT NULL,operation_id TEXT NOT NULL,attachment_id TEXT NOT NULL,PRIMARY KEY(user_id,company_id,operation_id,attachment_id)); PRAGMA user_version=7;`);current=7;
     }
-    if (current !== 7) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===7){
+      await tx.execAsync(`CREATE TABLE offline_attachment_uploads(user_id TEXT NOT NULL,company_id TEXT NOT NULL,attachment_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK(stage IN ('reserved','uploading','stored','verified','blocked')),reservation_json TEXT,receipt_json TEXT,error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,company_id,attachment_id)); PRAGMA user_version=8;`);current=8;
+    }
+    if (current !== 8) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -285,6 +290,14 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         const value=JSON.parse(row.manifest_json) as OfflineAttachmentIntent;validateAttachmentIntent(value,identity);
         if(value.attachmentId!==row.attachment_id||!['staging','ready','missing','discarding','discarded'].includes(row.state))throw new Error('Invalid saved attachment manifest.');return {...value,state:row.state,error:row.error};
       }
+      async function upload(connection:OutboxSqlConnection,row:UploadRow):Promise<OfflineAttachmentUpload>{
+        const saved=await connection.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,row.attachment_id);
+        if(!saved||!['reserved','uploading','stored','verified','blocked'].includes(row.stage))throw new Error('Invalid saved attachment upload progress.');
+        const manifest=decodeAttachmentUploadManifest((({state:_s,error:_e,...value})=>value)(asset(saved)));
+        const reservation=row.reservation_json?decodeAttachmentUploadReservation(JSON.parse(row.reservation_json),manifest):null;
+        if((row.stage==='verified')!==!!reservation?.receipt||(row.receipt_json!==null)!==!!reservation?.receipt)throw new Error('Invalid saved attachment upload receipt.');
+        return {attachmentId:row.attachment_id,stage:row.stage,reservation,receipt:reservation?.receipt??null,error:row.error,attempts:row.attempts,updatedAt:row.updated_at};
+      }
       async function downloadProgress(connection:OutboxSqlConnection):Promise<FleetDownloadProgress|null>{
         const row=await connection.getFirstAsync<{progress_json:string}>('SELECT progress_json FROM offline_fleet_downloads WHERE user_id=? AND company_id=?',...ids);
         return row?decodeFleetDownloadProgress(JSON.parse(row.progress_json)):null;
@@ -335,6 +348,30 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           await tx.runAsync("UPDATE offline_attachments SET state='discarding',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state<>'discarded'",...ids,id);
         })},
         finishAttachmentDiscard(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync("UPDATE offline_attachments SET state='discarded',error=NULL WHERE user_id=? AND company_id=? AND attachment_id=? AND state='discarding'",...ids,id)})},
+        listAttachmentUploads():Promise<OfflineAttachmentUpload[]>{return read(async()=>{
+          const rows=await db.getAllAsync<UploadRow>('SELECT * FROM offline_attachment_uploads WHERE user_id=? AND company_id=? ORDER BY attachment_id',...ids);
+          const out:OfflineAttachmentUpload[]=[];for(const row of rows)out.push(await upload(db,row));return out;
+        })},
+        getAttachmentUpload(id:string):Promise<OfflineAttachmentUpload|null>{attachmentId(id);return read(async()=>{
+          const row=await db.getFirstAsync<UploadRow>('SELECT * FROM offline_attachment_uploads WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);return row?upload(db,row):null;
+        })},
+        /** Persist remote byte progress. Reservation identity and an issued receipt never change. */
+        recordAttachmentUpload(id:string,next:{stage:OfflineAttachmentUploadStage;reservation?:unknown;error?:string|null;attempt?:boolean}):Promise<OfflineAttachmentUpload>{attachmentId(id);return write(async tx=>{
+          const row=await tx.getFirstAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          if(!row)throw new Error('Attachment is not saved in this account/company.');const manifest=decodeAttachmentUploadManifest((({state:_s,error:_e,...value})=>value)(asset(row)));
+          const previousRow=await tx.getFirstAsync<UploadRow>('SELECT * FROM offline_attachment_uploads WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id);
+          const previous=previousRow?await upload(tx,previousRow):null;if(previous?.receipt)return previous;
+          const reservation=next.reservation===undefined?previous?.reservation??null:decodeAttachmentUploadReservation(next.reservation,manifest);
+          if(previous?.reservation&&reservation&&(previous.reservation.path!==reservation.path||previous.reservation.receivedAt!==reservation.receivedAt))throw new Error('Server reservation changed for this attachment. Nothing was replaced.');
+          if(!reservation&&next.stage!=='blocked')throw new Error('Upload progress requires a server reservation.');
+          const receipt=reservation?.receipt??null;
+          if((next.stage==='verified')!==!!receipt)throw new Error('Only a matching server receipt marks attachment bytes verified.');
+          const error=next.stage==='verified'?null:next.error??null;const attempts=(previous?.attempts??0)+(next.attempt?1:0);const updatedAt=new Date().toISOString();
+          await tx.runAsync(`INSERT INTO offline_attachment_uploads VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,company_id,attachment_id) DO UPDATE SET
+            stage=excluded.stage,reservation_json=excluded.reservation_json,receipt_json=excluded.receipt_json,error=excluded.error,attempts=excluded.attempts,updated_at=excluded.updated_at`,
+            ...ids,id,next.stage,reservation?JSON.stringify(reservation):null,receipt?JSON.stringify(receipt):null,error,attempts,updatedAt);
+          return {attachmentId:id,stage:next.stage,reservation,receipt,error,attempts,updatedAt};
+        })},
         getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
         restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
           const previous=await downloadProgress(tx);if(expectedGeneration!==undefined&&previous?.generationId!==expectedGeneration)return false;const progress={...initialFleetDownload(generationId),lastCompletedAt:previous?.lastCompletedAt??null};
@@ -741,4 +778,5 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
 }
 
 export type OfflineOutboxStore = Awaited<ReturnType<typeof createOfflineOutbox>>;
+type UploadRow={attachment_id:string;stage:OfflineAttachmentUploadStage;reservation_json:string|null;receipt_json:string|null;error:string|null;attempts:number;updated_at:string};
 export type OfflineOutboxSession = ReturnType<OfflineOutboxStore['activate']>;
