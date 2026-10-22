@@ -1,5 +1,5 @@
 import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
-import type {OfflineOutboxSession,OutboxEntry} from './offline-outbox';
+import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
 // tasks are private, availability/dashboard target the caller only.
@@ -8,6 +8,19 @@ export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.k
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
 export type OfflineTask={id:string;subject:string;description:string;dueDate:string};
+export function scopedUserEntries(entries:readonly OutboxEntry[],userId?:string|null,companyId?:string|null){
+  return userId?entries.filter(entry=>entry.operation.provenance.userId===userId&&(!companyId||entry.operation.companyId===companyId)):[];
+}
+/** Verified reconciliation result, never the proposed value or upload receipt. */
+export function latestUserSetting(entries:readonly OutboxEntry[],scope:OutboxScope,entity:'availability'|'dashboard'){
+  let latest:{id:string;revision:string;record:SyncRecord|null;sequence:number}|undefined;
+  for(const entry of scopedUserEntries(entries,scope.userId,scope.companyId)){
+    const op=entry.operation;const receipt=entry.receipt;
+    if(op.entityType!==entity||op.entityId!==scope.userId||!isUserSyncOperation(op)||entry.status!=='synced'||receipt?.kind!=='applied'||!/^\d+$/.test(receipt.revision))continue;
+    if(!latest||BigInt(receipt.revision)>BigInt(latest.revision)||(receipt.revision===latest.revision&&entry.sequence>latest.sequence))latest={id:op.operationId,revision:receipt.revision,record:receipt.record,sequence:entry.sequence};
+  }
+  return latest;
+}
 /** Pending local task changes to overlay on the last downloaded list. */
 export function pendingTaskChanges(entries:readonly OutboxEntry[]):{created:OfflineTask[];completed:Set<string>}{
   const created:OfflineTask[]=[];const completed=new Set<string>();
@@ -52,6 +65,7 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     try{return await request.promise}finally{request.promise=undefined}
   }
   return {
+    scope:Object.freeze({...scope}),
     createTask(task:OfflineTask){
       const subject=task.subject.trim();const description=task.description.trim();
       if(!uuid.test(task.id)||!subject||subject.length>200||description.length>5000||!/^\d{4}-\d{2}-\d{2}$/.test(task.dueDate))return Promise.reject(new Error('Check the task subject, description and due date.'));

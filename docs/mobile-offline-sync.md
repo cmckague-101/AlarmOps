@@ -556,7 +556,7 @@ Tests: `supabase/tests/user-sync-commands.test.mjs` with a fixture loading the r
 
 `offline-user-sync.ts` enqueues the user commands on the provider's existing scoped session (any current member; the server enforces task roles): `createTask` (client UUID), `completeTask` (depends on a still-unsynced create of the same task), `setAvailability(available, base)` (own only; `base` = the value shown) and `setDashboard(changes)`. The adapter block admits only these commands, the account-bound transport sends them to `sync_user_command` and reconciles through `get_user_sync_state`, and a kept availability shows **"Synced — a newer change by someone else was kept"**. Commands count as retained work in the sign-out guard like any saved change.
 
-When the installed app is offline, **Tasks** saves new tasks and completions on the device and overlays them on the last downloaded list (with a "saved on this device" count; the list reloads once they sync). **Availability** saves your own selection offline (changing someone else's needs a connection), and **dashboard customization** saves layout toggles offline, both overlaid until synced. Online behavior is unchanged; web stays online-only. Tests: `offline-user-sync.test.ts` (ordering, worker delivery, kept label, overlays, adapter/transport routing). No UI launch or visual test was run.
+When the installed app is offline, **Tasks** saves new tasks and completions on the device and overlays them on the last downloaded list (with a "saved on this device" count; the list reloads once they sync). **Availability** saves your own selection offline (changing someone else's needs a connection), and **dashboard customization** saves layout toggles offline, both overlaid until synced. Native own-user writes now use the same durable command boundary online as well (see hook hardening below); web stays online-only. Tests: `offline-user-sync.test.ts` (ordering, worker delivery, kept label, overlays, adapter/transport routing). No UI launch or visual test was run.
 
 ### Ordered user commands and local acknowledgment recovery
 
@@ -571,6 +571,16 @@ Forward migration `20261128000100_user_sync_availability_cas.sql` removes the re
 Embedded PostgreSQL tests exercise all 18 missing/boolean base/current/desired combinations, a deterministic state-read/write interleaving that fails against the old helper, and executor/permission preservation. This is **not** real multi-session lock testing; target-Supabase validation remains required.
 
 The grant audit also caught missing RLS on the global command registry. Its undeployed `20261127000100` creation now enables RLS with executor-only SELECT; `20261128000100` repairs earlier development registries as well. No client grants or registry write access are added. Tests cover the forward repair and denied authenticated reads. Nothing was deployed.
+
+### User-owned hook isolation and canonical settings recovery
+
+Native personal tasks, own availability and dashboard toggles use the durable user-command boundary both online and offline when scoped storage is available. Reconnecting cannot bypass an earlier queued create/change through legacy direct writes. Initializing/unavailable native storage fails closed rather than silently switching endpoints. Web remains online-only; mobile web/no-native-provider legacy paths remain online-only too. Changing another member's availability still needs a connection and binds the original actor's JWT.
+
+Hook state and callbacks are fenced by opaque account/company generations, including A → B → A and the transition render before effect cleanup. Pending overlays filter actor/company; demo dashboards never consume real pending layouts. Old reads, errors and `finally` callbacks cannot publish into or unlock a replacement scope. Roster loads reject out-of-order responses.
+
+Verified setting acknowledgments replace disappearing pending overlays immediately, including `keptCurrent` and null records. Subsequent bounded, uncached, account-bound `get_user_sync_state` POST reads can advance to newer shared values; historical receipts are not permanently painted over fresh server state. Upload receipts and proposed values never become canonical acknowledgments. Existing task-list GET fallback is still not a complete verified task inventory/catch-up contract.
+
+Task UI retries retain their task UUID across failed local acknowledgment and connectivity changes. Availability retains its failed request/base, blocks changing an unconfirmed selection until retry and preserves rapid sequential reversals even before a render. Confirmed task completions remain hidden from stale list responses; new confirmed creations stay visible while list refresh is pending. Targeted checks: 65 mobile tests (20 production-hook/effect tests plus user-command, worker and transport suites), mobile typecheck, whitespace checks. Tests use an injected persistent hook-slot/effect harness, not mounted UI or visual tests. No deployment occurred.
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
