@@ -68,7 +68,7 @@ describe('vehicle document picker actions',()=>{
   const pdf={uri:'file:///picked.pdf',name:'Registration.pdf',mimeType:'application/pdf',size:1000};
   it('preflights declared type and size without trusting them as content validation',()=>{
     expect(vehicleDocumentPickError(pdf)).toBeNull();expect(vehicleDocumentPickError({...pdf,size:null})).toBeNull();
-    expect(vehicleDocumentPickError({...pdf,mimeType:'text/html'})).toMatch(/JPEG/);expect(vehicleDocumentPickError({...pdf,mimeType:null})).toMatch(/JPEG/);expect(vehicleDocumentPickError({...pdf,size:10*1024*1024+1})).toMatch(/10 MB/);
+    expect(vehicleDocumentPickError({...pdf,mimeType:'text/html'})).toMatch(/JPEG/);expect(vehicleDocumentPickError({...pdf,mimeType:null})).toMatch(/JPEG/);expect(vehicleDocumentPickError({...pdf,size:8*1024*1024+1})).toMatch(/8 MB/);
   });
   it('reuses the same attachment/request IDs when a save is retried',async()=>{
     const controller={saveVehicleDocument:vi.fn().mockRejectedValueOnce(new Error('disk full')).mockResolvedValue({})};let n=0;

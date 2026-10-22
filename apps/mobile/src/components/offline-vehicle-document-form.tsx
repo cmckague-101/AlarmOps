@@ -29,7 +29,7 @@ export function OfflineVehicleDocumentForm({controller,entityId,onSaved}:{contro
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" disabled={disabled} onPress={action} style={{minHeight:48,padding:12,borderWidth:1,borderColor:theme.divider,borderRadius:10,justifyContent:'center',opacity:disabled?0.5:1}}><Text style={body}>{label}</Text></Pressable>;
   return <View style={{gap:12,borderWidth:1,borderColor:theme.divider,borderRadius:14,padding:16}}>
     <Text accessibilityRole="header" style={[body,{fontSize:19,fontWeight:'800'}]}>Add vehicle document</Text>
-    <Text style={meta}>JPEG, PNG, WebP, GIF or PDF up to 10 MB. The file is copied into app storage on this device (not encrypted by FireOps) and uploads when online. It becomes a shared vehicle document only after the server confirms it.</Text>
+    <Text style={meta}>JPEG, PNG, WebP, GIF or PDF up to 8 MB. The file is copied into app storage on this device (not encrypted by FireOps) and uploads when online. It becomes a shared vehicle document only after the server confirms it.</Text>
     {button(file?`Chosen: ${file.name} — choose another`:'Choose file',()=>void choose(),saving||saved)}
     {file?<TextInput accessibilityLabel="Document name" editable={!saving&&!saved} value={name} onChangeText={setName} maxLength={120} style={[body,{borderWidth:1,borderColor:theme.divider,borderRadius:10,minHeight:48,padding:12}]}/>:null}
     {file&&!saved?button(saving?'Saving on device…':'Save document on device',()=>void save(),saving):null}

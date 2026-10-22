@@ -38,7 +38,7 @@ describe('attachment document reference contract',()=>{
   it('builds a vehicle-only immutable request and validates applied/rejected results',async()=>{
     const {createAttachmentDocumentRequest,decodeAttachmentDocumentResult}=await import('./attachment-upload');
     const request=createAttachmentDocumentRequest(manifest,input);expect(request).toMatchObject({entityType:'vehicle',entityId:manifest.entityId,attachmentId:manifest.attachmentId,documentName:'Registration',provenance:{userId:manifest.userId}});
-    expect(()=>createAttachmentDocumentRequest({...manifest,entityType:'issue'},input)).toThrow(/vehicle/);expect(()=>createAttachmentDocumentRequest(manifest,{...input,documentName:' '})).toThrow();
+    expect(()=>createAttachmentDocumentRequest({...manifest,entityType:'issue'},input)).toThrow(/vehicle/);expect(()=>createAttachmentDocumentRequest({...manifest,byteSize:8*1024*1024+1},input)).toThrow(/8 MB/);expect(()=>createAttachmentDocumentRequest(manifest,{...input,documentName:' '})).toThrow();
     const applied={kind:'applied',receivedAt:'2026-01-03T00:00:01Z',revision:'2',documentId:manifest.attachmentId,path:`${manifest.companyId}/${manifest.userId}/sync-${manifest.attachmentId}`};
     expect(decodeAttachmentDocumentResult(applied,request)).toEqual(applied);
     for(const change of [{path:'other'},{documentId:'x'},{revision:'0'},{kind:'synced'}])expect(()=>decodeAttachmentDocumentResult({...applied,...change},request)).toThrow();

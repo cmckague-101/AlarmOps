@@ -63,6 +63,8 @@ test('preserves concurrent online edits and releases unattached quota only after
 });
 test('requires verified bytes, the reserved vehicle and one immutable request per attachment',async()=>{
   const unverified=manifest();await call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(unverified)]);await assert.rejects(begin(request(unverified)),error=>error.code==='55000');
+  const large=manifest({byteSize:9*1024*1024});await call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(large)]);await db.query("update public.fleet_sync_attachment_uploads set verified_object_id=gen_random_uuid(),verified_at=now(),receipt='{}' where attachment_id=$1",[large.attachmentId]);
+  await assert.rejects(begin(request(large)),/8 MB/);
   const issueUpload=await verified({entityType:'issue',entityId:issue});await assert.rejects(begin(request(issueUpload,{entityId:issue})),error=>error.code==='22023');
   const value=await verified();const req=request(value);await begin(req);
   await assert.rejects(begin({...req,documentName:'Other'}),error=>error.code==='PT409');await assert.rejects(begin(request(value)),error=>error.code==='PT409');

@@ -63,6 +63,8 @@ export function attachmentUploadStage(reservation:AttachmentUploadReservation):A
   return reservation.object.byteSize!==null&&reservation.object.byteSize!==reservation.manifest.byteSize?'stored_size_mismatch':'stored_unverified';
 }
 
+/** Legacy fleet-files bucket limit; vehicle documents are copied there for existing viewers. */
+export const attachmentDocumentMaxBytes=8*1024*1024;
 /** One vehicle-document reference for verified bytes. Issues have no file field yet. */
 export type AttachmentDocumentRequest={schemaVersion:1;requestId:string;companyId:string;entityType:'vehicle';entityId:string;attachmentId:string;documentName:string;provenance:{userId:string;deviceId:string;savedAt:string;connectivity:'online'|'offline'|'unknown'}};
 export type AttachmentDocumentResult=
@@ -70,6 +72,7 @@ export type AttachmentDocumentResult=
   |{kind:'rejected';receivedAt:string;reason:'record_deleted'|'invalid_documents'|'document_id_conflict'};
 export function createAttachmentDocumentRequest(manifest:AttachmentUploadManifest,input:{requestId:string;documentName:string;deviceId:string;savedAt:string;connectivity:AttachmentUploadManifest['connectivity']}):AttachmentDocumentRequest{
   if(manifest.entityType!=='vehicle')throw new Error('Only vehicle documents can reference uploaded files.');
+  if(manifest.byteSize>attachmentDocumentMaxBytes)throw new Error('Vehicle documents must be 8 MB or smaller.');
   const documentName=input.documentName.trim();
   if(!uuid.test(input.requestId)||!documentName||documentName.length>120||/[\u0000-\u001f\u007f]/.test(documentName))throw new Error('Invalid attachment document request.');
   if(!input.deviceId.trim()||input.deviceId.trim().length>200||!time(input.savedAt)||!reportedTime.test(input.savedAt))throw new Error('Invalid attachment document provenance.');

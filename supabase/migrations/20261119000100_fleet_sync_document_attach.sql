@@ -102,6 +102,8 @@ begin
   if upload.entity_type <> 'vehicle' or upload.entity_id <> (attach_request ->> 'entityId')::uuid then
     raise exception 'Attachment belongs to another record' using errcode = '22023';
   end if;
+  -- Legacy fleet-files (which viewers sign) is limited to 8 MiB.
+  if upload.byte_size > 8388608 then raise exception 'Vehicle documents must be 8 MB or smaller' using errcode = '22023'; end if;
   if upload.receipt is null then raise exception 'Attachment bytes are not verified yet' using errcode = '55000'; end if;
   return upload;
 end;
