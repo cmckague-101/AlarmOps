@@ -74,7 +74,7 @@ export default function NewInspectionScreen() {
     if (result.canceled) return;
     const asset = result.assets[0];
     if (offline) {
-      if (!offlineReady || !attachmentController) { setError(offlineReady ? "Offline photos need owner/admin access in this version. Reconnect to attach photos." : "Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
+      if (!offlineReady || !attachmentController) { setError(offlineReady ? "Device photo storage is not available for this account. Reconnect to attach photos." : "Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
       setUploading(index);
       try {
         const attachmentId = createFleetId();

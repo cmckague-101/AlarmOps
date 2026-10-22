@@ -42,7 +42,9 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
   const worker=binding?.key===key?binding.worker:null;
   const current=useRef<{key:string;worker:OfflineSyncWorker;attachments:OfflineAttachmentController}|null>(null);
-  const attachmentController=binding?.key===key&&manager?binding.attachments:null;
+  // Shop techs stage inspection photos; vehicle files/documents stay owner/admin in the editor.
+  const attachmentUser=manager||member?.user.role==='shop_tech';
+  const attachmentController=binding?.key===key&&attachmentUser?binding.attachments:null;
   const attachmentState=useSyncExternalStore(attachmentController?.subscribe??emptySubscribe,attachmentController?.getSnapshot??emptyAttachments,emptyAttachments);
   const state=useSyncExternalStore(worker?.subscribe??emptySubscribe,worker?.getSnapshot??emptySnapshot,emptySnapshot);
   useEffect(()=>{
@@ -70,7 +72,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const canAccess=()=>!cancelled&&runtime.current.key===key;
         const canRun=()=>canAccess()&&runtime.current.foreground&&!isOffline()&&!offlineSyncSessionPaused(identity.userId);
         const transport=createNativeSyncTransport(client,identity,canRun);
-        const canUseAttachments=()=>canAccess()&&runtime.current.manager&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId);
+        const canUseAttachments=()=>canAccess()&&(runtime.current.manager||runtime.current.shopTech)&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId);
         const vault=createOfflineAttachmentVault({session:scoped,files:createNativeAttachmentFiles(identity),canAccess:canUseAttachments,createId:createFleetId,connectivity:()=>isOffline()?'offline':'online'});
         // Same scoped session; uploads also require a connection. Results never mark business work synced.
         const canUploadAttachments=()=>canUseAttachments()&&!isOffline();
@@ -112,8 +114,8 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
     if(!worker)return;
     if(offline||!foreground){worker.pause();void worker.refresh()}else void worker.resume();
   },[worker,offline,foreground,manager]);
-  const syncAttachments=binding?.key===key&&manager?binding.syncAttachments:null;
-  useEffect(()=>{if(!attachmentController)return;if(foreground&&manager)void attachmentController.resume().then(()=>{if(!offline)syncAttachments?.()});else attachmentController.pause();return()=>attachmentController.pause()},[attachmentController,syncAttachments,foreground,manager,offline]);
+  const syncAttachments=binding?.key===key&&attachmentUser?binding.syncAttachments:null;
+  useEffect(()=>{if(!attachmentController)return;if(foreground&&attachmentUser)void attachmentController.resume().then(()=>{if(!offline)syncAttachments?.()});else attachmentController.pause();return()=>attachmentController.pause()},[attachmentController,syncAttachments,foreground,attachmentUser,offline]);
   useEffect(()=>{
     if(!attachmentController||!syncAttachments)return;
     const timer=setInterval(()=>{if(runtime.current.foreground&&!isOffline()&&attachmentController.getSnapshot().items.some(item=>item.document?.stage==='pending'||(item.document?.stage==='applied'&&!['discarding','discarded'].includes(item.state))||item.remoteRelease?.state==='pending'||(item.operationIds.length>0&&item.state==='ready')))syncAttachments()},15_000);

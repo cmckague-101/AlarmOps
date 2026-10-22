@@ -64,7 +64,7 @@ create or replace function public.can_upload_fleet_sync_attachment(object_name t
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.fleet_sync_attachment_uploads u
     where u.object_path = object_name and u.user_id = auth.uid() and u.receipt is null
-      and public.is_company_owner(u.company_id, auth.uid())
+      and public.fleet_sync_attachment_user_allowed(u.company_id, auth.uid())
       and not exists (select 1 from public.fleet_sync_attachment_verifications v
         where v.company_id = u.company_id and v.user_id = u.user_id and v.attachment_id = u.attachment_id
           and v.completed_at is null and v.expires_at > clock_timestamp()));
@@ -80,7 +80,7 @@ declare
   stored uuid;
   token uuid;
 begin
-  if actor is null or target_company_id is null or not public.is_company_owner(target_company_id, actor) then
+  if actor is null or target_company_id is null or not public.fleet_sync_attachment_user_allowed(target_company_id, actor) then
     raise exception 'Company manager access required' using errcode = '42501';
   end if;
   select * into upload from public.fleet_sync_attachment_uploads u
@@ -119,7 +119,7 @@ declare
   allowed boolean;
 begin
   perform set_config('request.jwt.claim.sub', target_user_id::text, true);
-  allowed := public.is_company_owner(target_company_id, target_user_id);
+  allowed := public.fleet_sync_attachment_user_allowed(target_company_id, target_user_id);
   perform set_config('request.jwt.claim.sub', coalesce(previous_sub, ''), true);
   return coalesce(allowed, false);
 end;

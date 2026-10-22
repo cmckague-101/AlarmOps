@@ -5,7 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {loadFleetSyncAttachmentSchema} from './fixtures/fleet-sync-harness.mjs';
 const db=new PGlite();
 const company='10000000-0000-4000-8000-000000000001';
-const owner='20000000-0000-4000-8000-000000000001',crew='20000000-0000-4000-8000-000000000002',tech='20000000-0000-4000-8000-000000000003',admin='20000000-0000-4000-8000-000000000004';
+const owner='20000000-0000-4000-8000-000000000001',ownerId=owner,crew='20000000-0000-4000-8000-000000000002',tech='20000000-0000-4000-8000-000000000003',admin='20000000-0000-4000-8000-000000000004';
 const vehicle='30000000-0000-4000-8000-000000000001';const sha='a'.repeat(64);
 const prior={id:randomUUID(),assignmentIncident:'',inspectorId:admin,inspectorName:'Admin',createdAt:'2025-12-01T00:00:00Z',items:[{id:'i1',label:'Tires',kind:'pass_fail',result:'Pass'}]};
 const base={id:vehicle,unit:'E1',status:'Ready',inspections:[prior]};
@@ -21,16 +21,16 @@ function operation(entry,{user=owner,original=base,version='1',list=original.ins
 }
 const sync=(op,user=owner)=>call('select public.sync_fleet_update($1::jsonb) result',[JSON.stringify(op)],user);
 const data=async()=>(await row('select data from public.fleet_vehicles where record_id=$1',[vehicle])).data;
-async function copiedPhoto(){
+async function copiedPhoto(owner=ownerId){
   const value={attachmentId:randomUUID(),userId:owner,companyId:company,entityType:'vehicle',entityId:vehicle,name:'Cab.jpg',mimeType:'image/jpeg',byteSize:1024,sha256:sha,deviceId:'device',savedAt:'2026-01-01T12:00:00.000Z',connectivity:'offline'};
-  const reservation=await call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(value)]);
+  const reservation=await call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(value)],owner);
   await actor(owner,()=>db.query("insert into storage.objects(bucket_id,name,owner_id,metadata) values('fleet-sync-files',$1,$2,'{\"size\":1024}')",[reservation.path,owner]));
-  const lease=await call('select public.begin_fleet_sync_attachment_verification($1,$2) result',[company,value.attachmentId]);
+  const lease=await call('select public.begin_fleet_sync_attachment_verification($1,$2) result',[company,value.attachmentId],owner);
   await call('select public.complete_fleet_sync_attachment_verification($1,$2,$3,$4) result',[lease.leaseToken,lease.objectId,1024,sha],null,'service_role');
-  const plan=await call('select public.begin_fleet_sync_attachment_copy($1,$2) result',[company,value.attachmentId]);
+  const plan=await call('select public.begin_fleet_sync_attachment_copy($1,$2) result',[company,value.attachmentId],owner);
   await db.query("insert into storage.objects(bucket_id,name,owner_id) values('fleet-files',$1,$2)",[plan.destinationPath,owner]);
   await call('select public.record_fleet_sync_attachment_copy($1,$2,$3,$4,$5) result',[company,owner,value.attachmentId,1024,sha],null,'service_role');
-  return (await call('select public.begin_fleet_sync_attachment_copy($1,$2) result',[company,value.attachmentId])).value;
+  return (await call('select public.begin_fleet_sync_attachment_copy($1,$2) result',[company,value.attachmentId],owner)).value;
 }
 before(async()=>{
   await loadFleetSyncAttachmentSchema(db);
@@ -79,4 +79,13 @@ test('review cannot pick inspections; a deleted vehicle keeps the inspection as 
   const pending=await sync(operation(inspection()));assert.equal(pending.kind,'awaiting_review');
   const snapshot=await call('select public.get_fleet_sync_review($1,$2,$3) result',[company,'vehicle',vehicle]);
   await assert.rejects(call('select public.approve_fleet_sync_review($1::jsonb) result',[JSON.stringify({requestId:randomUUID(),companyId:company,entityType:'vehicle',entityId:vehicle,reviewToken:snapshot.reviewToken,choices:{inspections:snapshot.fields.inspections.options[0].source}})]),error=>error.code==='22023');
+});
+test('shop techs can stage proven photos for their own inspections; firefighters cannot upload',async()=>{
+  const photo=await copiedPhoto(tech);const items=[{id:'p1',label:'Interior',kind:'photo',photo}];
+  assert.equal((await sync(operation(inspection(tech,'Tech',items),{user:tech}),tech)).kind,'applied');
+  const current=await data();await assert.rejects(sync(operation(inspection(owner,'Owner',items),{original:current,version:'2'})),error=>error.code==='42501');
+  const value={attachmentId:randomUUID(),userId:crew,companyId:company,entityType:'vehicle',entityId:vehicle,name:'Cab.jpg',mimeType:'image/jpeg',byteSize:1024,sha256:sha,deviceId:'device',savedAt:'2026-01-01T12:00:00.000Z',connectivity:'offline'};
+  await assert.rejects(call('select public.reserve_fleet_sync_attachment($1::jsonb) result',[JSON.stringify(value)],crew),error=>error.code==='42501');
+  const documentRequest={schemaVersion:1,requestId:randomUUID(),companyId:company,entityType:'vehicle',entityId:vehicle,attachmentId:randomUUID(),documentName:'Doc',provenance:{userId:tech,deviceId:'d',savedAt:'2026-01-01T12:00:00.000Z',connectivity:'offline'}};
+  await assert.rejects(call('select public.begin_fleet_sync_document_attach($1::jsonb) result',[JSON.stringify(documentRequest)],tech),error=>error.code==='42501');
 });

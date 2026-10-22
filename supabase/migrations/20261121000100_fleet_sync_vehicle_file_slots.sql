@@ -34,7 +34,7 @@ grant select, update (copy_object_id, copy_verified_at) on public.fleet_sync_att
 grant select, insert on public.fleet_sync_attachment_copies to fireops_sync_writer;
 -- Reviewers (any current manager) must be able to revalidate another user's copy.
 create policy "managers read attachment copies" on public.fleet_sync_attachment_copies
-  for select to fireops_sync_writer using (public.is_company_owner(company_id, (select auth.uid())));
+  for select to fireops_sync_writer using (user_id = (select auth.uid()) or public.is_company_owner(company_id, (select auth.uid())));
 create policy "sync writer requests own attachment copies" on public.fleet_sync_attachment_copies
   for insert to fireops_sync_writer with check (user_id = (select auth.uid()) and copy_object_id is null);
 -- Validation joins the reservation's identity/name/type for any manager too.
@@ -138,7 +138,7 @@ declare
   upload public.fleet_sync_attachment_uploads;
   copy public.fleet_sync_attachment_copies;
 begin
-  if actor is null or target_company_id is null or not public.is_company_owner(target_company_id, actor) then
+  if actor is null or target_company_id is null or not public.fleet_sync_attachment_user_allowed(target_company_id, actor) then
     raise exception 'Company manager access required' using errcode = '42501';
   end if;
   select * into upload from public.fleet_sync_attachment_uploads u

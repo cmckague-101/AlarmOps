@@ -93,7 +93,7 @@ create or replace function public.can_upload_fleet_sync_attachment(object_name t
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.fleet_sync_attachment_uploads u
     where u.object_path = object_name and u.user_id = auth.uid() and u.receipt is null
-      and public.is_company_owner(u.company_id, auth.uid())
+      and public.fleet_sync_attachment_user_allowed(u.company_id, auth.uid())
       and not exists (select 1 from public.fleet_sync_attachment_releases r
         where r.company_id = u.company_id and r.user_id = u.user_id and r.attachment_id = u.attachment_id)
       and not exists (select 1 from public.fleet_sync_attachment_verifications v
@@ -111,7 +111,7 @@ declare
   link public.fleet_sync_attachment_links;
   released public.fleet_sync_attachment_releases;
 begin
-  if actor is null or target_company_id is null or not public.is_company_owner(target_company_id, actor) then
+  if actor is null or target_company_id is null or not public.fleet_sync_attachment_user_allowed(target_company_id, actor) then
     raise exception 'Company manager access required' using errcode = '42501';
   end if;
   select * into upload from public.fleet_sync_attachment_uploads u

@@ -5,6 +5,13 @@
 -- service verifier; no client role can set them.
 begin;
 
+-- Who may upload/verify/copy/release sync files. Default: owners/admins; a
+-- later adapter widens it (e.g. shop techs for inspection photos).
+create function public.fleet_sync_attachment_user_allowed(company uuid, actor uuid)
+returns boolean language sql stable set search_path = '' as $$ select public.is_company_owner(company, actor); $$;
+revoke all on function public.fleet_sync_attachment_user_allowed(uuid, uuid) from public, anon, authenticated, service_role;
+grant execute on function public.fleet_sync_attachment_user_allowed(uuid, uuid) to fireops_sync_writer;
+
 -- Separate private bucket: legacy fleet-files cleanup (delete-fleet-files) is
 -- hardcoded to its own bucket and cannot remove staged/reviewed sync objects.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -134,7 +141,7 @@ begin
   entity := manifest ->> 'entityType';
   if (manifest ->> 'userId')::uuid <> actor then raise exception 'Attachment belongs to another account' using errcode = '42501'; end if;
   -- Cached device permissions are not authority, including for replay.
-  if not public.is_company_owner(company, actor) then raise exception 'Company manager access required' using errcode = '42501'; end if;
+  if not public.fleet_sync_attachment_user_allowed(company, actor) then raise exception 'Company manager access required' using errcode = '42501'; end if;
 
   -- Serialize same-key retries and this user's quota accounting.
   perform pg_advisory_xact_lock(hashtextextended('fleet-sync-attachment-quota:' || actor::text, 0));
@@ -179,13 +186,13 @@ create function public.can_upload_fleet_sync_attachment(object_name text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.fleet_sync_attachment_uploads u
     where u.object_path = object_name and u.user_id = auth.uid() and u.receipt is null
-      and public.is_company_owner(u.company_id, auth.uid()));
+      and public.fleet_sync_attachment_user_allowed(u.company_id, auth.uid()));
 $$;
 create function public.can_read_fleet_sync_attachment(object_name text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.fleet_sync_attachment_uploads u
     where u.object_path = object_name and u.user_id = auth.uid()
-      and public.is_company_owner(u.company_id, auth.uid()));
+      and public.fleet_sync_attachment_user_allowed(u.company_id, auth.uid()));
 $$;
 alter function public.can_upload_fleet_sync_attachment(text) owner to fireops_sync_writer;
 alter function public.can_read_fleet_sync_attachment(text) owner to fireops_sync_writer;
