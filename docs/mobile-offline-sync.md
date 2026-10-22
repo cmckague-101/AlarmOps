@@ -471,6 +471,14 @@ The scalar allowlist/value checks were factored into one shared `validate_fleet_
 
 Tests: `supabase/tests/fleet-sync-vehicle-file-slots.test.mjs` (apply and replay, old file retained, clearing, unproven/foreign/misbound/hand-written values, removed copies, issue rejection, overlap → review → approval with copy revalidation, single use, release, service-only immutable proof) and `copy-fleet-sync-attachment/logic.spec.ts`. Native wiring and UI follow.
 
+### Single-slot vehicle files: native adapter (implemented; UI follows)
+
+The native saved-detail editor's `save(draft, values, {remove, attachmentIds})` now saves slot replacements and clears through the same durable, verified-base path as scalar edits (stable operation ID, device provenance, continuations, exact retries including the same extras). A slot value must be the deterministic proven-copy value for a file bound in the same transaction (`vehicleSlotFileValue`); hand-written paths, unbound files and clearing non-slot fields are rejected. The adapter block, local rebase allowlist and editor allowlist include the six slots; pending slot changes are labeled but not overlaid onto displayed vehicles (no broken image before the copy exists).
+
+The worker's new `prepareAttachments` hook runs before delivery (5-minute budget): `createSlotAttachmentPreparer` checks the saved operation proposes exactly the bound file's value, uploads/verifies bytes through the uploader, and asks `copy-fleet-sync-attachment` for the proven copy. Not-ready work stays `pending` with retry backoff; revoked access, conflicting use, unsupported files and mismatched operations block. The record change is never altered and is sent only after every copy is proven. Without the hook (older wiring), file-bearing work stays blocked on device as before.
+
+After a final result, `createSlotAttachmentSettler` (run with attachment sync) releases file bindings. Files whose slot the server kept are unbound and their device copies removed only once a verified cached vehicle at/after the result revision holds the exact proposed value; files not kept (rejected/partly kept) are unbound but stay on the device for explicit discard. `releaseOperationAttachments` refuses non-final operations. Tests: `offline-attachment-slots.test.ts` (binding/validation, prepare-before-deliver ordering, pending/blocked preparation, confirmation gating, clearing, final-result rules).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

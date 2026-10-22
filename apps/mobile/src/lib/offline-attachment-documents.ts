@@ -27,7 +27,7 @@ export function documentConfirmedInRecord(document:OfflineAttachmentDocument,rec
   const documents=cached.record.documents;
   return Array.isArray(documents)&&documents.some(item=>!!item&&typeof item==='object'&&(item as {id?:unknown}).id===document.attachmentId&&(item as {file?:{path?:unknown}}).file?.path===result.path);
 }
-export function createOfflineAttachmentDocumentSync(options:{session:OfflineOutboxSession;uploader:Pick<OfflineAttachmentUploader,'upload'>;transport:AttachmentDocumentTransport;canRun:()=>boolean;discard?:(id:string)=>Promise<void>}){
+export function createOfflineAttachmentDocumentSync(options:{session:OfflineOutboxSession;uploader:Pick<OfflineAttachmentUploader,'upload'>;transport:AttachmentDocumentTransport;canRun:()=>boolean;discard?:(id:string)=>Promise<void>;settle?:(signal:AbortSignal)=>Promise<void>}){
   const {session,uploader,transport}=options;let running:Promise<OfflineAttachmentDocument[]>|null=null;
   const guard=(signal:AbortSignal)=>{if(signal.aborted||!options.canRun())throw Object.assign(new Error('Attachment sync paused'),{code:'SYNC_PAUSED'})};
   async function deliver(document:OfflineAttachmentDocument,signal:AbortSignal):Promise<OfflineAttachmentDocument>{
@@ -72,7 +72,7 @@ export function createOfflineAttachmentDocumentSync(options:{session:OfflineOutb
   async function run(signal:AbortSignal){
     guard(signal);const out:OfflineAttachmentDocument[]=[];
     for(const document of await session.listAttachmentDocuments()){guard(signal);out.push(document.stage==='pending'?await deliver(document,signal):document)}
-    await removeConfirmedCopies(out,signal);await releaseStaging(signal);
+    await removeConfirmedCopies(out,signal);await options.settle?.(signal);guard(signal);await releaseStaging(signal);
     return out;
   }
   return {

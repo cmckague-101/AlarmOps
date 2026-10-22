@@ -29,6 +29,8 @@ function errorMessage(error:unknown):string{
 export function createOfflineSyncWorker(options:{
   session:OfflineOutboxSession;transport:OfflineSyncTransport;
   canAccess:()=>boolean;canRun:()=>boolean;canReadRecords?:()=>boolean;token:()=>string;now?:()=>number;timeoutMs?:number;
+  /** Uploads/verifies/copies bound files before delivery. Without it, file-bearing work stays blocked on device. */
+  prepareAttachments?:(entry:OutboxEntry,signal:AbortSignal)=>Promise<{kind:'ready'}|{kind:'pending'|'blocked';error:string}>;prepareTimeoutMs?:number;
 }){
   const {session,transport}=options;const now=options.now??Date.now;
   let state:OfflineSyncState=emptyOfflineSyncState;let stopped=false;let epoch=0;let running:Promise<void>|null=null;
@@ -46,7 +48,7 @@ export function createOfflineSyncWorker(options:{
     }}
     catch{if(valid(version))emit({loaded:true,error:'Device sync storage could not be read. Saved work has not been discarded.'})}
   }
-  async function rpc<T>(version:number,task:(signal:AbortSignal)=>Promise<T>):Promise<T>{
+  async function rpc<T>(version:number,task:(signal:AbortSignal)=>Promise<T>,timeoutMs=options.timeoutMs??30_000):Promise<T>{
     if(!ready(version))throw coded('Worker paused','SYNC_PAUSED');
     const controller=new AbortController();requestAbort=controller;
     let timeout:ReturnType<typeof setTimeout>|undefined;
@@ -58,7 +60,7 @@ export function createOfflineSyncWorker(options:{
       });
       const expired=new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>{
         reject(coded('Sync request timed out','SYNC_TIMEOUT'));controller.abort();
-      },options.timeoutMs??30_000)});
+      },timeoutMs)});
       const result=await Promise.race([task(controller.signal),cancelled,expired]);
       if(!ready(version))throw coded('Worker paused','SYNC_PAUSED');
       emit({setupPending:false,error:null});return result;
@@ -186,9 +188,17 @@ export function createOfflineSyncWorker(options:{
         const claimed=await session.claimNext(options.token(),now());if(!ready(version)||!claimed)break;
         const {entry,attempt}=claimed;
         try{
-          const block=entry.attachmentIds?.length?'This attachment workflow is not enabled for upload. Attachment intent is retained on this device; no files were uploaded.':offlineSyncAdapterBlock(entry.operation,entry.continuation?.phase==='ready');
+          const block=entry.attachmentIds?.length&&!options.prepareAttachments?'This attachment workflow is not enabled for upload. Attachment intent is retained on this device; no files were uploaded.':offlineSyncAdapterBlock(entry.operation,entry.continuation?.phase==='ready');
           if(block){await persist(()=>session.finishAttempt(attempt,{kind:'blocked',error:block}));await refresh();continue}
           let delivery=entry.delivery;
+          // Files first: the record change is sent only after the server proved each referenced copy.
+          if(!delivery&&entry.attachmentIds?.length){
+            const prepared=await rpc(version,signal=>options.prepareAttachments!(entry,signal),options.prepareTimeoutMs??300_000);
+            if(prepared.kind!=='ready'){
+              await persist(()=>session.finishAttempt(attempt,prepared.kind==='blocked'?{kind:'blocked',error:prepared.error}:{kind:'retry',error:prepared.error,retryAt:now()+retryDelay(entry.attempts)}));
+              await refresh();continue;
+            }
+          }
           if(!delivery){
             const history=await persist(()=>session.listRebases(entry.operation.operationId));
             if(entry.continuation?.phase==='ready'&&!history.length)throw coded('Continuation history is missing','SYNC_STORAGE');

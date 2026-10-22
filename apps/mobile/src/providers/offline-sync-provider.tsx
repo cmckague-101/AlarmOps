@@ -8,6 +8,7 @@ import {createNativeAttachmentFiles} from '../lib/offline-attachment-files-nativ
 import {createOfflineAttachmentUploader} from '../lib/offline-attachment-upload';
 import {createOfflineAttachmentDocumentSync} from '../lib/offline-attachment-documents';
 import {createNativeAttachmentUploadTransport} from '../lib/offline-attachment-upload-transport';
+import {createSlotAttachmentPreparer,createSlotAttachmentSettler} from '../lib/offline-attachment-slots';
 import {File} from 'expo-file-system';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
@@ -66,14 +67,17 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const canAccess=()=>!cancelled&&runtime.current.key===key;
         const canRun=()=>canAccess()&&runtime.current.foreground&&!isOffline()&&!offlineSyncSessionPaused(identity.userId);
         const transport=createNativeSyncTransport(client,identity,canRun);
-        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.manager,token:createFleetId});
         const canUseAttachments=()=>canAccess()&&runtime.current.manager&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId);
         const vault=createOfflineAttachmentVault({session:scoped,files:createNativeAttachmentFiles(identity),canAccess:canUseAttachments,createId:createFleetId,connectivity:()=>isOffline()?'offline':'online'});
         // Same scoped session; uploads also require a connection. Results never mark business work synced.
         const canUploadAttachments=()=>canUseAttachments()&&!isOffline();
         const attachmentTransport=createNativeAttachmentUploadTransport(client,identity,canUploadAttachments,uri=>new File(uri).arrayBuffer());
         const uploader=createOfflineAttachmentUploader({session:scoped,vault,transport:attachmentTransport,canRun:canUploadAttachments});
-        const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments,discard:id=>vault.discard(id)});
+        // Vehicle file slots: files are uploaded and proven before the worker sends the record change.
+        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.manager,token:createFleetId,
+          prepareAttachments:createSlotAttachmentPreparer({session:scoped,uploader,transport:attachmentTransport})});
+        const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments,discard:id=>vault.discard(id),
+          settle:createSlotAttachmentSettler({session:scoped,discard:id=>vault.discard(id)})});
         const attachmentAbort=new AbortController();
         const attachments=createOfflineAttachmentController({session:scoped,vault,canAccess:canUseAttachments,documents,changed:()=>{void created.wake()}});
         const syncAttachments=()=>{if(canUploadAttachments())void attachments.sync(attachmentAbort.signal)};
@@ -106,7 +110,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   useEffect(()=>{if(!attachmentController)return;if(foreground&&manager)void attachmentController.resume().then(()=>{if(!offline)syncAttachments?.()});else attachmentController.pause();return()=>attachmentController.pause()},[attachmentController,syncAttachments,foreground,manager,offline]);
   useEffect(()=>{
     if(!attachmentController||!syncAttachments)return;
-    const timer=setInterval(()=>{if(runtime.current.foreground&&!isOffline()&&attachmentController.getSnapshot().items.some(item=>item.document?.stage==='pending'||(item.document?.stage==='applied'&&!['discarding','discarded'].includes(item.state))||item.remoteRelease?.state==='pending'))syncAttachments()},15_000);
+    const timer=setInterval(()=>{if(runtime.current.foreground&&!isOffline()&&attachmentController.getSnapshot().items.some(item=>item.document?.stage==='pending'||(item.document?.stage==='applied'&&!['discarding','discarded'].includes(item.state))||item.remoteRelease?.state==='pending'||(item.operationIds.length>0&&item.state==='ready')))syncAttachments()},15_000);
     return()=>clearInterval(timer);
   },[attachmentController,syncAttachments]);
   useEffect(()=>{

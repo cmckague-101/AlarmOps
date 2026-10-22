@@ -1,4 +1,4 @@
-import { createSyncPatch, mergeSyncUpdate, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, decodeAttachmentDocumentResult, createAttachmentDocumentRequest, type AttachmentDocumentRequest, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import { createSyncPatch, mergeSyncUpdate, isVehicleFileSlot, vehicleFileSlots, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, decodeAttachmentDocumentResult, createAttachmentDocumentRequest, type AttachmentDocumentRequest, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
 import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage,type OfflineAttachmentDocument} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
@@ -428,6 +428,13 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         })},
         /** Persisted before the first reserve request, so a lost response can still be released later. */
         markAttachmentRemoteAttempt(id:string):Promise<void>{attachmentId(id);return write(async tx=>{await tx.runAsync('UPDATE offline_attachments SET remote_attempted=1 WHERE user_id=? AND company_id=? AND attachment_id=?',...ids,id)})},
+        /** Unbinds files only after the operation's business result is final; the operation keeps its original reference list. */
+        releaseOperationAttachments(operationId:string):Promise<boolean>{required(operationId,'operation ID');return write(async tx=>{
+          const row=await tx.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId);if(!row)return false;
+          const value=entry(row);const final=value.status==='synced'||value.status==='not_selected'||(value.status==='blocked'&&!!value.reviewOutcome);
+          if(!final)throw new Error('Files stay bound until this change finishes syncing or review.');
+          return (await tx.runAsync('DELETE FROM offline_attachment_refs WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId)).changes>0;
+        })},
         listAttachmentReleases():Promise<{attachment:OfflineAttachment;state:'pending'|'released'|'attached'|'none';error:string|null}[]>{return read(async()=>{
           const rows=await db.getAllAsync<{attachment_id:string;manifest_json:string;state:OfflineAttachment['state'];error:string|null;remote_release:'pending'|'released'|'attached'|'none';remote_release_error:string|null}>('SELECT * FROM offline_attachments WHERE user_id=? AND company_id=? AND remote_release IS NOT NULL ORDER BY attachment_id',...ids);
           return rows.map(row=>({attachment:asset(row),state:row.remote_release,error:row.remote_release_error}));
@@ -588,11 +595,13 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const keys=Object.keys(current.fields);
             if(Object.keys(selected).length!==keys.length||keys.some(key=>!['current','saved'].includes(selected[key])))throw new Error('Choose a source for every saved field.');
             const projected={...current.current.record!};
-            const allowed=current.operation.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
+            const allowed=current.operation.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes',...vehicleFileSlots]:['title','description','priority'];
             for(const key of keys){
               if(selected[key]==='current')continue;
               if(!allowed.includes(key))throw new Error('This field needs another rebase adapter.');
               const slot=current.fields[key][selected[key]];
+              // A saved file slot keeps its original bound value; the server revalidates the proven copy.
+              if(isVehicleFileSlot(key)){if(slot.present)projected[key]=slot.value;else delete projected[key];continue}
               if(slot.present){const value=slot.value;if(key==='year'){if(typeof value!=='number'||!Number.isInteger(value)||value<1000||value>9999)throw new Error('Invalid rebased year.')}else if(typeof value!=='string'||value.length>(['notes','description'].includes(key)?10000:200)||['unit','type','make','model','title'].includes(key)&&!value.trim()||key==='priority'&&!['Low','Medium','High','Critical'].includes(value))throw new Error('Invalid rebased value.');projected[key]=value}
               else{if(!['vin','plate','notes'].includes(key))throw new Error('Required field cannot be removed.');delete projected[key]}
             }

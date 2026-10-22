@@ -1,18 +1,26 @@
-import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {createSyncPatch,isVehicleFileSlot,vehicleFileSlots,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import {projectOfflineFleet} from './offline-fleet-model';
 import type {OfflineOutboxSession,OutboxEntry,ContinuationReview} from './offline-outbox';
 import {decodeCanonicalSyncRecord} from './offline-sync-protocol';
 
 export type DetailTarget={readonly entityType:'vehicle'|'issue';readonly entityId:string};
 export type OfflineDetailDraft=DetailTarget & {readonly revision:string;readonly record:SyncRecord;readonly verifiedAt:string;readonly pendingParentId?:string};
-const fields={vehicle:['unit','type','year','make','model','vin','plate','notes'],issue:['title','description','priority']};
+const fields={vehicle:['unit','type','year','make','model','vin','plate','notes',...vehicleFileSlots],issue:['title','description','priority']};
+const syncFilePath=/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/sync-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+export type DetailSaveExtras={readonly remove?:readonly string[];readonly attachmentIds?:readonly string[]};
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const active=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
-export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord){
+/** File slots accept only the deterministic proven-copy value for a bound attachment (the server rechecks the proof). */
+export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord,extras:DetailSaveExtras={}){
   createSyncPatch({},values);
+  for(const field of extras.remove??[])if(entityType!=='vehicle'||!isVehicleFileSlot(field)||field in values)throw new Error('Only vehicle file slots can be cleared here.');
   for(const [field,value] of Object.entries(values)){
     if(!fields[entityType].includes(field))throw new Error('This field is not enabled for offline editing.');
-    if(field==='year'){
+    if(isVehicleFileSlot(field)){
+      const file=value as Record<string,unknown>|null;const match=typeof file?.path==='string'?syncFilePath.exec(file.path):null;
+      if(!file||typeof file!=='object'||Array.isArray(file)||Object.keys(file).sort().join()!=='dataUrl,name,path,type'||file.dataUrl!==''||typeof file.name!=='string'||typeof file.type!=='string'||!match||!(extras.attachmentIds??[]).includes(match[1]))
+        throw new Error('Vehicle files must reference a saved device file.');
+    }else if(field==='year'){
       if(typeof value!=='number'||!Number.isInteger(value)||value<1000||value>9999)throw new Error('Vehicle year must contain four digits.');
     }else{
       if(typeof value!=='string'||value.length>(['notes','description'].includes(field)?10000:200))throw new Error('Invalid detail field value.');
@@ -31,7 +39,7 @@ export function createOfflineDetailEditor(options:{
   let disposed=false;
   const requests=new Set<AbortController>();
   const rebaseReviews=new WeakMap<ContinuationReview,ContinuationReview>();
-  const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord}>();
+  const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord;extras?:{remove:string[];attachmentIds:string[]}}>();
   function guard(){if(disposed||!options.canEdit())throw new Error('This offline editor is no longer available for the current account or permissions.')}
   async function available(target:DetailTarget){
     const entries=await options.session.list();
@@ -87,16 +95,17 @@ export function createOfflineDetailEditor(options:{
       let entry:OutboxEntry;try{entry=await options.session.rebaseContinuation(owned,choices)}finally{release()}
       try{await options.changed()}catch{/* Committed local decision remains durable. */}return entry;
     },
-    async save(draft:OfflineDetailDraft,values:SyncRecord):Promise<OutboxEntry>{
+    async save(draft:OfflineDetailDraft,values:SyncRecord,extras:DetailSaveExtras={}):Promise<OutboxEntry>{
       guard();const owned=drafts.get(draft);if(!owned)throw new Error('Reload verified details before saving.');
-      validateOfflineDetailValues(owned.base.entityType,values);
+      validateOfflineDetailValues(owned.base.entityType,values,extras);
+      const saved={remove:[...(extras.remove??[])].sort(),attachmentIds:[...(extras.attachmentIds??[])].sort()};
       if(owned.operation){
-        if(Object.keys(createSyncPatch(owned.values!,values)).length)throw new Error('Retry the original values or reopen this editor before changing a failed save.');
+        if(Object.keys(createSyncPatch(owned.values!,values)).length||JSON.stringify(owned.extras)!==JSON.stringify(saved))throw new Error('Retry the original values or reopen this editor before changing a failed save.');
       }else{
-        const base=owned.base;const projected={...base.record,...clone(values)};
+        const base=owned.base;const projected={...base.record,...clone(values)};for(const field of saved.remove)delete projected[field];
         const patch=createSyncPatch(base.record,projected);
         if(!Object.keys(patch).length)throw new Error('No detail changes to save.');
-        owned.values=clone(values);
+        owned.values=clone(values);owned.extras=saved;
         owned.operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:base.entityType,entityId:base.entityId,
           provenance:{userId:options.session.scope.userId,deviceId:owned.deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},
           dependsOn:owned.parent?[owned.parent.operation.operationId]:[],mutation:{kind:'update',baseRevision:base.revision,base:clone(base.record),patch}};
@@ -105,7 +114,8 @@ export function createOfflineDetailEditor(options:{
       const base=owned.base;
       const release=options.reserve?.(base,operation.operationId)??(()=>{});
       let entry:OutboxEntry;
-      try{entry=await options.session.enqueue(operation,{...base.record,...owned.values},{exclusiveRecord:!owned.parent,continuationParent:owned.parent?.operation.operationId})}finally{release()}
+      const projection:Record<string,SyncRecord[string]>={...base.record,...owned.values};for(const field of owned.extras!.remove)delete projection[field];
+      try{entry=await options.session.enqueue(operation,projection,{exclusiveRecord:!owned.parent,continuationParent:owned.parent?.operation.operationId,...(owned.extras!.attachmentIds.length?{attachmentIds:owned.extras!.attachmentIds}:{})})}finally{release()}
       // Durable commit succeeded. A notice refresh failure must never report the save itself failed.
       try{await options.changed()}catch{/* Worker/status refresh can retry; committed intent remains durable. */}
       return entry;
