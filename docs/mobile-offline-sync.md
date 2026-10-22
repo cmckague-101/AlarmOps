@@ -432,6 +432,14 @@ SQLite migrates **v8 → v9**, adding scoped `offline_attachment_documents`. `re
 
 Still not enabled: no provider/worker scheduling, picker or UI calls these modules yet. Tests extend `offline-attachment-upload.test.ts` (immutable request, upload-before-attach ordering, restart retention, discard protection then explicit release, uncertain retries with one request body, blocking, forged results, server rejection retention, account isolation, token binding).
 
+### Offline vehicle documents enabled in the native saved-detail editor (client; backend not deployed)
+
+Installed-app owners/admins can now **Add vehicle document** from the vehicle saved-detail editor once the vehicle has a verified download. JPEG/PNG/WebP/GIF/PDF up to 10 MB (declared type/size preflight only; bytes are hashed by the vault and revalidated by the server). The chosen file gets stable attachment/request IDs, so a failed save retries the exact same document instead of creating a second one. Saving stages the bytes durably and commits the immutable document intent; only then does the screen say **Saved on device — waiting to upload and attach**. Picker responses after a route/account change are ignored.
+
+The provider builds the uploader/document runner on its **existing scoped session** (no new `activate()`), binds them to the current account token, and runs them only while foreground, online, manager and not paused: after attachment recovery on resume, right after a save, and every 15 seconds while a document is pending. An applied result wakes ordinary canonical reconciliation so the vehicle's shared documents refresh; no local projection claims the document earlier. Saved changes & sync now separates server byte progress (reserved, upload unconfirmed, verification pending, verified — not yet attached, blocked) from the document outcome (waiting, blocked, attached at a revision, or not attached because the vehicle was deleted; files retained). Pending/blocked document files cannot be discarded; after a final result, discarding the device copy stays explicit.
+
+Not included: vehicle photos/named file slots (contract, registration, insurance, DOT, VIPR), inspection photos, issue files (no issue file field), replacing/removing documents, and sensitive/crew/payroll files. **Device copies are not encrypted by FireOps.** Web remains online-only; web viewers sign the attached `fleet-files` path like any other vehicle document. Tests: controller document actions/sync fencing, picker preflight and stable retry IDs, and truthful drafts labels (static markup with stub components). No UI launch or visual test was run.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

@@ -6,6 +6,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {detailRecordHref,offlineDetailFields,offlineDetailFormChanges,offlineDetailFormValues} from '@/lib/offline-detail-form';
 import type {DetailTarget,OfflineDetailDraft,OfflineDetailEditor} from '@/lib/offline-detail-editor';
 import {useOfflineSync} from '@/providers/offline-sync-provider';
+import {OfflineVehicleDocumentForm} from '@/components/offline-vehicle-document-form';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -24,7 +25,7 @@ export default function SavedDetailsScreen(){
 }
 
 function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTarget}){
-  const theme=useFireOpsTheme();const router=useRouter();const {offline,state:syncState}=useOfflineSync();
+  const theme=useFireOpsTheme();const router=useRouter();const {offline,state:syncState,attachmentController,syncAttachments}=useOfflineSync();
   const hasDownload=syncState.records.some(record=>record.entityType===target.entityType&&record.entityId===target.entityId&&record.record!==null);
   const [downloadedOnly,setDownloadedOnly]=useState(false);
   const [draft,setDraft]=useState<OfflineDetailDraft|null>(null);const [form,setForm]=useState<Record<string,string>>({});
@@ -55,7 +56,7 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
     <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS==='ios'?'padding':undefined} keyboardVerticalOffset={90}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.title,{color:theme.ink}]}>{saved?'Submitted detail copy':'Saved detail editor'}</Text>
-        <Text style={{color:theme.secondary}}>Owner/admin scalar details only. Open this editor online once per record before using it offline. Files, status, assignments and other workflows require a connection.</Text>
+        <Text style={{color:theme.secondary}}>Owner/admin scalar details{target.entityType==='vehicle'?' and new vehicle documents':''} only. Open this editor online once per record before using it offline. Photos, other files, status, assignments and other workflows require a connection.</Text>
         {saved?<Text accessibilityRole="alert" style={[styles.label,{color:theme.ink}]}>Saved on device. Values below are your submitted version, not confirmed shared data.</Text>:null}
         {loading?<Text style={{color:theme.secondary}}>Loading verified details…</Text>:null}
         {draft?<>
@@ -65,6 +66,7 @@ function DetailForm({editor,target}:{editor:OfflineDetailEditor;target:DetailTar
             {field==='priority'?<View style={styles.choices}>{['Low','Medium','High','Critical'].map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:form[field]===value,disabled:frozen}} disabled={frozen} onPress={()=>setForm(current=>({...current,[field]:value}))} style={[styles.choice,{borderColor:form[field]===value?theme.ember:theme.divider}]}><Text style={{color:form[field]===value?theme.ember:theme.ink}}>{value}</Text></Pressable>)}</View>:<TextInput accessibilityLabel={label} editable={!frozen} value={form[field]??''} onChangeText={value=>setForm(current=>({...current,[field]:value}))} keyboardType={field==='year'?'number-pad':'default'} autoCapitalize={field==='vin'||field==='plate'?'characters':'sentences'} multiline={field==='notes'||field==='description'} maxLength={field==='year'?4:field==='notes'||field==='description'?10000:field==='vin'?17:field==='plate'?20:200} textAlignVertical="top" style={[styles.input,{color:theme.ink,borderColor:theme.divider,backgroundColor:theme.paper},(field==='notes'||field==='description')&&styles.multiline]}/>}
           </View>)}
         </>:null}
+        {draft&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleDocumentForm controller={attachmentController} entityId={target.entityId} onSaved={syncAttachments}/>:null}
         {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}
         {saved?<View style={styles.field}><Text style={{color:theme.secondary}}>Check Saved changes & sync for uploading, review or completion. Review may keep another version. Return to the record for current shared data.</Text><Pressable accessibilityRole="button" onPress={()=>router.replace('/sync-status' as never)} style={styles.button}><Text style={{color:theme.ember}}>Saved changes & sync</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>router.dismissTo(detailRecordHref(target))} style={styles.button}><Text style={{color:theme.ember}}>Back to record</Text></Pressable></View>:draft?<>
           <Text style={{color:theme.secondary}}>Changes are not saved until Save on device completes. Leaving before Save discards entered values. Do not uninstall or clear app data before changes sync. Later edits wait for earlier changes. Conflicting changes or a changed review outcome require explicit rebase before upload.</Text>
