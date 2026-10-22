@@ -149,7 +149,7 @@ begin
   if company is null or record_uuid is null or entity is null or entity not in ('vehicle','issue') then
     raise exception 'Unsupported sync identity/entity' using errcode = '22023';
   end if;
-  if not public.is_company_owner(company,auth.uid()) then raise exception 'Company manager access required' using errcode = '42501'; end if;
+  if not public.fleet_sync_submitter_allowed(company,auth.uid()) then raise exception 'Company manager access required' using errcode = '42501'; end if;
   perform public.lock_fleet_sync_review(company,entity,record_uuid);
   return public.sync_fleet_update_internal(operation);
 end;

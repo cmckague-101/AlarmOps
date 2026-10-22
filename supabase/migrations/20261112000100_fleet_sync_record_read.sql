@@ -18,7 +18,9 @@ begin
     raise exception 'Unsupported sync record identity' using errcode = '22023';
   end if;
   perform public.lock_fleet_sync_review(target_company_id,entity_type,record_id);
-  execute format('select data,version from public.%I where company_id=$1 and record_id=$2 for update',table_name)
+  -- The record-group lock orders this read with writers; no row lock, so readers
+  -- who may not update a row (crew) can still read it.
+  execute format('select data,version from public.%I where company_id=$1 and record_id=$2',table_name)
     into current_data,current_version using target_company_id,record_id;
   if current_data is null then
     select r.version,r.deleted into current_version,deleted from public.fleet_sync_revisions r

@@ -500,6 +500,16 @@ Client mirror in shared `packages/domain/src/fleet-sync-fields.ts` (`fleetSyncFi
 
 The vehicle saved-detail editor adds **Status & assignment**: Mark Ready / Mark Out of Service (clearing assignee and fire), Assign to an active crew member (from the device's crew list; assigning needs it), Clear assignment, Clear fire assignment. Assigning a fire still needs a connection (live incident data). The issue editor adds **Updates & status**: Save update on device (appended note) and Resolve/Reopen (separate change). Each action prepares a fresh verified draft and saves one change through `createDetailChangeActions`, which builds the change once from that draft (so removals and note appends match its base) and **Retry** resends the identical values on the same draft; other actions wait, **Cancel** abandons the unsaved change. Labels say changes are saved on device, checked against current server state, and may need owner/admin review; notes never replace others. Online screens and their activity/notification behavior are unchanged; web stays online-only. No UI launch or visual test was run.
 
+### Crew offline vehicle claims and issue notes: server (not deployed)
+
+Submit/read access now goes through replaceable hooks added in place to the undeployed migrations (`fleet_sync_submitter_allowed`, `fleet_sync_reader_allowed`, `validate_fleet_sync_submitter_patch`; defaults stay owner/admin). The record read no longer takes a row lock (the record-group advisory lock already orders it), so readers who may not update a row can still read it. `20261123000100_fleet_sync_member_actions.sql` widens them for **fire_fighter and shop_tech** with a strict field allowlist:
+
+- Vehicles: only `status`/`assignedTo`/`assignedFire`. The existing role trigger still decides each transition against the current row (claim a Ready unassigned vehicle, release one's own, change/clear one's own fire); anything else fails with `42501` and writes nothing.
+- Issues: only append-only `updates`, and the member issue trigger still requires the reporter's own issue and exactly one own note per write. Crew resolve/reopen stays online-only (the trigger requires a note in the same write, which this adapter keeps separate).
+- Crew can read verified vehicles and the issues they reported; their inventory pages cover **vehicles only** (hidden issues are never reported as deleted or inconsistent). Conflict review, history inspection and approval remain owner/admin only; a crew member's overlapping claim becomes a review candidate and they read their outcome through the existing submitter endpoint. Activities from crew changes are attributed to them.
+
+Tests: `supabase/tests/fleet-sync-member-actions.test.mjs` (read scope, claim/fire-clear/release, refused transitions with no partial writes, field allowlist, own-issue single notes with concurrent notes kept, review candidate + outcome). Client wiring follows.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -518,6 +528,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 12. `20261120000100_fleet_sync_attachment_release.sql` (redeploy `attach-fleet-sync-document`; deploy `release-fleet-sync-attachment`)
 13. `20261121000100_fleet_sync_vehicle_file_slots.sql` (deploy `copy-fleet-sync-attachment`)
 14. `20261122000100_fleet_sync_status_assignments.sql`
+15. `20261123000100_fleet_sync_member_actions.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

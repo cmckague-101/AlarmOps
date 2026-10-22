@@ -24,6 +24,8 @@ begin
   with access_check as materialized (select public.fleet_sync_reader_allowed(target_company_id,auth.uid()) as allowed), latest as materialized (
     select distinct on (r.collection,r.record_id) r.* from public.fleet_sync_revisions r
       where r.company_id=target_company_id and r.collection in ('vehicles','issues')
+        -- Crew can read only issues they reported; their inventory covers vehicles only.
+        and (r.collection='vehicles' or public.is_company_owner(target_company_id,auth.uid()))
       order by r.collection,r.record_id,r.version desc
   ), verified as materialized (
     select l.*,case l.collection when 'vehicles' then v.data else i.data end as data,
@@ -43,7 +45,7 @@ begin
   select jsonb_build_object('companyId',target_company_id,'snapshotToken',inventory.token,'total',inventory.total,'vehicles',inventory.vehicles,'issues',inventory.issues,
     'serverRequestAt',statement_timestamp(),'authorized',(select allowed from access_check),'invalid',inventory.invalid
       or exists(select 1 from public.fleet_vehicles v where v.company_id=target_company_id and not exists(select 1 from latest l where l.collection='vehicles' and l.record_id=v.record_id))
-      or exists(select 1 from public.fleet_issues i where i.company_id=target_company_id and not exists(select 1 from latest l where l.collection='issues' and l.record_id=i.record_id)),
+      or (public.is_company_owner(target_company_id,auth.uid()) and exists(select 1 from public.fleet_issues i where i.company_id=target_company_id and not exists(select 1 from latest l where l.collection='issues' and l.record_id=i.record_id))),
     'records',coalesce((select jsonb_agg(jsonb_build_object('entityType',case collection when 'vehicles' then 'vehicle' else 'issue' end,'entityId',record_id,'revision',version::text,'record',case when deleted then null else data end) order by collection,record_id) from selected),'[]'::jsonb))
     into response from inventory;
   if (response->>'authorized')::boolean is distinct from true or (response->>'invalid')::boolean then raise exception 'Inventory contains unavailable or inconsistent records' using errcode='42501'; end if;
