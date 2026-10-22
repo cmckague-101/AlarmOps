@@ -1,22 +1,38 @@
-import {createSyncPatch,isVehicleFileSlot,vehicleFileSlots,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {addedIssueUpdates,createSyncPatch,fleetSyncFields,fleetSyncRecordProblem,isVehicleFileSlot,issueStatuses,vehicleStatuses,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import {projectOfflineFleet} from './offline-fleet-model';
 import type {OfflineOutboxSession,OutboxEntry,ContinuationReview} from './offline-outbox';
 import {decodeCanonicalSyncRecord} from './offline-sync-protocol';
 
 export type DetailTarget={readonly entityType:'vehicle'|'issue';readonly entityId:string};
 export type OfflineDetailDraft=DetailTarget & {readonly revision:string;readonly record:SyncRecord;readonly verifiedAt:string;readonly pendingParentId?:string};
-const fields={vehicle:['unit','type','year','make','model','vin','plate','notes',...vehicleFileSlots],issue:['title','description','priority']};
+const fields=fleetSyncFields;
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const removable:Record<DetailTarget['entityType'],readonly string[]>={vehicle:['photo','contract','viprChecklist','registration','insurance','dotInspection','assignedTo','assignedFire'],issue:['resolvedAt']};
+const shortText=(value:unknown,max=200)=>typeof value==='string'&&value.trim().length>0&&value.length<=max;
 const syncFilePath=/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/sync-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 export type DetailSaveExtras={readonly remove?:readonly string[];readonly attachmentIds?:readonly string[]};
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const active=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
 /** File slots accept only the deterministic proven-copy value for a bound attachment (the server rechecks the proof). */
-export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord,extras:DetailSaveExtras={}){
+export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord,extras:DetailSaveExtras={},context:{userId?:string;base?:SyncRecord}={}){
   createSyncPatch({},values);
-  for(const field of extras.remove??[])if(entityType!=='vehicle'||!isVehicleFileSlot(field)||field in values)throw new Error('Only vehicle file slots can be cleared here.');
+  for(const field of extras.remove??[])if(!removable[entityType].includes(field)||field in values)throw new Error('This field cannot be cleared here.');
+  if('updates' in values&&(Object.keys(values).length!==1||(extras.remove??[]).length))throw new Error('Issue updates are saved separately from other issue changes.');
   for(const [field,value] of Object.entries(values)){
     if(!fields[entityType].includes(field))throw new Error('This field is not enabled for offline editing.');
-    if(isVehicleFileSlot(field)){
+    if(field==='status'){
+      if(!(entityType==='vehicle'?vehicleStatuses:issueStatuses as readonly string[]).includes(value as string))throw new Error('Invalid status.');
+    }else if(field==='assignedTo'){
+      if(typeof value!=='string'||!uuid.test(value))throw new Error('Choose a company member to assign.');
+    }else if(field==='assignedFire'){
+      const fire=value as Record<string,unknown>|null;
+      if(!fire||typeof fire!=='object'||Array.isArray(fire)||Object.keys(fire).sort().join()!=='id,name,state'||!['id','name','state'].every(key=>shortText(fire[key])))throw new Error('Invalid fire assignment.');
+    }else if(field==='resolvedAt'){
+      if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))throw new Error('Invalid resolution time.');
+    }else if(field==='updates'){
+      const added=addedIssueUpdates(context.base?.updates,value);
+      for(const entry of added)if(Object.keys(entry).sort().join()!=='createdAt,createdBy,createdById,id,text'||!uuid.test(entry.id)||entry.createdById!==context.userId||!shortText(entry.text,2000)||!shortText(entry.createdBy)||typeof entry.createdAt!=='string'||!Number.isFinite(Date.parse(entry.createdAt as string)))throw new Error('Invalid issue update.');
+    }else if(isVehicleFileSlot(field)){
       const file=value as Record<string,unknown>|null;const match=typeof file?.path==='string'?syncFilePath.exec(file.path):null;
       if(!file||typeof file!=='object'||Array.isArray(file)||Object.keys(file).sort().join()!=='dataUrl,name,path,type'||file.dataUrl!==''||typeof file.name!=='string'||typeof file.type!=='string'||!match||!(extras.attachmentIds??[]).includes(match[1]))
         throw new Error('Vehicle files must reference a saved device file.');
@@ -97,7 +113,7 @@ export function createOfflineDetailEditor(options:{
     },
     async save(draft:OfflineDetailDraft,values:SyncRecord,extras:DetailSaveExtras={}):Promise<OutboxEntry>{
       guard();const owned=drafts.get(draft);if(!owned)throw new Error('Reload verified details before saving.');
-      validateOfflineDetailValues(owned.base.entityType,values,extras);
+      validateOfflineDetailValues(owned.base.entityType,values,extras,{userId:options.session.scope.userId,base:owned.base.record});
       const saved={remove:[...(extras.remove??[])].sort(),attachmentIds:[...(extras.attachmentIds??[])].sort()};
       if(owned.operation){
         if(Object.keys(createSyncPatch(owned.values!,values)).length||JSON.stringify(owned.extras)!==JSON.stringify(saved))throw new Error('Retry the original values or reopen this editor before changing a failed save.');
@@ -105,6 +121,7 @@ export function createOfflineDetailEditor(options:{
         const base=owned.base;const projected={...base.record,...clone(values)};for(const field of saved.remove)delete projected[field];
         const patch=createSyncPatch(base.record,projected);
         if(!Object.keys(patch).length)throw new Error('No detail changes to save.');
+        const problem=fleetSyncRecordProblem(base.entityType,base.record,projected);if(problem)throw new Error(problem);
         owned.values=clone(values);owned.extras=saved;
         owned.operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:base.entityType,entityId:base.entityId,
           provenance:{userId:options.session.scope.userId,deviceId:owned.deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},

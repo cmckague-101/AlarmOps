@@ -51,7 +51,7 @@ describe('offline vehicle file slots (actual SQLite and files)',()=>{
     const f=await setup();const draft=await f.editor.prepare({entityType:'vehicle',entityId:entity});
     await expect(f.editor.save(draft,{photo:f.value})).rejects.toThrow(/saved device file/);
     await expect(f.editor.save(draft,{photo:{...f.value,path:`${company}/${user}/legacy.jpg`}},{attachmentIds:[id(1)]})).rejects.toThrow(/saved device file/);
-    await expect(f.editor.save(draft,{},{remove:['unit']})).rejects.toThrow(/file slots/);
+    await expect(f.editor.save(draft,{},{remove:['unit']})).rejects.toThrow(/cannot be cleared/);
     const entry=await f.editor.save(draft,{photo:f.value},{attachmentIds:[id(1)]});
     expect(entry.attachmentIds).toEqual([id(1)]);expect(entry.operation.mutation.kind==='update'&&entry.operation.mutation.patch).toEqual({photo:{present:true,value:f.value}});
     await expect(f.editor.save(draft,{photo:f.value})).rejects.toThrow();expect(await f.editor.save(draft,{photo:f.value},{attachmentIds:[id(1)]})).toEqual(entry);

@@ -1,4 +1,4 @@
-import { createSyncPatch, mergeSyncUpdate, isVehicleFileSlot, vehicleFileSlots, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, decodeAttachmentDocumentResult, createAttachmentDocumentRequest, type AttachmentDocumentRequest, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
+import { createSyncPatch, mergeSyncUpdate, isVehicleFileSlot, fleetSyncFields, fleetSyncScalarFields, mergeFleetSyncDetail, fleetSyncRecordProblem, appendIssueUpdates, decodeAttachmentUploadManifest, decodeAttachmentUploadReservation, decodeAttachmentDocumentResult, createAttachmentDocumentRequest, type AttachmentDocumentRequest, type SyncOperation, type SyncOperationStatus, type SyncRecord, type SyncServerReceipt, type SyncReviewOutcome, type SyncFieldValue } from '@fireops/domain';
 import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage,type OfflineAttachmentDocument} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
@@ -595,16 +595,19 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const keys=Object.keys(current.fields);
             if(Object.keys(selected).length!==keys.length||keys.some(key=>!['current','saved'].includes(selected[key])))throw new Error('Choose a source for every saved field.');
             const projected={...current.current.record!};
-            const allowed=current.operation.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes',...vehicleFileSlots]:['title','description','priority'];
+            const entity=current.operation.entityType as 'vehicle'|'issue';
             for(const key of keys){
               if(selected[key]==='current')continue;
-              if(!allowed.includes(key))throw new Error('This field needs another rebase adapter.');
+              if(!fleetSyncFields[entity].includes(key))throw new Error('This field needs another rebase adapter.');
               const slot=current.fields[key][selected[key]];
-              // A saved file slot keeps its original bound value; the server revalidates the proven copy.
-              if(isVehicleFileSlot(key)){if(slot.present)projected[key]=slot.value;else delete projected[key];continue}
+              // Saved issue notes are re-appended onto the current list, never replacing newer notes.
+              if(key==='updates'){if(!slot.present||current.operation.mutation.kind!=='update')throw new Error('Invalid rebased issue updates.');projected[key]=appendIssueUpdates(current.operation.mutation.base,current.current.record!,slot.value) as never;continue}
+              // File slots and status/assignment keep their saved value; the server revalidates them and the record invariants.
+              if(!fleetSyncScalarFields[entity].includes(key)){if(slot.present)projected[key]=slot.value;else delete projected[key];continue}
               if(slot.present){const value=slot.value;if(key==='year'){if(typeof value!=='number'||!Number.isInteger(value)||value<1000||value>9999)throw new Error('Invalid rebased year.')}else if(typeof value!=='string'||value.length>(['notes','description'].includes(key)?10000:200)||['unit','type','make','model','title'].includes(key)&&!value.trim()||key==='priority'&&!['Low','Medium','High','Critical'].includes(value))throw new Error('Invalid rebased value.');projected[key]=value}
               else{if(!['vin','plate','notes'].includes(key))throw new Error('Required field cannot be removed.');delete projected[key]}
             }
+            const problem=fleetSyncRecordProblem(entity,current.current.record,projected);if(problem)throw new Error(`${problem} Choose matching sources for related fields.`);
             const operation:SyncOperation={...current.operation,dependsOn:[],mutation:{kind:'update',baseRevision:current.current.revision,base:current.current.record!,patch:createSyncPatch(current.current.record!,projected)}};
             const encoded=encodeOperation(operation,identity);
             await tx.runAsync('INSERT INTO offline_rebase_history(user_id,company_id,operation_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?)',...ids,operation.operationId,JSON.stringify(current.operation),encoded,`explicit:${JSON.stringify(selected)}`,new Date().toISOString());
@@ -652,11 +655,11 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
                 const mutation=child.operation.mutation;
                 if(mutation.kind!=='update'||!current.record)reason='Record is unavailable or deleted. This later edit needs explicit review; it will not restore a record.';
                 else{
-                  const allowed=row.entity_type==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
-                  if(Object.keys(mutation.patch).some(field=>!allowed.includes(field)))reason='This continuation needs a dedicated workflow adapter.';
+                  const entity=row.entity_type as 'vehicle'|'issue';
+                  if(Object.keys(mutation.patch).some(field=>!fleetSyncFields[entity].includes(field)))reason='This continuation needs a dedicated workflow adapter.';
                   else{
-                    const merged=mergeSyncUpdate(mutation.base,current.record,mutation.patch);
-                    if(merged.kind!=='merged')reason='Shared fields changed after this later edit was made. Review and explicitly rebase it.';
+                    let merged;try{merged=mergeFleetSyncDetail(entity,mutation.base,current.record,mutation.patch)}catch{merged={kind:'conflict' as const}}
+                    if(merged.kind!=='merged'||fleetSyncRecordProblem(entity,current.record,merged.record))reason='Shared fields changed after this later edit was made. Review and explicitly rebase it.';
                     else rebased={...child.operation,mutation:{kind:'update',baseRevision:current.revision,base:current.record,patch:createSyncPatch(current.record,merged.record)}};
                   }
                 }

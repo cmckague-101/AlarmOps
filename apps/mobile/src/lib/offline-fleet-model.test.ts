@@ -58,11 +58,11 @@ describe('scoped fleet display projection',()=>{
     const reviewed=entry('op',1,{status:'awaiting_review',reviewOutcome:{kind:'reviewed',operationId:'op',conflictId:'conflict',decisionId:'decision',decidedAt:'2026-01-01',revision:'2',outcome:'not_selected',keptFields:[],discardedFields:['notes']}});
     const result=projectOfflineFleet([],model({entries:[reviewed]}));expect(result.records[0].record).toEqual(raw);expect(result.pending['vehicle:vehicle']).toContain('another version');
   });
-  it('ignores other accounts/companies and never previews unsupported status mutations',()=>{
+  it('ignores other accounts/companies and never previews unsupported workflow mutations',()=>{
     const original=entry().operation;
     const foreign=entry('foreign',1,{operation:{...original,companyId:'foreign'}});
     const wrongUser=entry('wrong',1,{operation:{...original,provenance:{...original.provenance,userId:'other'}}});
-    const unsupported=entry('unsupported',1,{operation:{...original,mutation:{kind:'update',baseRevision:'1',base:raw,patch:{status:{present:true,value:'Assigned'}}}}});
+    const unsupported=entry('unsupported',1,{operation:{...original,mutation:{kind:'update',baseRevision:'1',base:raw,patch:{inspections:{present:true,value:[]}}}}});
     expect(projectOfflineFleet([],model({entries:[foreign,wrongUser]})).pending).toEqual({});
     expect(projectOfflineFleet([],model({entries:[unsupported]})).records[0].record).toEqual(raw);
   });

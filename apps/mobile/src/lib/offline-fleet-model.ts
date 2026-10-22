@@ -1,4 +1,4 @@
-import {mergeSyncUpdate,type SyncRecord} from '@fireops/domain';
+import {fleetSyncFields,isVehicleFileSlot,mergeFleetSyncDetail,mergeSyncUpdate,type SyncRecord} from '@fireops/domain';
 import type {CachedOfflineRecord,OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 import type {DetailTarget} from './offline-detail-editor';
 import {offlineSyncEntryLabel} from './offline-sync-worker';
@@ -24,11 +24,11 @@ export function projectOfflineFleet(remote:readonly FleetModelRecord[],local:Off
     const target={entityType:op.entityType as DetailTarget['entityType'],entityId:op.entityId};const key=fleetDetailKey(target);
     pending[key]=offlineSyncEntryLabel(entry);
     if(op.mutation.kind!=='update'||entry.reviewOutcome&&entry.reviewOutcome.outcome!=='kept')continue;
-    const allowed=op.entityType==='vehicle'?['unit','type','year','make','model','vin','plate','notes']:['title','description','priority'];
-    if(Object.keys(op.mutation.patch).some(field=>!allowed.includes(field)))continue;
+    // File slots are not overlaid: their copy may not exist until the change syncs.
+    if(Object.keys(op.mutation.patch).some(field=>!fleetSyncFields[op.entityType as 'vehicle'|'issue'].includes(field)||isVehicleFileSlot(field)))continue;
     const confirmed=records.get(key);
     const current=confirmed?.record??op.mutation.base;
-    const merged=mergeSyncUpdate(current,current,op.mutation.patch);
+    let merged;try{merged=op.mutation.patch.updates?mergeFleetSyncDetail('issue',op.mutation.base,current,op.mutation.patch):mergeSyncUpdate(current,current,op.mutation.patch)}catch{continue}
     if(merged.kind!=='merged')continue;
     records.set(key,{...target,revision:confirmed?.revision??op.mutation.baseRevision,record:merged.record});
     pending[key]=`Local proposal · ${pending[key]}`;

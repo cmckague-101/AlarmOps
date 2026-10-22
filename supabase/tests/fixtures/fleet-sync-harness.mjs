@@ -37,4 +37,5 @@ export async function loadFleetSyncAttachmentSchema(db) {
   await db.exec(migration('20261119000100_fleet_sync_document_attach'));
   await db.exec(migration('20261120000100_fleet_sync_attachment_release'));
   await db.exec(migration('20261121000100_fleet_sync_vehicle_file_slots'));
+  await db.exec(migration('20261122000100_fleet_sync_status_assignments'));
 }

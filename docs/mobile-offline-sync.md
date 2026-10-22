@@ -485,6 +485,17 @@ The native vehicle saved-detail editor now has a **Vehicle files** section for p
 
 Shared `syncReviewFieldLabel`/`syncReviewValueText` (and device-history text) now label the six slots and show file values as name, declared type and storage path (noting server-verified device uploads) on **both web and mobile** review/history screens instead of raw JSON. Web stays online-only; no image previews were added to review. Tests: slot action exact retry/clear/fencing, review text; web review/history markup tests still pass. No UI launch or visual test was run.
 
+### Status, assignments and issue updates: adapter (server and native logic; owners/admins)
+
+Submission/approval now call replaceable hooks added in place to the undeployed `20261110000100`/`20261111000100` (defaults preserve behavior): `fleet_sync_merge_detail`, `validate_fleet_sync_record` (also run on review-assembled records) and `fleet_sync_detail_side_effects` (extra `apply_fleet_changes` entries in the same transaction). `20261122000100_fleet_sync_status_assignments.sql` replaces them and the shared field validator:
+
+- **Vehicle** `status` (Ready/Assigned/Out of service, required), `assignedTo` (member UUID, removable), `assignedFire` (`{id,name,state}`, removable) form one **invariant group**: a concurrent change to any of them makes an overlapping proposal a whole-operation conflict for owner/admin review; independent fields still merge. Assembled records must satisfy *Assigned ⇔ assignee*, *fire ⇒ assignee*, and the assignee must be a **current company member** (also enforced when a reviewer picks sources per field). Applied status/assignment changes add one activity entry ("E1 status changed to …", device-reported save time/connectivity) in the same transaction; replays add none.
+- **Issue** `status` (Open/Resolved) and `resolvedAt` form a group with *Resolved ⇔ resolvedAt*.
+- **Issue `updates` is append-only:** a proposal must be new entries (1–20, own `createdById`, non-blank text ≤ 2000) prepended to the exact base list; the server prepends them to the *current* list, skipping ids already present, so concurrent notes never conflict or disappear. Notes are saved separately from other issue changes; reviewers cannot pick `updates` as a source.
+- Firefighters/shop techs still need a connection for self-claim/release and notes: the record read/download/review endpoints are manager-only. The existing role trigger continues to guard every write path.
+
+Client mirror in shared `packages/domain/src/fleet-sync-fields.ts` (`fleetSyncFields`, `fleetSyncFieldGroups`, `mergeFleetSyncDetail`, `appendIssueUpdates`, `fleetSyncRecordProblem`), now used by the adapter block, continuation materialization (which also gains the previously missing file slots), local rebase (re-appends saved notes onto current ones; rejects inconsistent per-field choices), the read-model overlay (status/assignment/notes preview; file slots still not overlaid) and the editor (value checks, removable `assignedTo`/`assignedFire`/`resolvedAt`, notes-only operations as the current user, record invariants). Tests: `fleet-sync-status-assignments.test.mjs` (7), `fleet-sync-fields.test.ts`, `offline-status-assignments.test.ts`; older tests that used `status` as their "unsupported field" example now use `inspections`.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -502,6 +513,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 11. `20261119000100_fleet_sync_document_attach.sql` (deploy the `attach-fleet-sync-document` Edge Function with it)
 12. `20261120000100_fleet_sync_attachment_release.sql` (redeploy `attach-fleet-sync-document`; deploy `release-fleet-sync-attachment`)
 13. `20261121000100_fleet_sync_vehicle_file_slots.sql` (deploy `copy-fleet-sync-attachment`)
+14. `20261122000100_fleet_sync_status_assignments.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
