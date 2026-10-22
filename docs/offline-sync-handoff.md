@@ -2,96 +2,89 @@
 
 ## Start here
 
-Read `AGENTS.md`, then this file and `docs/mobile-offline-sync.md` completely. The latter is the detailed design, implementation history, coverage inventory and rollout checklist. Inspect current Git status before editing. This handoff was prepared when switching from pi to Claude Code; do not assume conversation history transfers automatically.
+Read `AGENTS.md`, this file and `docs/mobile-offline-sync.md` completely. Inspect actual Git status/log/diffs before editing; do not assume another agent's conversation history or an older milestone describes current code. Stop other agents before concurrent edits.
 
-## User request and non-negotiable constraints
+## User request and constraints
 
-Continue toward safe **all-feature mobile-only offline editing**, in tested, committed slices. After each logical slice, commit and move to the next step. **Do not push Git, deploy Edge Functions, apply Supabase migrations, or reset any database.** The user will push/deploy at the end.
+Continue toward safe **all-feature mobile-only offline editing**, in tested, committed slices. Commit each logical slice and continue. **Do not push Git, deploy Edge Functions, apply Supabase migrations or reset databases.** User handles deployment later.
 
-- Web stays **online-only**. Web changes support online write safety and conflict/history inspection, not browser offline queues or replay.
-- Offline use requires previous authentication and verified downloaded data.
-- Preserve original intent, authorship, reported device time/connectivity, server receipt times, discarded versions and immutable decisions.
-- Never call on-device save, uploaded bytes, pending review and business-record synchronization the same thing.
-- Never replay an unknown completed operation, mutate an attempted request, silently resubmit rejected values, fabricate deletion from permission denial, or downgrade newer canonical data.
-- Do not launch the app, web server, or visual tests. User tests UI. Run targeted tests/typechecks only.
-- Preserve unrelated working-tree changes listed below. Stage explicit implementation paths; do not use blanket `git add .`.
+- Web stays **online-only**; web changes support safe online writes and online conflict/history review, not browser offline replay.
+- Offline use requires previous authentication and relevant verified downloads. Never promote HTTP/display cache to a verified fleet base.
+- Preserve original intent/authorship, reported device time/connectivity, separate server times, discarded values and immutable decisions.
+- Distinguish local save, uploaded bytes, record attachment, pending review and business synchronization.
+- Never replay unknown completed work, mutate attempted requests, silently resend rejected values, infer deletion from denied access or downgrade newer canonical data.
+- No app/UI launch, web server or visual testing. Run targeted tests/typechecks; user tests UI.
+- Preserve unrelated changes below. Stage explicit paths, not `git add .`.
 
-## Exact checkpoint
+## Current inspected checkpoint
 
-Latest implementation commits (newest first):
+Claude's latest commit when continuation began was `1594bb8` (`refactor(sync): register user sync commands per entity type`). No unfinished implementation was present. Earlier lists ending at vehicle documents are historical, not current capability.
 
-- `0fb0b86` — vehicle documents bounded to the 8 MiB `fleet-files` limit (SQL, domain, UI).
-- `a8bc612` — native vehicle-document UI in the saved-detail editor; provider wiring of uploads/attach on the existing session.
-- `5b06006` — SQLite v9 immutable vehicle-document intents, attach runner, discard protection.
-- `8b61de2` — server vehicle-document adapter (`20261119000100`, `attach-fleet-sync-document`).
-- `dac7f6d` — SQLite v8 upload progress, uploader and account-bound transport.
-- `c7eb542` — trusted byte verifier (`20261118000100`, `verify-fleet-sync-attachment`).
-- `c84a8e3` — upload reservations, private `fleet-sync-files` bucket and Storage RLS (`20261117000100`); the former untracked `attachment-upload.ts` draft is now reviewed, tested and exported.
-- Earlier: `94f44e7`, `e465acd`, `d327255`, `5bf58ab`, `dd61e78`, `83a5788`.
+Continuation fixes:
 
-There is no uncommitted implementation work. Last verified: **120 embedded PostgreSQL sync tests + 5 grant checks**, **171 targeted mobile tests**, domain attachment tests, Edge Function logic specs (Vitest, since Deno is not installed here), mobile/domain typechecks and whitespace checks. Real Supabase Storage/Edge Function, device and multi-session validation remains outstanding.
+- `12615dd`: transactionally sequence repeated/concurrent user commands; retain exact operation identity, payload, provenance and stored dependencies after uncertain local acknowledgment; freeze input before asynchronous device lookup. Scalar rebase safeguards remain unchanged.
+- Forward migration `20261128000100_user_sync_availability_cas.sql`: replace availability's read-before-unconditional-write with conditional mutations, preserving helper ownership/ACLs/RLS and the existing RPC/receipt contract. Old non-null bases cannot recreate removed rows. Also repair missing registry RLS; the undeployed `20261127000100` creation was corrected in place so new registries start protected. No client access is added. Consult Git log for this slice's commit.
 
-## What currently works
+Latest focused validation: 83 mobile tests (outbox/native storage/user commands), mobile/domain typechecks; 9 user-command embedded PostgreSQL tests plus 5 grant checks include the full 18-case availability matrix, deterministic read/write interleaving, private executor checks and forward registry RLS repair. Prior baseline checks also passed 40 mobile attachment/status/user-command tests and 5 user-command database tests. These are selected checks, **not a full audit or production validation**.
 
-- Installed iOS/Android owners/admins can save downloaded vehicle/issue **scalar details** offline. Repeated saves are durable dependent operations; independent changes are rebased over verified canonical data, conflicts require explicit per-field rebase/review.
-- Fields: vehicle `unit,type,year,make,model,vin,plate,notes`, six file slots, `status/assignedTo/assignedFire` (invariant group); issue `title,description,priority`, `status/resolvedAt` (group) and append-only `updates`. Crew (fire_fighter/shop_tech) can claim/release vehicles, clear their own fire and add notes to issues they reported; crew resolve/reopen and fire assignment still need a connection.
-- Scoped SQLite outbox, stable per-user device IDs, verified raw-record cache, foreground/reconnect/manual worker, durable delivery/review recovery, retained-work sign-out guard, notices and `/sync-status`.
-- Backend revision fingerprints, idempotent receipts, audited three-way merge/conflicts and owner/admin review. Both clients have online review/history inspectors. Web online writers preserve captured revisions and immutable retry intent.
-- Opt-in bulk vehicle/issue inventory downloads with resumable pages, tombstones and coverage. Dataset fingerprint fences every page against changes (including behind-cursor inserts and ABA); not a timestamp/sequence high-water mark. Bounded full scans, not an optimized delta feed or background-service promise.
-- Older completed device rebase history can be backed up only when the original server submission/hash exists. Unknown submissions are never replayed.
+SQLite outbox schema is **v10**. Pending forward sync migrations run from `20261109000100` through `20261128000100`, plus earlier project prerequisites. None was applied by this continuation. Claude edited some undeployed earlier migrations in place; inspect the design document and actual migration chain rather than assuming only append-only changes occurred historically.
 
-## Attachment foundation (local) — now extended by remote upload and vehicle-document adapters
+## Implemented adapters (code, not deployed)
 
-Key files:
+- Owner/admin verified vehicle/issue details; repeated saves, independent continuation materialization and explicit per-field local rebase.
+- Vehicle status/assignment/fire invariant group; issue resolve/reopen and append-only notes.
+- Firefighter/shop-tech own vehicle claim/release/fire-clear and own reported-issue notes. Crew resolve/reopen and live fire selection still need a connection.
+- Verified vehicle documents and six single file slots (photo, contract, VIPR, registration, insurance, DOT); owner/admin/shop-tech append-only inspections with proven photos. Inspection edits/deletes and document replacement/removal remain unsupported offline.
+- Owner/admin/shop-tech new issue reports; firefighters cannot report issues under existing policy.
+- Private personal-task create/complete (owner/admin/shop-tech), own availability and own dashboard layout commands. Tasks are not exposed to manager review. Own settings use dedicated command semantics, not fleet scalar merges.
+- Scoped durable outbox, stable device IDs, verified vehicle/issue cache, opt-in bounded inventory catch-up, foreground/reconnect/manual worker, retained-work sign-out protection and truthful sync notices.
+- Server fingerprints/revisions/idempotent receipts, merge/conflict storage, guarded owner/admin decisions and device-history backup/inspection. Both clients have online review/history; web fleet writers retain captured revisions and immutable online retries.
 
-- `apps/mobile/src/lib/offline-attachment-types.ts`
-- `apps/mobile/src/lib/offline-attachment-vault.ts`
-- `apps/mobile/src/lib/offline-attachment-files-native.ts`
-- `apps/mobile/src/lib/offline-attachment-controller.ts`
-- `apps/mobile/src/lib/offline-attachment-actions.ts`
-- `apps/mobile/src/components/offline-attachment-drafts.tsx`
-- `apps/mobile/src/providers/offline-sync-provider.tsx`
-- `apps/mobile/src/lib/offline-outbox.ts` — schema currently **v7**.
+Chronological sections in the design document describe earlier milestones; later adapters supersede their older “not enabled” claims. **All-feature offline is unfinished.**
 
-SQLite reserves immutable scoped metadata before copying bytes. Native files use opaque UUID paths under document storage, not picker cache/remote URLs. Bounded copying, exact size/SHA-256 and partial-file promotion precede readiness acknowledgment. Recovery handles picker loss, interrupted copies/moves/SQLite acknowledgment, missing/corrupt files and interrupted discard. Limits: 10 MiB/file, 100 MiB retained bytes/user across companies.
+## Architectural boundaries
 
-Atomic operation/reference/projection binding requires ready same-account/company/record manifests. Referenced files cannot be discarded, including after a business outcome; no safe bound-file release exists yet. The generic scalar worker blocks attachment-bearing operations so it cannot silently upload scalar fields and drop files. All non-discarded manifests count as retained work; sign-out counts are work items, not solely operations.
+- Reuse provider-owned scoped outbox session; do not introduce competing `activate()` handles.
+- Fleet bases are raw account-bound POST canonical records, never normalized/display/GET fallback records. Revisions compare with `BigInt`.
+- Persist acknowledgment before completion. Reconcile canonically without replaying completed business work; historical receipt snapshots must not replace newer state.
+- Fleet continuation rebase preserves original intent/history and never implicitly resubmits rejected parent values. User commands sequence atomically without changing their payloads or attempted wire requests.
+- Non-bypass `fireops_sync_writer` inherits authenticated permissions, owns wrappers but no fleet business tables. Preserve RLS/invariants and recheck current authorization.
+- Inventory fingerprints fence pages against all revision/deletion changes, including ABA and behind-cursor inserts. Current catch-up is bounded full scans, not optimized deltas or guaranteed background execution.
 
-The provider reuses its existing outbox session (no competing `activate()` handles). Inspection hides scoped metadata after account/role changes. Restore accepts **only original bytes**, preserving metadata and references; old final bytes are removed only after a matching partial exists. Picker/confirmation responses are fenced against route/account changes. The only enabled business attachment flow is **Add vehicle document** in the vehicle saved-detail editor (verified upload → proven `fleet-files` copy → appended document via `apply_fleet_changes`). All other file editors remain online-only and unchanged.
+## Attachment integrity and retention
 
-**Bytes are not encrypted by this foundation. Sensitive-file intake remains disabled.** SDK-compatible `expo-crypto ~57.0.3` was added for SHA-256 and is lazily loaded; installed custom native builds need the matching module for hashing. The repository audit returned 35 advisories (7 moderate, 25 high, 3 critical); no `expo-crypto` advisory entry was returned. No broad audit fix was applied.
+- Reserve intent before bounded private-file copy. Opaque scoped UUID paths; picker/source URIs are not retained. Readiness requires exact length/SHA-256 and durable promotion.
+- Limits: 10 MiB/local file, 100 MiB/user across companies; business vehicle copies respect legacy `fleet-files` 8 MiB limit.
+- Separate `fleet-sync-files` staging bucket, authenticated immutable reservations, service byte verification and proven canonical `fleet-files` copies. Upload receipt is not business synchronization.
+- Binding, operation and projection commit atomically. Pending references protect bytes; final settlement/release requires the appropriate outcome and canonical proof.
+- Applied staging objects are cleaned after canonical copy/reference proof; rejected/unattached uploads require explicit release. Device copies are removed only after confirmed canonical attachment; metadata/audit remains. Nothing expires silently.
+- Device copies are **not app-encrypted**. Existing policy allows only non-sensitive vehicle files. Sensitive crew/qualification/payroll/receipt/invoice file intake requires encryption first.
 
-## Immediate next work
+## Immediate safety follow-ups before expanding scope
 
-Remote attachment ownership, byte receipts and the first business-reference adapter (one appended **vehicle document**) are implemented end to end; see the attachment sections of `docs/mobile-offline-sync.md`. Remaining attachment work:
+Source inspection identified additional areas needing focused regression tests/fixes; do not assume the latest adapters are production-ready:
 
-1. Real Supabase validation: Storage API insert/select under the new RLS (including any implicit RETURNING), `upsert:false` duplicate errors, authenticated object reads (404 vs 400), `remove`, Edge Function wall-clock vs the 10-minute verification lease, and `auth.uid()` evaluation in `fleet_sync_attachment_uploader_allowed` (it sets `request.jwt.claim.sub` locally).
-2. Vehicle single-slot files (photo/contract/VIPR/registration/insurance/DOT) are implemented through the verified detail-update path (`20261121000100`, `copy-fleet-sync-attachment`). Offline inspections with proven photos (owners/admins and shop techs) are implemented (`20261124000100`, `20261125000100`). Remaining: inspection edits/deletes, issue files (no issue file field exists), replace/remove vehicle documents.
-3. Retention policy is decided and implemented (see "Attachment retention and release policy" in `docs/mobile-offline-sync.md`): staging deleted after applied, explicit user release otherwise, device copy auto-removed after a confirmed attach.
-4. Device copies are **not encrypted by FireOps**; that is accepted only for non-sensitive vehicle documents. App-level encryption is required before crew, qualifications, payroll, receipts or invoices accept offline files.
+1. User-owned hooks: scope-stamp downloaded data and late results, consume/reload canonical acknowledged settings when pending overlays disappear, and retain task creation identity through UI-level retry. The lower-level command boundary now preserves exact retry identity, but callers must reuse the same task ID.
+2. Task identity lifetime: completed tasks are physically deleted; new operation IDs must not allow an old task UUID to be recreated. Add durable identity/tombstone handling without widening task privacy or inventing missing historical data.
+3. Online user-setting writers still need a complete stale-write/partial-update audit (especially whole-layout preference upserts). The new availability CAS protects queued native mutations against online writers; it does not migrate every online writer to CAS.
+4. Audit Storage cleanup/retry races and legacy deletion paths. In particular, cached verifier mismatch outcomes and completed/expired leases must never authorize a late path-only removal of replacement bytes. Review reference retention for conflict/history files; do not rely only on Edge wall-clock assumptions.
+5. Real Supabase Storage/RLS/Edge Function and multi-session validation: actual insert/select/duplicate upload semantics, authenticated reads, remove/copy, object replacement, lease timing, `auth.uid()` in uploader permission checks, complete migration chain and role/grant compatibility. PGlite does not implement the Storage service or separate concurrent sessions.
 
-Beyond attachments: remaining workflow adapters listed below.
+## Remaining feature scope
 
-## Validation commands
+Complete authorization-aware download/catch-up and explicit adapters for crew/qualifications/roles/invitations, notes/types/templates, communications/read markers, company/stored documents, training/enrollment, inventory adjustments, notifications/preferences/tokens, financials, settings/feedback/integrations and remaining fleet mutations. Remote actions remain pending intentions until authorized online execution; never fabricate sends/payments/seat reservations/external success. Sensitive-file encryption/retention, compatibility/recovery/performance and installed-device offline → restart → reconnect → review testing remain rollout blockers.
 
-Examples; choose only tests relevant to each slice:
+## Targeted validation examples
 
 ```sh
 npm run typecheck --workspace @fireops/mobile
 npm run typecheck --workspace @fireops/domain
-npm run test --workspace @fireops/mobile -- src/lib/offline-attachment-vault.test.ts src/lib/offline-attachment-files-native.test.ts src/lib/offline-attachment-controller.test.ts src/lib/offline-attachment-drafts.test.tsx src/lib/offline-outbox.test.ts src/lib/offline-sync-worker.test.ts src/lib/offline-sync-sign-out.test.ts src/lib/offline-attachment-upload.test.ts
-node --test supabase/tests/fleet-sync-attachment-uploads.test.mjs supabase/tests/fleet-sync-document-attach.test.mjs supabase/tests/data-api-grants.test.mjs
-(cd packages/domain && npx vitest run --root ../../supabase/functions/verify-fleet-sync-attachment && npx vitest run --root ../../supabase/functions/attach-fleet-sync-document)
+npm run test --workspace @fireops/mobile -- src/lib/offline-user-sync.test.ts src/lib/offline-outbox.test.ts src/lib/offline-outbox-native.test.ts
+node --test supabase/tests/user-sync-commands.test.mjs supabase/tests/data-api-grants.test.mjs
 git diff --check
 ```
 
-Native tests use Node `node:sqlite` (Node 22.13+). Database tests use local dev-only PGlite, not deployed Supabase. Do not substitute passing single-backend tests for real RLS/multi-session/storage validation.
-
-## Deployment and remaining scope
-
-All pending forward sync migrations are listed in order in `docs/mobile-offline-sync.md`, currently `20261109000100` through `20261127000100`, plus the `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `release-fleet-sync-attachment` and `copy-fleet-sync-attachment` Edge Functions. Note: undeployed migrations `20261110000100`/`20261111000100`/`20261117000100` were edited in place during development. **None was applied by this assistant.** Do not reset production. Test target compatibility/permissions/concurrency and installed-device offline → restart → reconnect → review before rollout.
-
-All-feature offline remains unfinished. Beyond attachments: remaining workflows and permission/invariant-aware adapters (assignments/status, inspections, crew/qualifications, notes, documents, communications, training, inventory, tasks/preferences, financials, settings/integrations), their catch-up contracts, encryption/retention, recovery/compatibility/performance hardening, real validation and rollout preparation.
+Choose only suites relevant to each slice. Native SQLite tests need Node 22.13+. Database tests use dev-only PGlite fixtures. Edge logic specs run with Vitest (Deno was unavailable); see corresponding sections of the design document. No passing local suite substitutes for real Supabase or installed-device validation. Do not reset storage/databases to recover unsynced work.
 
 ## Unrelated pre-existing changes: leave untouched
 
@@ -100,4 +93,4 @@ All-feature offline remains unfinished. Beyond attachments: remaining workflows 
 - Modified `supabase/.temp/{gotrue-version,rest-version,storage-migration,storage-version}`.
 - Untracked `jobs/usfs-dispatch/__pycache__/`.
 
-Do not erase, restore, commit or include those in implementation commits.
+Do not erase, restore, commit or include these in implementation commits.

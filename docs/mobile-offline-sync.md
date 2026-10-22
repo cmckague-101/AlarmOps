@@ -1,6 +1,8 @@
 # Mobile offline editing and conflict resolution
 
-Status: shared merge contracts, the durable native outbox, fleet server safeguards, verified merge/conflict submission, and guarded review/approval endpoints are implemented. Dashboard conflict Alerts and online review screens are wired on web and mobile. Native session-scoped workers, durable acknowledgment/review recovery, and sync status notices are connected. Verified raw-record storage, normalized native fleet reads with pending overlays, and a provider-owned atomic detail-edit boundary are implemented. Native legacy writes have pending-work/stale-read guards. Web online fleet saves now retain captured revisions and immutable retry requests without overwriting pending local work from realtime. Installed-app owners/admins can now save downloaded vehicle/issue scalar details offline through the dedicated saved-detail editor. Repeated scalar saves are durably chained; only verified independent continuations upload automatically. Blocked later edits have explicit per-field local rebase review; device-reported rebase history is backed up atomically with their submissions. All other workflows remain online-only. Web remains online-only. This is the first enabled adapter, not all-feature offline mode. The new migrations and client changes have not been deployed as part of this implementation.
+Status (current code, not deployed): native scoped outbox, verified fleet downloads, repeated edits/rebase, audited conflict review/history and retry-safe online fleet writers are implemented. Enabled native adapters include owner/admin vehicle/issue details, status/assignments, vehicle documents/file slots, crew vehicle claims/releases and own issue notes, owner/admin/shop-tech inspections with photos and new issue reports, plus private personal tasks, own availability and dashboard layout. Exact role/field restrictions appear in the corresponding sections below. Web remains online-only, with review/history support. All-feature offline remains incomplete; other domains, sensitive-file encryption, complete catch-up, compatibility/security hardening and real Supabase/device validation remain outstanding. No migrations or Edge Functions were deployed by this implementation.
+
+Implementation sections below are chronological milestones. Earlier statements such as “not enabled,” older schema versions and historical test counts describe that milestone, not current capability. Read the later adapter sections and `docs/offline-sync-handoff.md` for the current continuation checkpoint.
 
 ## Scope
 
@@ -562,6 +564,14 @@ Repeated availability/dashboard saves now append immutable commands instead of f
 
 The user-command boundary freezes payloads, reported save time/connectivity and operation identity before asynchronous device lookup. A failed or uncertain local acknowledgment keeps that request for retry; concurrent identical saves coalesce. Only a successful durable acknowledgment permits a later intentional save to receive a new operation ID. Dependency/projection failures roll back together. Tests cover repeated toggles, independent layout changes, concurrent callers, lost acknowledgments after auto-linking, mutable caller input and SQL-triggered dependency failures. Web stays online-only; no server schema change is needed for this slice.
 
+### Atomic availability compare-and-set
+
+Forward migration `20261128000100_user_sync_availability_cas.sql` removes the read-before-unconditional-write race with existing online availability writers (which do not take user-command advisory locks). A non-null base uses a conditional `UPDATE`; a missing base uses `INSERT ... ON CONFLICT DO UPDATE ... WHERE` accepting only identical existing values. Changed values stay untouched, and a removed row is not recreated from an old non-null base. RPC names, original receipts, helper ownership, private execution permissions and RLS remain unchanged; neither client needs a new API or browser offline behavior.
+
+Embedded PostgreSQL tests exercise all 18 missing/boolean base/current/desired combinations, a deterministic state-read/write interleaving that fails against the old helper, and executor/permission preservation. This is **not** real multi-session lock testing; target-Supabase validation remains required.
+
+The grant audit also caught missing RLS on the global command registry. Its undeployed `20261127000100` creation now enables RLS with executor-only SELECT; `20261128000100` repairs earlier development registries as well. No client grants or registry write access are added. Tests cover the forward repair and denied authenticated reads. Nothing was deployed.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -585,14 +595,15 @@ You do not need to push the site or apply Supabase changes while implementation 
 17. `20261125000100_fleet_sync_shop_tech_photos.sql`
 18. `20261126000100_fleet_sync_issue_create.sql`
 19. `20261127000100_user_sync_commands.sql`
+20. `20261128000100_user_sync_availability_cas.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
-Review UI and the native saved-detail editor report setup pending against an old database; existing online editors remain available. After the migrations and a successful per-record verified download, only the installed-app manager scalar editor can save offline. Attachment persistence, catch-up for remaining workflows, sensitive-data protection and remaining workflow adapters are incomplete. Opt-in vehicle/issue inventory catch-up is implemented; optimized delta feeds and large-company performance validation remain pending. Guarded older-build history backup is implemented; missing original server submissions still require explicit investigation. Repeated scalar edits and explicit dependent-edit rebase are enabled only through the limited native adapter. No production sample conflicts are inserted. Deployment is not an announcement that all-feature offline mode is complete.
+Review UI and the native saved-detail editor report setup pending against an old database; existing online editors remain available. After migration and required verified downloads, the implemented installed-app adapters listed above can save offline. Catch-up for remaining workflows, sensitive-data protection and remaining workflow adapters are incomplete. Opt-in vehicle/issue inventory catch-up is implemented; optimized delta feeds and large-company performance validation remain pending. Guarded older-build history backup is implemented; missing original server submissions still require explicit investigation. Repeated scalar edits and explicit dependent-edit rebase are enabled only through the limited native adapter. No production sample conflicts are inserted. Deployment is not an announcement that all-feature offline mode is complete.
 
 ### Mutation inventory checkpoint
 
-Only installed-app owner/admin scalar vehicle/issue updates through `/saved-details` are enabled in client code. The inventory below covers remaining adapters or expanded coverage of these entry points. Paths are under `apps/mobile/src/` unless noted.
+The inventory below lists subsystem boundaries, not a claim that every mutation remains unsupported. Completed adapters are described above; remaining mutations within each subsystem still require explicit coverage. Paths are under `apps/mobile/src/` unless noted.
 
 | Workflow | Current write entry points | Required sync boundary |
 | --- | --- | --- |
@@ -615,12 +626,12 @@ The table is an entry-point review, not a completed per-mutation acceptance inve
 ### Next implementation slices
 
 - Expand verified download coverage/freshness and complete authorized company-wide catch-up; retain per-record availability and pending overlays. Native scalar saves now use the provider-owned session; do not create competing `activate()` handles.
-- Add durable attachment bytes/manifests and remaining workflow/dependency adapters. Verified vehicle/issue bulk downloads and bounded reconnect inventory catch-up are implemented; other domains still need their own authorization-aware download/catch-up contracts. Online device-history inspection is available on both clients; guarded older-build history backup is implemented. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
-- Implement remote upload/ownership/reference receipts before enabling any business attachment adapter. Provider-owned draft inspection, exact-byte repair and guarded cleanup are implemented. Durable app-managed files/manifests and restart/cleanup recovery are implemented; encryption and bound-file release remain pending.
+- Add remaining workflow/dependency adapters; durable attachment bytes/manifests are implemented. Verified vehicle/issue bulk downloads and bounded reconnect inventory catch-up are implemented; other domains still need their own authorization-aware download/catch-up contracts. Online device-history inspection is available on both clients; guarded older-build history backup is implemented. Repeated scalar saves, independent materialization and explicit local rebase are implemented; never replace an uncertain delivered operation or automatically resend discarded review values.
+- Harden and validate existing remote upload/ownership/reference receipts and cleanup against actual Supabase Storage before rollout. Provider-owned draft inspection, exact-byte repair, scoped release and guarded cleanup are implemented. App-level encryption remains required before enabling sensitive-file workflows.
 - Add server-authorized synchronization and migrate writers before enabling individual feature adapters.
 - Extend existing sync notices, owner/admin Alerts and conflict review/approval to remaining adapters with workflow-appropriate permissions/privacy.
 
-The banner now distinguishes the limited downloaded scalar editor from read-only workflows. Unsupported offline HTTP mutations remain blocked. No operation is presented as saved before durable persistence, and none as synced before authoritative reconciliation. Web remains online-only.
+The banner distinguishes supported downloaded-record adapters from workflows that still require a connection. Unsupported offline HTTP mutations remain blocked. No operation is presented as saved before durable persistence, and none as synced before authoritative reconciliation. Web remains online-only.
 
 ## Required targeted tests
 

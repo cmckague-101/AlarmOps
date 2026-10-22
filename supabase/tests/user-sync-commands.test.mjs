@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {after,before,beforeEach,test} from 'node:test';
 import {PGlite} from '@electric-sql/pglite';
-import {loadUserSyncSchema} from './fixtures/fleet-sync-harness.mjs';
+import {loadUserSyncSchema,migration} from './fixtures/fleet-sync-harness.mjs';
 const db=new PGlite();
 const company='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002';
 const owner='20000000-0000-4000-8000-000000000001',crew='20000000-0000-4000-8000-000000000002',tech='20000000-0000-4000-8000-000000000003',outsider='20000000-0000-4000-8000-000000000005';
@@ -51,6 +51,44 @@ test('availability applies over an unchanged base and keeps a value someone else
   await assert.rejects(send(command(crew,'availability',owner,'availability.set',{available:true,base:null})),error=>error.code==='42501');
   await assert.rejects(send(command(outsider,'availability',outsider,'availability.set',{available:true,base:null})),error=>error.code==='42501');
 });
+test('availability never overwrites a write interleaved at the state-read boundary',async()=>{
+  await db.query('insert into public.crew_availability (company_id,user_id,available) values ($1,$2,false)',[company,crew]);
+  const original=(await row("select pg_get_functiondef('public.user_sync_state_availability(uuid,uuid,uuid)'::regprocedure) definition")).definition;
+  // Deterministic read/write interleaving, not a multi-session lock test. The
+  // old implementation calls this before its unconditional write; the fixed
+  // implementation calls it only after its conditional mutation, for receipt
+  // capture. A change after that read must survive, never be overwritten.
+  await db.exec(`create or replace function public.user_sync_state_availability(company uuid, actor uuid, record_uuid uuid)
+    returns jsonb language plpgsql volatile set search_path = '' as $$
+    declare snapshot jsonb;
+    begin
+      select jsonb_build_object('id',a.user_id,'available',a.available) into snapshot
+        from public.crew_availability a where a.company_id=company and a.user_id=record_uuid;
+      if current_setting('fireops.test_availability_interleave',true) is distinct from 'done' then
+        perform set_config('fireops.test_availability_interleave','done',true);
+        update public.crew_availability set available=true where user_id=actor and company_id=company;
+      end if;
+      return snapshot;
+    end; $$`);
+  try{
+    await send(command(crew,'availability',crew,'availability.set',{available:false,base:false}));
+    assert.equal((await row('select available from public.crew_availability where company_id=$1 and user_id=$2',[company,crew])).available,true);
+  }finally{await db.exec(original)}
+});
+test('availability CAS preserves executor ownership and private helper permissions',async()=>{
+  const fn=await row("select pg_get_userbyid(proowner) owner,prosecdef from pg_proc where oid='public.user_sync_apply_availability(uuid,uuid,uuid,text,jsonb)'::regprocedure");
+  assert.equal(fn.owner,'fireops_sync_writer');assert.equal(fn.prosecdef,false);
+  await assert.rejects(actor(crew,()=>db.query('select public.user_sync_apply_availability($1,$2,$2,$3,$4::jsonb)',[company,crew,'availability.set',JSON.stringify({available:true,base:null})])),error=>error.code==='42501');
+});
+test('availability handles missing, unchanged, identical and stale bases without recreating removed rows',async()=>{
+  for(const current of [null,false,true])for(const base of [null,false,true])for(const available of [false,true]){
+    await db.query('delete from public.crew_availability where company_id=$1 and user_id=$2',[company,crew]);
+    if(current!==null)await db.query('insert into public.crew_availability (company_id,user_id,available) values ($1,$2,$3)',[company,crew,current]);
+    const kept=current!==base&&current!==available;const result=await send(command(crew,'availability',crew,'availability.set',{available,base}));
+    assert.equal(result.keptCurrent,kept?true:undefined,JSON.stringify({current,base,available}));const expected=kept?current:available;
+    assert.deepEqual(result.record,expected===null?null:{id:crew,available:expected});
+  }
+});
 test('dashboard changes merge per key and later arrivals win',async()=>{
   await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{fleet:{visible:true},tasks:{visible:true}}}));
   const result=await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{tasks:{visible:false},weather:null}}));
@@ -58,6 +96,13 @@ test('dashboard changes merge per key and later arrivals win',async()=>{
   await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{fleet:null}}));assert.deepEqual((await state(owner,'dashboard',owner)).record.items,{tasks:{visible:false}});
   await assert.rejects(send(command(owner,'dashboard',crew,'dashboard.set',{changes:{a:1}})),error=>error.code==='42501');
   await assert.rejects(send(command(owner,'dashboard',owner,'dashboard.set',{changes:{}})),error=>error.code==='22023');
+});
+test('command registry has RLS and remains executor-only, including forward repair',async()=>{
+  await db.exec('alter table public.user_sync_commands disable row level security;drop policy "sync executors read command registry" on public.user_sync_commands');
+  await db.exec(migration('20261128000100_user_sync_availability_cas'));
+  assert.equal((await row("select relrowsecurity from pg_class where oid='public.user_sync_commands'::regclass")).relrowsecurity,true);
+  await assert.rejects(actor(owner,()=>db.query('select * from public.user_sync_commands')),error=>error.code==='42501');
+  assert.equal((await actor(owner,()=>row('select count(*)::int count from public.user_sync_commands'),'fireops_sync_writer')).count,4);
 });
 test('receipts are private, and unsupported commands or forged provenance are refused',async()=>{
   await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{a:1}}));

@@ -23,6 +23,9 @@ create table public.user_sync_commands (
   self_only boolean not null default false,
   primary key (entity_type, command)
 );
+alter table public.user_sync_commands enable row level security;
+create policy "sync executors read command registry" on public.user_sync_commands
+  for select to fireops_sync_writer, service_role using (true);
 revoke all on public.user_sync_commands from public, anon, authenticated, service_role;
 grant select on public.user_sync_commands to fireops_sync_writer, service_role;
 insert into public.user_sync_commands values

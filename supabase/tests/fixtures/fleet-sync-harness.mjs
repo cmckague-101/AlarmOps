@@ -52,4 +52,5 @@ export async function loadUserSyncSchema(db) {
   await db.exec(availability.slice(0, availability.indexOf('alter publication supabase_realtime')));
   await db.exec(migration('20261108000100_dashboard_preferences'));
   await db.exec(migration('20261127000100_user_sync_commands'));
+  await db.exec(migration('20261128000100_user_sync_availability_cas'));
 }
