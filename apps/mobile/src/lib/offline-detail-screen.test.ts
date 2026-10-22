@@ -55,14 +55,17 @@ describe('installed-app and current-identity route guards',()=>{
     const screen=compile(source.slice(source.indexOf('export default function SavedDetailsScreen'),source.indexOf('function DetailForm(')),{
       useLocalSearchParams:()=>({entityType:options.entityType??'vehicle',entityId:'vehicle'}),useSession:()=>({session:{user:{id:options.sessionUser??'user'}},demoMode:options.demo??false,access:{status:'ready',value:{kind:'member',company:{id:'company'},user:{id:'user',role:options.role??'owner'}}}}),
       useOfflineSync:()=>({detailEditor:editor,loading:false,refresh}),useFireOpsTheme:()=>({}),Platform:{OS:options.platform??'ios'},SafeAreaView:'safe',Stack:{Screen:'screen'},View:'view',Text:'text',Pressable:'button',DetailForm,styles:{},
-    },'SavedDetailsScreen') as ()=>{type:unknown;props:{target?:unknown};key:string};
+    },'SavedDetailsScreen') as ()=>{type:unknown;props:{target?:unknown;crewMode?:boolean};key:string};
     return {value:screen(),DetailForm,editor};
   }
   it('opens only a scoped native owner/admin editor with stable identity/target key',()=>{
     const f=route();expect(f.value.type).toBe(f.DetailForm);expect(f.value.props.target).toEqual({entityType:'vehicle',entityId:'vehicle'});expect(f.value.key).toBe('user:company:owner:vehicle:vehicle');
     expect(route({role:'admin',platform:'android'}).value.key).toContain(':admin:');
   });
-  it.each([{platform:'web'},{role:'shop_tech'},{sessionUser:'other'},{demo:true},{entityType:'crew'}])('does not expose save form for %j',options=>{
+  it.each(['shop_tech','fire_fighter'])('gives %s the restricted crew editor only',role=>{
+    const f=route({role});expect(f.value.type).toBe(f.DetailForm);expect(f.value.props.crewMode).toBe(true);expect(route().value.props.crewMode).toBe(false);
+  });
+  it.each([{platform:'web'},{role:'viewer'},{sessionUser:'other'},{demo:true},{entityType:'crew'}])('does not expose save form for %j',options=>{
     const f=route(options);expect(f.value.type).not.toBe(f.DetailForm);expect(f.editor.prepare).not.toHaveBeenCalled();expect(f.editor.save).not.toHaveBeenCalled();
   });
 });
