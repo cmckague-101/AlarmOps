@@ -7,9 +7,9 @@ import type { SyncOperation, SyncRecord } from '@fireops/domain';
 import {createFleetEditGate,projectOfflineFleet} from './offline-fleet-model';
 import {offlineDetailFormChanges,offlineDetailFormValues} from './offline-detail-form';
 import {createOfflineDetailEditor} from './offline-detail-editor';
-import {createOfflineSyncWorker} from './offline-sync-worker';
+import {createOfflineSyncWorker,offlineSyncVisible,offlineSyncNotice} from './offline-sync-worker';
 import {
-  createOfflineOutbox, type OutboxDatabase, type OutboxSqlConnection, type OutboxSqlValue,
+  createOfflineOutbox, type OfflineOutboxSession, type OutboxDatabase, type OutboxSqlConnection, type OutboxSqlValue,
 } from './offline-outbox';
 
 const scope = { userId: 'user-1', companyId: 'company-1' };
@@ -52,8 +52,8 @@ function database(path = ':memory:') {
   };
   return { db, connection, sqlite, close };
 }
-async function setup() {
-  const fixture = database();
+async function setup(path=':memory:') {
+  const fixture = database(path);
   const store = await createOfflineOutbox(fixture.db);
   return { ...fixture, store, session: store.activate(scope) };
 }
@@ -329,19 +329,19 @@ describe('durable mobile outbox', () => {
 
   it('rejects unsupported database versions without modifying existing data', async () => {
     const { db, sqlite } = database();
-    sqlite.exec('PRAGMA user_version = 5; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    sqlite.exec('PRAGMA user_version = 6; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
     await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
     expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 6 });
   });
 
   it('upgrades v1 storage without losing queued work, projections or ordering', async () => {
     const {session,store,sqlite,db}=await setup();await session.enqueue(operation(),{name:'Saved'});store.pause();
-    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=1;');
+    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=1;');
     const restored=(await createOfflineOutbox(db)).activate(scope);
     expect((await restored.list())[0]).toMatchObject({status:'pending',delivery:null,reviewOutcome:null,noticeDismissed:false});
     expect(await restored.getProjection('vehicle','vehicle-1')).toEqual({operationId:'op-1',record:{name:'Saved'}});
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:4});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:5});
   });
 
   it('persists delivery before catch-up and retains it across retries without replacing local data', async () => {
@@ -437,10 +437,10 @@ describe('verified offline detail bases',()=>{
   });
   it('migrates v2 without discarding pending operations or delivery metadata',async()=>{
     const {session,sqlite,db,store}=await setup();await session.enqueue(operation(),{name:'pending'});store.pause();
-    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=2;');
+    sqlite.exec('ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; PRAGMA user_version=2;');
     const migrated=(await createOfflineOutbox(db)).activate(scope);
     expect(await migrated.list()).toHaveLength(1);expect(await migrated.listRecords()).toEqual([]);
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:4});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:5});
   });
   it('commits canonical raw data and completion together, without downgrading a newer download',async()=>{
     const {session,sqlite}=await setup();await session.enqueue(operation(),{name:'pending'});const {attempt}=(await session.claimNext('token',0))!;
@@ -455,8 +455,8 @@ describe('verified offline detail bases',()=>{
   });
 });
 
-async function detailSetup(offline=true){
-  const fixture=await setup();await fixture.session.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});
+async function detailSetup(offline=true,path=':memory:'){
+  const fixture=await setup(path);await fixture.session.putRecord('vehicle',rawVehicle.id,{revision:'1',record:rawVehicle});
   let sequence=0;let allowed=true;let disconnected=offline;let reads=0;let notices=0;
   const editor=createOfflineDetailEditor({session:fixture.session,canEdit:()=>allowed,offline:()=>disconnected,id:()=>`id-${++sequence}`,now:()=>receivedAt,
     readRecord:async()=>{reads++;return {revision:'2',record:{...rawVehicle,notes:'fresh'}}},changed:async()=>{notices++}});
@@ -470,6 +470,54 @@ async function blockedLaterEdit(){
   await fixture.session.finishAttempt(parent.attempt,{kind:'applied',receivedAt,revision:'3',record:{...rawVehicle,notes:'Shared value'}});
   await fixture.session.materializeContinuations();return {...fixture,child,target};
 }
+async function oldCompletedHistory(path=':memory:'){
+  const f=await detailSetup(true,path);const target={entityType:'vehicle' as const,entityId:rawVehicle.id};
+  await f.editor.save(await f.editor.prepare(target),{notes:'Parent'});const child=await f.editor.save(await f.editor.prepare(target),{unit:'Later unit'});
+  const parent=(await f.session.claimNext('parent',0))!;const parentRecord={...rawVehicle,notes:'Parent'};
+  await f.session.finishAttempt(parent.attempt,{kind:'applied',receivedAt,revision:'2',record:parentRecord});await f.session.materializeContinuations();
+  const next=(await f.session.claimNext('old-child',0))!;const proof={kind:'applied' as const,receivedAt,revision:'3',record:{...parentRecord,unit:'Later unit'}};
+  await f.session.finishAttempt(next.attempt,proof);return {...f,child,proof};
+}
+function recoveryWorker(session:OfflineOutboxSession,proof:unknown){
+  const transport={deliver:vi.fn(),canonical:vi.fn(),outcome:vi.fn(),backfillHistory:vi.fn().mockResolvedValue(proof)};
+  const worker=createOfflineSyncWorker({session,transport,canAccess:()=>true,canRun:()=>true,canReadRecords:()=>true,token:()=> 'unused'});cleanup.push(()=>worker.stop());return {worker,transport};
+}
+describe('older-build device history recovery',()=>{
+  it('upgrades real v4 storage, recovers dismissed completed history and retains confirmation across close/reopen',async()=>{
+    const dir=mkdtempSync(join(tmpdir(),'fireops-history-'));cleanup.push(()=>rmSync(dir,{recursive:true,force:true}));const path=join(dir,'history.db');const old=await oldCompletedHistory(path);
+    old.editor.dispose();old.store.pause();old.sqlite.exec('UPDATE offline_operations SET notice_dismissed=1; ALTER TABLE offline_operations DROP COLUMN history_backed_up; PRAGMA user_version=4;');old.close();
+    const reopened=database(path);const upgraded=await createOfflineOutbox(reopened.db);const session=upgraded.activate(scope);expect((await session.list())[1]).toMatchObject({status:'synced',noticeDismissed:true,historyBackupPending:true});expect(await upgraded.countUnresolvedForUser(scope.userId)).toBe(1);expect(offlineSyncVisible((await session.list())[1])).toBe(true);
+    const {worker,transport}=recoveryWorker(session,old.proof);await worker.wake();expect(transport.deliver).not.toHaveBeenCalled();expect(transport.backfillHistory).toHaveBeenCalledOnce();expect(await upgraded.countUnresolvedForUser(scope.userId)).toBe(0);
+    const saved=(await session.list())[1];expect(saved.historyBackupPending).toBe(false);expect(saved.operation.operationId).toBe(old.child.operation.operationId);worker.stop();upgraded.pause();reopened.close();
+    const last=database(path);const restored=(await createOfflineOutbox(last.db)).activate(scope);expect((await restored.list())[1].historyBackupPending).toBe(false);
+  });
+  it.each(['PGRST202','42501','55000','22023'])('retains history and sign-out protection after %s without normal delivery',async code=>{
+    const f=await oldCompletedHistory();const {worker,transport}=recoveryWorker(f.session,f.proof);transport.backfillHistory.mockRejectedValue({code});await worker.wake();
+    expect(transport.deliver).not.toHaveBeenCalled();expect((await f.session.list())[1]).toMatchObject({status:'synced',historyBackupPending:true});expect(await f.store.countUnresolvedForUser(scope.userId)).toBe(1);expect(worker.getSnapshot().error).not.toBeNull();expect(offlineSyncNotice(worker.getSnapshot())?.dismissible).toBe(false);
+    await f.session.dismissCompletedNotices();expect((await f.session.list())[1].noticeDismissed).toBe(false);
+  });
+  it('rolls back failed local confirmations and retries the exact retained history',async()=>{
+    const f=await oldCompletedHistory();const {worker,transport}=recoveryWorker(f.session,f.proof);f.sqlite.exec("CREATE TRIGGER fail_history_ack BEFORE UPDATE OF history_backed_up ON offline_operations BEGIN SELECT RAISE(FAIL,'disk full'); END;");
+    await worker.wake();expect((await f.session.list())[1].historyBackupPending).toBe(true);const first=transport.backfillHistory.mock.calls[0];f.sqlite.exec('DROP TRIGGER fail_history_ack');await worker.wake();expect(transport.backfillHistory.mock.calls[1][0]).toEqual(first[0]);expect(transport.backfillHistory.mock.calls[1][2]).toEqual(first[2]);expect((await f.session.list())[1].historyBackupPending).toBe(false);
+  });
+  it('does not let one missing submission prevent other history backups',async()=>{
+    const f=await oldCompletedHistory();const id=f.child.operation.operationId;
+    f.sqlite.prepare(`INSERT INTO offline_operations(user_id,company_id,operation_id,entity_type,entity_id,operation_json,projection_json,status,attempts,receipt_json,continuation_json)
+      SELECT user_id,company_id,'extra-child',entity_type,entity_id,replace(operation_json,?,'extra-child'),projection_json,status,attempts,receipt_json,continuation_json FROM offline_operations WHERE operation_id=?`).run(id,id);
+    f.sqlite.prepare(`INSERT INTO offline_rebase_history(user_id,company_id,operation_id,before_json,after_json,reason,created_at)
+      SELECT user_id,company_id,'extra-child',replace(before_json,?,'extra-child'),replace(after_json,?,'extra-child'),reason,created_at FROM offline_rebase_history WHERE operation_id=?`).run(id,id,id);
+    const {worker,transport}=recoveryWorker(f.session,f.proof);transport.backfillHistory.mockRejectedValueOnce({code:'55000'});await worker.wake();
+    expect(transport.backfillHistory).toHaveBeenCalledTimes(2);expect((await f.session.list())[2].historyBackupPending).toBe(false);expect(await f.store.countUnresolvedForUser(scope.userId)).toBe(1);expect(worker.getSnapshot().error).toContain('not replayed');expect(transport.deliver).not.toHaveBeenCalled();
+  });
+  it('ignores late recovery confirmation after pause and account replacement',async()=>{
+    const f=await oldCompletedHistory();const {worker,transport}=recoveryWorker(f.session,f.proof);let resolve!:(value:unknown)=>void;transport.backfillHistory.mockReturnValue(new Promise(yes=>{resolve=yes}));const running=worker.wake();await vi.waitFor(()=>expect(transport.backfillHistory).toHaveBeenCalledOnce());worker.pause();const other=f.store.activate({...scope,userId:'other'});resolve(f.proof);await running;expect(await other.list()).toEqual([]);expect(await f.store.countUnresolvedForUser(scope.userId)).toBe(1);
+  });
+  it('rejects altered history confirmation without changing completed wire intent',async()=>{
+    const f=await oldCompletedHistory();const history=await f.session.listRebases(f.child.operation.operationId);history[0].createdAt='2026-02-01T00:00:00Z';
+    await expect(f.session.confirmHistoryBackup(f.child.operation.operationId,history,f.proof)).rejects.toThrow('History changed');expect((await f.session.list())[1].historyBackupPending).toBe(true);
+  });
+});
+
 describe('explicit local continuation rebase',()=>{
   it('requires every field choice and rejects stale canonical review snapshots',async()=>{
     const f=await blockedLaterEdit();const review=await f.editor.prepareRebase(f.child.operation.operationId);

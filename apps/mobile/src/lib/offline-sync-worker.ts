@@ -4,6 +4,7 @@ import {decodeCanonicalSyncRecord,decodeSyncOutcome,decodeSyncReceipt,offlineSyn
 
 export interface OfflineSyncTransport{
   deliver(operation:SyncOperation,signal:AbortSignal,history?:readonly OutboxRebase[]):Promise<unknown>;
+  backfillHistory?(operation:SyncOperation,signal:AbortSignal,history:readonly OutboxRebase[]):Promise<unknown>;
   canonical(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
@@ -38,7 +39,7 @@ export function createOfflineSyncWorker(options:{
   async function refresh(){
     const version=epoch;if(!valid(version))return;
     try{const [entries,records]=await Promise.all([session.list(),options.canReadRecords?.()?session.listRecords():Promise.resolve([])]);if(valid(version)){
-      const unfinished=entries.some(entry=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
+      const unfinished=entries.some(entry=>entry.historyBackupPending||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome));
       emit({entries,records,loaded:true,...(!unfinished&&!cacheError?{error:null,setupPending:false}:{})});
     }}
     catch{if(valid(version))emit({loaded:true,error:'Device sync storage could not be read. Saved work has not been discarded.'})}
@@ -119,6 +120,29 @@ export function createOfflineSyncWorker(options:{
       if(ready(version)){cacheError=null;emit({error:null,setupPending:false})}
     }catch(error){if(ready(version)){cacheError=errorMessage(error);emit({error:cacheError,setupPending:isSyncReviewUnavailable(error)})}}
   }
+  async function recoverHistory(version:number):Promise<boolean>{
+    if(options.canReadRecords?.()===false)return true;
+    let problem:{error:string;setupPending:boolean}|null=null;
+    for(const entry of (await persist(()=>session.list())).filter(value=>value.historyBackupPending&&(value.delivery||value.reviewOutcome||['synced','not_selected'].includes(value.status))).slice(0,100)){
+      if(!ready(version))return false;
+      try{
+        if(!transport.backfillHistory)throw coded('History recovery needs an updated sync transport','PGRST202');
+        const history=await persist(()=>session.listRebases(entry.operation.operationId));
+        if(!history.length)throw coded('Continuation history is missing','SYNC_STORAGE');
+        const raw=await rpc(version,signal=>transport.backfillHistory!(entry.operation,signal,history));
+        const proof=decodeSyncReceipt(entry.operation,raw);
+        if(!ready(version))return false;
+        await persist(()=>session.confirmHistoryBackup(entry.operation.operationId,history,proof));
+      }catch(error){
+        if(!ready(version))return false;
+        problem={error:offlineSyncErrorCode(error)==='55000'?'Original server submission is unavailable. Device history is retained; completed business work was not replayed.':['22023','22P02'].includes(offlineSyncErrorCode(error))?'Retained history does not match the original submission. Kept on device; business work was not replayed.':errorMessage(error),setupPending:isSyncReviewUnavailable(error)};
+        emit(problem);
+        if(!['55000','22023','22P02'].includes(offlineSyncErrorCode(error)))return false;
+      }
+    }
+    if(problem)emit(problem);
+    return !problem;
+  }
   async function run(version:number){
     try{
       await refresh();if(!ready(version))return;emit({busy:true});
@@ -137,6 +161,7 @@ export function createOfflineSyncWorker(options:{
             const raw=await rpc(version,signal=>transport.deliver(entry.operation,signal,history));
             delivery=decodeSyncReceipt(entry.operation,raw);
             if(!ready(version))break;
+            if(history.length)await persist(()=>session.confirmHistoryBackup(entry.operation.operationId,history,delivery!));
             if(!await persist(()=>session.recordDelivery(attempt,delivery!)))continue;
           }
           if(delivery.kind==='awaiting_review'){await refresh();continue;}
@@ -154,7 +179,7 @@ export function createOfflineSyncWorker(options:{
           if(isSyncReviewUnavailable(error)||['42501','401','PGRST301','PGRST302'].includes(offlineSyncErrorCode(error)))break;
         }
       }
-      if(ready(version))await refreshCachedRecords(version);
+      if(ready(version)&&await recoverHistory(version))await refreshCachedRecords(version);
     }catch{
       if(valid(version))emit({error:'Device sync storage could not be updated. Saved work has not been discarded.'});
     }finally{
@@ -197,6 +222,7 @@ export function createOfflineSyncWorker(options:{
 export type OfflineSyncWorker=ReturnType<typeof createOfflineSyncWorker>;
 
 export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
+  if(entry.historyBackupPending&&(entry.delivery||entry.reviewOutcome||['synced','not_selected'].includes(entry.status)))return 'Earlier shared result recorded — device history backup pending';
   if(entry.continuation?.phase==='waiting')return entry.status==='blocked'?'Saved later edit — explicit rebase needed':'Saved later edit — waiting for earlier changes';
   if(entry.reviewOutcome?.outcome==='partially_kept')return 'Reviewed — some changes were kept';
   if(entry.reviewOutcome?.outcome==='not_selected'||entry.status==='not_selected')return 'Reviewed — another version was kept';
@@ -209,19 +235,21 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
 }
 export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail:string|null;dismissible:boolean}|null{
   const visible=state.entries.filter(offlineSyncVisible);
-  const completed=visible.filter(entry=>entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked');
+  const history=visible.filter(entry=>entry.historyBackupPending&&(entry.delivery||entry.reviewOutcome||['synced','not_selected'].includes(entry.status)));
+  const completed=visible.filter(entry=>!entry.historyBackupPending&&(entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked'));
   const blocked=visible.filter(entry=>entry.status==='blocked'&&!entry.reviewOutcome);
   const review=visible.filter(entry=>entry.status==='awaiting_review'&&!entry.reviewOutcome);
   const pending=visible.filter(entry=>entry.status==='pending'||entry.status==='syncing'||entry.status==='awaiting_review'&&!!entry.reviewOutcome);
   let message='';
   if(blocked.length)message=blocked.length===1?offlineSyncEntryLabel(blocked[0]):`${blocked.length} saved changes need attention`;
   else if(review.length)message=`Uploaded — ${review.length} ${review.length===1?'change awaits':'changes await'} owner/admin review`;
+  else if(history.length)message=`${history.length} device ${history.length===1?'history backup is':'history backups are'} pending`;
   else if(pending.length)message=pending.every(entry=>entry.delivery?.kind==='applied'||entry.reviewOutcome?.outcome==='kept')?'Uploaded — confirming shared data':state.busy?`Syncing ${pending.length} saved ${pending.length===1?'change':'changes'}`:`${pending.length} saved ${pending.length===1?'change is':'changes are'} waiting to sync`;
   else if(completed.length)message=completed.length===1?offlineSyncEntryLabel(completed[0]):`${completed.length} changes finished syncing or review — see details`;
   else if(state.error)message='Sync needs attention';
   if(state.error&&/storage|notices could not be dismissed/i.test(state.error))return {message:'Sync status needs attention',detail:state.error,dismissible:false};
-  return message?{message,detail:state.error??(state.setupPending?'Waiting for database sync setup. Saved work has not been discarded.':null),dismissible:!!completed.length&&!blocked.length&&!review.length&&!pending.length}:null;
+  return message?{message,detail:state.error??(state.setupPending?'Waiting for database sync setup. Saved work has not been discarded.':null),dismissible:!!completed.length&&!blocked.length&&!review.length&&!pending.length&&!history.length}:null;
 }
 export function offlineSyncVisible(entry:OutboxEntry):boolean{
-  return !entry.noticeDismissed||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
+  return !!entry.historyBackupPending||!entry.noticeDismissed||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
 }

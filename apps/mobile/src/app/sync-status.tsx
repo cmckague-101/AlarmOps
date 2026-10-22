@@ -12,7 +12,7 @@ export default function SyncStatusScreen(){
   useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
   const [history,setHistory]=useState(false);
   const visible=history?state.entries:state.entries.filter(offlineSyncVisible);
-  const completed=state.entries.some(entry=>!entry.noticeDismissed&&(entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked'));
+  const completed=state.entries.some(entry=>!entry.noticeDismissed&&!entry.historyBackupPending&&(entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked'));
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" onPress={action} disabled={disabled} style={[styles.button,{borderColor:theme.divider},disabled&&{opacity:.5}]}><Text style={{color:theme.ink,fontWeight:'700'}}>{label}</Text></Pressable>;
   return <SectionScreen title="Saved changes & sync" description="Only this account's changes for the selected company. Closing the app does not discard saved work.">
     <Stack.Screen options={{title:'Saved changes & sync'}}/>
@@ -28,6 +28,7 @@ export default function SyncStatusScreen(){
         <Text style={[styles.meta,{color:theme.secondary}]}>Saved on device {new Date(entry.operation.provenance.savedAt).toLocaleString(undefined,{timeZoneName:'short'})} · {entry.operation.provenance.connectivity==='offline'?'Offline (reported by app)':entry.operation.provenance.connectivity==='online'?'Online (reported by app)':'Connection status unknown'}</Text>
         {entry.operation.dependsOn.length>0&&<Text style={[styles.meta,{color:theme.secondary}]}>This edit depends on earlier work. Rejected or partly kept predecessors require an explicit rebase; they will not be overwritten automatically.</Text>}
         {entry.reviewOutcome&&<Text style={[styles.meta,{color:theme.secondary}]}>Kept fields: {entry.reviewOutcome.keptFields.join(', ')||'None'}. Discarded fields: {entry.reviewOutcome.discardedFields.join(', ')||'None'}. Original submitted work remains in saved history.</Text>}
+        {entry.historyBackupPending&&<Text style={[styles.meta,{color:theme.secondary}]}>Retained device versions are not confirmed backed up yet. Recovery checks the original server submission and never replays an unknown completed operation.</Text>}
         {entry.noticeDismissed&&<Text style={[styles.meta,{color:theme.secondary}]}>Notice dismissed — retained in this account's device history.</Text>}
         {detailEditor&&(entry.operation.entityType==='vehicle'||entry.operation.entityType==='issue')&&button('Inspect backed-up device history (online)',()=>router.push({pathname:'/sync-conflict',params:{entityType:entry.operation.entityType,entityId:entry.operation.entityId}} as never),offline)}
         {entry.error&&<Text style={[styles.meta,{color:theme.danger}]}>{entry.error}</Text>}

@@ -24,6 +24,10 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
       recordArgs(operation);
       return history.length?invoke('sync_fleet_update_with_history',{operation,device_history:history},signal):invoke('sync_fleet_update',{operation},signal);
     },
+    backfillHistory(operation,signal,history){
+      recordArgs(operation);
+      return invoke('backfill_fleet_sync_device_history',{operation,device_history:history},signal);
+    },
     canonical(operation,signal){return invoke('get_fleet_sync_record',recordArgs(operation),signal)},
     readRecord(target,signal){return invoke('get_fleet_sync_record',{target_company_id:identity.companyId,entity_type:target.entityType,record_id:target.entityId},signal)},
     outcome(operation,signal){

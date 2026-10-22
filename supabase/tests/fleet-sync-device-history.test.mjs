@@ -65,6 +65,31 @@ test('history reads are manager/company scoped; ordinary callers cannot forge or
   await assert.rejects(actor(owner,()=>db.query('delete from public.fleet_sync_device_history')),error=>error.code==='42501');
   await assert.rejects(submit(f.wire,f.history,crew),error=>error.code==='42501');await assert.rejects(submit(f.wire,f.history,outsider),error=>error.code==='42501');
 });
+const backfill=(op,history,user=owner)=>actor(user,async()=>(await row('select public.backfill_fleet_sync_device_history($1::jsonb,$2::jsonb) result',[JSON.stringify(op),JSON.stringify(history)])).result);
+test('older-build recovery backs up known submissions without repeating business writes',async()=>{
+  const f=await fixture();const receipt=await sync(f.wire);const effects=await row('select count(*)::int count from public.sync_test_effects');
+  assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.deepEqual(await row('select count(*)::int count from public.sync_test_effects'),effects);assert.equal((await row('select count(*)::int count from public.fleet_sync_device_history')).count,1);
+});
+test('history recovery never overwrites newer shared data with its historical receipt',async()=>{
+  const f=await fixture();const receipt=await sync(f.wire);await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'update',recordId:id,expectedVersion:3,data:{...base,notes:'Newer shared note'}}])]));
+  assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.equal((await row('select data from public.fleet_vehicles where record_id=$1',[id])).data.notes,'Newer shared note');
+});
+test('history recovery preserves an existing pending review without duplicate conflicts',async()=>{
+  const f=await fixture();await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'update',recordId:id,expectedVersion:2,data:{...base,notes:'Other editor'}}])]));const receipt=await sync(f.wire);assert.equal(receipt.kind,'awaiting_review');assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.equal((await row('select count(*)::int count from public.fleet_sync_conflicts')).count,1);
+});
+test('unknown original submissions are never applied by history recovery',async()=>{
+  const f=await fixture();const effects=await row('select count(*)::int count from public.sync_test_effects');await assert.rejects(backfill(f.wire,f.history),error=>error.code==='55000');assert.deepEqual(await row('select count(*)::int count from public.sync_test_effects'),effects);assert.equal((await row('select data from public.fleet_vehicles where record_id=$1',[id])).data.notes,'Parent');assert.equal((await row('select count(*)::int count from public.fleet_sync_device_history')).count,0);
+});
+test('recovery rejects changed payloads and revoked/foreign actors',async()=>{
+  const f=await fixture();await sync(f.wire);await assert.rejects(backfill({...f.wire,provenance:{...f.wire.provenance,deviceId:'different'}},f.history),error=>error.code==='22023');
+  for(const user of [crew,outsider,null])await assert.rejects(backfill(f.wire,f.history,user),error=>error.code==='42501');
+  await db.query("update public.company_members set role='admin' where user_id=$1",[crew]);await assert.rejects(backfill(f.wire,f.history,crew),error=>error.code==='22023');
+  await db.query("update public.company_members set role='fire_fighter' where user_id=$1",[owner]);await assert.rejects(backfill(f.wire,f.history),error=>error.code==='42501');
+});
+test('recovering history for an already-deleted record cannot resurrect it',async()=>{
+  const f=await fixture();const receipt=await sync(f.wire);await actor(owner,()=>db.query('select public.apply_fleet_changes($1,$2::jsonb)',[company,JSON.stringify([{collection:'vehicles',event:'delete',recordId:id,expectedVersion:3}])]));
+  assert.deepEqual(await backfill(f.wire,f.history),receipt);assert.equal((await row('select count(*)::int count from public.fleet_vehicles')).count,0);assert.equal((await row('select count(*)::int count from public.fleet_sync_device_history')).count,1);
+});
 const listHistory=(cursor=null,user=owner,target=id)=>actor(user,async()=>(await row('select public.list_fleet_sync_device_history($1,$2,$3,$4::jsonb) result',[company,'vehicle',target,cursor?JSON.stringify(cursor):null])).result);
 const readHistory=(operationId,user=owner,target=id)=>actor(user,async()=>(await row('select public.get_fleet_sync_device_history_report($1,$2,$3,$4,$5) result',[company,'vehicle',target,owner,operationId])).result);
 test('online history inspection returns scoped summaries and complete original snapshots',async()=>{

@@ -25,6 +25,7 @@ export type OutboxEntry = {
   readonly delivery: OutboxReceipt | null;
   readonly reviewOutcome: SyncReviewOutcome | null;
   readonly noticeDismissed: boolean;
+  readonly historyBackupPending?: boolean;
   readonly continuation?:{readonly parentId:string;readonly phase:'waiting'|'ready';readonly explicit?:boolean};
 };
 export type ContinuationReview={readonly operation:SyncOperation;readonly parentId:string;readonly current:CanonicalSyncRecord;readonly fields:Readonly<Record<string,{before:SyncFieldValue;saved:SyncFieldValue;current:SyncFieldValue}>>};
@@ -49,7 +50,7 @@ type Row = {
   user_id: string; company_id: string; entity_type: string; entity_id: string;
   sequence: number; operation_id: string; operation_json: string; projection_json: string;
   status: SyncOperationStatus; attempts: number; error: string | null; receipt_json: string | null;
-  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number; continuation_json?:string|null;
+  delivery_json: string | null; review_outcome_json: string | null; notice_dismissed: number; continuation_json?:string|null; history_backed_up?:number;
 };
 
 const schema = `
@@ -154,6 +155,7 @@ function entry(row: Row): OutboxEntry {
   if(continuation&&(!['waiting','ready'].includes(continuation.phase)||typeof continuation.parentId!=='string'||!(continuation.phase==='ready'&&continuation.explicit===true&&operation.dependsOn.length===0)&&(operation.dependsOn.length!==1||operation.dependsOn[0]!==continuation.parentId)))throw new Error('Invalid continuation metadata.');
   return {
     ...(continuation?{continuation}:{}),
+    historyBackupPending:continuation?.phase==='ready'&&row.history_backed_up!==1,
     sequence: row.sequence, operation, projection: JSON.parse(row.projection_json),
     status: row.status, attempts: row.attempts, error: row.error,
     receipt, delivery, reviewOutcome,
@@ -201,7 +203,10 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           before_json TEXT NOT NULL,after_json TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL
         ); PRAGMA user_version=4;`);current=4;
     }
-    if (current !== 4) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===4){
+      await tx.execAsync('ALTER TABLE offline_operations ADD COLUMN history_backed_up INTEGER NOT NULL DEFAULT 0 CHECK(history_backed_up IN (0,1)); PRAGMA user_version=5;');current=5;
+    }
+    if (current !== 5) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -218,7 +223,8 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
       required(userId, 'user ID');
       return serialize(async () => (await db.getFirstAsync<{count:number}>(
         `SELECT count(*) AS count FROM offline_operations WHERE user_id = ? AND
-         (status IN ('pending','syncing','awaiting_review') OR (status = 'blocked' AND review_outcome_json IS NULL))`, userId,
+         (status IN ('pending','syncing','awaiting_review') OR (status = 'blocked' AND review_outcome_json IS NULL)
+           OR (history_backed_up=0 AND json_extract(continuation_json,'$.phase')='ready'))`, userId,
       ))?.count ?? 0);
     },
     activate(scope: OutboxScope) {
@@ -404,6 +410,17 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           });
         },
 
+        confirmHistoryBackup(operationId:string,history:readonly OutboxRebase[],proof:SyncServerReceipt):Promise<void>{
+          const savedHistory=JSON.stringify(history);const savedProof=JSON.stringify(proof);
+          return write(async tx=>{
+            const row=await tx.getFirstAsync<Row>('SELECT * FROM offline_operations WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId);
+            if(!row)throw new Error('Saved operation is unavailable.');const current=entry(row);decodeSyncReceipt(current.operation,JSON.parse(savedProof));
+            const rows=await tx.getAllAsync<{before_json:string;after_json:string;reason:string;created_at:string}>('SELECT * FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence',...ids,operationId);
+            const actual=rows.map(value=>({before:JSON.parse(value.before_json),after:JSON.parse(value.after_json),reason:value.reason,createdAt:value.created_at}));
+            if(!actual.length||current.continuation?.phase!=='ready'||!sameJson(savedHistory,JSON.stringify(actual))||!sameJson(JSON.stringify(actual[actual.length-1].after),row.operation_json))throw new Error('History changed before backup confirmation.');
+            await tx.runAsync('UPDATE offline_operations SET history_backed_up=1 WHERE user_id=? AND company_id=? AND operation_id=?',...ids,operationId);
+          });
+        },
         listRebases(operationId:string):Promise<OutboxRebase[]>{return read(async()=>{
           const rows=await db.getAllAsync<{before_json:string;after_json:string;reason:string;created_at:string}>('SELECT * FROM offline_rebase_history WHERE user_id=? AND company_id=? AND operation_id=? ORDER BY sequence',...ids,operationId);
           return rows.map(row=>({before:JSON.parse(row.before_json),after:JSON.parse(row.after_json),reason:row.reason,createdAt:row.created_at}));
@@ -571,7 +588,8 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
 
         dismissCompletedNotices(): Promise<void> {
           return write(async tx => { await tx.runAsync(`UPDATE offline_operations SET notice_dismissed = 1 WHERE user_id = ? AND company_id = ?
-            AND (status IN ('synced','not_selected') OR (status = 'blocked' AND review_outcome_json IS NOT NULL))`, ...ids); });
+            AND (status IN ('synced','not_selected') OR (status = 'blocked' AND review_outcome_json IS NOT NULL))
+            AND (history_backed_up=1 OR continuation_json IS NULL OR json_extract(continuation_json,'$.phase')<>'ready')`, ...ids); });
         },
 
         /** Call with a validated receipt plus a fresh canonical snapshot before reporting applied work synced. */
