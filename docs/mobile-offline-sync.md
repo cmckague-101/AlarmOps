@@ -390,6 +390,16 @@ Explicit **Restore exact original bytes** uses a local picker with a current-sco
 
 Tests exercise real-file repair (including interrupted repair and immutable bindings), controller availability/late-result fencing and picker/confirmation guards. Native content tests use stub components without mounting the app or launching UI. Validation: **244 native tests**, mobile typecheck and whitespace checks passed. Encryption, remote object verification, upload acknowledgment recovery, permission-aware attachment adapters and safe bound-file release remain pending. Nothing was pushed or deployed.
 
+### Remote attachment upload reservations (migration added; no upload flow enabled)
+
+`20261117000100_fleet_sync_attachment_uploads.sql` adds a separate private `fleet-sync-files` bucket (10 MiB; JPEG/PNG/WebP/GIF/PDF declared types) and private append-only `fleet_sync_attachment_uploads`. `reserve_fleet_sync_attachment(manifest)` accepts exactly the native retained-manifest shape, requires the authenticated actor to be the manifest user with **current** owner/admin access (rechecked on every replay) and a live target vehicle/issue visible to them now. A hidden or missing target is unavailability, never inferred deletion. The stable object path is `company/user/attachment`. Identical retries return the original reservation; any different bytes, name, provenance or target for that identity fails with `PT409`. A per-user cross-company limit (100 MiB / 500 unattached reservations) is serialized with an advisory lock; future attach adapters must release quota explicitly. Reserving never changes a business record.
+
+Storage RLS allows INSERT only for the reserving user's exact unverified path while they currently manage the company, and SELECT only to that reserving manager. There is **no UPDATE or DELETE policy**, so clients cannot upsert-overwrite or remove reserved objects; legacy `delete-fleet-files` remains hardcoded to `fleet-files`. Reservation identity/manifest fields are trigger-protected; verification columns (`verified_object_id`, `verified_at`, `receipt`) have no client grants and can be set exactly once by a trusted service verifier (next slice). Reported storage metadata size and declared MIME type are **not byte proof or content validation**.
+
+Shared `packages/domain/src/attachment-upload.ts` (now exported) validates manifests, reservations and receipts against the retained intent and classifies `reserved`, `stored_unverified`, `stored_size_mismatch` and `verified`. A verified receipt proves stored bytes only — **not** a business attachment, pending review or sync completion. Null/unsupported declared types cannot be reserved; their local drafts remain retained.
+
+Tests: `supabase/tests/fleet-sync-attachment-uploads.test.mjs` uses a new minimal `fixtures/storage.sql` metadata boundary (storage.objects RLS only; no Storage API/byte transfer/upsert semantics) plus the production fleet fixture: idempotency, provenance mismatch, current role/company/target checks, shape validation, quota, exact-path inserts, overwrite/delete denial, demotion, private immutable rows and single-use receipts. Real Supabase Storage validation is still required.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -402,6 +412,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 6. `20261114000100_fleet_sync_history_reads.sql`
 7. `20261115000100_fleet_sync_history_recovery.sql`
 8. `20261116000100_fleet_sync_download.sql`
+9. `20261117000100_fleet_sync_attachment_uploads.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

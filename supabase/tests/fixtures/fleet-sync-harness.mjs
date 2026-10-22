@@ -27,3 +27,10 @@ export async function loadFleetSyncSchema(db, beforeSafeguards = async () => {})
   await db.exec(`create trigger sync_test_side_effect after insert or update or delete on public.fleet_vehicles
     for each row execute function public.sync_test_effect()`);
 }
+
+/** Fleet sync schema plus the Storage metadata fixture and attachment uploads. */
+export async function loadFleetSyncAttachmentSchema(db) {
+  await loadFleetSyncSchema(db);
+  await db.exec(readFileSync(new URL('./storage.sql', import.meta.url), 'utf8'));
+  await db.exec(migration('20261117000100_fleet_sync_attachment_uploads'));
+}
