@@ -167,6 +167,26 @@ $$;
 revoke all on function public.validate_fleet_sync_detail_field(uuid, uuid, text, uuid, text, jsonb, text) from public, anon, authenticated, service_role;
 grant execute on function public.validate_fleet_sync_detail_field(uuid, uuid, text, uuid, text, jsonb, text) to fireops_sync_writer;
 
+-- Replaceable adapter hooks (defaults = plain field merge, no extra effects).
+-- Later adapters add invariant groups, append-only fields, record invariants
+-- and audited side effects without copying the submission/approval functions.
+create function public.fleet_sync_merge_detail(company uuid, actor uuid, entity text, base_data jsonb, current_data jsonb, patch jsonb)
+returns jsonb language sql stable set search_path = '' as $$
+  select public.merge_fleet_sync_fields(base_data, current_data, patch);
+$$;
+-- Raises when an assembled record violates domain invariants; `before` may be null.
+create function public.validate_fleet_sync_record(company uuid, entity text, before_data jsonb, after_data jsonb)
+returns void language sql stable set search_path = '' as $$ select; $$;
+-- Extra apply_fleet_changes entries committed in the same transaction.
+create function public.fleet_sync_detail_side_effects(company uuid, actor uuid, entity text, record_uuid uuid, before_data jsonb, after_data jsonb, provenance jsonb)
+returns jsonb language sql stable set search_path = '' as $$ select '[]'::jsonb; $$;
+revoke all on function public.fleet_sync_merge_detail(uuid, uuid, text, jsonb, jsonb, jsonb),
+  public.validate_fleet_sync_record(uuid, text, jsonb, jsonb),
+  public.fleet_sync_detail_side_effects(uuid, uuid, text, uuid, jsonb, jsonb, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.fleet_sync_merge_detail(uuid, uuid, text, jsonb, jsonb, jsonb),
+  public.validate_fleet_sync_record(uuid, text, jsonb, jsonb),
+  public.fleet_sync_detail_side_effects(uuid, uuid, text, uuid, jsonb, jsonb, jsonb) to fireops_sync_writer;
+
 -- No privilege escalation through generic JSON: this adapter admits only manager
 -- scalar-detail updates. Other workflows must implement their own allowlists,
 -- permission checks and transactional invariants, not relax this function.
@@ -294,14 +314,16 @@ begin
     and revision.collection = collection_name and revision.record_id = record_uuid and revision.version > base_version and revision.deleted) then
     conflict_reason := 'recreated';
   else
-    merge_result := public.merge_fleet_sync_fields(base_data, current_data, patch);
-    if merge_result ->> 'kind' = 'conflict' then conflict_reason := 'fields'; end if;
+    merge_result := public.fleet_sync_merge_detail(company, actor, entity, base_data, current_data, patch);
+    if merge_result ->> 'kind' = 'conflict' then conflict_reason := 'fields';
+    else perform public.validate_fleet_sync_record(company, entity, current_data, merge_result -> 'record'); end if;
   end if;
   select nullif(full_name,'') into actor_label from public.profiles where user_id = actor;
   if conflict_reason is null then
     if merge_result -> 'record' is distinct from current_data then
       result := public.apply_fleet_changes(company, jsonb_build_array(jsonb_build_object(
-        'collection',collection_name,'recordId',record_uuid,'event','update','expectedVersion',current_version,'data',merge_result -> 'record')));
+        'collection',collection_name,'recordId',record_uuid,'event','update','expectedVersion',current_version,'data',merge_result -> 'record'))
+        || public.fleet_sync_detail_side_effects(company, actor, entity, record_uuid, current_data, merge_result -> 'record', provenance));
       execute format('select data, version from public.%I where company_id=$1 and record_id=$2', table_name)
         into current_data, current_version using company, record_uuid;
       applied_version := current_version;

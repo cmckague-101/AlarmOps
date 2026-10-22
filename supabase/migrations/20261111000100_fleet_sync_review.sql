@@ -300,6 +300,8 @@ begin
   table_name := case entity when 'vehicle' then 'fleet_vehicles' else 'fleet_issues' end;
   collection_name := case entity when 'vehicle' then 'vehicles' else 'issues' end;
   if approved is distinct from current_data then
+    -- Field choices may assemble a combination no single proposal made.
+    perform public.validate_fleet_sync_record(company, entity, current_data, approved);
     perform public.apply_fleet_changes(company,jsonb_build_array(jsonb_build_object(
       'collection',collection_name,'recordId',record_uuid,'event','update','expectedVersion',before_version,'data',approved)));
     execute format('select data,version from public.%I where company_id=$1 and record_id=$2',table_name)
