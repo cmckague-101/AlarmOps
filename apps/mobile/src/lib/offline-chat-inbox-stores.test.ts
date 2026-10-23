@@ -17,6 +17,7 @@ vi.mock('@/lib/supabase',()=>{
   return {supabase:{from:query,channel:()=>channel,removeChannel:async()=>undefined}};
 });
 import {publishOfflineChatInbox,type OfflineChatInbox} from './offline-chat-inbox';
+import {publishOfflineCompanyLists} from './offline-company-lists';
 import {markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,saveNotificationPreferences,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
 import {displayedThroughOf,markCommunicationThreadSeen,refreshCommunications,replyToCommunicationThread,useCommunications,withOfflineReplies,withOfflineSeen} from './communications-store';
 
@@ -101,5 +102,20 @@ describe('offline store actions',()=>{
     const base={notifications:[],unreadCount:0,loading:false,refreshing:false,error:null,preferences:{pushEnabled:true,communicationReplies:true,documentAdded:true,trainingCreated:true,issueUpdates:true},savingPreferences:false} as never;
     expect((withOfflineReads(base,{reads:new Map(),preferences:{trainingCreated:false}}) as {preferences:{trainingCreated:boolean;pushEnabled:boolean}}).preferences).toMatchObject({trainingCreated:false,pushEnabled:true});
     publishOfflineChatInbox(null);await expect(saveNotificationPreferences({pushEnabled:false})).rejects.toThrow(/unavailable/);
+  });
+  it('reads the verified inbox and Crew Chat downloads offline instead of cached HTTP responses',async()=>{
+    publishOfflineChatInbox(null);
+    const download=(section:string,tables:Record<string,unknown[]>)=>({snapshot:{schemaVersion:1 as const,section:section as never,companyId:company,userId:user,serverRequestAt:'2026-01-02T00:00:00Z',receiptWatermark:'3',tables:tables as never},verifiedAt:'2026-01-02T00:00:01Z'});
+    publishOfflineCompanyLists({companyId:company,userId:user,sections:{
+      notifications:download('notifications',{user_notifications:[row(first,'2026-01-01T11:00:00Z'),row(second)],notification_preferences:[{push_enabled:false,communication_replies:true,document_added:true,training_created:true,issue_updates:true}]}),
+      crew_chat:download('crew_chat',{communication_threads:[{id:thread,subject:'Downloaded',description:'D',created_by:'other',created_by_name:'O',created_by_role:'owner',created_at:'2026-01-01T09:00:00+00:00'}],communication_replies:[],communication_reads:[]}),
+    }});
+    mocks.tables={};
+    const inbox=hook(()=>useNotificationInbox(company,user));inbox.render();inbox.effects();await refreshNotificationInbox();await flush();
+    const value=inbox.render();expect(value.notifications.map(item=>item.id)).toEqual([first,second]);expect(value.unreadCount).toBe(1);expect(value.preferences.pushEnabled).toBe(false);expect(value.downloaded?.receiptWatermark).toBe('3');
+    const chat=hook(()=>useCommunications(company,user));chat.render();chat.effects();await refreshCommunications();await flush();
+    expect(chat.render().threads.map(item=>item.subject)).toEqual(['Downloaded']);
+    mocks.offline=false;await refreshNotificationInbox();await flush();expect(inbox.render().downloaded).toBeFalsy();
+    publishOfflineCompanyLists(null);
   });
 });

@@ -5,6 +5,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox } from './offline-chat-inbox';
 import { laterTimestamp, type DeviceReply } from './offline-user-sync';
+import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 import { isOffline } from '@/providers/network-provider';
 
 type CommunicationThreadRow = {
@@ -35,6 +36,8 @@ type CommunicationsSnapshot = {
   error: string | null;
   /** Replies shown from this device's saved commands, by reply ID. */
   deviceReplies?: Readonly<Record<string, DeviceReply['state']>>;
+  /** Shown from the verified offline download, not a live read. */
+  downloaded?: DownloadedListInfo | null;
 };
 
 let snapshot: CommunicationsSnapshot = {
@@ -118,6 +121,8 @@ function replyFromRow(row: CommunicationReplyRow): CommunicationReply {
   };
 }
 
+subscribeOfflineCompanyLists(() => { if (isOffline() && activeCompanyId) void refreshCommunications(); });
+
 export function refreshCommunications() {
   if (request && requestVersion === selectionVersion) {
     refreshQueued = true;
@@ -146,7 +151,9 @@ export function refreshCommunications() {
     }
 
     try {
-      const [threadResult, replyResult, readResult] = await Promise.all([
+      // Offline, the verified download replaces cached HTTP reads.
+      const downloaded = isOffline() ? downloadedCompanyList('crew_chat', companyId) : null;
+      const [threadResult, replyResult, readResult] = downloaded ? [{ data: downloaded.tables.communication_threads, error: null }, { data: downloaded.tables.communication_replies, error: null }, { data: downloaded.tables.communication_reads, error: null }] : await Promise.all([
         supabase
           .from('communication_threads')
           .select('id,subject,description,created_by,created_by_name,created_by_role,created_at')
@@ -188,7 +195,7 @@ export function refreshCommunications() {
         seenAt: reads.get(thread.id),
         replies: (repliesByThread.get(thread.id) ?? []).map(replyFromRow),
       }));
-      emit({ threads: orderThreads(threads), loading: false, refreshing: false, error: null });
+      emit({ threads: orderThreads(threads), loading: false, refreshing: false, error: null, downloaded: downloaded?.info ?? null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';

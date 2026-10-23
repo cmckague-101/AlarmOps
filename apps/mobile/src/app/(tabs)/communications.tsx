@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshCommunications, useCommunications } from '@/lib/communications-store';
 import { useSession } from '@/providers/session-provider';
@@ -25,7 +26,7 @@ export default function CommunicationsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { threads, loading, refreshing, error } = useCommunications(member?.company.id ?? null, member?.user.id ?? null);
+  const { threads, loading, refreshing, error, downloaded } = useCommunications(member?.company.id ?? null, member?.user.id ?? null);
   const unreadCount = member ? threads.filter((thread) => isThreadUnread(thread, member.user)).length : 0;
 
   return (
@@ -58,6 +59,7 @@ export default function CommunicationsScreen() {
         </View>
 
         {loading ? <Text style={styles.stateText}>Loading company threads…</Text> : null}
+        <DownloadedListNotice info={downloaded} />
         {error ? (
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Communications unavailable</Text>

@@ -5,6 +5,7 @@ import type {UserRole} from '@fireops/domain';
 
 import {supabase} from '@/lib/supabase';
 import {offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox} from './offline-chat-inbox';
+import {downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo} from './offline-company-lists';
 import {isOffline} from '@/providers/network-provider';
 
 export type NotificationEventType =
@@ -67,6 +68,8 @@ type InboxSnapshot = {
   refreshing: boolean;
   savingPreferences: boolean;
   error: string | null;
+  /** Shown from the verified offline download (latest 500), not a live read. */
+  downloaded?: DownloadedListInfo | null;
 };
 
 export const defaultNotificationPreferences: NotificationPreferences = {
@@ -180,6 +183,8 @@ function preferenceValues(preferences: NotificationPreferences) {
   };
 }
 
+subscribeOfflineCompanyLists(() => { if (isOffline() && activeCompanyId) void refreshNotificationInbox(); });
+
 export function refreshNotificationInbox() {
   if (request && requestVersion === selectionVersion) {
     refreshQueued = true;
@@ -202,6 +207,16 @@ export function refreshNotificationInbox() {
       return;
     }
     try {
+      // Offline, the verified download (latest 500) replaces cached HTTP reads; the
+      // crew filter and the 100-item window match the online query.
+      const downloaded = isOffline() ? downloadedCompanyList('notifications', companyId) : null;
+      if (downloaded) {
+        if (version !== selectionVersion) return;
+        const rows = (downloaded.tables.user_notifications as NotificationRow[]).filter((item) => !isCrewRole(role) || (crewDashboardEventTypes as readonly string[]).includes(item.event_type));
+        emit({notifications: rows.slice(0, 100).map(notificationFromRow), unreadCount: rows.filter((item) => !item.read_at).length,
+          preferences: preferencesFromRow(downloaded.tables.notification_preferences[0] as PreferenceRow | undefined), loading: false, refreshing: false, savingPreferences: false, error: null, downloaded: downloaded.info});
+        return;
+      }
       let notificationQuery = supabase.from('user_notifications')
         .select('id,event_type,entity_type,entity_id,title,body,path,group_key,read_at,created_at')
         .eq('company_id', companyId).eq('user_id', userId)

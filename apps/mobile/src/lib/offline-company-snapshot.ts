@@ -9,7 +9,10 @@ export const companySnapshotSections={
   payroll:{payroll_forms:['approved_at','approved_by','attachment','company_id','created_at','created_by','created_by_name','engine_number','id','incidents','rejected_at','rejected_by','rejection_notes','rows','status','submitted_at','updated_at']},
   invoices:{invoice_forms:['attachment','company_id','created_at','created_by','created_by_name','customer_id','id','invoice_amount','invoice_date','invoice_number','status','submitted_at','updated_at'],invoice_customers:['company_id','created_at','id','name','updated_at']},
   receipts:{company_receipts:['amount_cents','byte_size','created_at','id','mime_type','name','original_file_name','storage_path','uploaded_by','uploaded_by_name']},
+  crew_chat:{communication_threads:['created_at','created_by','created_by_name','created_by_role','description','id','subject'],communication_replies:['body','created_at','created_by','created_by_name','id','thread_id'],communication_reads:['seen_at','thread_id']},
+  notifications:{user_notifications:['body','created_at','entity_id','entity_type','event_type','group_key','id','path','read_at','title'],notification_preferences:['communication_replies','document_added','issue_updates','push_enabled','training_created']},
 } as const;
+const sectionLimit=(section:CompanySnapshotSection)=>section==='crew_chat'?10000:5000;
 export type CompanySnapshotSection=keyof typeof companySnapshotSections;
 export const companySnapshotSectionNames=Object.keys(companySnapshotSections) as CompanySnapshotSection[];
 export type CompanySnapshot={schemaVersion:1;section:CompanySnapshotSection;companyId:string;userId:string;serverRequestAt:string;receiptWatermark:string;tables:Record<string,Record<string,unknown>[]>};
@@ -29,7 +32,7 @@ export function decodeCompanySnapshot(value:unknown,scope:{userId:string;company
     const rows=tables[name];if(!Array.isArray(rows))throw new Error('Invalid company download rows');total+=rows.length;
     decoded[name]=rows.map(raw=>{const row=object(raw);if(!sameKeys(row,columns))throw new Error(`Invalid ${name} row`);return {...row}});
   }
-  if(total>5000)throw new Error('Company download is too large');
+  if(total>sectionLimit(section))throw new Error('Company download is too large');
   return {schemaVersion:1,section,companyId:scope.companyId,userId:scope.userId,serverRequestAt:data.serverRequestAt,receiptWatermark:data.receiptWatermark,tables:decoded};
 }
 /** A stored section is replaced only by one that is not older in server time or receipts. */

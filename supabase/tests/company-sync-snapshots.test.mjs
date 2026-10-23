@@ -46,6 +46,23 @@ test('financial sections follow existing row-level security per role',async()=>{
   assert.deepEqual((await snapshot(tech,'invoices')).tables.invoice_forms,[]);assert.equal((await snapshot(owner,'invoices')).tables.invoice_forms.length,1);
   const receipts=await snapshot(crew,'receipts');assert.deepEqual(receipts.tables.company_receipts,[]);
 });
+test('Crew Chat and the notification inbox carry the caller\'s own reads, preferences and latest 500 notifications',async()=>{
+  const thread=randomUUID();
+  await db.exec('alter table public.communication_threads disable trigger communication_threads_attribution');
+  await db.query("insert into public.communication_threads(id,company_id,subject,description,created_by,created_by_name,created_by_role,created_at) values($1,$2,'Subject','Body',$3,'Owner','owner',now())",[thread,company,owner]);
+  await db.exec('alter table public.communication_threads enable trigger communication_threads_attribution');
+  await send(crew,command(crew,'communication_reply',randomUUID(),'reply.create',{threadId:thread,body:'On it'}));
+  await send(crew,command(crew,'communication_read',thread,'communication.seen',{seenThrough:new Date().toISOString()}));
+  const chat=await snapshot(crew,'crew_chat');
+  assert.deepEqual(chat.tables.communication_threads.map(item=>item.id),[thread]);assert.equal(chat.tables.communication_replies[0].body,'On it');
+  assert.equal(chat.tables.communication_reads.length,1);assert.equal((await snapshot(owner,'crew_chat')).tables.communication_reads.length,0);
+  await db.query("insert into public.user_notifications(company_id,user_id,event_type,entity_type,title,body,path,group_key,dedupe_key,created_at) select $1,$2,'system','system','T'||g,'B','/x','g','d'||g,now()-g*interval '1 minute' from generate_series(1,501) g",[company,crew]);
+  await send(crew,command(crew,'notification_preferences',crew,'preferences.set',{changes:{pushEnabled:false}}));
+  const inbox=await snapshot(crew,'notifications');
+  assert.equal(inbox.tables.user_notifications.length,500);assert.equal(inbox.tables.user_notifications[0].title,'T1');
+  assert.deepEqual(inbox.tables.notification_preferences,[{push_enabled:false,communication_replies:true,document_added:true,training_created:true,issue_updates:true}]);
+  assert.deepEqual((await snapshot(owner,'notifications')).tables,{user_notifications:[],notification_preferences:[]});
+});
 test('outsiders, other companies and unknown sections are refused; large sections are not truncated',async()=>{
   await assert.rejects(snapshot(outsider,'inventory'),error=>error.code==='42501');
   await assert.rejects(snapshot(crew,'inventory',other),error=>error.code==='42501');

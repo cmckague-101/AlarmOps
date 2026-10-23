@@ -1,11 +1,14 @@
 -- Verified offline downloads of company lists the caller can already read:
--- inventory, training, payroll, invoices and receipts. Each section is read in
+-- inventory, training, payroll, invoices, receipts, Crew Chat and the caller's
+-- own notification inbox (latest 500) and preferences. Each section is read in
 -- ONE statement (one database snapshot) under the existing row-level security
 -- (the non-bypass sync writer), with exactly the columns the mobile stores load
 -- online, plus the caller's user-receipt watermark taken under the shared
 -- per-user lock (as get_user_sync_snapshot), so the device knows which of its
 -- own applied commands the download already reflects.
--- A section over 5000 rows is refused (54000) rather than silently truncated.
+-- A section over 5000 rows (Crew Chat: 10000) is refused (54000) rather than
+-- silently truncated. Only the notification inbox is a bounded recent window,
+-- like the online inbox (which shows the latest 100).
 begin;
 
 grant create on schema public to fireops_sync_writer;
@@ -19,7 +22,7 @@ begin
   if actor is null or target_company_id is null or not public.is_company_member(target_company_id, actor) then
     raise exception 'Company membership required' using errcode = '42501';
   end if;
-  if section is null or section not in ('inventory','training','payroll','invoices','receipts') then
+  if section is null or section not in ('inventory','training','payroll','invoices','receipts','crew_chat','notifications') then
     raise exception 'Unsupported download section' using errcode = '22023';
   end if;
   perform pg_advisory_xact_lock_shared(hashtextextended('user-sync-user:' || actor::text, 0));
@@ -50,6 +53,22 @@ begin
         from public.invoice_forms f where f.company_id = target_company_id),
       'invoice_customers', (select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'company_id', c.company_id, 'name', c.name, 'created_at', c.created_at, 'updated_at', c.updated_at) order by c.name, c.id), '[]'::jsonb)
         from public.invoice_customers c where c.company_id = target_company_id))
+    when 'crew_chat' then jsonb_build_object(
+      'communication_threads', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'subject', t.subject, 'description', t.description, 'created_by', t.created_by,
+          'created_by_name', t.created_by_name, 'created_by_role', t.created_by_role, 'created_at', t.created_at) order by t.created_at desc, t.id), '[]'::jsonb)
+        from public.communication_threads t where t.company_id = target_company_id),
+      'communication_replies', (select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'thread_id', r.thread_id, 'body', r.body, 'created_by', r.created_by,
+          'created_by_name', r.created_by_name, 'created_at', r.created_at) order by r.created_at, r.id), '[]'::jsonb)
+        from public.communication_replies r where r.company_id = target_company_id),
+      'communication_reads', (select coalesce(jsonb_agg(jsonb_build_object('thread_id', r.thread_id, 'seen_at', r.seen_at) order by r.thread_id), '[]'::jsonb)
+        from public.communication_reads r where r.company_id = target_company_id and r.user_id = actor))
+    when 'notifications' then jsonb_build_object(
+      'user_notifications', (select coalesce(jsonb_agg(jsonb_build_object('id', n.id, 'event_type', n.event_type, 'entity_type', n.entity_type, 'entity_id', n.entity_id,
+          'title', n.title, 'body', n.body, 'path', n.path, 'group_key', n.group_key, 'read_at', n.read_at, 'created_at', n.created_at) order by n.created_at desc, n.id), '[]'::jsonb)
+        from (select * from public.user_notifications n where n.company_id = target_company_id and n.user_id = actor order by n.created_at desc, n.id limit 500) n),
+      'notification_preferences', (select coalesce(jsonb_agg(jsonb_build_object('push_enabled', p.push_enabled, 'communication_replies', p.communication_replies,
+          'document_added', p.document_added, 'training_created', p.training_created, 'issue_updates', p.issue_updates)), '[]'::jsonb)
+        from public.notification_preferences p where p.company_id = target_company_id and p.user_id = actor))
     else jsonb_build_object(
       'company_receipts', (select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'name', r.name, 'amount_cents', r.amount_cents, 'original_file_name', r.original_file_name,
           'mime_type', r.mime_type, 'byte_size', r.byte_size, 'storage_path', r.storage_path, 'uploaded_by', r.uploaded_by, 'uploaded_by_name', r.uploaded_by_name,
@@ -57,7 +76,7 @@ begin
         from public.company_receipts r where r.company_id = target_company_id))
   end;
   select coalesce(sum(jsonb_array_length(value)), 0) into total from jsonb_each(tables);
-  if total > 5000 then raise exception 'Too many records to download for offline use' using errcode = '54000'; end if;
+  if total > (case section when 'crew_chat' then 10000 else 5000 end) then raise exception 'Too many records to download for offline use' using errcode = '54000'; end if;
   return jsonb_build_object('schemaVersion', 1, 'section', section, 'companyId', target_company_id, 'userId', actor,
     'serverRequestAt', statement_timestamp(),
     'receiptWatermark', coalesce((select max(r.sequence) from public.user_sync_receipts r where r.user_id = actor), 0)::text,

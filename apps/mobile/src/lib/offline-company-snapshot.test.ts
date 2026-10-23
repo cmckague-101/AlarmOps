@@ -37,10 +37,10 @@ describe('verified company-list downloads',()=>{
     const download=vi.fn(async(section:string)=>{if(section==='payroll')throw {code:'54000'};if(section!=='inventory')throw new Error('offline');return inventory()});
     const sync=createCompanySnapshotSync({session:f.session,download,canRun:()=>true,now:()=>'device-1'});cleanup.push(()=>sync.stop());
     await sync.load();expect(sync.getSnapshot()).toMatchObject({loaded:true,sections:{}});
-    await sync.refresh();expect(download.mock.calls.map(call=>call[0])).toEqual(['inventory','training','payroll','invoices','receipts']);
+    await sync.refresh();expect(download.mock.calls.map(call=>call[0])).toEqual(['inventory','training','payroll','invoices','receipts','crew_chat','notifications']);
     expect(sync.getSnapshot().sections.inventory?.verifiedAt).toBe('device-1');expect(sync.getSnapshot().error).toMatch(/could not be downloaded/);
     const again=createCompanySnapshotSync({session:f.session,download,canRun:()=>false});cleanup.push(()=>again.stop());await again.load();expect(again.getSnapshot().sections.inventory?.snapshot.receiptWatermark).toBe('5');
-    await again.refresh();expect(download).toHaveBeenCalledTimes(5);
+    await again.refresh();expect(download).toHaveBeenCalledTimes(7);
   });
   it('keeps overlaying own changes applied after the download watermark, but not refused ones',()=>{
     const entry=(revision:string,status:OutboxEntry['status']='synced',notApplied?:string)=>({status,receipt:{kind:'applied',revision},delivery:notApplied?{notApplied}:{kind:'applied'}}) as unknown as OutboxEntry;

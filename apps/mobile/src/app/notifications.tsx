@@ -3,6 +3,7 @@ import {Redirect, Stack, useRouter} from 'expo-router';
 import {Pressable, RefreshControl, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 
+import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import {AppSymbol} from '@/components/app-symbol';
 import {
   markAllInboxNotificationsRead,
@@ -38,7 +39,7 @@ export default function NotificationsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const {session, access} = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const {notifications, unreadCount, loading, refreshing, error} = useNotificationInbox(member?.company.id ?? null, member?.user.id ?? null, member?.user.role ?? null);
+  const {notifications, unreadCount, loading, refreshing, error, downloaded} = useNotificationInbox(member?.company.id ?? null, member?.user.id ?? null, member?.user.role ?? null);
   const groups = useMemo(() => {
     const grouped = new Map<string, InboxNotification[]>();
     notifications.forEach((notification) => grouped.set(notification.groupKey, [...(grouped.get(notification.groupKey) ?? []), notification]));
@@ -73,6 +74,7 @@ export default function NotificationsScreen() {
         </View>
 
         {loading && notifications.length === 0 ? <Text style={styles.state}>Loading notifications…</Text> : null}
+        <DownloadedListNotice info={downloaded} />
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         {!loading && notifications.length === 0 ? (
           <View style={styles.empty}>
