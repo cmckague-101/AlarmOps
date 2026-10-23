@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,pendingCheckouts,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -134,5 +134,22 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     await f.worker.wake();await f.worker.wake();await f.worker.wake();const entries=await f.session.list();
     expect(deviceVehicleNotes(entries,vehicle)).toEqual([{id,vehicleId:vehicle,subject:'Brakes',body:'Pads at 30%',savedAt:date,state:'posted',createdAt:'2026-01-01T12:00:00+00:00'}]);
     expect(deviceVehicleNotes(entries,gone)).toEqual([]);expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===other)!)).toContain('vehicle was deleted');
+  });
+  it('queues gear checkouts in order per item and reports stock shortfalls without applying them',async()=>{
+    const f=await setup();const gloves=nextId(),gone=nextId();
+    for(const quantity of [0,1.5,1000000])await expect(f.sync.checkOut(gloves,quantity)).rejects.toThrow();
+    const first=await f.sync.checkOut(gloves,2);const second=await f.sync.checkOut(gloves,1);await f.sync.checkOut(gone,1);
+    expect(first.operation.mutation).toEqual({kind:'command',command:'checkout.add',payload:{quantity:2}});expect(second.operation.dependsOn).toContain(first.operation.operationId);
+    expect(pendingCheckouts(await f.session.list())).toEqual(new Map([[gloves,3],[gone,1]]));
+    f.transport.deliver.mockImplementation(async operation=>operation.entityId===gone
+      ?{kind:'applied',receivedAt:date,revision:'9',record:null,notApplied:'item_deleted'} as never
+      :operation.operationId===second.operation.operationId?{kind:'applied',receivedAt:date,revision:'8',record:{id:gloves,checkedOut:2},notApplied:'insufficient_stock'} as never
+      :{kind:'applied',receivedAt:date,revision:'7',record:{id:gloves,checkedOut:2}});
+    f.transport.canonical.mockImplementation(async operation=>({revision:operation.entityId===gone?'9':'8',record:operation.entityId===gone?null:{id:gloves,checkedOut:2}}));
+    for(let i=0;i<4;i++)await f.worker.wake();const entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(pendingCheckouts(entries).size).toBe(0);
+    expect(f.transport.deliver.mock.calls.map(call=>call[0].operationId).slice(0,2)).toEqual([first.operation.operationId,second.operation.operationId]);
+    expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.operationId===second.operation.operationId)!)).toContain('not enough stock');
+    expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===gone)!)).toContain('item was deleted');
   });
 });

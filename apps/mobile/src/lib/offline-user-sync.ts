@@ -5,7 +5,7 @@ import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbo
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -76,6 +76,12 @@ export const deviceReplies=(entries:readonly OutboxEntry[])=>deviceCreates<{thre
 export type DeviceVehicleNote=DeviceCreate<{vehicleId:string;subject:string;body:string}>;
 /** Vehicle notes created on this device for one vehicle. */
 export const deviceVehicleNotes=(entries:readonly OutboxEntry[],vehicleId:string)=>deviceCreates<{vehicleId:string;subject:string;body:string}>(entries,'vehicle_note').filter(note=>note.vehicleId===vehicleId);
+/** Gear checkouts saved on this device and not yet applied, per item. */
+export function pendingCheckouts(entries:readonly OutboxEntry[]):Map<string,number>{
+  const pending=new Map<string,number>();
+  for(const entry of entries){const op=entry.operation;if(op.entityType==='inventory_checkout'&&op.mutation.kind==='command'&&unresolved(entry))pending.set(op.entityId,(pending.get(op.entityId)??0)+(op.mutation.payload as {quantity:number}).quantity)}
+  return pending;
+}
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
@@ -134,6 +140,11 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       const subject=note.subject.trim();const body=note.body.trim();
       if(!uuid.test(note.id)||!uuid.test(note.vehicleId)||!subject||subject.length>160||!body||body.length>5000)return Promise.reject(new Error('Check the note subject and details.'));
       return enqueue('vehicle_note',note.id,'note.create',{vehicleId:note.vehicleId,subject,body},null);
+    },
+    /** Stock is checked when it reaches the server; a shortfall is rejected and kept on the device. */
+    checkOut(itemId:string,quantity:number){
+      if(!uuid.test(itemId)||!Number.isInteger(quantity)||quantity<1||quantity>999999)return Promise.reject(new Error('Check the checkout quantity.'));
+      return enqueue('inventory_checkout',itemId,'checkout.add',{quantity},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

@@ -716,6 +716,12 @@ Tests: `offline-user-snapshot.test.ts` (3: strict decoding, monotonic per-scope 
 
 Tests: `inventory-checkout-offline.test.mjs` (4 embedded PostgreSQL tests on the real inventory migrations, with a realtime publication stub in `loadInventorySchema`: online role fix, single apply with replay, competing checkouts never exceeding stock, deleted items, validation, manager/outsider denial and core privacy). The audit log, grants and user-sync suites pass.
 
+### Gear checkout: client (native)
+
+`offline-user-sync.ts` adds `checkOut(itemId, quantity)`; the outbox sequences one user's checkouts of an item in order. `pendingCheckouts(entries)` sums the unapplied quantities per item. Offline, the crew row on the Inventory screen saves the checkout on the device and shows *N saved on this device — checks out when connected if still in stock*. Those units are held back from the quantity the screen offers, but the server decides at arrival. Saved changes & sync labels rejections as *Not checked out — not enough stock was left when it synced* or *the item was deleted before it synced*; the request stays in the device outbox. Online checkout still calls the (now fixed) server function directly. Check-in and stock management stay online for owners/admins. The inventory list offline still comes from the earlier read cache (not a verified download). Web is unchanged; it benefits from the role fix.
+
+Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, per-item ordering via dependencies, pending sums, shortfall/deleted outcomes and labels).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

@@ -5,6 +5,8 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, Scrol
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
+import { pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
+import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { checkinInventoryItem, checkoutInventoryItem, deleteInventoryItem, refreshInventory, updateInventoryItem, useInventory } from '@/lib/inventory-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -19,6 +21,16 @@ export default function InventoryScreen() {
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
   const [actionError, setActionError] = useState('');
+  // Offline, crew checkouts save on the device; stock is checked when they sync.
+  const offlineSync = useOptionalOfflineSync();
+  const offline = !!offlineSync?.offline;
+  const userSync = offlineSync?.userSync && offlineSync.userSync.scope.companyId === member?.company.id && offlineSync.userSync.scope.userId === member?.user.id ? offlineSync.userSync : null;
+  const saved = useMemo(() => member ? pendingCheckouts(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id)) : new Map<string, number>(), [offlineSync?.state.entries, member]);
+  const checkOut = async (item: InventoryItem, quantity: number) => {
+    if (!offline) return checkoutInventoryItem(item, quantity);
+    if (!userSync) throw new Error('Checking out offline is unavailable on this device.');
+    await userSync.checkOut(item.id, quantity);
+  };
   const filtered = items.filter((item) => item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
@@ -65,7 +77,7 @@ export default function InventoryScreen() {
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Inventory unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshInventory} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}
-      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => canManage ? <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} onCheckin={async (userId, quantity) => { setBusyId(item.id); setActionError(''); try { await checkinInventoryItem(item, userId, quantity); } catch (checkinError) { setActionError(checkinError instanceof Error ? checkinError.message : 'Item could not be checked in.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} /> : <CrewInventoryRow key={item.id} item={item} userId={member?.user.id ?? ''} busy={busyId === item.id} onCheckout={async (quantity) => { setBusyId(item.id); setActionError(''); try { await checkoutInventoryItem(item, quantity); } catch (checkoutError) { setActionError(checkoutError instanceof Error ? checkoutError.message : 'Item could not be checked out.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
+      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => canManage ? <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} onCheckin={async (userId, quantity) => { setBusyId(item.id); setActionError(''); try { await checkinInventoryItem(item, userId, quantity); } catch (checkinError) { setActionError(checkinError instanceof Error ? checkinError.message : 'Item could not be checked in.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} /> : <CrewInventoryRow key={item.id} item={item} userId={member?.user.id ?? ''} saved={saved.get(item.id) ?? 0} busy={busyId === item.id} onCheckout={async (quantity) => { setBusyId(item.id); setActionError(''); try { await checkOut(item, quantity); } catch (checkoutError) { setActionError(checkoutError instanceof Error ? checkoutError.message : 'Item could not be checked out.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
     </ScrollView>
     </KeyboardAvoidingView>
   </SafeAreaView>;
@@ -86,11 +98,12 @@ function InventoryRow({ item, busy, onQuantity, onRename, onDelete, onCheckin, s
   </View>;
 }
 
-function CrewInventoryRow({ item, userId, busy, onCheckout, styles, theme }: { item: InventoryItem; userId: string; busy: boolean; onCheckout: (quantity: number) => Promise<void>; styles: ReturnType<typeof createStyles>; theme: FireOpsTheme }) {
+function CrewInventoryRow({ item, userId, saved, busy, onCheckout, styles, theme }: { item: InventoryItem; userId: string; saved: number; busy: boolean; onCheckout: (quantity: number) => Promise<void>; styles: ReturnType<typeof createStyles>; theme: FireOpsTheme }) {
   const checkedOut = item.checkouts.reduce((sum, checkout) => sum + checkout.quantity, 0);
-  const available = item.quantity - checkedOut;
+  // Units saved on this device are not checked out yet; they are held back from what this screen offers.
+  const available = Math.max(0, item.quantity - checkedOut - saved);
   const own = item.checkouts.find((checkout) => checkout.userId === userId)?.quantity ?? 0;
-  return <View style={styles.row}><View style={styles.rowTop}><View style={styles.packageIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.commandForeground} size={20} /></View><View style={styles.rowCopy}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.updated}>{available} available{own ? ` · You have ${own}` : ''}</Text></View></View><CheckoutAction title="Select quantity" detail="" max={available} action="Check out" busy={busy} onSubmit={onCheckout} styles={styles} theme={theme} /></View>;
+  return <View style={styles.row}><View style={styles.rowTop}><View style={styles.packageIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.commandForeground} size={20} /></View><View style={styles.rowCopy}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.updated}>{available} available{own ? ` · You have ${own}` : ''}{saved ? ` · ${saved} saved on this device — checks out when connected if still in stock` : ''}</Text></View></View><CheckoutAction title="Select quantity" detail="" max={available} action="Check out" busy={busy} onSubmit={onCheckout} styles={styles} theme={theme} /></View>;
 }
 
 function CheckoutAction({ title, detail, max, action, busy, onSubmit, styles, theme }: { title: string; detail: string; max: number; action: string; busy: boolean; onSubmit: (quantity: number) => Promise<void>; styles: ReturnType<typeof createStyles>; theme: FireOpsTheme }) {
