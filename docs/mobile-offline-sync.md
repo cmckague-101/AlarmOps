@@ -722,6 +722,14 @@ Tests: `inventory-checkout-offline.test.mjs` (4 embedded PostgreSQL tests on the
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, per-item ordering via dependencies, pending sums, shortfall/deleted outcomes and labels).
 
+### Training sign-ups: server (not deployed)
+
+**Decided policy (product owner):** a sign-up that reaches the server after the class filled is **rejected as full and kept on the device**. Capacity is never exceeded.
+
+`20261208000100_user_sync_training_signups.sql` registers `training_signup` (entity ID = training ID, so one user's join/cancel for a training apply in order) with `signup.join` and `signup.cancel` (empty payloads). Join inserts through the existing trigger (capacity check under the training row lock, attributed name) and RLS. The adapter maps the trigger's "full" (`23514`) to `notApplied: 'course_full'` and a missing training to `notApplied: 'training_deleted'`, inside a subtransaction so nothing changes. The sync writer cannot take that row lock itself, because the training UPDATE policy is manager-only. Already signed up is a no-op. Cancel deletes only the caller's own sign-up. The canonical record is `{id: trainingId, signedUp}`. Training creation and edits stay online for managers.
+
+Tests: `training-signups-offline.test.mjs` (3 embedded PostgreSQL tests on the real training migration: single attributed seat with replay, full class rejection with nothing changed, deleted training, cancel scope, validation and outsider denial).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -755,6 +763,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 27. `20261205000100_user_sync_vehicle_notes.sql`
 28. `20261206000100_user_sync_snapshot.sql`
 29. `20261207000100_inventory_checkout_offline.sql` (also restores online crew checkout)
+30. `20261208000100_user_sync_training_signups.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

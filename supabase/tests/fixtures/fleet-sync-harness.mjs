@@ -100,3 +100,10 @@ export async function loadInventorySchema(db) {
   await db.exec(consolidated.slice(consolidated.indexOf('drop policy if exists "owners read inventory"'), consolidated.indexOf('-- Qualification cards')));
   await db.exec(migration('20261207000100_inventory_checkout_offline'));
 }
+
+/** Inventory schema plus the real training tables/policies and offline sign-ups. */
+export async function loadTrainingSchema(db) {
+  await loadInventorySchema(db);
+  await db.exec(migration('202509010001_company_training'));
+  await db.exec(migration('20261208000100_user_sync_training_signups'));
+}
