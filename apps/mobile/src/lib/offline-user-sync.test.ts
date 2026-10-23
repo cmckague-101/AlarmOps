@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -198,5 +198,20 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     for(let i=0;i<5;i++)await f.worker.wake();const entries=await f.session.list();
     expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(deviceInvoiceForms(entries).size).toBe(0);
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.operationId===submit.operation.operationId)!)).toContain('Not submitted');
+  });
+  it('keeps the receipt file before saving the command and labels mismatched uploads',async()=>{
+    const f=await setup();const kept:string[]=[];
+    const files={keep:vi.fn(async(id:string)=>{kept.push(id);return 2048}),read:vi.fn(),uri:vi.fn(),remove:vi.fn()};
+    const sync=createOfflineUserSync({session:f.session,id:nextId,now:()=>date,offline:()=>true,canEdit:()=>true,changed:async()=>{},receiptFiles:files});
+    const id=nextId();
+    for(const bad of [{name:' '},{amountCents:0},{amountCents:1.5},{mimeType:'image/gif'},{fileName:'a\nb'}])
+      await expect(sync.createReceipt({id,name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',...bad},'file:///tmp/fuel.jpg')).rejects.toThrow();
+    expect(files.keep).not.toHaveBeenCalled();
+    const saved=await sync.createReceipt({id,name:' Fuel ',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg'},'file:///tmp/fuel.jpg');
+    expect(kept).toEqual([id]);expect(saved.operation.mutation).toEqual({kind:'command',command:'receipt.create',payload:{name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',byteSize:2048}});
+    expect(deviceReceipts(await f.session.list()).map(item=>[item.id,item.state])).toEqual([[id,'saved']]);
+    f.transport.deliver.mockResolvedValue({kind:'applied',receivedAt:date,revision:'3',record:null,notApplied:'file_mismatch'} as never);f.transport.canonical.mockResolvedValue({revision:'3',record:null});
+    for(let i=0;i<3;i++)await f.worker.wake();const entry=(await f.session.list())[0];
+    expect(entry.status).toBe('synced');expect(offlineSyncEntryLabel(entry)).toContain('file is kept on this device');expect(deviceReceipts([entry])).toEqual([]);
   });
 });

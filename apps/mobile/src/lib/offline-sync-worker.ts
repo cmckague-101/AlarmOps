@@ -298,6 +298,7 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='other_draft')return `Not saved — another ${form} is already in progress`;
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='customer_deleted')return 'Not saved — the chosen customer was removed';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='incomplete')return 'Not submitted — number, date, amount and customer are required';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='file_mismatch')return 'Not saved — the uploaded receipt file did not match; the file is kept on this device';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';
   if(entry.reviewOutcome?.outcome==='kept')return 'Reviewed — changes accepted; shared-data refresh pending';
   if(entry.status==='awaiting_review')return 'Uploaded — awaiting owner/admin review';

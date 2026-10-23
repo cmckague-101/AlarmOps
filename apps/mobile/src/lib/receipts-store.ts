@@ -69,7 +69,7 @@ function safeFileName(name: string) {
   return name.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'receipt';
 }
 
-function effectiveMimeType(file: LocalFleetFile) {
+export function effectiveMimeType(file: LocalFleetFile) {
   if (file.type) return file.type;
   if (/\.pdf$/i.test(file.name)) return 'application/pdf';
   if (/\.hei[cf]$/i.test(file.name)) return 'image/heic';

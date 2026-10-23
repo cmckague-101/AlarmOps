@@ -16,6 +16,7 @@ import {File} from 'expo-file-system';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
 import {createNativeSyncTransport} from '../lib/offline-sync-transport';
+import {createNativeReceiptFiles,type OfflineReceiptFiles} from '../lib/offline-receipt-files';
 import {createFleetId} from '../lib/fleet-store';
 import {offlineSyncSessionPaused,registerOfflineSyncSession} from '../lib/offline-sync-session';
 import {supabase} from '../lib/supabase';
@@ -23,6 +24,8 @@ import {useSession} from './session-provider';
 import {isOffline,useNetworkStatus} from './network-provider';
 
 type ContextValue={userSync:OfflineUserSync|null;
+  /** Receipt files kept on this device until their receipts sync. */
+  receiptFiles:OfflineReceiptFiles|null;
   /** Verified own tasks/settings download for this account; null outside the native provider binding. */
   userSnapshot:UserSnapshotState|null;refreshUserSnapshot:()=>Promise<void>;attachmentController:OfflineAttachmentController|null;syncAttachments:()=>void;attachmentState:ReturnType<OfflineAttachmentController['getSnapshot']>;detailEditor:OfflineDetailEditor|null;hasSavedDetails:boolean;state:OfflineSyncState;available:boolean;loading:boolean;offline:boolean;refresh:()=>Promise<void>;retry:(operationId:string)=>Promise<void>;dismiss:()=>Promise<void>;downloadFleet:()=>Promise<void>;stopFleetDownload:()=>Promise<void>};
 const Context=createContext<ContextValue|null>(null);
@@ -43,7 +46,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech';const syncRole=manager||crew;
   const shopTech=member?.user.role==='shop_tech';
   const runtime=useRef({key,foreground,manager,syncRole,shopTech});runtime.current={key,foreground,manager,syncRole,shopTech};
-  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void;userSync:OfflineUserSync;userSnapshots:UserSnapshotSync}|null>(null);
+  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void;userSync:OfflineUserSync;userSnapshots:UserSnapshotSync;receiptFiles:OfflineReceiptFiles}|null>(null);
   const [bootAttempt,setBootAttempt]=useState(0);
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
   const worker=binding?.key===key?binding.worker:null;
@@ -77,7 +80,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const scoped=store.activate(identity);
         const canAccess=()=>!cancelled&&runtime.current.key===key;
         const canRun=()=>canAccess()&&runtime.current.foreground&&!isOffline()&&!offlineSyncSessionPaused(identity.userId);
-        const transport=createNativeSyncTransport(client,identity,canRun);
+        const receiptFiles=createNativeReceiptFiles(identity);const transport=createNativeSyncTransport(client,identity,canRun,receiptFiles);
         const canUseAttachments=()=>canAccess()&&(runtime.current.manager||runtime.current.shopTech)&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId);
         const vault=createOfflineAttachmentVault({session:scoped,files:createNativeAttachmentFiles(identity),canAccess:canUseAttachments,createId:createFleetId,connectivity:()=>isOffline()?'offline':'online'});
         // Same scoped session; uploads also require a connection. Results never mark business work synced.
@@ -103,7 +106,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
           restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:runtime.current.shopTech?['updates','create']:['updates']},
           changed:async()=>{await created.refresh();void created.wake()}});
         // Tasks, own availability and dashboard layout: any current member, same scoped session.
-        const userSync=createOfflineUserSync({session:scoped,id:createFleetId,offline:isOffline,canEdit:()=>canAccess()&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),changed:async()=>{await created.refresh();void created.wake()}});
+        const userSync=createOfflineUserSync({session:scoped,id:createFleetId,offline:isOffline,canEdit:()=>canAccess()&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),changed:async()=>{await created.refresh();void created.wake()},receiptFiles});
         // Verified own tasks/settings: loaded from the device, refreshed only online.
         const userSnapshots=createUserSnapshotSync({session:scoped,download:signal=>transport.userSnapshot(signal),canRun});
         void userSnapshots.load().then(()=>userSnapshots.refresh());
@@ -113,7 +116,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
           if(next?.user.id!==identity.userId){model.dispose();editor.dispose();created.stop();attachments.stop();store.pause();setBinding(previous=>previous?.worker===created?null:previous)}
         });
         cleanup=()=>{userSnapshots.stop();attachmentAbort.abort();unpublish();model.dispose();editor.dispose();created.stop();attachments.stop();store.pause();unregister();auth.data.subscription.unsubscribe();if(current.current?.worker===created)current.current=null};
-        current.current={key,worker:created,attachments};setBinding({key,worker:created,editor,attachments,syncAttachments,userSync,userSnapshots});setStartupError(null);
+        current.current={key,worker:created,attachments};setBinding({key,worker:created,editor,attachments,syncAttachments,userSync,userSnapshots,receiptFiles});setStartupError(null);
         await created.refresh();
       }catch{
         if(!cancelled&&runtime.current.key===key)setStartupError({key,message:'Device sync storage is unavailable. Saved work has not been discarded.'});
@@ -160,7 +163,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
       postReply:reply=>userSync.postReply(reply),newId:createFleetId,replies:deviceReplies(entries)});
   },[userSync,state.entries]);
   useEffect(()=>()=>publishOfflineChatInbox(null),[]);
-  const value=useMemo<ContextValue>(()=>({userSync:binding?.key===key?binding.userSync:null,attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&syncRole?binding.editor:null,hasSavedDetails:binding?.key===key&&syncRole&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload,userSnapshot,refreshUserSnapshot}),[userSnapshot,refreshUserSnapshot,attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
+  const value=useMemo<ContextValue>(()=>({userSync:binding?.key===key?binding.userSync:null,receiptFiles:binding?.key===key?binding.receiptFiles:null,attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&syncRole?binding.editor:null,hasSavedDetails:binding?.key===key&&syncRole&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload,userSnapshot,refreshUserSnapshot}),[userSnapshot,refreshUserSnapshot,attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 /** For shared hooks that may render outside the native provider (tests, web builds). */

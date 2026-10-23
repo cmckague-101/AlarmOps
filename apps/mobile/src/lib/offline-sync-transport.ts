@@ -2,17 +2,22 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import type {OutboxScope} from './offline-outbox';
 import type {OfflineSyncTransport} from './offline-sync-worker';
-import {isUserSyncOperation,userSyncCommands} from './offline-user-sync';
+import type {OfflineReceiptFiles} from './offline-receipt-files';
+import {isUserSyncOperation,offlineReceiptPath,userSyncCommands} from './offline-user-sync';
 
 /** Bind each request to the verified local session token; never use a service key. */
-export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>> & {userSnapshot(signal:AbortSignal):Promise<unknown>}{
+export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,receiptFiles?:OfflineReceiptFiles):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>> & {userSnapshot(signal:AbortSignal):Promise<unknown>}{
   const identity={...scope};
-  async function invoke(name:string,args:Record<string,unknown>,signal:AbortSignal){
+  async function verifiedSession(signal:AbortSignal){
     if(signal.aborted||!canRun())throw Object.assign(new Error('Sync paused'),{code:'SYNC_PAUSED'});
     const {data,error}=await client.auth.getSession();
     if(error||!data.session||data.session.user.id!==identity.userId)throw Object.assign(new Error('Session must be verified before syncing'),{code:'401'});
     if(signal.aborted||!canRun())throw Object.assign(new Error('Sync paused'),{code:'SYNC_PAUSED'});
-    const result=await client.rpc(name,args).setHeader('Authorization',`Bearer ${data.session.access_token}`).abortSignal(signal);
+    return data.session;
+  }
+  async function invoke(name:string,args:Record<string,unknown>,signal:AbortSignal){
+    const session=await verifiedSession(signal);
+    const result=await client.rpc(name,args).setHeader('Authorization',`Bearer ${session.access_token}`).abortSignal(signal);
     if(result.error)throw result.error;return result.data;
   }
   const recordArgs=(operation:SyncOperation)=>{
@@ -20,9 +25,25 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
     if(operation.companyId!==identity.companyId)throw Object.assign(new Error('Sync company changed'),{code:'42501'});
     return {target_company_id:identity.companyId,entity_type:operation.entityType,record_id:operation.entityId};
   };
+  // Offline receipts: upload the kept file into the caller's own folder (same
+  // policies as the online flow, never overwriting) before the command creates
+  // the receipt for that path. A lost upload response retries as "already exists".
+  async function deliverReceipt(operation:SyncOperation,signal:AbortSignal){
+    const bytes=receiptFiles?await receiptFiles.read(operation.entityId):null;
+    if(bytes){
+      await verifiedSession(signal);
+      const mimeType=operation.mutation.kind==='command'?String(operation.mutation.payload.mimeType):'';
+      const {error}=await client.storage.from('receipt-files').upload(offlineReceiptPath(identity,operation.entityId),bytes,{contentType:mimeType,upsert:false});
+      if(error&&!/already exists|duplicate/i.test(error.message)&&String((error as {statusCode?:unknown}).statusCode??'')!=='409')throw error;
+    }
+    const result=await invoke('sync_user_command',{operation},signal) as {kind?:string;notApplied?:unknown}|null;
+    if(result?.kind==='applied'&&result.notApplied===undefined)try{receiptFiles?.remove(operation.entityId)}catch{/* Removed on a later delivery or kept; never blocks the receipt. */}
+    return result;
+  }
   return {
     deliver(operation,signal,history=[]){
       recordArgs(operation);
+      if(isUserSyncOperation(operation)&&operation.entityType==='receipt')return deliverReceipt(operation,signal) as never;
       if(isUserSyncOperation(operation))return invoke('sync_user_command',{operation},signal);
       if(operation.mutation.kind==='create')return invoke('sync_fleet_create',{operation},signal);
       return history.length?invoke('sync_fleet_update_with_history',{operation,device_history:history},signal):invoke('sync_fleet_update',{operation},signal);

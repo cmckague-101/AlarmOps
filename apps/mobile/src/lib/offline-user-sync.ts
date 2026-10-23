@@ -1,11 +1,12 @@
 import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type InvoiceForm,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
+import type {OfflineReceiptFiles} from './offline-receipt-files';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -73,6 +74,13 @@ function deviceCreates<Payload>(entries:readonly OutboxEntry[],entityType:string
 export type DeviceReply=DeviceCreate<{threadId:string;body:string}>;
 /** Crew Chat replies saved on this device. */
 export const deviceReplies=(entries:readonly OutboxEntry[])=>deviceCreates<{threadId:string;body:string}>(entries,'communication_reply');
+export type ReceiptDetails={name:string;amountCents:number;fileName:string;mimeType:string;byteSize:number};
+export type DeviceReceipt=DeviceCreate<ReceiptDetails>;
+/** Receipts created on this device (file kept on the device until created on the server). */
+export const deviceReceipts=(entries:readonly OutboxEntry[])=>deviceCreates<ReceiptDetails>(entries,'receipt');
+export const receiptMimeTypes=['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
+/** Server path an offline receipt's file is uploaded to before its command is sent. */
+export const offlineReceiptPath=(scope:OutboxScope,receiptId:string)=>`${scope.companyId}/${scope.userId}/sync-${receiptId}`;
 export type DeviceVehicleNote=DeviceCreate<{vehicleId:string;subject:string;body:string}>;
 /** Vehicle notes created on this device for one vehicle. */
 export const deviceVehicleNotes=(entries:readonly OutboxEntry[],vehicleId:string)=>deviceCreates<{vehicleId:string;subject:string;body:string}>(entries,'vehicle_note').filter(note=>note.vehicleId===vehicleId);
@@ -131,7 +139,7 @@ const validPayrollRows=(rows:unknown):rows is PayrollDay[]=>Array.isArray(rows)&
   &&typeof day.date==='string'&&payrollDate.test(day.date)&&typeof day.hoursWorked==='number'&&Number.isFinite(day.hoursWorked)&&day.hoursWorked>=0&&typeof day.notes==='string'&&day.notes.length<=2000
   &&Array.isArray(day.crewIds)&&day.crewIds.length<=200&&day.crewIds.every((id:unknown)=>typeof id==='string'&&uuid.test(id)));
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
-export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
+export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>;receiptFiles?:OfflineReceiptFiles}){
   const {session}=options;const scope={...session.scope};
   const guard=()=>{if(!options.canEdit())throw new Error('Offline saving is unavailable for the current account.')};
   type Save={operationId:string;savedAt:string;connectivity:'offline'|'online';operation?:SyncOperation;promise?:Promise<OutboxEntry>};
@@ -232,6 +240,15 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     submitPayrollForm(formId:string){
       if(!uuid.test(formId))return Promise.reject(new Error('Invalid payroll form.'));
       return enqueue('payroll_form',formId,'form.submit',{},null);
+    },
+    /** Keeps the file on the device first, then saves the command; `id` is chosen once per intended receipt. */
+    async createReceipt(receipt:{id:string;name:string;amountCents:number;fileName:string;mimeType:string},fileUri:string){
+      const name=receipt.name.trim();const fileName=receipt.fileName.trim();
+      if(!uuid.test(receipt.id)||!name||name.length>160||!Number.isInteger(receipt.amountCents)||receipt.amountCents<1||receipt.amountCents>100000000
+        ||!fileName||fileName.length>255||/[\x00-\x1f\x7f]/.test(fileName)||!receiptMimeTypes.includes(receipt.mimeType))throw new Error('Check the receipt name, amount and file type.');
+      if(!options.receiptFiles)throw new Error('Saving receipts offline is unavailable on this device.');
+      guard();const byteSize=await options.receiptFiles.keep(receipt.id,fileUri);
+      return enqueue('receipt',receipt.id,'receipt.create',{name,amountCents:receipt.amountCents,fileName,mimeType:receipt.mimeType,byteSize},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

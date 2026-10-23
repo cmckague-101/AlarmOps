@@ -56,4 +56,25 @@ describe('authenticated native sync RPC transport',()=>{
     const f=setup();const create:SyncOperation={...operation,entityType:'issue',mutation:{kind:'create',record:{id:'vehicle-1'}}};
     await f.transport.deliver(create,f.signal);expect(f.client.rpc).toHaveBeenCalledWith('sync_fleet_create',{operation:create});
   });
+  it('uploads a kept receipt file into the caller folder before creating the receipt, then removes the device copy',async()=>{
+    const f=setup();const files={read:vi.fn().mockResolvedValue(new ArrayBuffer(4)),remove:vi.fn(),keep:vi.fn(),uri:vi.fn()};
+    const upload=vi.fn().mockResolvedValue({data:{},error:null});const storage={from:vi.fn(()=>({upload}))};
+    const transport=createNativeSyncTransport({...f.client,storage} as unknown as SupabaseClient,scope,()=>f.mode.ready,files);
+    const receipt:SyncOperation={...operation,entityType:'receipt',entityId:'receipt-1',mutation:{kind:'command',command:'receipt.create',payload:{name:'Fuel',amountCents:100,fileName:'a.jpg',mimeType:'image/jpeg',byteSize:4}}};
+    f.builder.abortSignal.mockResolvedValue({data:{kind:'applied',revision:'1',record:{id:'receipt-1'}},error:null});
+    await transport.deliver(receipt,f.signal);
+    expect(storage.from).toHaveBeenCalledWith('receipt-files');expect(upload).toHaveBeenCalledWith('company-1/user-1/sync-receipt-1',expect.any(ArrayBuffer),{contentType:'image/jpeg',upsert:false});
+    expect(f.client.rpc).toHaveBeenCalledWith('sync_user_command',{operation:receipt});expect(upload.mock.invocationCallOrder[0]).toBeLessThan(f.client.rpc.mock.invocationCallOrder[0]);
+    expect(files.remove).toHaveBeenCalledWith('receipt-1');
+    // A lost upload response retries as "already exists"; a refused receipt keeps its file.
+    upload.mockResolvedValue({data:null,error:{message:'The resource already exists',statusCode:'409'}});files.remove.mockClear();
+    f.builder.abortSignal.mockResolvedValue({data:{kind:'applied',revision:'2',record:null,notApplied:'file_mismatch'},error:null});
+    await transport.deliver(receipt,f.signal);expect(files.remove).not.toHaveBeenCalled();
+    // Other upload failures stop before the command.
+    upload.mockResolvedValue({data:null,error:{message:'Network request failed'}});const calls=f.client.rpc.mock.calls.length;
+    await expect(transport.deliver(receipt,f.signal)).rejects.toMatchObject({message:'Network request failed'});expect(f.client.rpc.mock.calls.length).toBe(calls);
+    // Without a device copy (already removed), only the command is sent.
+    files.read.mockResolvedValue(null);upload.mockClear();f.builder.abortSignal.mockResolvedValue({data:{kind:'applied',revision:'1',record:{id:'receipt-1'}},error:null});
+    await transport.deliver(receipt,f.signal);expect(upload).not.toHaveBeenCalled();
+  });
 });

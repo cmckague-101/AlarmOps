@@ -777,6 +777,14 @@ Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, ord
 
 Tests: `receipts-offline.test.mjs` (4 embedded PostgreSQL tests on the real receipt migrations and Storage metadata fixture: attributed create with replay and file retained, missing file and size mismatch, foreign folder and ID reuse, validation and outsider denial).
 
+### Receipts: client (native)
+
+Offline, **Add receipt** copies the picked photo or PDF into app storage (`offline-receipt-files.ts`, `Documents/fireops-offline-receipts-v1/<user>/<company>/<receipt id>`, not app-encrypted by decision) **before** saving the `receipt.create` command (`createReceipt` in `offline-user-sync.ts`; the receipt ID is chosen once per intended receipt). When connected, the native transport uploads that copy to `receipt-files` at `<company>/<user>/sync-<receipt id>` with `upsert: false`, treating "already exists" as a lost earlier response, and only then sends the command. Any other upload failure stops before the command and retries later. The device copy is removed once the receipt is created. It is kept if the server refuses the file (*Not saved — the uploaded receipt file did not match; the file is kept on this device*) or if the command stays blocked. The receipts list shows device receipts until the downloaded list includes them (*Saved on this device — uploads when connected*). They cannot be viewed or edited until synced. Online uploads are unchanged.
+
+Known gaps: kept files are not cleaned up if their outbox entry is discarded, and there is no retry-with-new-file flow after a mismatch. Validate the Storage "already exists" response shape and `upsert: false` behavior on real Supabase.
+
+Tests: 1 transport test (upload before command, path and content type, already-exists tolerated, refused receipt keeps its file, upload failure stops the command, no re-upload without a device copy) and 1 SQLite-backed command test (validation before keeping a file, payload, overlay, mismatch label). Mobile typecheck passes.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
