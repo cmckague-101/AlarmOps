@@ -27,6 +27,7 @@ import type { NifcIncident } from '@fireops/domain';
 import { AppleIncidentMap } from '@/components/apple-incident-map';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
+import { saveFireList } from '@/lib/offline-fire-list';
 import { updateFleetVehicle, useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -274,6 +275,7 @@ export default function OperationsScreen() {
     const controller = new AbortController();
     void fetchNifcIncidents(controller.signal)
       .then((nextIncidents) => {
+        saveFireList(nextIncidents); // kept for assigning fires offline
         if (!controller.signal.aborted) setIncidents(nextIncidents);
       })
       .catch((fetchError) => {

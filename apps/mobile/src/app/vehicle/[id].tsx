@@ -30,6 +30,7 @@ import {
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
 import { fetchNifcIncidents } from "@/lib/nifc";
+import { saveFireList } from "@/lib/offline-fire-list";
 import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
 import { useSession } from "@/providers/session-provider";
 import { useOfflineSync } from "@/providers/offline-sync-provider";
@@ -221,7 +222,7 @@ export default function VehicleDetailScreen() {
     if (!firePickerOpen) return;
     const controller = new AbortController();
     void fetchNifcIncidents(controller.signal)
-      .then(setIncidents)
+      .then((next) => { saveFireList(next); setIncidents(next); }) // kept for assigning fires offline
       .catch((fetchError) => {
         if (fetchError instanceof Error && fetchError.name === "AbortError")
           return;

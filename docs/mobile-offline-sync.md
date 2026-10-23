@@ -500,7 +500,7 @@ Client mirror in shared `packages/domain/src/fleet-sync-fields.ts` (`fleetSyncFi
 
 ### Status, assignments and issue updates: UI (native saved-detail editor)
 
-The vehicle saved-detail editor adds **Status & assignment**: Mark Ready / Mark Out of Service (clearing assignee and fire), Assign to an active crew member (from the device's crew list; assigning needs it), Clear assignment, Clear fire assignment. Assigning a fire still needs a connection (live incident data). The issue editor adds **Updates & status**: Save update on device (appended note) and Resolve/Reopen (separate change). Each action prepares a fresh verified draft and saves one change through `createDetailChangeActions`, which builds the change once from that draft (so removals and note appends match its base) and **Retry** resends the identical values on the same draft; other actions wait, **Cancel** abandons the unsaved change. Labels say changes are saved on device, checked against current server state, and may need owner/admin review; notes never replace others. Online screens and their activity/notification behavior are unchanged; web stays online-only. No UI launch or visual test was run.
+The vehicle saved-detail editor adds **Status & assignment**: Mark Ready / Mark Out of Service (clearing assignee and fire), Assign to an active crew member (from the device's crew list; assigning needs it), Clear assignment, Clear fire assignment. Assigning a fire offline uses the last downloaded fire list (see Offline fire assignment). The issue editor adds **Updates & status**: Save update on device (appended note) and Resolve/Reopen (separate change). Each action prepares a fresh verified draft and saves one change through `createDetailChangeActions`, which builds the change once from that draft (so removals and note appends match its base) and **Retry** resends the identical values on the same draft; other actions wait, **Cancel** abandons the unsaved change. Labels say changes are saved on device, checked against current server state, and may need owner/admin review; notes never replace others. Online screens and their activity/notification behavior are unchanged; web stays online-only. No UI launch or visual test was run.
 
 ### Crew offline vehicle claims and issue notes: server (not deployed)
 
@@ -857,6 +857,12 @@ Permission checks run first (owners/admins, or vehicle-note access), so a refuse
 Wired screens: training edit (form) and delete (detail); inventory rename (form), stock edit, check-in and delete; receipt edit (form) and delete (list); vehicle note edit/delete; Crew Chat reply delete (hidden until synced); payroll approve/reject/mark paid. The payroll form shows *Approval saved on this device — applies when connected if the form is unchanged*. After an offline receipt delete applies, the transport removes the stored file, as online. Labels: *Not saved — someone changed this since you downloaded it; their version was kept*, *…this was deleted before your change arrived*, *…more units are checked out than the new quantity*. Online behavior is unchanged.
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (base selection and chaining, merged overlay, validation, refusal label, chaining after a download watermark).
+
+### Offline fire assignment (native)
+
+**Decided policy (2026-10-23):** offline, fires are assigned from the **last downloaded fire list**, labeled with its time. `offline-fire-list.ts` saves the public NIFC list (only `id`, `name`, `state`, at most 5000) to app storage whenever Operations or a vehicle loads it online, and decodes it strictly when read. The saved-detail **Status & assignment** panel now offers **Assign fire** (search by name or state) whenever the vehicle has an assignee; crew only see it on a vehicle assigned to them. It saves `assignedFire` through the existing verified vehicle adapter. The server and role triggers check it as for any status/assignment change (a concurrent change goes to owner/admin review). If no list was ever downloaded, the panel says to open Operations or a vehicle while online. No server change.
+
+Tests: `offline-fire-list.test.ts` (2).
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 
