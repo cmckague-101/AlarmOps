@@ -704,6 +704,18 @@ SQLite migrates **v10 → v11**, adding scoped `offline_user_snapshots`. `putUse
 
 Tests: `offline-user-snapshot.test.ts` (3: strict decoding, monotonic per-scope storage across restart, single-flight refresh, failures keep the last download) and 1 new hook test (snapshot → newer receipts → pending, no HTTP list offline, foreign-scope snapshot ignored, role `null`). Two existing list-fencing hook tests now run online explicitly. Upgrade tests expect v11. 171 targeted mobile tests and the mobile typecheck pass.
 
+### Gear checkout: role fix and offline command (server; not deployed)
+
+**Decided policy (product owner):** an offline checkout that would exceed stock when it reaches the server is **rejected and kept on the device**. Stock is never exceeded and nothing is partially applied.
+
+`20261207000100_inventory_checkout_offline.sql`:
+
+- **Existing bug fixed:** `checkout_inventory_item` still required the retired `member` role (renamed to `fire_fighter` by `20261013000100`), so no one could check out. Crew roles `fire_fighter` and `shop_tech` can check out again, matching the apps (managers manage stock and check items in). The online error contract is otherwise unchanged.
+- One security-definer `inventory_checkout_core` performs the stock check for the **current caller only** under the item row lock. The online function and the offline command both use it; clients cannot call it directly.
+- Offline: `inventory_checkout` / `checkout.add` (`{quantity}`; entity ID = item ID, so one user's checkouts of an item apply in device order). A shortfall returns `notApplied: 'insufficient_stock'` and a deleted item `notApplied: 'item_deleted'`, both with nothing changed. The canonical record is `{id: itemId, checkedOut}` for the caller. Check-in remains an online owner/admin action.
+
+Tests: `inventory-checkout-offline.test.mjs` (4 embedded PostgreSQL tests on the real inventory migrations, with a realtime publication stub in `loadInventorySchema`: online role fix, single apply with replay, competing checkouts never exceeding stock, deleted items, validation, manager/outsider denial and core privacy). The audit log, grants and user-sync suites pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -736,6 +748,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 26. `20261204000100_user_sync_crew_chat_replies.sql`
 27. `20261205000100_user_sync_vehicle_notes.sql`
 28. `20261206000100_user_sync_snapshot.sql`
+29. `20261207000100_inventory_checkout_offline.sql` (also restores online crew checkout)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

@@ -88,3 +88,15 @@ export async function loadVehicleNoteSchema(db) {
   await db.exec(migration('20261014000100_vehicle_notes'));
   await db.exec(migration('20261205000100_user_sync_vehicle_notes'));
 }
+
+/** Vehicle-note schema plus the real inventory tables/policies and offline gear checkout. */
+export async function loadInventorySchema(db) {
+  await loadVehicleNoteSchema(db);
+  // Realtime publication stub: the inventory migrations add their tables to it.
+  await db.exec('create publication supabase_realtime');
+  await db.exec(migration('202509020001_company_inventory'));
+  await db.exec(migration('20260914000100_inventory_checkouts'));
+  const consolidated = migration('20260926000100_consolidate_permissive_rls_policies');
+  await db.exec(consolidated.slice(consolidated.indexOf('drop policy if exists "owners read inventory"'), consolidated.indexOf('-- Qualification cards')));
+  await db.exec(migration('20261207000100_inventory_checkout_offline'));
+}
