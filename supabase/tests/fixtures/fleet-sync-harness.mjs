@@ -165,3 +165,10 @@ export async function loadCompanySnapshotSchema(db) {
   await loadFeedbackSchema(db);
   await db.exec(migration('20261216000100_company_sync_snapshots'));
 }
+
+/** Company download schema plus offline thread, training and inventory item creation. */
+export async function loadManagerCreateSchema(db) {
+  await loadCompanySnapshotSchema(db);
+  await db.exec(migration('20261019000100_manager_communication_controls'));
+  await db.exec(migration('20261217000100_user_sync_manager_creates'));
+}
