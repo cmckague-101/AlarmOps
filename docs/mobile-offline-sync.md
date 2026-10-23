@@ -864,6 +864,10 @@ Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (base selection 
 
 Tests: `offline-fire-list.test.ts` (2).
 
+### Offline inspection deletes and vehicle document removal: server (not deployed)
+
+Online, only failed inspections can be deleted (owners/admins), and documents are replaced through the full vehicle form. `20261220000100_user_sync_vehicle_entries.sql` adds owner/admin commands under the decided policy: `vehicle_inspection`/`inspection.delete` and `vehicle_document`/`document.remove`, each `{vehicleId, base: <entry as seen>}`. The entry is removed only if it still equals `base`; otherwise `changed_elsewhere` is returned and nothing changes. An entry already gone is a no-op. Entries others added meanwhile are kept. Only failed inspections can be deleted, as online, and the delete writes the same "failed inspection deleted" activity. Writes go through `apply_fleet_changes` under the vehicle's record-group lock (taken after the user-sync locks; fleet submissions never take user-sync locks, so no lock cycle), so revisions, RLS and role triggers stay authoritative. Replacing a document offline = removal plus the existing offline document attach. The removed file stays in storage. Tests: `vehicle-entries-offline.test.mjs` (3).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -909,6 +913,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 39. `20261217000100_user_sync_manager_creates.sql`
 40. `20261218000100_user_sync_company_documents.sql`
 41. `20261219000100_user_sync_guarded_edits.sql`
+42. `20261220000100_user_sync_vehicle_entries.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

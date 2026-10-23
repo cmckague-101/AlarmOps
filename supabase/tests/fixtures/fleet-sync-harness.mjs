@@ -187,3 +187,9 @@ export async function loadGuardedEditSchema(db) {
   await loadCompanyDocumentSchema(db);
   await db.exec(migration('20261219000100_user_sync_guarded_edits'));
 }
+
+/** Guarded edit schema plus offline removal of vehicle inspections and documents. */
+export async function loadVehicleEntrySchema(db) {
+  await loadGuardedEditSchema(db);
+  await db.exec(migration('20261220000100_user_sync_vehicle_entries'));
+}
