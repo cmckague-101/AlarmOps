@@ -193,3 +193,12 @@ export async function loadVehicleEntrySchema(db) {
   await loadGuardedEditSchema(db);
   await db.exec(migration('20261220000100_user_sync_vehicle_entries'));
 }
+
+/** Vehicle entry schema plus the real self-service qualification functions and offline qualification commands. */
+export async function loadCrewQualificationSchema(db) {
+  await loadVehicleEntrySchema(db);
+  for (const name of ['20260919000100_self_service_crew_credentials', '20260920000100_self_service_crew_experience', '20260921000100_self_service_qualification_updates',
+    '20260922000100_self_service_annual_qualification_record', '20260924000100_self_service_qualification_deletes', '20261003000100_photo_only_license_credentials'])
+    await db.exec(migration(name));
+  await db.exec(migration('20261221000100_user_sync_crew_qualifications'));
+}

@@ -872,6 +872,16 @@ Online, only failed inspections can be deleted (owners/admins), and documents ar
 
 `deleteVehicleInspection(vehicleId, seen)` and `removeVehicleDocument(vehicleId, seen)` send the entry exactly as downloaded as the base. **Inspections** deletes a failed inspection offline and hides it until synced. The saved-detail editor's vehicle document panel can now **remove** a document, or **replace** one: choose the new file, pick which document it replaces, and the new document is saved on the device, then the old one's removal is queued. Each removal applies only if that document is unchanged. Binder documents with fixed IDs (contract, VIPR and the other file slots) are not listed; they already change offline through the file slots. Refusals use the shared *their version was kept* label. Tests: 1 more SQLite command test; 321 mobile offline tests and the mobile typecheck pass.
 
+### Offline own qualification records, without files: server (not deployed)
+
+Crew qualification files have **no device-storage decision yet**, so offline changes never add, change or remove an attachment. `20261221000100_user_sync_crew_qualifications.sql` adds commands that call the existing self-service functions (same validation as online):
+
+- `crew_credential`: `credential.add`, `credential.update`, `credential.delete`.
+- `crew_experience`: `experience.add`, `experience.update`, `experience.delete`.
+- `annual_record`/`annual.set` (self only).
+
+A new entry may not carry a file, and an edit must keep the entry's existing file exactly. License and DOT medical credentials need a photo, so they cannot be added offline. Edits and deletes apply only if the entry still equals the one seen (`changed_elsewhere` otherwise). Re-adding an identical entry is a no-op; a different entry with the same ID is refused (`23505`). Tests: `crew-qualifications-offline.test.mjs` (3).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -918,6 +928,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 40. `20261218000100_user_sync_company_documents.sql`
 41. `20261219000100_user_sync_guarded_edits.sql`
 42. `20261220000100_user_sync_vehicle_entries.sql`
+43. `20261221000100_user_sync_crew_qualifications.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
