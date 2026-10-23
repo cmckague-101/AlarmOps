@@ -159,3 +159,9 @@ export async function loadFeedbackSchema(db) {
   await db.exec('grant select, insert, update on public.notification_preferences to authenticated');
   await db.exec(migration('20261215000100_user_sync_feedback_and_preferences'));
 }
+
+/** Feedback schema plus verified company-list downloads. */
+export async function loadCompanySnapshotSchema(db) {
+  await loadFeedbackSchema(db);
+  await db.exec(migration('20261216000100_company_sync_snapshots'));
+}

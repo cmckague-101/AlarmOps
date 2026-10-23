@@ -809,6 +809,10 @@ Client: `sendFeedback` and `setNotificationPreferences` in `offline-user-sync.ts
 
 Tests: `feedback-preferences-offline.test.mjs` (3 embedded PostgreSQL tests on the real feedback and preference migrations); 1 more SQLite command test and 1 store test.
 
+### Verified company-list downloads: server (not deployed)
+
+`20261216000100_company_sync_snapshots.sql` adds `get_company_sync_snapshot(company, section)` for `inventory`, `training`, `payroll`, `invoices` and `receipts`. Each section is read in one statement (one database snapshot) under existing row-level security through the non-bypass sync writer, so each role gets exactly what it can read online: crew see their own payroll, invoices and receipts, and managers see the company's. It returns the same columns the mobile stores load online, plus the caller's user-receipt watermark taken under the shared per-user lock (as `get_user_sync_snapshot`), so every own command at or below the watermark is reflected. Training includes only the caller's own read markers. A section over 5000 rows is refused (`54000`), never truncated. Tests: `company-sync-snapshots.test.mjs` (3).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -850,6 +854,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 35. `20261213000100_fleet_sync_issue_status_with_note.sql`
 36. `20261214000100_fleet_sync_vehicle_create.sql`
 37. `20261215000100_user_sync_feedback_and_preferences.sql`
+38. `20261216000100_company_sync_snapshots.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
