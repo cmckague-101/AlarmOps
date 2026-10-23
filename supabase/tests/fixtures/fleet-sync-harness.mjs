@@ -145,3 +145,17 @@ export async function loadReceiptSchema(db) {
   await db.exec(migration('20261211000100_fix_storage_file_retention_policies'));
   await db.exec(migration('20261212000100_user_sync_receipts'));
 }
+
+/** Receipt schema plus the real feedback and notification preference tables/policies, then their offline commands. */
+export async function loadFeedbackSchema(db) {
+  await loadReceiptSchema(db);
+  await db.exec('alter table public.companies add column name text, add column company_code text, add column owner_user_id uuid; alter table public.profiles add column email text');
+  await db.exec(migration('20261102000100_app_feedback'));
+  await db.exec(migration('20261103000100_route_app_feedback'));
+  const inbox = migration('20260909000100_notification_inbox_and_delivery');
+  await db.exec(inbox.slice(inbox.indexOf('create table public.notification_preferences'), inbox.indexOf('create table public.user_notifications')));
+  await db.exec('alter table public.notification_preferences enable row level security');
+  await db.exec(inbox.slice(inbox.indexOf('create policy "users read own notification preferences"'), inbox.indexOf('create policy "users read own notifications"')));
+  await db.exec('grant select, insert, update on public.notification_preferences to authenticated');
+  await db.exec(migration('20261215000100_user_sync_feedback_and_preferences'));
+}
