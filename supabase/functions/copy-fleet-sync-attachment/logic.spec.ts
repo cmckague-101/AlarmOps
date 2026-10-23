@@ -5,7 +5,7 @@ const plan={kind:'copy',sourcePath:'c/u/a',destinationPath:'c/u/sync-a',byteSize
 const value={name:'Front.jpg',type:'image/jpeg',dataUrl:'',path:'c/u/sync-a'};
 const stream=(...chunks:number[][])=>new ReadableStream<Uint8Array>({start(controller){for(const chunk of chunks)controller.enqueue(new Uint8Array(chunk));controller.close()}});
 function deps(overrides:Partial<CopyDeps>={}):CopyDeps{
-  return {begin:vi.fn().mockResolvedValueOnce(plan).mockResolvedValue({kind:'ready',value}),open:vi.fn(async()=>stream([1,2,3])),put:vi.fn().mockResolvedValue('stored'),remove:vi.fn().mockResolvedValue(undefined),
+  return {begin:vi.fn().mockResolvedValueOnce(plan).mockResolvedValue({kind:'ready',value}),open:vi.fn(async()=>stream([1,2,3])),put:vi.fn().mockResolvedValue('stored'),authorizeRemoval:vi.fn().mockResolvedValue({kind:'remove',path:'c/u/sync-a'}),remove:vi.fn().mockResolvedValue(undefined),
     sha256:vi.fn().mockResolvedValue('a'.repeat(64)),recordCopy:vi.fn().mockResolvedValue({kind:'ready'}),
     release:{request:vi.fn().mockResolvedValue({kind:'remove',reason:'copied',path:'c/u/a'}),remove:vi.fn().mockResolvedValue(undefined),confirm:vi.fn().mockResolvedValue({kind:'released'})},...overrides};
 }

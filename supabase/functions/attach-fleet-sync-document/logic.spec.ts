@@ -6,7 +6,7 @@ const copy={kind:'copy',sourcePath:'c/u/a',destinationPath:'c/u/sync-a',byteSize
 const stream=(...chunks:number[][])=>new ReadableStream<Uint8Array>({start(controller){for(const chunk of chunks)controller.enqueue(new Uint8Array(chunk));controller.close()}});
 const applied={kind:'applied',revision:'2',documentId:'a',path:'c/u/sync-a'};
 function deps(overrides:Partial<AttachDeps>={}):AttachDeps{
-  return {begin:vi.fn().mockResolvedValue(copy),complete:vi.fn().mockResolvedValue(applied),open:vi.fn(async()=>stream([1,2,3])),put:vi.fn().mockResolvedValue('stored'),remove:vi.fn().mockResolvedValue(undefined),
+  return {begin:vi.fn().mockResolvedValue(copy),complete:vi.fn().mockResolvedValue(applied),open:vi.fn(async()=>stream([1,2,3])),put:vi.fn().mockResolvedValue('stored'),authorizeRemoval:vi.fn().mockResolvedValue({kind:'remove',path:'c/u/sync-a'}),remove:vi.fn().mockResolvedValue(undefined),
     sha256:vi.fn().mockResolvedValue('a'.repeat(64)),recordCopy:vi.fn().mockResolvedValue({kind:'ready'}),
     release:{request:vi.fn().mockResolvedValue({kind:'remove',reason:'applied',path:'c/u/a'}),remove:vi.fn().mockResolvedValue(undefined),confirm:vi.fn().mockResolvedValue({kind:'released'})},...overrides};
 }
@@ -22,6 +22,12 @@ describe('attach verified sync bytes as a vehicle document',()=>{
   it('hashes an existing destination instead of trusting it',async()=>{
     const d=deps({put:vi.fn().mockResolvedValue('exists'),open:vi.fn().mockResolvedValueOnce(stream([1,2,3])).mockResolvedValueOnce(stream([9,9,9])),sha256:vi.fn().mockResolvedValueOnce('a'.repeat(64)).mockResolvedValueOnce('b'.repeat(64)),recordCopy:vi.fn().mockResolvedValue({kind:'mismatch'})});
     const result=await attachFleetSyncDocument(input,d);expect(result.status).toBe(409);expect(d.recordCopy).toHaveBeenCalledWith(input,3,'b'.repeat(64));expect(d.remove).toHaveBeenCalledWith('c/u/sync-a');expect(d.complete).not.toHaveBeenCalled();
+  });
+  it('never removes a mismatched copy path once a copy is proven or the path changed',async()=>{
+    for(const allowed of [{kind:'stale',reason:'proven'},{kind:'stale',reason:'missing'},{kind:'remove',path:'c/u/other'}]){
+      const d=deps({recordCopy:vi.fn().mockResolvedValue({kind:'mismatch'}),authorizeRemoval:vi.fn().mockResolvedValue(allowed)});
+      expect((await attachFleetSyncDocument(input,d)).status).toBe(409);expect(d.authorizeRemoval).toHaveBeenCalledWith(input);expect(d.remove).not.toHaveBeenCalled();expect(d.complete).not.toHaveBeenCalled();
+    }
   });
   it('refuses unavailable or changed source bytes before copying',async()=>{
     for(const open of [vi.fn().mockResolvedValue(null),vi.fn(async()=>stream([1,2,3,4]))]){const d=deps({open});expect((await attachFleetSyncDocument(input,d)).status).toBe(409);expect(d.put).not.toHaveBeenCalled()}

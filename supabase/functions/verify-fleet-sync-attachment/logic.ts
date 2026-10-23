@@ -8,6 +8,8 @@ export type VerifierDeps = {
   open(path: string): Promise<ReadableStream<Uint8Array> | null>;
   sha256(bytes: Uint8Array): Promise<string>;
   complete(lease: string, objectId: string, size: number | null, digest: string | null): Promise<unknown>;
+  /** Service check taken immediately before a path-only removal. */
+  authorizeRemoval(lease: string): Promise<unknown>;
   remove(path: string): Promise<void>;
   release(lease: string, removed: boolean): Promise<unknown>;
 };
@@ -71,12 +73,30 @@ export async function verifyAttachmentUpload(request: {companyId: string; attach
   const kind = completed?.kind;
   if (kind === 'verified') return {status: 200, body: {kind, reservation: completed!.reservation}};
   if (kind === 'mismatch') {
+    // Storage removal is path-only. Remove only while the database still proves
+    // the leased object is there with ample lease left; otherwise a later
+    // verification removes it under a fresh lease.
     let removed = false;
-    try { await deps.remove(held.path); removed = true; } catch { removed = false; }
+    const allowed = record(await deps.authorizeRemoval(held.leaseToken));
+    if (allowed?.kind === 'remove' && allowed.path === held.path) {
+      try { await deps.remove(held.path); removed = true; } catch { removed = false; }
+    }
     await deps.release(held.leaseToken, removed);
     return {status: 409, body: {kind, objectRemoved: removed, error: 'Stored bytes did not match the retained attachment. Upload the original bytes again.'}};
   }
   if (kind === 'missing' || kind === 'expired') return {status: 409, body: {kind, error: 'Stored object changed or verification expired. Check the upload again.'}};
   if (kind === 'access_revoked') return {status: 403, body: {kind, error: 'Company manager access required.'}};
   return {status: 502, body: {error: 'Verification result was not recognized.'}};
+}
+
+/** Path-only Storage delete with a hard time bound. Callers authorize it first. */
+export async function removeStorageObject(fetcher: typeof fetch, url: string, key: string, bucket: string, path: string, timeoutMs = 60_000): Promise<void> {
+  const result = await fetcher(`${url}/storage/v1/object/${encodeURIComponent(bucket)}`, {
+    method: 'DELETE',
+    headers: {Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json'},
+    body: JSON.stringify({prefixes: [path]}),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  await result.body?.cancel();
+  if (!result.ok) throw new Error(`Storage remove failed with ${result.status}`);
 }

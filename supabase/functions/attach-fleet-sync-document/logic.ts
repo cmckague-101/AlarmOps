@@ -10,6 +10,8 @@ export type AttachDeps = {
   complete(request: unknown): Promise<unknown>;
   open(bucket: 'fleet-sync-files' | 'fleet-files', path: string): Promise<ReadableStream<Uint8Array> | null>;
   put(path: string, bytes: Uint8Array, contentType: string): Promise<'stored' | 'exists'>;
+  /** Service check taken immediately before removing a mismatched copy. */
+  authorizeRemoval(request: {companyId: string; userId: string; attachmentId: string}): Promise<unknown>;
   remove(path: string): Promise<void>;
   sha256(bytes: Uint8Array): Promise<string>;
   recordCopy(request: {companyId: string; userId: string; attachmentId: string}, size: number | null, digest: string | null): Promise<unknown>;
@@ -41,7 +43,7 @@ async function observe(deps: Pick<AttachDeps, 'open' | 'sha256'>, bucket: 'fleet
 }
 
 /** Copies receipt-verified bytes into fleet-files and records the hash proof. Null means ready. */
-export async function copyVerifiedBytes(copy: AttachCopyPlan, input: {companyId: string; userId: string; attachmentId: string}, deps: Pick<AttachDeps, 'open' | 'put' | 'remove' | 'sha256' | 'recordCopy'>): Promise<AttachResult | null> {
+export async function copyVerifiedBytes(copy: AttachCopyPlan, input: {companyId: string; userId: string; attachmentId: string}, deps: Pick<AttachDeps, 'open' | 'put' | 'authorizeRemoval' | 'remove' | 'sha256' | 'recordCopy'>): Promise<AttachResult | null> {
   const source = await observe(deps, 'fleet-sync-files', copy.sourcePath, copy.byteSize);
   if (!source?.bytes || source.digest !== copy.sha256) return {status: 409, body: {kind: 'source_unavailable', error: 'Verified upload bytes are unavailable. Verify the upload again.'}};
   let observed: {size: number; digest: string | null} = source;
@@ -50,8 +52,10 @@ export async function copyVerifiedBytes(copy: AttachCopyPlan, input: {companyId:
   }
   const proof = record(await deps.recordCopy(input, observed.size, observed.digest));
   if (proof?.kind === 'mismatch') {
-    // Deterministic sync path: never a user's ordinary document.
-    await deps.remove(copy.destinationPath);
+    // Deterministic sync path: never a user's ordinary document. Removal is
+    // path-only, so it is skipped once any copy of this upload is proven.
+    const allowed = record(await deps.authorizeRemoval(input));
+    if (allowed?.kind === 'remove' && allowed.path === copy.destinationPath) await deps.remove(copy.destinationPath);
     return {status: 409, body: {kind: 'copy_mismatch', error: 'File copy did not match the verified bytes. Retry.'}};
   }
   if (proof?.kind === 'access_revoked') return {status: 403, body: {kind: 'access_revoked', error: 'Company manager access required.'}};

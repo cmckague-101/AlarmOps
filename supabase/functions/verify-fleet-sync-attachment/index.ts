@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4';
-import { parseVerificationRequest, verifyAttachmentUpload } from './logic.ts';
+import { parseVerificationRequest, removeStorageObject, verifyAttachmentUpload } from './logic.ts';
 
 // Verifies stored bytes of a reserved fleet sync upload. The service key stays
 // server-side; current access is rechecked with the caller's own JWT.
@@ -64,7 +64,8 @@ Deno.serve(async (request) => {
       },
       sha256: async (bytes) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join(''),
       complete: (lease, objectId, size, digest) => rpc(admin, 'complete_fleet_sync_attachment_verification', {lease, observed_object_id: objectId, observed_size: size, observed_digest: digest}),
-      remove: async (path) => { const {error} = await admin.storage.from(bucket).remove([path]); if (error) throw error; },
+      authorizeRemoval: (lease) => rpc(admin, 'authorize_fleet_sync_attachment_mismatch_removal', {lease}),
+      remove: (path) => removeStorageObject(fetch, supabaseUrl, serviceRoleKey, bucket, path),
       release: (lease, removed) => rpc(admin, 'release_fleet_sync_attachment_verification', {lease, removed}),
     });
     return response(result.status, result.body);

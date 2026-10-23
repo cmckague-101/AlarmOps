@@ -48,10 +48,17 @@ Deno.serve(async (request) => {
   if (ownerError || adminError) return response(500, {error: 'File cleanup access could not be verified.'});
   if (!ownership && !scopedAdmin) return response(403, {error: 'Company owner access required.'});
 
-  const {error: removeError} = await admin.storage.from('fleet-files').remove(paths);
-  if (removeError) {
-    console.error('Fleet file cleanup failed:', removeError);
-    return response(500, {error: 'Files could not be removed.'});
+  // Proven offline-sync copies are canonical files that records, reviews and
+  // device history may reference; they are retained, never removed here.
+  const {data: protectedPaths, error: protectedError} = await admin.rpc('fleet_sync_protected_copy_paths', {target_company_id: companyId, paths});
+  if (protectedError || !Array.isArray(protectedPaths)) return response(500, {error: 'File cleanup access could not be verified.'});
+  const removable = paths.filter(path => !protectedPaths.includes(path));
+  if (removable.length) {
+    const {error: removeError} = await admin.storage.from('fleet-files').remove(removable);
+    if (removeError) {
+      console.error('Fleet file cleanup failed:', removeError);
+      return response(500, {error: 'Files could not be removed.'});
+    }
   }
-  return response(200, {removed: paths.length});
+  return response(200, {removed: removable.length, retained: protectedPaths.length});
 });

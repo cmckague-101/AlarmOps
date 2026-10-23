@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4';
 import { parseReleaseRequest } from '../release-fleet-sync-attachment/logic.ts';
 import { prepareSlotCopy } from './logic.ts';
+import { removeStorageObject } from '../verify-fleet-sync-attachment/logic.ts';
 
 // Copies a receipt-verified sync upload into fleet-files for a vehicle file
 // slot. Caller JWT authorizes; the service key only reads/writes Storage and
@@ -54,7 +55,8 @@ Deno.serve(async (request) => {
         if (status === '409' || /already exists|duplicate/i.test(error.message)) return 'exists';
         throw error;
       },
-      remove: async (path) => { const {error} = await admin.storage.from('fleet-files').remove([path]); if (error) throw error; },
+      authorizeRemoval: (value) => rpc(admin, 'authorize_fleet_sync_copy_removal', identity(value)),
+      remove: (path) => removeStorageObject(fetch, supabaseUrl, serviceRoleKey, 'fleet-files', path),
       sha256: async (bytes) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join(''),
       recordCopy: (value, size, digest) => rpc(admin, 'record_fleet_sync_attachment_copy', {...identity(value), observed_size: size, observed_digest: digest}),
       release: {

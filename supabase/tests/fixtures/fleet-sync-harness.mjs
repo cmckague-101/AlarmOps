@@ -42,6 +42,7 @@ export async function loadFleetSyncAttachmentSchema(db) {
   await db.exec(migration('20261124000100_fleet_sync_inspections'));
   await db.exec(migration('20261125000100_fleet_sync_shop_tech_photos'));
   await db.exec(migration('20261126000100_fleet_sync_issue_create'));
+  await db.exec(migration('20261202000100_fleet_sync_storage_cleanup_fences'));
 }
 
 /** Fleet sync schema plus the real user-owned tables and the user sync commands. */

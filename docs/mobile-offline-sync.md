@@ -624,6 +624,19 @@ Web and the mobile online path now share `createAvailabilityController` (`packag
 
 Mobile own availability still goes through the durable outbox (also online). Offline, the hook shows the account-bound GET read cache as "last known", never as a verified base. Editing others offline remains blocked. No client writes `crew_availability` directly any more. Targeted checks: 34 domain tests, 33 mobile hook/user-sync tests, 15 web dashboard tests, and domain/mobile/web typechecks. No UI launch, push or deployment.
 
+### Storage cleanup fences (server and Edge Functions; not deployed)
+
+Storage removal is path-only: a late `remove` deletes whatever object holds that path by then. `20261202000100_fleet_sync_storage_cleanup_fences.sql` adds a database check taken **immediately before** each cleanup removal that could race with new bytes:
+
+- **Verifier mismatch:** service-only `authorize_fleet_sync_attachment_mismatch_removal(lease)` allows removal only while the mismatch lease is unreleased, has at least **5 minutes** left, and the leased object is still stored. Otherwise (`lease_ending`, `missing`, `replaced`, `released`) the verifier skips removal and releases with `removed=false`. The mismatched object then stays put, so the client's `upsert:false` re-upload sees `exists` and verification runs again under a fresh lease. While a lease is active, re-upload and new leases are refused, so the path still holds the leased object. A verifier that stalls past its lease can no longer delete bytes uploaded after it.
+- **Mismatched fleet-files copies:** service-only `authorize_fleet_sync_copy_removal` locks the document link and slot-copy rows (serializing with the record RPCs). It refuses once any copy of the upload is proven, so a stalled mismatch handler cannot delete a canonical copy another invocation proved and applied.
+- **Bounded removal:** the verifier and both copy functions remove through `removeStorageObject` (Storage `DELETE /object/{bucket}` with a 60-second abort), far inside the 5-minute margin.
+- **Proven copies are retained:** a restrictive storage DELETE policy (`fleet_sync_copy_is_protected`) keeps proven `sync-<attachment>` copies from uploader/admin direct deletes. `delete-fleet-files` (service role, bypasses RLS) filters them with `fleet_sync_protected_copy_paths` and reports `{removed, retained}`. Records, conflict reviews and device history may reference these copies, so removing a document from a vehicle online leaves its sync copy in place. That is consistent with "nothing expires silently"; any future cleanup needs an explicit reference-aware design.
+
+Unchanged and already safe: staging release removals (`release-fleet-sync-attachment`, applied cleanup) happen only after a release row makes the path permanently non-uploadable, or after a receipt exists (`can_upload` requires no receipt). A late removal there only hits the same bytes.
+
+Residual risk: a tiny window remains between a copy-removal authorization and its Storage call, if another invocation copies, proves and applies in between. That requires a pre-existing bad object at the uploader's own `sync-` path plus concurrent replays. Lease-based fencing still assumes the Storage service finishes a request within minutes of accepting it. Real Storage `DELETE` semantics and timing need validation on Supabase. Tests: 6 new embedded PostgreSQL tests (`fleet-sync-storage-cleanup-fences.test.mjs`, including the stalled-verifier takeover and proven-copy retention), 54 related attachment/grant checks, and Vitest specs for verify/attach/copy/release logic.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -651,6 +664,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 21. `20261129000100_personal_task_identities.sql`
 22. `20261130000100_online_dashboard_preferences.sql` (requires updated per-key online clients; do not retain legacy whole-layout upserts)
 23. `20261201000100_online_crew_availability.sql` (requires updated online availability clients; legacy direct writes are denied)
+24. `20261202000100_fleet_sync_storage_cleanup_fences.sql` (redeploy `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `copy-fleet-sync-attachment` and `delete-fleet-files` with it; the functions call its RPCs)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

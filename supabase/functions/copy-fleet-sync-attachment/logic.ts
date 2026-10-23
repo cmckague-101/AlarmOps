@@ -3,7 +3,7 @@ import {releaseStagingObject, type ReleaseDeps} from '../release-fleet-sync-atta
 
 // Prepares the proven fleet-files copy a vehicle file slot may reference. The
 // slot itself changes only through the verified detail-update RPC afterwards.
-export type CopyDeps = Pick<AttachDeps, 'open' | 'put' | 'remove' | 'sha256' | 'recordCopy'> & {
+export type CopyDeps = Pick<AttachDeps, 'open' | 'put' | 'authorizeRemoval' | 'remove' | 'sha256' | 'recordCopy'> & {
   begin(companyId: string, attachmentId: string): Promise<unknown>;
   release: ReleaseDeps;
 };

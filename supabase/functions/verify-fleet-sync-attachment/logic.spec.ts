@@ -1,10 +1,10 @@
 import {describe,expect,it,vi} from 'vitest';
-import {parseVerificationRequest,readBounded,verifyAttachmentUpload,type VerifierDeps} from './logic.ts';
+import {parseVerificationRequest,readBounded,removeStorageObject,verifyAttachmentUpload,type VerifierDeps} from './logic.ts';
 const lease={kind:'lease',leaseToken:'60000000-0000-4000-8000-000000000001',path:'c/u/a',byteSize:3,sha256:'a'.repeat(64),objectId:'50000000-0000-4000-8000-000000000001'};
 const stream=(...chunks:number[][])=>new ReadableStream<Uint8Array>({start(controller){for(const chunk of chunks)controller.enqueue(new Uint8Array(chunk));controller.close()}});
 function deps(overrides:Partial<VerifierDeps>={}):VerifierDeps{
   return {begin:vi.fn().mockResolvedValue(lease),open:vi.fn().mockResolvedValue(stream([1,2],[3])),sha256:vi.fn().mockResolvedValue('a'.repeat(64)),
-    complete:vi.fn().mockResolvedValue({kind:'verified',reservation:{receipt:{}}}),remove:vi.fn().mockResolvedValue(undefined),release:vi.fn().mockResolvedValue({kind:'released'}),...overrides};
+    complete:vi.fn().mockResolvedValue({kind:'verified',reservation:{receipt:{}}}),authorizeRemoval:vi.fn().mockResolvedValue({kind:'remove',path:'c/u/a'}),remove:vi.fn().mockResolvedValue(undefined),release:vi.fn().mockResolvedValue({kind:'released'}),...overrides};
 }
 const request={companyId:'10000000-0000-4000-8000-000000000001',attachmentId:'40000000-0000-4000-8000-000000000001'};
 describe('trusted attachment verifier',()=>{
@@ -27,6 +27,20 @@ describe('trusted attachment verifier',()=>{
   it('records failed removal instead of claiming the mismatched object was cleaned up',async()=>{
     const d=deps({complete:vi.fn().mockResolvedValue({kind:'mismatch'}),remove:vi.fn().mockRejectedValue(new Error('down'))});
     expect((await verifyAttachmentUpload(request,d)).body.objectRemoved).toBe(false);expect(d.release).toHaveBeenCalledWith(lease.leaseToken,false);
+  });
+  it('removes a mismatched object only after the database re-authorizes that exact path',async()=>{
+    for(const allowed of [{kind:'stale',reason:'lease_ending'},{kind:'stale',reason:'replaced'},{kind:'remove',path:'c/u/other'},null]){
+      const d=deps({complete:vi.fn().mockResolvedValue({kind:'mismatch'}),authorizeRemoval:vi.fn().mockResolvedValue(allowed)});const result=await verifyAttachmentUpload(request,d);
+      expect(d.authorizeRemoval).toHaveBeenCalledWith(lease.leaseToken);expect(d.remove).not.toHaveBeenCalled();expect(d.release).toHaveBeenCalledWith(lease.leaseToken,false);expect(result.body.objectRemoved).toBe(false);
+    }
+    const d=deps({complete:vi.fn().mockResolvedValue({kind:'mismatch'})});await verifyAttachmentUpload(request,d);
+    expect(vi.mocked(d.authorizeRemoval).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(d.remove).mock.invocationCallOrder[0]);
+  });
+  it('bounds path-only Storage removal in time and reports failures',async()=>{
+    const fetcher=vi.fn(async(_url:string,init:RequestInit)=>{expect(init.signal).toBeInstanceOf(AbortSignal);return new Response('[]',{status:200})});
+    await removeStorageObject(fetcher as unknown as typeof fetch,'https://x','key','fleet-files','c/u/sync-a');
+    expect(fetcher).toHaveBeenCalledWith('https://x/storage/v1/object/fleet-files',expect.objectContaining({method:'DELETE',body:JSON.stringify({prefixes:['c/u/sync-a']})}));
+    await expect(removeStorageObject((async()=>new Response('no',{status:500})) as unknown as typeof fetch,'https://x','key','fleet-files','p')).rejects.toThrow('500');
   });
   it('reports missing objects, revoked access and unknown results without a receipt',async()=>{
     const missing=deps({open:vi.fn().mockResolvedValue(null),complete:vi.fn().mockResolvedValue({kind:'missing'})});expect((await verifyAttachmentUpload(request,missing)).status).toBe(409);expect(missing.complete).toHaveBeenCalledWith(lease.leaseToken,'00000000-0000-0000-0000-000000000000',null,null);

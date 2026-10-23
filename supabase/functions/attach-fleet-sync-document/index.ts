@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4';
 import { attachFleetSyncDocument, parseAttachRequest } from './logic.ts';
+import { removeStorageObject } from '../verify-fleet-sync-attachment/logic.ts';
 
 // Attaches a receipt-verified sync upload as one vehicle document. The service
 // key never reaches clients; record changes run with the caller's own JWT.
@@ -71,7 +72,8 @@ Deno.serve(async (request) => {
         if (status === '409' || /already exists|duplicate/i.test(error.message)) return 'exists';
         throw error;
       },
-      remove: async (path) => { const {error} = await admin.storage.from('fleet-files').remove([path]); if (error) throw error; },
+      authorizeRemoval: (value) => rpc(admin, 'authorize_fleet_sync_copy_removal', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
+      remove: (path) => removeStorageObject(fetch, supabaseUrl, serviceRoleKey, 'fleet-files', path),
       sha256: async (bytes) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join(''),
       release: {
         request: (value) => rpc(admin, 'request_fleet_sync_attachment_applied_release', {target_company_id: value.companyId, target_user_id: value.userId, target_attachment_id: value.attachmentId}),
