@@ -27,7 +27,7 @@ export default function CommunicationThreadScreen() {
   const member = access.value?.kind === 'member' ? access.value : null;
   const companyId = member?.company.id ?? null;
   const userId = member?.user.id ?? null;
-  const { threads, loading, error } = useCommunications(companyId, userId);
+  const { threads, loading, error, deviceReplies } = useCommunications(companyId, userId);
   const thread = threads.find((item) => item.id === id);
   const joined = Boolean(thread && (thread.createdById === member?.user.id || thread.replies.some((item) => item.createdById === member?.user.id)));
   const [reply, setReply] = useState('');
@@ -163,15 +163,16 @@ export default function CommunicationThreadScreen() {
                   <View style={styles.replyList}>
                     {thread.replies.map((item) => {
                       const mine = item.createdById === member?.user.id;
+                      const device = deviceReplies?.[item.id];
                       return (
                         <View key={item.id} style={[styles.replyCard, mine && styles.myReplyCard]}>
                           <View style={styles.authorRow}>
                             <View style={[styles.smallAvatar, mine && styles.myAvatar]}><Text style={[styles.smallAvatarLabel, mine && styles.myAvatarLabel]}>{initial(item.createdBy)}</Text></View>
                             <View style={styles.authorCopy}>
                               <Text style={styles.replyAuthor}>{mine ? 'You' : item.createdBy}</Text>
-                              <Text style={styles.authorMeta}>{formatDate(item.createdAt)}</Text>
+                              <Text style={styles.authorMeta}>{device === 'saved' ? 'Saved on this device — posts when connected' : device === 'action_needed' ? 'Saved on this device — action needed in Saved changes & sync' : formatDate(item.createdAt)}</Text>
                             </View>
-                            {member && isCompanyManager(member.user.role) ? (
+                            {member && isCompanyManager(member.user.role) && !device ? (
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel={`Delete comment from ${item.createdBy}`}

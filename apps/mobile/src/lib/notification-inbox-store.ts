@@ -4,7 +4,7 @@ import type {RealtimeChannel} from '@supabase/supabase-js';
 import type {UserRole} from '@fireops/domain';
 
 import {supabase} from '@/lib/supabase';
-import {offlineReadMarkers, subscribeOfflineReadMarkers, type OfflineReadMarkers} from './offline-read-markers';
+import {offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox} from './offline-chat-inbox';
 import {isOffline} from '@/providers/network-provider';
 
 export type NotificationEventType =
@@ -106,7 +106,7 @@ function syncBadge(count: number) {
 }
 
 /** Overlays reads saved on this device onto the last downloaded list. */
-export function withOfflineReads(value: InboxSnapshot, markers: Pick<OfflineReadMarkers, 'reads'> | null): InboxSnapshot {
+export function withOfflineReads(value: InboxSnapshot, markers: Pick<OfflineChatInbox, 'reads'> | null): InboxSnapshot {
   if (!markers?.reads.size) return value;
   let cleared = 0;
   const notifications = value.notifications.map((item) => {
@@ -118,9 +118,9 @@ export function withOfflineReads(value: InboxSnapshot, markers: Pick<OfflineRead
   return cleared ? {...value, notifications, unreadCount: Math.max(0, value.unreadCount - cleared)} : value;
 }
 
-let view: {source: InboxSnapshot; markers: OfflineReadMarkers | null; value: InboxSnapshot} | null = null;
+let view: {source: InboxSnapshot; markers: OfflineChatInbox | null; value: InboxSnapshot} | null = null;
 function currentView() {
-  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+  const markers = offlineChatInbox(activeCompanyId, activeUserId);
   if (view?.source !== snapshot || view.markers !== markers) view = {source: snapshot, markers, value: withOfflineReads(snapshot, markers)};
   return view.value;
 }
@@ -130,7 +130,7 @@ function emit(next: InboxSnapshot) {
   syncBadge(currentView().unreadCount);
   listeners.forEach((listener) => listener());
 }
-subscribeOfflineReadMarkers(() => {
+subscribeOfflineChatInbox(() => {
   syncBadge(currentView().unreadCount);
   listeners.forEach((listener) => listener());
 });
@@ -138,7 +138,7 @@ subscribeOfflineReadMarkers(() => {
 /** Offline, reads queue on the device for this exact account; none is pretended. */
 function offlineReads() {
   if (!isOffline()) return null;
-  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+  const markers = offlineChatInbox(activeCompanyId, activeUserId);
   if (!markers) throw new Error('Marking notifications read offline is unavailable on this device.');
   return markers;
 }
@@ -257,7 +257,7 @@ export async function markInboxNotificationRead(notificationId: string) {
   const readAt = new Date().toISOString();
   const previous = snapshot.notifications;
   const wasUnread = previous.some((item) => item.id === notificationId && !item.readAt);
-  let queue: OfflineReadMarkers | null;
+  let queue: OfflineChatInbox | null;
   try { queue = offlineReads(); } catch (offlineError) {
     emit({...snapshot, error: (offlineError as Error).message});
     throw offlineError;
@@ -283,7 +283,7 @@ export async function markAllInboxNotificationsRead() {
   const readAt = new Date().toISOString();
   const previous = snapshot.notifications;
   const previousUnreadCount = snapshot.unreadCount;
-  let queue: OfflineReadMarkers | null;
+  let queue: OfflineChatInbox | null;
   try { queue = offlineReads(); } catch (offlineError) {
     emit({...snapshot, error: (offlineError as Error).message});
     throw offlineError;

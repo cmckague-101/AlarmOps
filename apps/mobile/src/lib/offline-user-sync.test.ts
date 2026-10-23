@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceReplies,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -104,5 +104,20 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(laterTimestamp('2026-01-01T10:00:00.123Z','2026-01-01T10:00:00.123456+00:00')).toBe('2026-01-01T10:00:00.123456+00:00');
     expect(laterTimestamp('2026-01-01T11:00:00Z','2026-01-01T10:00:00.999999+00:00')).toBe('2026-01-01T11:00:00Z');expect(laterTimestamp(undefined,'2026-01-01T11:00:00Z')).toBe('2026-01-01T11:00:00Z');
     expect(pendingNotificationReads([{...entry,reviewOutcome:'discarded'} as never]).size).toBe(0);
+  });
+  it('posts Crew Chat replies once per client ID and reports deleted threads without dropping the text',async()=>{
+    const f=await setup();const thread=nextId(),gone=nextId(),id=nextId(),other=nextId();
+    await expect(f.sync.postReply({id,threadId:thread,body:'  '})).rejects.toThrow();await expect(f.sync.postReply({id:'x',threadId:thread,body:'Hi'})).rejects.toThrow();
+    const saved=await f.sync.postReply({id,threadId:thread,body:' On my way '});expect(saved.operation.mutation).toEqual({kind:'command',command:'reply.create',payload:{threadId:thread,body:'On my way'}});
+    await f.sync.postReply({id:other,threadId:gone,body:'Late'});
+    expect(deviceReplies(await f.session.list()).map(reply=>[reply.id,reply.state])).toEqual([[id,'saved'],[other,'saved']]);
+    f.transport.deliver.mockImplementation(async operation=>operation.entityId===id
+      ?{kind:'applied',receivedAt:date,revision:'7',record:{id,threadId:thread,body:'On my way',createdAt:'2026-01-01T12:00:00.5+00:00'}}
+      :{kind:'applied',receivedAt:date,revision:'8',record:null,notApplied:'thread_deleted'} as never);
+    f.transport.canonical.mockImplementation(async operation=>({revision:operation.entityId===id?'7':'8',record:operation.entityId===id?{id,threadId:thread,body:'On my way',createdAt:'2026-01-01T12:00:00.5+00:00'}:null}));
+    await f.worker.wake();await f.worker.wake();await f.worker.wake();const entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(f.transport.deliver).toHaveBeenCalledTimes(2);
+    expect(deviceReplies(entries)).toEqual([{id,threadId:thread,body:'On my way',savedAt:date,state:'posted',createdAt:'2026-01-01T12:00:00.5+00:00'}]);
+    const deleted=entries.find(entry=>entry.operation.entityId===other)!;expect(offlineSyncEntryLabel(deleted)).toContain('Not posted');expect(deleted.operation.mutation).toMatchObject({payload:{body:'Late'}});
   });
 });

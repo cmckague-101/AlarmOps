@@ -3,8 +3,8 @@ import type { CommunicationReply, CommunicationThread, UserRole } from '@fireops
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
-import { offlineReadMarkers, subscribeOfflineReadMarkers, type OfflineReadMarkers } from './offline-read-markers';
-import { laterTimestamp } from './offline-user-sync';
+import { offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox } from './offline-chat-inbox';
+import { laterTimestamp, type DeviceReply } from './offline-user-sync';
 import { isOffline } from '@/providers/network-provider';
 
 type CommunicationThreadRow = {
@@ -33,6 +33,8 @@ type CommunicationsSnapshot = {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  /** Replies shown from this device's saved commands, by reply ID. */
+  deviceReplies?: Readonly<Record<string, DeviceReply['state']>>;
 };
 
 let snapshot: CommunicationsSnapshot = {
@@ -56,7 +58,7 @@ function emit(next: CommunicationsSnapshot) {
 }
 
 /** Overlays seen markers saved on this device onto the last downloaded threads. */
-export function withOfflineSeen(value: CommunicationsSnapshot, markers: Pick<OfflineReadMarkers, 'seen'> | null): CommunicationsSnapshot {
+export function withOfflineSeen(value: CommunicationsSnapshot, markers: Pick<OfflineChatInbox, 'seen'> | null): CommunicationsSnapshot {
   if (!markers?.seen.size) return value;
   let changed = false;
   const threads = value.threads.map((thread) => {
@@ -70,13 +72,28 @@ export function withOfflineSeen(value: CommunicationsSnapshot, markers: Pick<Off
   return changed ? { ...value, threads } : value;
 }
 
-let view: { source: CommunicationsSnapshot; markers: OfflineReadMarkers | null; value: CommunicationsSnapshot } | null = null;
+/** Appends this device's saved replies the downloaded threads do not have yet. */
+export function withOfflineReplies(value: CommunicationsSnapshot, inbox: Pick<OfflineChatInbox, 'replies'> | null, userId: string): CommunicationsSnapshot {
+  if (!inbox?.replies.length) return value;
+  const states: Record<string, DeviceReply['state']> = {};
+  const threads = value.threads.map((thread) => {
+    const saved = inbox.replies.filter((reply) => reply.threadId === thread.id && !thread.replies.some((item) => item.id === reply.id));
+    if (!saved.length) return thread;
+    for (const reply of saved) states[reply.id] = reply.state;
+    return { ...thread, replies: [...thread.replies, ...saved.map((reply) => ({ id: reply.id, body: reply.body, createdBy: 'You', createdById: userId, createdAt: reply.createdAt ?? reply.savedAt }))] };
+  });
+  return Object.keys(states).length ? { ...value, threads, deviceReplies: states } : value;
+}
+
+let view: { source: CommunicationsSnapshot; markers: OfflineChatInbox | null; value: CommunicationsSnapshot } | null = null;
 function currentView() {
-  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
-  if (view?.source !== snapshot || view.markers !== markers) view = { source: snapshot, markers, value: withOfflineSeen(snapshot, markers) };
+  const markers = offlineChatInbox(activeCompanyId, activeUserId);
+  if (view?.source !== snapshot || view.markers !== markers) view = { source: snapshot, markers, value: withOfflineReplies(withOfflineSeen(snapshot, markers), markers, activeUserId ?? '') };
   return view.value;
 }
-subscribeOfflineReadMarkers(() => listeners.forEach((listener) => listener()));
+// One client ID per intended offline reply, reused when a failed device save is retried.
+const offlineReplyIds = new Map<string, string>();
+subscribeOfflineChatInbox(() => listeners.forEach((listener) => listener()));
 
 /** Newest server timestamp this device displays for a thread, verbatim (keeps microseconds). */
 export function displayedThroughOf(thread: CommunicationThread) {
@@ -225,6 +242,18 @@ export async function deleteCommunicationThread(threadId: string) {
 
 export async function replyToCommunicationThread(threadId: string, body: string) {
   if (!supabase || !activeCompanyId) throw new Error('Company communications are unavailable.');
+  if (isOffline()) {
+    // Saved on the device and posted once when connected; a deleted thread posts nothing.
+    const inbox = offlineChatInbox(activeCompanyId, activeUserId);
+    if (!inbox || !activeUserId || !snapshot.threads.some((thread) => thread.id === threadId)) throw new Error('Replying offline is unavailable on this device.');
+    const text = body.trim();
+    const key = `${activeCompanyId}:${activeUserId}:${threadId}:${text}`;
+    const id = offlineReplyIds.get(key) ?? inbox.newId();
+    offlineReplyIds.set(key, id);
+    await inbox.postReply({ id, threadId, body: text });
+    offlineReplyIds.delete(key);
+    return { id, body: text, createdBy: 'You', createdById: activeUserId, createdAt: new Date().toISOString() };
+  }
   const { data, error } = await supabase
     .from('communication_replies')
     .insert({ company_id: activeCompanyId, thread_id: threadId, body })
@@ -263,7 +292,7 @@ export async function markCommunicationThreadSeen(threadId: string) {
   if (isOffline()) {
     // Offline: seen only through what this device displays, so replies posted
     // meanwhile stay unread. Saved first, then shown, so failures cannot loop.
-    const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+    const markers = offlineChatInbox(activeCompanyId, activeUserId);
     const thread = snapshot.threads.find((item) => item.id === threadId);
     if (!markers || !thread) throw new Error('Marking this thread seen offline is unavailable on this device.');
     const seenThrough = displayedThroughOf(thread);

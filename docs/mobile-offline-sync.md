@@ -664,6 +664,14 @@ A thread deleted before sync inserts nothing and returns `notApplied: 'thread_de
 
 Tests: `user-sync-crew-chat-replies.test.mjs` (4 embedded PostgreSQL tests: single attributed insert with replay counted by a stand-in trigger, deleted thread, identity reuse, payload/membership validation), plus the existing user-command, read-marker and grant suites.
 
+### Offline Crew Chat replies: client (native)
+
+The read-marker bridge is now `offline-chat-inbox.ts` (`OfflineChatInbox`) and also carries `postReply`, `newId` and `deviceReplies(entries)`. Offline, **Reply** and **Join conversation** in an open thread save `reply.create` on the scoped outbox. They require the downloaded thread and the exact account. The store keeps one client UUID per intended reply (account, thread and trimmed text) until the device save succeeds, so retrying a failed save cannot create a second reply. Nothing is inserted directly while offline.
+
+The thread shows the device's replies after the downloaded ones until a refreshed thread contains them. Each is labeled *Saved on this device — posts when connected* or *action needed in Saved changes & sync*, and managers get no Delete button for them yet. Confirmed replies use the server `createdAt`. Seen markers are still computed from downloaded server timestamps only, so a device-clock reply time never advances them. A reply whose thread was deleted before sync is labeled *Not posted — the conversation was deleted before this reply synced* in Saved changes & sync; it never appears in a thread. Its text remains in the device outbox record but is not yet shown there.
+
+Tests: 1 more SQLite-backed test (`offline-user-sync.test.ts`: validation, single delivery per ID, posted/deleted outcomes and label) and 2 more store tests (stable ID across a failed save, account/thread binding, no direct insert, overlay until downloaded, seen markers ignoring device times). 154 targeted mobile tests and the mobile typecheck pass. Web is unchanged (online-only).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

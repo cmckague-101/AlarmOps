@@ -16,9 +16,9 @@ vi.mock('@/lib/supabase',()=>{
   const channel={on:()=>channel,subscribe:()=>channel};
   return {supabase:{from:query,channel:()=>channel,removeChannel:async()=>undefined}};
 });
-import {publishOfflineReadMarkers,type OfflineReadMarkers} from './offline-read-markers';
+import {publishOfflineChatInbox,type OfflineChatInbox} from './offline-chat-inbox';
 import {markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
-import {displayedThroughOf,markCommunicationThreadSeen,useCommunications,withOfflineSeen} from './communications-store';
+import {displayedThroughOf,markCommunicationThreadSeen,refreshCommunications,replyToCommunicationThread,useCommunications,withOfflineReplies,withOfflineSeen} from './communications-store';
 
 const company='10000000-0000-4000-8000-000000000001',user='20000000-0000-4000-8000-000000000001';
 const first='30000000-0000-4000-8000-000000000001',second='30000000-0000-4000-8000-000000000002',thread='40000000-0000-4000-8000-000000000001';
@@ -28,8 +28,8 @@ function hook<T>(fn:()=>T){
   const frame=runtime.frame();
   return {render(){runtime.enter(frame);return fn()},effects(){for(const index of [...frame.effects]){frame.effects.delete(index);const value=frame.slots[index];value.cleanup?.();value.cleanup=value.effect?.()??undefined}}};
 }
-function markers(changes:Partial<OfflineReadMarkers>={}):OfflineReadMarkers{
-  return {companyId:company,userId:user,markNotificationRead:vi.fn(async()=>({})),markThreadSeen:vi.fn(async()=>({})),reads:new Map(),seen:new Map(),...changes};
+function markers(changes:Partial<OfflineChatInbox>={}):OfflineChatInbox{
+  return {companyId:company,userId:user,markNotificationRead:vi.fn(async()=>({})),markThreadSeen:vi.fn(async()=>({})),reads:new Map(),seen:new Map(),postReply:vi.fn(async()=>({})),newId:vi.fn(()=>'50000000-0000-4000-8000-000000000001'),replies:[],...changes};
 }
 beforeEach(()=>{
   mocks.offline=true;mocks.writes=[];
@@ -38,7 +38,7 @@ beforeEach(()=>{
     communication_replies:{data:[{id:'r1',thread_id:thread,body:'Hi',created_by:'other',created_by_name:'O',created_at:'2026-01-01T10:00:00.123456+00:00'}],error:null},
     communication_reads:{data:[],error:null}};
 });
-afterEach(()=>publishOfflineReadMarkers(null));
+afterEach(()=>publishOfflineChatInbox(null));
 
 describe('offline read-marker overlays',()=>{
   it('marks downloaded unread notifications read without changing already-read ones',()=>{
@@ -55,25 +55,43 @@ describe('offline read-marker overlays',()=>{
 });
 describe('offline store actions',()=>{
   it('queues notification reads for the exact account offline and never writes the table',async()=>{
-    const queue=markers();publishOfflineReadMarkers(queue);const f=hook(()=>useNotificationInbox(company,user));f.render();f.effects();await flush();
+    const queue=markers();publishOfflineChatInbox(queue);const f=hook(()=>useNotificationInbox(company,user));f.render();f.effects();await flush();
     expect(f.render().unreadCount).toBe(2);
     await markInboxNotificationRead(first);expect(queue.markNotificationRead).toHaveBeenCalledWith(first);expect(f.render().unreadCount).toBe(1);
     await markAllInboxNotificationsRead();expect(vi.mocked(queue.markNotificationRead).mock.calls.map(call=>call[0])).toEqual([first,second]);
     expect(mocks.writes).toEqual([]);
-    publishOfflineReadMarkers(markers({userId:'20000000-0000-4000-8000-000000000009'}));await expect(markInboxNotificationRead(second)).rejects.toThrow('unavailable');
+    publishOfflineChatInbox(markers({userId:'20000000-0000-4000-8000-000000000009'}));await expect(markInboxNotificationRead(second)).rejects.toThrow('unavailable');
   });
   it('reverts an offline read whose device save fails and overlays saved reads after refresh',async()=>{
-    const failing=markers({markNotificationRead:vi.fn(async()=>{throw new Error('disk full')})});publishOfflineReadMarkers(failing);
+    const failing=markers({markNotificationRead:vi.fn(async()=>{throw new Error('disk full')})});publishOfflineChatInbox(failing);
     // Module-level store: reload the downloaded list left over from the previous test.
     const f=hook(()=>useNotificationInbox(company,user));f.render();f.effects();await refreshNotificationInbox();await flush();
     await expect(markInboxNotificationRead(first)).rejects.toThrow('disk full');expect(f.render().notifications.find(item=>item.id===first)?.readAt).toBeNull();expect(f.render().error).toContain('disk full');
-    publishOfflineReadMarkers(markers({reads:new Map([[first,'2026-01-02T00:00:00Z']])}));expect(f.render().notifications.find(item=>item.id===first)?.readAt).toBe('2026-01-02T00:00:00Z');expect(f.render().unreadCount).toBe(1);
+    publishOfflineChatInbox(markers({reads:new Map([[first,'2026-01-02T00:00:00Z']])}));expect(f.render().notifications.find(item=>item.id===first)?.readAt).toBe('2026-01-02T00:00:00Z');expect(f.render().unreadCount).toBe(1);
   });
   it('marks threads seen through the newest displayed reply offline, and only after saving',async()=>{
-    const queue=markers();publishOfflineReadMarkers(queue);const f=hook(()=>useCommunications(company,user));f.render();f.effects();await flush();
+    const queue=markers();publishOfflineChatInbox(queue);const f=hook(()=>useCommunications(company,user));f.render();f.effects();await flush();
     expect(await markCommunicationThreadSeen(thread)).toBe('2026-01-01T10:00:00.123456+00:00');
     expect(queue.markThreadSeen).toHaveBeenCalledWith(thread,'2026-01-01T10:00:00.123456+00:00');expect(f.render().threads[0].seenAt).toBe('2026-01-01T10:00:00.123456+00:00');
-    const failing=markers({markThreadSeen:vi.fn(async()=>{throw new Error('locked')})});publishOfflineReadMarkers(failing);const before=f.render();
+    const failing=markers({markThreadSeen:vi.fn(async()=>{throw new Error('locked')})});publishOfflineChatInbox(failing);const before=f.render();
     await expect(markCommunicationThreadSeen(thread)).rejects.toThrow('locked');expect(f.render()).toBe(before);expect(mocks.writes).toEqual([]);
+  });
+  it('saves offline replies with one stable ID across failed saves and never inserts directly',async()=>{
+    const failing=markers({postReply:vi.fn().mockRejectedValueOnce(new Error('busy')).mockResolvedValue({}),newId:vi.fn().mockReturnValueOnce('50000000-0000-4000-8000-000000000001').mockReturnValue('50000000-0000-4000-8000-000000000002')});
+    publishOfflineChatInbox(failing);const f=hook(()=>useCommunications(company,user));f.render();f.effects();await refreshCommunications();await flush();
+    await expect(replyToCommunicationThread(thread,' On my way ')).rejects.toThrow('busy');const saved=await replyToCommunicationThread(thread,'On my way');
+    expect(vi.mocked(failing.postReply).mock.calls.map(call=>call[0])).toEqual([{id:'50000000-0000-4000-8000-000000000001',threadId:thread,body:'On my way'},{id:'50000000-0000-4000-8000-000000000001',threadId:thread,body:'On my way'}]);
+    expect(saved.id).toBe('50000000-0000-4000-8000-000000000001');expect(mocks.writes).toEqual([]);
+    publishOfflineChatInbox(markers({userId:'20000000-0000-4000-8000-000000000009'}));await expect(replyToCommunicationThread(thread,'Hi')).rejects.toThrow('unavailable');
+    publishOfflineChatInbox(markers());await expect(replyToCommunicationThread('40000000-0000-4000-8000-00000000ffff','Hi')).rejects.toThrow('unavailable');
+  });
+  it('shows saved replies until the downloaded thread has them, and seen markers ignore device times',async()=>{
+    const downloaded={threads:[{id:thread,createdAt:'2026-01-01T09:00:00+00:00',replies:[{id:'r1',createdAt:'2026-01-01T10:00:00+00:00'}]}],loading:false,refreshing:false,error:null} as never;
+    const replies=[{id:'r1',threadId:thread,body:'Old',savedAt:'x',state:'posted' as const,createdAt:'2026-01-01T10:00:00+00:00'},{id:'r2',threadId:thread,body:'New',savedAt:'2030-01-01T00:00:00Z',state:'saved' as const}];
+    const view=withOfflineReplies(downloaded,{replies},user);
+    expect(view.threads[0].replies.map(reply=>[reply.id,reply.createdById])).toEqual([['r1',undefined],['r2',user]]);expect(view.deviceReplies).toEqual({r2:'saved'});
+    expect(withOfflineReplies(downloaded,{replies:[]},user)).toBe(downloaded);
+    const queue=markers({replies});publishOfflineChatInbox(queue);const f=hook(()=>useCommunications(company,user));f.render();f.effects();await refreshCommunications();await flush();
+    expect(f.render().threads[0].replies.at(-1)?.id).toBe('r2');await markCommunicationThreadSeen(thread);expect(queue.markThreadSeen).toHaveBeenCalledWith(thread,'2026-01-01T10:00:00.123456+00:00');
   });
 });

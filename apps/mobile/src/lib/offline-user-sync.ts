@@ -5,7 +5,7 @@ import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbo
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -56,6 +56,20 @@ export function pendingThreadSeen(entries:readonly OutboxEntry[]):Map<string,str
   for(const entry of entries){const op=entry.operation;if(op.entityType!=='communication_read'||op.mutation.kind!=='command'||!marking(entry))continue;seen.set(op.entityId,laterTimestamp(seen.get(op.entityId),(op.mutation.payload as {seenThrough:string}).seenThrough))}
   return seen;
 }
+export type DeviceReply={id:string;threadId:string;body:string;savedAt:string;state:'saved'|'action_needed'|'posted';createdAt?:string};
+/** Crew Chat replies saved on this device: waiting, needing action, or posted (until the downloaded thread has them). */
+export function deviceReplies(entries:readonly OutboxEntry[]):DeviceReply[]{
+  const replies:DeviceReply[]=[];
+  for(const entry of entries){
+    const op=entry.operation;if(op.entityType!=='communication_reply'||op.mutation.kind!=='command')continue;
+    const {threadId,body}=op.mutation.payload as {threadId:string;body:string};const base={id:op.entityId,threadId,body,savedAt:op.provenance.savedAt};
+    if(unresolved(entry)){replies.push({...base,state:entry.status==='blocked'?'action_needed':'saved'});continue}
+    const delivery=entry.delivery as {notApplied?:unknown;record?:{createdAt?:unknown}|null}|null;
+    const createdAt=(entry.receipt?.kind==='applied'?entry.receipt.record?.createdAt:undefined)??delivery?.record?.createdAt;
+    if(entry.status==='synced'&&delivery?.notApplied===undefined&&typeof createdAt==='string')replies.push({...base,state:'posted',createdAt});
+  }
+  return replies;
+}
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
@@ -102,6 +116,12 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     async setDashboard(changes:Record<string,boolean>){
       const patch=decodeDashboardPreferenceChanges(changes);
       return enqueue('dashboard',scope.userId,'dashboard.set',{changes:patch},null);
+    },
+    /** `id` is chosen once per intended reply and reused for retries of the same save. */
+    postReply(reply:{id:string;threadId:string;body:string}){
+      const body=reply.body.trim();
+      if(!uuid.test(reply.id)||!uuid.test(reply.threadId)||!body||body.length>5000)return Promise.reject(new Error('Check the reply text.'));
+      return enqueue('communication_reply',reply.id,'reply.create',{threadId:reply.threadId,body},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));
