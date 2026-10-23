@@ -835,6 +835,21 @@ Tests: `manager-creates-offline.test.mjs` (3 embedded PostgreSQL tests on the re
 
 Client: `offlineFileUploads` (in `offline-user-sync.ts`) maps both receipts and documents to their bucket and fixed path for the shared upload-before-command step in the transport, and `createCompanyDocument`/`deviceDocuments` handle the document side. Tests: `company-documents-offline.test.mjs` (2), 1 transport test and 1 SQLite command test. 317 mobile offline tests pass.
 
+### Guarded offline edits and deletes: server (not deployed)
+
+**Decided policy (product owner, 2026-10-23):** an offline edit or delete applies **only if nobody changed the record since the device downloaded it**. Otherwise the current server value is kept, nothing changes, and the device keeps its change and says so (`notApplied: 'changed_elsewhere'`). Payroll approve/reject/paid work the same way. Vehicle deletion and invitations stay **online-only**.
+
+`20261219000100_user_sync_guarded_edits.sql` adds the commands. Every payload carries `base`: `{updatedAt}` as last seen, or, for receipts (no `updated_at` column), the seen `{name, amountCents, storagePath}`; or `{afterOperation}`, naming this user's own earlier command for the same record. `afterOperation` matches only if that command applied and the record still equals the state its receipt recorded, so a chain of offline edits on one record works without reading the server in between. `user_sync_base_matches` implements this once. An already deleted record is a no-op for deletes and `record_deleted` for edits.
+
+- `training`: `training.update` (all fields), `training.delete`.
+- `inventory_item`: `item.update` (`name` and/or `quantity`; below the units checked out returns `below_checked_out`; a taken name returns `name_taken`), `item.delete`. `inventory_return`/`return.checkin` `{userId, quantity}` checks against that borrower's checkout `updatedAt` under the item row lock that checkouts also take, then calls the existing `checkin_inventory_item`.
+- `receipt`: `receipt.update` (`name`/`amountCents`), `receipt.delete` (the device removes the stored file afterwards, as online).
+- `vehicle_note`: `note.update` (`subject`, `body`), `note.delete`.
+- `communication_reply`/`reply.delete` (managers; replies are never edited).
+- `payroll_review` (entity = form): `review.approve`, `review.reject {notes}`, `review.mark_paid`. Approve/reject need a pending form, and mark paid needs an approved one.
+
+Permission checks run first (owners/admins, or vehicle-note access), so a refused role gets `42501` rather than a misleading "deleted". The existing triggers and RLS still apply. The training, inventory item, receipt, vehicle note and reply state functions now return any record the caller may read (no creator filter) and include `updatedAt` where the table has one. The original create adapters are renamed `*_create` and called by the new dispatch functions. Tests: `guarded-edits-offline.test.mjs` (4).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -879,6 +894,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 38. `20261216000100_company_sync_snapshots.sql`
 39. `20261217000100_user_sync_manager_creates.sql`
 40. `20261218000100_user_sync_company_documents.sql`
+41. `20261219000100_user_sync_guarded_edits.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

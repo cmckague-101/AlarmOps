@@ -181,3 +181,9 @@ export async function loadCompanyDocumentSchema(db) {
   await db.exec(fleet.slice(fleet.indexOf("insert into storage.buckets"), fleet.indexOf('create policy "uploaders delete own fleet files"')));
   await db.exec(migration('20261218000100_user_sync_company_documents'));
 }
+
+/** Company document schema plus guarded offline edits and deletes. */
+export async function loadGuardedEditSchema(db) {
+  await loadCompanyDocumentSchema(db);
+  await db.exec(migration('20261219000100_user_sync_guarded_edits'));
+}
