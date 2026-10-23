@@ -32,6 +32,8 @@ export function createOfflineSyncWorker(options:{
   canAccess:()=>boolean;canRun:()=>boolean;canReadRecords?:()=>boolean;token:()=>string;now?:()=>number;timeoutMs?:number;
   /** Uploads/verifies/copies bound files before delivery. Without it, file-bearing work stays blocked on device. */
   prepareAttachments?:(entry:OutboxEntry,signal:AbortSignal)=>Promise<{kind:'ready'}|{kind:'pending'|'blocked';error:string}>;prepareTimeoutMs?:number;
+  /** A completed fleet scan is repeated only once it is this old (default: every run). */
+  fleetRefreshMs?:number;
 }){
   const {session,transport}=options;const now=options.now??Date.now;
   let state:OfflineSyncState=emptyOfflineSyncState;let stopped=false;let epoch=0;let running:Promise<void>|null=null;
@@ -154,6 +156,8 @@ export function createOfflineSyncWorker(options:{
     let restarts=0;
     try{
       if(!transport.downloadPage)throw coded('Fleet download needs pending database setup','PGRST202');
+      // A recent completed scan is current enough: skip both the rescan and per-record refreshes.
+      if(progress.complete&&options.fleetRefreshMs!==undefined&&progress.lastCompletedAt&&now()-Date.parse(progress.lastCompletedAt)<options.fleetRefreshMs)return true;
       if(progress.complete){if(!await persist(()=>session.restartFleetDownload(options.token(),progress!.generationId)))return true;progress=(await session.getFleetDownload())!;if(!progress)return true}
       emit({downloadError:null});
       for(let page=0;page<100&&ready(version)&&options.canReadRecords();page++){

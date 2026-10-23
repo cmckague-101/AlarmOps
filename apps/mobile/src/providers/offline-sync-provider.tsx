@@ -16,6 +16,8 @@ import {File} from 'expo-file-system';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
 import {createNativeSyncTransport} from '../lib/offline-sync-transport';
+import {fetchNifcIncidents} from '../lib/nifc';
+import {readFireList,saveFireList} from '../lib/offline-fire-list';
 import {createCompanySnapshotSync,type CompanySnapshotSync} from '../lib/offline-company-snapshot';
 import {publishOfflineCompanyLists} from '../lib/offline-company-lists';
 import {createNativeReceiptFiles,type OfflineReceiptFiles} from '../lib/offline-receipt-files';
@@ -91,7 +93,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const attachmentTransport=createNativeAttachmentUploadTransport(client,identity,canUploadAttachments,uri=>new File(uri).arrayBuffer());
         const uploader=createOfflineAttachmentUploader({session:scoped,vault,transport:attachmentTransport,canRun:canUploadAttachments});
         // Vehicle file slots: files are uploaded and proven before the worker sends the record change.
-        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.syncRole,token:createFleetId,
+        const created=createOfflineSyncWorker({session:scoped,transport,canAccess,canRun,canReadRecords:()=>runtime.current.syncRole,token:createFleetId,fleetRefreshMs:15*60_000,
           prepareAttachments:createSlotAttachmentPreparer({session:scoped,uploader,transport:attachmentTransport})});
         const documents=createOfflineAttachmentDocumentSync({session:scoped,uploader,transport:attachmentTransport,canRun:canUploadAttachments,discard:id=>vault.discard(id),
           settle:createSlotAttachmentSettler({session:scoped,discard:id=>vault.discard(id)})});
@@ -153,6 +155,19 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const retry=useCallback(async(id:string)=>{if(worker){await worker.retry(id);await worker.wake()}},[worker]);
   const dismiss=useCallback(async()=>{await worker?.dismiss()},[worker]);
   const downloadFleet=useCallback(async()=>{await worker?.startFleetDownload()},[worker]);
+  // Background download: vehicle/issue details are kept on the device automatically (no opt-in), once per
+  // account binding; later runs refresh them every 15 minutes. "Stop" in Saved changes & sync lasts until the next launch.
+  const autoDownloaded=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!worker||!key||offline||!foreground||!syncRole||!state.loaded||autoDownloaded.current===key)return;
+    autoDownloaded.current=key;if(!worker.getSnapshot().download)void worker.startFleetDownload();
+  },[worker,key,offline,foreground,syncRole,state.loaded]);
+  // Fire list for offline fire assignment: refreshed in the background at most hourly while online.
+  useEffect(()=>{
+    if(!key||offline||!foreground)return;const controller=new AbortController();
+    void readFireList().then(saved=>{if(saved&&Date.now()-Date.parse(saved.savedAt)<60*60_000)return;return fetchNifcIncidents(controller.signal).then(incidents=>{if(!controller.signal.aborted)saveFireList(incidents)})}).catch(()=>{/* Kept list stays; retried next time online. */});
+    return()=>controller.abort();
+  },[key,offline,foreground]);
   const stopFleetDownload=useCallback(async()=>{await worker?.stopFleetDownload()},[worker]);
   // Inbox/Crew Chat stores are module-level; hand them this account's commands and overlays.
   const userSync=binding?.key===key?binding.userSync:null;

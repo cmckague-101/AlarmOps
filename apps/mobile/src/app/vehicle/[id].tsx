@@ -518,11 +518,6 @@ export default function VehicleDetailScreen() {
         {vehicle ? (
           <>
             {pendingDetails?.[`vehicle:${vehicle.id}`]?<Text accessibilityRole="alert" style={styles.stateText}>{pendingDetails[`vehicle:${vehicle.id}`]}</Text>:null}
-            {(canManage||user?.role==='fire_fighter'||user?.role==='shop_tech')&&Platform.OS!=='web'&&!demoMode?<View>
-              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{canManage?(savedDetailBase?'Edit downloaded details':'Download / edit saved details'):(savedDetailBase?'Claim / release offline':'Download for offline claim / release')}</Text></Pressable>
-              {canManage?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={styles.retryButton}><Text style={styles.retryLabel}>Inspect device edit history (online)</Text></Pressable>:null}
-              <Text style={styles.stateText}>{savedDetailBase?(canManage?'Verified details downloaded. Details, status/assignment and vehicle files can be saved offline in this editor.':'Verified vehicle downloaded. You can claim, release or clear its fire offline.'):'Open the saved-detail editor online once to download a verified base for offline changes.'} Fires can be assigned from the last downloaded fire list.</Text>
-            </View>:null}
             <View style={styles.identity}>
               {photoUrl ? (
                 <Pressable
@@ -1036,6 +1031,13 @@ export default function VehicleDetailScreen() {
               </Text>
             ) : null}
 
+            {(canManage||user?.role==='fire_fighter'||user?.role==='shop_tech')&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
+              <Text style={styles.sectionTitle}>Offline changes</Text>
+              <Text style={styles.offlineNote}>{savedDetailBase?`Available offline${syncState.download?.lastCompletedAt?` · updated ${new Date(syncState.download.lastCompletedAt).toLocaleString()}`:''}. `:'Not on this device yet. It downloads automatically while you are online. '}{canManage?'Edit details, status, assignment, fire, files and documents here without a connection; changes sync when you reconnect.':'Claim or release this vehicle and clear its fire without a connection; changes sync when you reconnect.'}</Text>
+              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{canManage?'Edit offline':'Claim / release offline'}</Text></Pressable>
+              {canManage?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={styles.retryButton}><Text style={styles.retryLabel}>Device edit history</Text></Pressable>:null}
+            </View>:null}
+
             {canManage ? (
               <View style={styles.dangerSection}>
                 <Text style={styles.dangerTitle}>Delete vehicle</Text>
@@ -1519,6 +1521,7 @@ function createStyles(theme: FireOpsTheme) {
     locationCaptionLabel: { flex: 1, color: theme.ink, fontSize: 11, fontWeight: "700" },
     locationAttribution: { color: theme.secondary, fontSize: 9, textDecorationLine: "underline" },
     section: { gap: 13 },
+    offlineNote: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
     sectionHeading: {
       minHeight: 40,
       flexDirection: "row",
