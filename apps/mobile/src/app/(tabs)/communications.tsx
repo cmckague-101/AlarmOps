@@ -4,6 +4,9 @@ import { useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeviceSavedList } from '@/components/device-saved-list';
+import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
+import { deviceThreads, scopedUserEntries } from '@/lib/offline-user-sync';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshCommunications, useCommunications } from '@/lib/communications-store';
@@ -27,6 +30,9 @@ export default function CommunicationsScreen() {
   const { access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
   const { threads, loading, refreshing, error, downloaded } = useCommunications(member?.company.id ?? null, member?.user.id ?? null);
+  // Threads started on this device that the list does not include yet.
+  const deviceSync = useOfflineUserSync(member?.company.id, member?.user.id);
+  const savedThreads = useMemo(() => member ? deviceThreads(scopedUserEntries(deviceSync.entries, member.user.id, member.company.id)).filter((thread) => !threads.some((item) => item.id === thread.id)) : [], [deviceSync.entries, member, threads]);
   const unreadCount = member ? threads.filter((thread) => isThreadUnread(thread, member.user)).length : 0;
 
   return (
@@ -60,6 +66,7 @@ export default function CommunicationsScreen() {
 
         {loading ? <Text style={styles.stateText}>Loading company threads…</Text> : null}
         <DownloadedListNotice info={downloaded} />
+        <DeviceSavedList rows={savedThreads.map((thread) => ({ id: thread.id, title: thread.subject, state: thread.state }))} />
         {error ? (
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Communications unavailable</Text>

@@ -6,7 +6,8 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create'],feedback:['feedback.send'],notification_preferences:['preferences.set']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
+  communication_thread:['thread.create'],training:['training.create'],inventory_item:['item.create']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -81,6 +82,16 @@ export const deviceReceipts=(entries:readonly OutboxEntry[])=>deviceCreates<Rece
 export const receiptMimeTypes=['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
 /** Server path an offline receipt's file is uploaded to before its command is sent. */
 export const offlineReceiptPath=(scope:OutboxScope,receiptId:string)=>`${scope.companyId}/${scope.userId}/sync-${receiptId}`;
+export type DeviceThread=DeviceCreate<{subject:string;description:string}>;
+/** Crew Chat threads started on this device (owners/admins). */
+export const deviceThreads=(entries:readonly OutboxEntry[])=>deviceCreates<{subject:string;description:string}>(entries,'communication_thread');
+export type TrainingDetails={courseCode:string;courseTitle:string;startsAt:string;location:string;instructor:string;capacity:number;courseInformation:string};
+export type DeviceTraining=DeviceCreate<TrainingDetails>;
+/** Trainings created on this device (owners/admins). */
+export const deviceTrainings=(entries:readonly OutboxEntry[])=>deviceCreates<TrainingDetails>(entries,'training');
+export type DeviceInventoryItem=DeviceCreate<{name:string;quantity:number}>;
+/** Inventory items added on this device (owners/admins). */
+export const deviceInventoryItems=(entries:readonly OutboxEntry[])=>deviceCreates<{name:string;quantity:number}>(entries,'inventory_item');
 export type DeviceVehicleNote=DeviceCreate<{vehicleId:string;subject:string;body:string}>;
 /** Vehicle notes created on this device for one vehicle. */
 export const deviceVehicleNotes=(entries:readonly OutboxEntry[],vehicleId:string)=>deviceCreates<{vehicleId:string;subject:string;body:string}>(entries,'vehicle_note').filter(note=>note.vehicleId===vehicleId);
@@ -266,6 +277,25 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       const message=feedback.message.trim();
       if(!uuid.test(feedback.id)||!['idea','issue','other'].includes(feedback.category)||!message||message.length>5000||!['ios','android'].includes(feedback.source))return Promise.reject(new Error('Check the feedback message.'));
       return enqueue('feedback',feedback.id,'feedback.send',{category:feedback.category,message,source:feedback.source},null);
+    },
+    /** Owners/admins; `id` is chosen once per intended thread and reused for retries. */
+    createThread(thread:{id:string;subject:string;description:string}){
+      const subject=thread.subject.trim();const description=thread.description.trim();
+      if(!uuid.test(thread.id)||!subject||subject.length>160||!description||description.length>5000)return Promise.reject(new Error('Check the thread subject and message.'));
+      return enqueue('communication_thread',thread.id,'thread.create',{subject,description},null);
+    },
+    /** Owners/admins; `id` is chosen once per intended training and reused for retries. */
+    createTraining(training:{id:string}&TrainingDetails){
+      const value={courseCode:training.courseCode.trim(),courseTitle:training.courseTitle.trim(),startsAt:training.startsAt,location:training.location.trim(),instructor:training.instructor.trim(),capacity:training.capacity,courseInformation:training.courseInformation};
+      if(!uuid.test(training.id)||!value.courseCode||value.courseCode.length>80||!value.courseTitle||value.courseTitle.length>200||!value.location||value.location.length>300||!value.instructor||value.instructor.length>160
+        ||value.courseInformation.length>5000||!Number.isInteger(value.capacity)||value.capacity<1||value.capacity>10000||!serverTime.test(value.startsAt)||!Number.isFinite(Date.parse(value.startsAt)))return Promise.reject(new Error('Check the training details.'));
+      return enqueue('training',training.id,'training.create',value,null);
+    },
+    /** Owners/admins; a name already used in the company is reported when it syncs and nothing is added. */
+    createInventoryItem(item:{id:string;name:string;quantity:number}){
+      const name=item.name.trim();
+      if(!uuid.test(item.id)||!name||name.length>160||!Number.isInteger(item.quantity)||item.quantity<0||item.quantity>999999)return Promise.reject(new Error('Check the item name and quantity.'));
+      return enqueue('inventory_item',item.id,'item.create',{name,quantity:item.quantity},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

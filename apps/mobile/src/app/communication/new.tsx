@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createCommunicationThread } from '@/lib/communications-store';
+import { useIntentId, useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -13,6 +14,9 @@ export default function NewCommunicationThreadScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
+  // Offline, the thread is saved on this device and posted when connected.
+  const { offline, userSync } = useOfflineUserSync(access.value?.kind === 'member' ? access.value.company.id : null, access.value?.kind === 'member' ? access.value.user.id : null);
+  const intent = useIntentId();
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [attempted, setAttempted] = useState(false);
@@ -31,6 +35,14 @@ export default function NewCommunicationThreadScreen() {
     setSaving(true);
     setSaveError('');
     try {
+      if (offline && Platform.OS !== 'web') {
+        if (!userSync) throw new Error('Starting threads offline is unavailable on this device.');
+        const content = { subject: subject.trim(), description: description.trim() };
+        await userSync.createThread({ id: intent.for(content), ...content });
+        intent.reset();
+        router.replace('/(tabs)/communications' as never);
+        return;
+      }
       const thread = await createCommunicationThread(subject.trim(), description.trim());
       router.replace(`/communication/${encodeURIComponent(thread.id)}` as never);
     } catch (error) {

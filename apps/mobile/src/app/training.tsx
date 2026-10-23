@@ -4,6 +4,9 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeviceSavedList } from '@/components/device-saved-list';
+import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
+import { deviceTrainings, scopedUserEntries } from '@/lib/offline-user-sync';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshTrainings, useTrainings } from '@/lib/training-store';
@@ -22,6 +25,9 @@ export default function TrainingScreen() {
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
   const { trainings, loading, refreshing, error, downloaded } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  // Trainings created on this device that the list does not include yet.
+  const deviceSync = useOfflineUserSync(member?.company.id, member?.user.id);
+  const savedTrainings = useMemo(() => member ? deviceTrainings(scopedUserEntries(deviceSync.entries, member.user.id, member.company.id)).filter((training) => !trainings.some((item) => item.id === training.id)) : [], [deviceSync.entries, member, trainings]);
   const now = new Date();
   const scheduled = trainings.filter((training) => trainingStage(training, now) === 'scheduled');
   const expired = trainings.filter((training) => trainingStage(training, now) === 'expired').sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
@@ -51,6 +57,7 @@ export default function TrainingScreen() {
 
         {loading ? <Text style={styles.stateText}>Loading training schedule…</Text> : null}
         <DownloadedListNotice info={downloaded} />
+        <DeviceSavedList rows={savedTrainings.map((training) => ({ id: training.id, title: training.courseTitle, detail: `${training.courseCode} · ${new Date(training.startsAt).toLocaleString()}`, state: training.state }))} />
         {error ? (
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Training unavailable</Text><Text style={styles.errorText}>{error}</Text>

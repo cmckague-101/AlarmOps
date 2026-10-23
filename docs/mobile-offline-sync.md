@@ -821,6 +821,14 @@ While **offline**, the inventory, training, payroll, invoice, receipt, Crew Chat
 
 Tests: `offline-chat-inbox-stores.test.ts` (inbox and Crew Chat read downloads offline, live reads online) and `offline-company-snapshot.test.ts` (4: strict decoding, per-section monotonic storage across restarts and accounts, multi-section download with partial failure, watermark overlay). The outbox upgrade tests now expect v12. 313 mobile offline tests and the mobile typecheck pass.
 
+### Offline thread, training and inventory item creation (not deployed)
+
+`20261217000100_user_sync_manager_creates.sql` registers create-only user commands for owners/admins: `communication_thread`/`thread.create` `{subject, description}`, `training`/`training.create` `{courseCode, courseTitle, startsAt, location, instructor, capacity, courseInformation}` and `inventory_item`/`item.create` `{name, quantity}`. Each inserts once per device-chosen ID through the existing attribution triggers, insert policies and side effects (crew notifications), so crew are refused exactly as online. A reused ID is refused (`23505`). An inventory name already used in the company returns `notApplied: 'name_taken'` and adds nothing (*Not added — an item with this name already exists*). Edits, renames, stock changes, check-in and deletes stay online-only.
+
+Client: `createThread`, `createTraining` and `createInventoryItem` (one ID per intended record via `useIntentId`) and `deviceThreads`/`deviceTrainings`/`deviceInventoryItems`. **New thread**, **Create training** and **Add item** save on the device when offline. Editing a training or renaming an item offline says it needs a connection. The Crew Chat, Training and Inventory lists show records created on this device until the list includes them (*Saved on this device — added when connected*). An offline-started thread opens once synced.
+
+Tests: `manager-creates-offline.test.mjs` (3 embedded PostgreSQL tests on the real migrations, including the manager-only thread policy) and 1 more SQLite command test.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -863,6 +871,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 36. `20261214000100_fleet_sync_vehicle_create.sql`
 37. `20261215000100_user_sync_feedback_and_preferences.sql`
 38. `20261216000100_company_sync_snapshots.sql`
+39. `20261217000100_user_sync_manager_creates.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

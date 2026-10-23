@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeviceSavedList } from '@/components/device-saved-list';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
-import { pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
+import { deviceInventoryItems, pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
 import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { checkinInventoryItem, checkoutInventoryItem, deleteInventoryItem, refreshInventory, updateInventoryItem, useInventory } from '@/lib/inventory-store';
@@ -77,6 +78,7 @@ export default function InventoryScreen() {
       </View>
       <View style={styles.search}><AppSymbol name={{ ios: 'magnifyingglass', android: 'search' } as never} color={theme.secondary} size={18} /><TextInput accessibilityLabel="Search inventory" autoCapitalize="none" onChangeText={setQuery} placeholder="Search items" placeholderTextColor={theme.secondary} returnKeyType="search" style={styles.searchInput} value={query} />{query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear inventory search" onPress={() => setQuery('')}><AppSymbol name={{ ios: 'xmark.circle.fill', android: 'cancel' } as never} color={theme.secondary} size={18} /></Pressable> : null}</View>
       <DownloadedListNotice info={downloaded} />
+      <DeviceSavedList rows={member ? deviceInventoryItems(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id)).filter((item) => !items.some((entry) => entry.id === item.id)).map((item) => ({ id: item.id, title: item.name, detail: `Quantity ${item.quantity}`, state: item.state })) : []} />
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Inventory unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshInventory} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}

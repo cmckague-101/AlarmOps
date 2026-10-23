@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createInventoryItem, updateInventoryItem, useInventory } from '@/lib/inventory-store';
+import { useIntentId, useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -14,6 +15,9 @@ export default function InventoryFormScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
+  // Offline, a new item is saved on this device and added when connected; renaming needs a connection.
+  const { offline, userSync } = useOfflineUserSync(member?.company.id, member?.user.id);
+  const intent = useIntentId();
   const { items, loading } = useInventory(member?.user.role === 'owner' || member?.user.role === 'admin' ? member.company.id : null);
   const item = id ? items.find((entry) => entry.id === id) : undefined;
   const [name, setName] = useState<string | null>(null);
@@ -39,6 +43,15 @@ export default function InventoryFormScreen() {
     if (Object.keys(nextErrors).length) return;
     setSaving(true);
     try {
+      if (offline && Platform.OS !== 'web') {
+        if (item) throw new Error('Renaming items needs a connection.');
+        if (!userSync) throw new Error('Adding items offline is unavailable on this device.');
+        const content = { name: cleanName, quantity: count };
+        await userSync.createInventoryItem({ id: intent.for(content), ...content });
+        intent.reset();
+        router.back();
+        return;
+      }
       if (item) await updateInventoryItem(item, { name: cleanName });
       else await createInventoryItem(cleanName, count);
       router.back();
