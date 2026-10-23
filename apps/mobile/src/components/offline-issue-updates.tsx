@@ -7,7 +7,8 @@ import type {OfflineDetailEditor} from '../lib/offline-detail-editor';
 import {createFleetId} from '../lib/fleet-store';
 import {useFireOpsTheme} from '../theme';
 
-/** Notes are appended (never conflict); resolve/reopen is a separate change that may need review. */
+/** Notes are appended (never conflict). Managers resolve/reopen as a separate change that may need review;
+ * crew (`notesOnly`) resolve/reopen together with a note, which never conflicts. */
 export function OfflineIssueUpdates({editor,entityId,record,user,notesOnly=false,onSaved}:{editor:OfflineDetailEditor;entityId:string;record:SyncRecord;user:{id:string;name:string};notesOnly?:boolean;onSaved?:()=>void}){
   const theme=useFireOpsTheme();const live=useRef(true);const current=useRef(editor);current.current=editor;
   useFocusEffect(useCallback(()=>{live.current=true;return()=>{live.current=false}},[]));
@@ -24,15 +25,18 @@ export function OfflineIssueUpdates({editor,entityId,record,user,notesOnly=false
     // Entry identity and time are fixed when first built, so a retry resends the same note.
     void run('Update',()=>actions.start('note',draft=>({values:{updates:[{id:createFleetId(),text:note,createdBy:user.name,createdById:user.id,createdAt:new Date().toISOString()},...((draft.record.updates as SyncRecord[]|undefined)??[])]}})),()=>setText(''))};
   const resolved=record.status==='Resolved';
+  const toggleWithNote=()=>{const note=text.trim();if(!note){setError(resolved?'Enter a note to reopen this issue.':'Enter a note to resolve this issue.');return}
+    void run(resolved?'Reopened with note':'Resolved with note',()=>actions.start('status-note',(draft):{values:SyncRecord;extras?:{remove:string[]}}=>{const updates=[{id:createFleetId(),text:note,createdBy:user.name,createdById:user.id,createdAt:new Date().toISOString()},...((draft.record.updates as SyncRecord[]|undefined)??[])];
+      return resolved?{values:{status:'Open',updates},extras:{remove:['resolvedAt']}}:{values:{status:'Resolved',resolvedAt:new Date().toISOString(),updates}}}),()=>setText(''))};
   const toggle=()=>void run(resolved?'Reopened':'Resolved',()=>actions.start('status',():{values:SyncRecord;extras?:{remove:string[]}}=>resolved?{values:{status:'Open'},extras:{remove:['resolvedAt']}}:{values:{status:'Resolved',resolvedAt:new Date().toISOString()}}));
   const body={color:theme.ink,lineHeight:23};const meta={color:theme.secondary,lineHeight:21};
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" disabled={disabled||busy} onPress={action} style={{minHeight:44,paddingHorizontal:12,paddingVertical:10,borderWidth:1,borderColor:theme.divider,borderRadius:10,justifyContent:'center',opacity:disabled||busy?0.5:1}}><Text style={body}>{label}</Text></Pressable>;
   return <View style={{gap:12,borderWidth:1,borderColor:theme.divider,borderRadius:14,padding:16}}>
     <Text accessibilityRole="header" style={[body,{fontSize:19,fontWeight:'800'}]}>Updates & status</Text>
-    <Text style={meta}>Downloaded status: {String(record.status??'Open')}. Notes are added to the shared list when synced and never replace other notes. Resolve/reopen is checked against the current server state and may need owner/admin review.</Text>
+    <Text style={meta}>Downloaded status: {String(record.status??'Open')}. Notes are added to the shared list when synced and never replace other notes. {notesOnly?'Resolve or reopen saves together with your note; if the issue already has that status, only the note is added.':'Resolve/reopen is checked against the current server state and may need owner/admin review.'}</Text>
     {failed?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Retry saving this change',()=>void run(saved||'Change',()=>actions.retry(),()=>setText('')))}{button('Cancel this change',()=>{actions.cancel();setFailed(false);setError('')})}</View>:<>
       <TextInput accessibilityLabel="Issue update" editable={!busy} value={text} onChangeText={setText} maxLength={2000} multiline textAlignVertical="top" placeholder="Add an update" placeholderTextColor={theme.secondary} style={[body,{borderWidth:1,borderColor:theme.divider,borderRadius:10,minHeight:96,padding:12}]}/>
-      <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Save update on device',addNote,!text.trim())}{notesOnly?null:button(resolved?'Reopen issue':'Resolve issue',toggle)}</View>
+      <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Save update on device',addNote,!text.trim())}{notesOnly?button(resolved?'Reopen with this note':'Resolve with this note',toggleWithNote,!text.trim()):button(resolved?'Reopen issue':'Resolve issue',toggle)}</View>
     </>}
     {saved&&!failed?<Text accessibilityRole="alert" style={body}>{saved} — saved on device, waiting to sync.</Text>:null}
     {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}

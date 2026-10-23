@@ -35,6 +35,17 @@ export function appendListEntries(entity:FleetSyncEntity,baseRecord:SyncRecord,c
 export const appendIssueUpdates=(baseRecord:SyncRecord,currentRecord:SyncRecord,proposed:unknown)=>appendListEntries('issue',baseRecord,currentRecord,proposed);
 export function mergeFleetSyncDetail(entity:FleetSyncEntity,base:SyncRecord,current:SyncRecord|null,patch:SyncPatch):SyncMergeResult{
   const {field}=fleetSyncAppendFields[entity];
+  // Resolve/reopen with one note (server 20261213000100): if the issue already has
+  // the proposed status, the current status/resolution is kept and only the note is added.
+  if(entity==='issue'&&patch.updates&&patch.status){
+    if(Object.keys(patch).some(key=>!['status','resolvedAt','updates'].includes(key)))throw new Error('A status change can only carry a note.');
+    if(!patch.updates.present||addedIssueUpdates(base.updates,patch.updates.value).length!==1)throw new Error('A status change carries exactly one new note.');
+    if(current===null)return mergeSyncUpdate(base,current,patch);
+    const {updates,...statusPatch}=patch;
+    const status=patch.status.present&&same(current.status,patch.status.value)?{kind:'merged',record:current,changedFields:[]} as SyncMergeResult:mergeSyncUpdate(base,current,statusPatch,{fieldGroups:fleetSyncFieldGroups.issue});
+    if(status.kind!=='merged')return status;
+    return {kind:'merged',record:{...status.record,updates:appendListEntries('issue',base,status.record,updates.value) as never},changedFields:[...status.changedFields,'updates']} as SyncMergeResult;
+  }
   if(Object.prototype.hasOwnProperty.call(patch,field)){
     if(Object.keys(patch).length!==1)throw new Error(`${entity==='issue'?'Issue updates':'Inspections'} are saved separately from other changes.`);
     const slot=patch[field];if(!slot.present)throw new Error('Append-only lists cannot be removed.');

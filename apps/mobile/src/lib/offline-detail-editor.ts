@@ -22,7 +22,12 @@ function validateSyncFile(value:unknown,attachmentIds:readonly string[]){
 export function validateOfflineDetailValues(entityType:DetailTarget['entityType'],values:SyncRecord,extras:DetailSaveExtras={},context:{userId?:string;base?:SyncRecord}={}){
   createSyncPatch({},values);
   for(const field of extras.remove??[])if(!removable[entityType].includes(field)||field in values)throw new Error('This field cannot be cleared here.');
-  if('updates' in values&&(Object.keys(values).length!==1||(extras.remove??[]).length))throw new Error('Issue updates are saved separately from other issue changes.');
+  // Issue notes travel alone, or exactly one note with a resolve/reopen (status, resolvedAt).
+  if('updates' in values){
+    const others=Object.keys(values).filter(field=>field!=='updates');const removed=extras.remove??[];
+    if(others.some(field=>!['status','resolvedAt'].includes(field))||removed.some(field=>field!=='resolvedAt')||((others.length||removed.length)&&!('status' in values)))throw new Error('Issue updates are saved separately from other issue changes.');
+    if('status' in values&&addedIssueUpdates(context.base?.updates,values.updates).length!==1)throw new Error('Resolve or reopen with exactly one note.');
+  }
   if('inspections' in values&&(Object.keys(values).length!==1||(extras.remove??[]).length))throw new Error('Inspections are saved separately from other vehicle changes.');
   for(const [field,value] of Object.entries(values)){
     if(!fields[entityType].includes(field))throw new Error('This field is not enabled for offline editing.');
@@ -160,6 +165,7 @@ export function createOfflineDetailEditor(options:{
         const problem=fleetSyncRecordProblem(base.entityType,base.record,projected);if(problem)throw new Error(problem);
         const restricted=options.restrictFields?.()??null;
         if(restricted&&Object.keys(patch).some(field=>!restricted[base.entityType].includes(field)))throw new Error('Your role can only claim/release vehicles or add notes to issues you reported offline.');
+        if(restricted&&base.entityType==='issue'&&(patch.status||patch.resolvedAt)&&!patch.updates)throw new Error('Add a note to resolve or reopen this issue.');
         if(restricted&&typeof projected.assignedTo==='string'&&projected.assignedTo!==base.record.assignedTo&&projected.assignedTo!==options.session.scope.userId)throw new Error('You can only claim vehicles for yourself.');
         owned.values=clone(values);owned.extras=saved;
         owned.operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:base.entityType,entityId:base.entityId,

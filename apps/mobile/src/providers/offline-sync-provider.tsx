@@ -103,7 +103,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         const publish=()=>{const snapshot=created.getSnapshot();model.publish({scope:identity,records:visibleRecords(snapshot.records),entries:snapshot.entries,offline:isOffline(),loaded:snapshot.loaded})};
         const unpublish=created.subscribe(publish);
         const editor=createOfflineDetailEditor({session:scoped,readRecord:transport.readRecord,reserve:(target,owner)=>gate.acquire([target],owner),downloaded:()=>created.refresh(),canEdit:()=>canAccess()&&runtime.current.syncRole&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),offline:isOffline,id:createFleetId,
-          restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:runtime.current.shopTech?['updates','create']:['updates']},
+          restrictFields:()=>runtime.current.manager?null:{vehicle:runtime.current.shopTech?['status','assignedTo','assignedFire','inspections']:['status','assignedTo','assignedFire'],issue:runtime.current.shopTech?['updates','status','resolvedAt','create']:['updates','status','resolvedAt']},
           changed:async()=>{await created.refresh();void created.wake()}});
         // Tasks, own availability and dashboard layout: any current member, same scoped session.
         const userSync=createOfflineUserSync({session:scoped,id:createFleetId,offline:isOffline,canEdit:()=>canAccess()&&runtime.current.foreground&&!offlineSyncSessionPaused(identity.userId),changed:async()=>{await created.refresh();void created.wake()},receiptFiles});

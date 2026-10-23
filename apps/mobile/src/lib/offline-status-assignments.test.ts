@@ -17,7 +17,7 @@ async function setup(restricted=false){
   const db:OutboxDatabase={...tx,async withExclusiveTransactionAsync(fn){sqlite.exec('BEGIN IMMEDIATE');try{await fn(tx);sqlite.exec('COMMIT')}catch(error){sqlite.exec('ROLLBACK');throw error}}};
   const store=await createOfflineOutbox(db);const session=store.activate(scope);
   await session.putRecord('vehicle',vehicle,{revision:'1',record:baseVehicle});await session.putRecord('issue',issue,{revision:'1',record:baseIssue});
-  const editor=createOfflineDetailEditor({session,readRecord:vi.fn(),canEdit:()=>true,offline:()=>true,id:nextId,now:()=>date,changed:async()=>{},restrictFields:()=>restricted?{vehicle:['status','assignedTo','assignedFire'],issue:['updates']}:null});cleanup.push(()=>editor.dispose());
+  const editor=createOfflineDetailEditor({session,readRecord:vi.fn(),canEdit:()=>true,offline:()=>true,id:nextId,now:()=>date,changed:async()=>{},restrictFields:()=>restricted?{vehicle:['status','assignedTo','assignedFire'],issue:['updates','status','resolvedAt']}:null});cleanup.push(()=>editor.dispose());
   const transport={deliver:vi.fn<OfflineSyncTransport['deliver']>(),canonical:vi.fn(),outcome:vi.fn().mockResolvedValue(null),readRecord:vi.fn()};
   let token=0;const worker=createOfflineSyncWorker({session,transport,canAccess:()=>true,canRun:()=>true,token:()=>`attempt-${++token}`,now:()=>0,timeoutMs:1000});cleanup.push(()=>worker.stop());
   return {session,editor,transport,worker};
@@ -34,7 +34,9 @@ describe('offline status, assignment and issue updates (actual SQLite)',()=>{
   });
   it('appends issue notes separately and only as the current user',async()=>{
     const f=await setup();const draft=await f.editor.prepare({entityType:'issue',entityId:issue});const mine=note('Checked hose');
-    await expect(f.editor.save(draft,{updates:[mine],status:'Resolved',resolvedAt:date})).rejects.toThrow(/separately/);
+    await expect(f.editor.save(draft,{updates:[mine],title:'x'})).rejects.toThrow(/separately/);
+    await expect(f.editor.save(draft,{updates:[mine],resolvedAt:date})).rejects.toThrow(/separately/);
+    await expect(f.editor.save(draft,{updates:[note('a'),note('b')],status:'Resolved',resolvedAt:date})).rejects.toThrow(/exactly one note/);
     await expect(f.editor.save(draft,{updates:[note('x',{createdById:crew})]})).rejects.toThrow(/Invalid issue update/);
     await expect(f.editor.save(draft,{updates:[]})).rejects.toThrow();
     const entry=await f.editor.save(draft,{updates:[mine]});expect(entry.operation.mutation.kind==='update'&&entry.operation.mutation.patch).toEqual({updates:{present:true,value:[mine]}});
@@ -68,8 +70,12 @@ describe('crew offline actions (actual SQLite)',()=>{
     await expect(f.editor.save(draft,{status:'Assigned',assignedTo:crew})).rejects.toThrow(/for yourself/);
     expect((await f.editor.save(draft,{status:'Assigned',assignedTo:user})).operation.mutation.kind).toBe('update');
     const issueDraft=await f.editor.prepare({entityType:'issue',entityId:issue});
-    await expect(f.editor.save(issueDraft,{status:'Resolved',resolvedAt:date})).rejects.toThrow(/Your role/);
+    await expect(f.editor.save(issueDraft,{status:'Resolved',resolvedAt:date})).rejects.toThrow(/Add a note/);
+    await expect(f.editor.save(issueDraft,{title:'x',updates:[note('Crew note')]})).rejects.toThrow();
     expect((await f.editor.save(issueDraft,{updates:[note('Crew note')]})).operation.mutation.kind).toBe('update');
+    const resolveDraft=await f.editor.prepare({entityType:'issue',entityId:issue});const fixed=note('Fixed it');
+    const resolved=await f.editor.save(resolveDraft,{status:'Resolved',resolvedAt:date,updates:[fixed,...(resolveDraft.record.updates as SyncRecord[])]});
+    expect(resolved.operation.mutation.kind==='update'&&Object.keys(resolved.operation.mutation.patch).sort()).toEqual(['resolvedAt','status','updates']);
   });
   it('completes a vehicle-only inventory without treating cached issues as missing',async()=>{
     const f=await setup(true);await f.session.restartFleetDownload('crew-plan');const expected=(await f.session.getFleetDownload())!;

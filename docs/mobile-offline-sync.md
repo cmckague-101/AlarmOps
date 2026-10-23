@@ -507,7 +507,7 @@ The vehicle saved-detail editor adds **Status & assignment**: Mark Ready / Mark 
 Submit/read access now goes through replaceable hooks added in place to the undeployed migrations (`fleet_sync_submitter_allowed`, `fleet_sync_reader_allowed`, `validate_fleet_sync_submitter_patch`; defaults stay owner/admin). The record read no longer takes a row lock (the record-group advisory lock already orders it), so readers who may not update a row can still read it. `20261123000100_fleet_sync_member_actions.sql` widens them for **fire_fighter and shop_tech** with a strict field allowlist:
 
 - Vehicles: only `status`/`assignedTo`/`assignedFire`. The existing role trigger still decides each transition against the current row (claim a Ready unassigned vehicle, release one's own, change/clear one's own fire); anything else fails with `42501` and writes nothing.
-- Issues: only append-only `updates`, and the member issue trigger still requires the reporter's own issue and exactly one own note per write. Crew resolve/reopen stays online-only (the trigger requires a note in the same write, which this adapter keeps separate).
+- Issues: only append-only `updates`, and the member issue trigger still requires the reporter's own issue and exactly one own note per write. Crew resolve/reopen was online-only here; `20261213000100` adds it as a status change carrying one note (see below).
 - Crew can read verified vehicles and the issues they reported; their inventory pages cover **vehicles only** (hidden issues are never reported as deleted or inconsistent). Conflict review, history inspection and approval remain owner/admin only; a crew member's overlapping claim becomes a review candidate and they read their outcome through the existing submitter endpoint. Activities from crew changes are attributed to them.
 
 Tests: `supabase/tests/fleet-sync-member-actions.test.mjs` (read scope, claim/fire-clear/release, refused transitions with no partial writes, field allowlist, own-issue single notes with concurrent notes kept, review candidate + outcome). Client wiring follows.
@@ -785,6 +785,14 @@ Known gaps: kept files are not cleaned up if their outbox entry is discarded, an
 
 Tests: 1 transport test (upload before command, path and content type, already-exists tolerated, refused receipt keeps its file, upload failure stops the command, no re-upload without a device copy) and 1 SQLite-backed command test (validation before keeping a file, payload, overlay, mismatch label). Mobile typecheck passes.
 
+### Crew resolve/reopen with a note (not deployed)
+
+`20261213000100_fleet_sync_issue_status_with_note.sql` lets an issue change carry `status` (and `resolvedAt`) **together with exactly one new own note**, which is what the member issue trigger already requires of crew online. The merge applies the status group, then appends the note. If the issue already has the proposed status (someone resolved/reopened it meanwhile), the current status and resolution time are kept and only the note is added, so the change never becomes a conflict. Crew may send status/resolvedAt only together with a note; the role trigger still limits them to issues they reported. Managers may use the same combined change. The function bodies are otherwise identical to `20261124000100`.
+
+Client: `mergeFleetSyncDetail` (shared domain) mirrors this for local rebase; the editor accepts notes alone or one note with status/resolvedAt (removal of `resolvedAt` when reopening), crew allowlists include `status`/`resolvedAt`, and a crew status change without a note is refused locally. Crew issue screens show **Resolve with this note** / **Reopen with this note** (enabled once a note is typed). Manager screens are unchanged.
+
+Tests: `fleet-sync-issue-status-notes.test.mjs` (4: resolve and reopen with notes, existing resolution kept with no conflict, refusals with nothing written, manager combined change); `fleet-sync-fields.test.ts` and `offline-status-assignments.test.ts` updated. 306 mobile offline tests, domain field tests and the related fleet database suites pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -823,6 +831,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 32. `20261210000100_user_sync_invoice_forms.sql`
 33. `20261211000100_fix_storage_file_retention_policies.sql` (independent bug fix; safe to apply early)
 34. `20261212000100_user_sync_receipts.sql`
+35. `20261213000100_fleet_sync_issue_status_with_note.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

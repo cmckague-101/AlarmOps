@@ -17,7 +17,14 @@ describe('fleet sync field policy (client mirror of the server adapter)',()=>{
     expect(mergeFleetSyncDetail('issue',base,current,{updates:{present:true,value:[note('c'),note('a')]}})).toMatchObject({kind:'merged',record:{updates:[note('c'),note('b'),note('a')]}});
     expect(mergeFleetSyncDetail('issue',base,{...current,updates:[note('c'),note('b'),note('a')]},{updates:{present:true,value:[note('c'),note('a')]}})).toMatchObject({record:{updates:[note('c'),note('b'),note('a')]}});
     expect(()=>addedIssueUpdates([note('a')],[note('a','edited')])).toThrow();expect(()=>addedIssueUpdates([note('a')],[])).toThrow();
-    expect(()=>mergeFleetSyncDetail('issue',base,current,{updates:{present:true,value:[note('c'),note('a')]},status:{present:true,value:'Resolved'}})).toThrow(/separately/);
+    expect(()=>mergeFleetSyncDetail('issue',base,current,{updates:{present:true,value:[note('c'),note('a')]},title:{present:true,value:'x'}})).toThrow(/separately/);
+  });
+  it('resolves/reopens with exactly one note, keeping an existing resolution instead of conflicting',()=>{
+    const base={id:'i',status:'Open',updates:[note('a')]};const resolve={status:{present:true,value:'Resolved'},resolvedAt:{present:true,value:'T2'},updates:{present:true,value:[note('c'),note('a')]}} as const;
+    expect(mergeFleetSyncDetail('issue',base,{...base,updates:[note('b'),note('a')]},resolve)).toMatchObject({kind:'merged',record:{status:'Resolved',resolvedAt:'T2',updates:[note('c'),note('b'),note('a')]},changedFields:['resolvedAt','status','updates']});
+    expect(mergeFleetSyncDetail('issue',base,{...base,status:'Resolved',resolvedAt:'T1'},resolve)).toMatchObject({kind:'merged',record:{status:'Resolved',resolvedAt:'T1',updates:[note('c'),note('a')]},changedFields:['updates']});
+    expect(()=>mergeFleetSyncDetail('issue',base,base,{...resolve,updates:{present:true,value:[note('d'),note('c'),note('a')]}})).toThrow(/exactly one/);
+    expect(()=>mergeFleetSyncDetail('issue',base,base,{...resolve,title:{present:true,value:'x'}})).toThrow(/only carry a note/);
   });
   it('appends exactly one inspection onto the current list',()=>{
     const base={id:'v',inspections:[note('a')]};const current={id:'v',inspections:[note('b'),note('a')]};
