@@ -4,8 +4,10 @@ import { useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
+import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { checkinInventoryItem, checkoutInventoryItem, deleteInventoryItem, refreshInventory, updateInventoryItem, useInventory } from '@/lib/inventory-store';
 import { useSession } from '@/providers/session-provider';
@@ -17,7 +19,7 @@ export default function InventoryScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { items, loading, refreshing, error } = useInventory(member?.company.id ?? null);
+  const { items, loading, refreshing, error, downloaded } = useInventory(member?.company.id ?? null);
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
   const [actionError, setActionError] = useState('');
@@ -25,7 +27,7 @@ export default function InventoryScreen() {
   const offlineSync = useOptionalOfflineSync();
   const offline = !!offlineSync?.offline;
   const userSync = offlineSync?.userSync && offlineSync.userSync.scope.companyId === member?.company.id && offlineSync.userSync.scope.userId === member?.user.id ? offlineSync.userSync : null;
-  const saved = useMemo(() => member ? pendingCheckouts(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id)) : new Map<string, number>(), [offlineSync?.state.entries, member]);
+  const saved = useMemo(() => member ? pendingCheckouts(entriesAfterDownload(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id), downloaded?.receiptWatermark)) : new Map<string, number>(), [offlineSync?.state.entries, member, downloaded?.receiptWatermark]);
   const checkOut = async (item: InventoryItem, quantity: number) => {
     if (!offline) return checkoutInventoryItem(item, quantity);
     if (!userSync) throw new Error('Checking out offline is unavailable on this device.');
@@ -74,6 +76,7 @@ export default function InventoryScreen() {
         {canManage && <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>}
       </View>
       <View style={styles.search}><AppSymbol name={{ ios: 'magnifyingglass', android: 'search' } as never} color={theme.secondary} size={18} /><TextInput accessibilityLabel="Search inventory" autoCapitalize="none" onChangeText={setQuery} placeholder="Search items" placeholderTextColor={theme.secondary} returnKeyType="search" style={styles.searchInput} value={query} />{query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear inventory search" onPress={() => setQuery('')}><AppSymbol name={{ ios: 'xmark.circle.fill', android: 'cancel' } as never} color={theme.secondary} size={18} /></Pressable> : null}</View>
+      <DownloadedListNotice info={downloaded} />
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Inventory unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshInventory} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}

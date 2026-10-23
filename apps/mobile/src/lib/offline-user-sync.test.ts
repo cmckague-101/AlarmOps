@@ -216,7 +216,7 @@ describe('offline user-owned commands (actual SQLite)',()=>{
   });
   it('queues own notification preferences per key and feedback once per ID',async()=>{
     const f=await setup();
-    for(const changes of [{},{vehicleAssigned:false},{pushEnabled:'no' as never}])await expect(f.sync.setNotificationPreferences(changes)).rejects.toThrow();
+    for(const changes of [{},{vehicleAssigned:false},{pushEnabled:'no'}] as Record<string,unknown>[])await expect(f.sync.setNotificationPreferences(changes as Record<string,boolean>)).rejects.toThrow();
     const first=await f.sync.setNotificationPreferences({pushEnabled:false});const second=await f.sync.setNotificationPreferences({trainingCreated:false,pushEnabled:true});
     expect(first.operation.entityId).toBe(user);expect(second.operation.dependsOn).toContain(first.operation.operationId);
     expect(pendingNotificationPreferences(await f.session.list())).toEqual({pushEnabled:true,trainingCreated:false});

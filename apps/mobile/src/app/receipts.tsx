@@ -3,6 +3,7 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { FilterSelect, type FilterSelectOption } from '@/components/filter-select';
 import { deleteReceipt, openReceipt, refreshReceipts, useReceipts, type CompanyReceipt } from '@/lib/receipts-store';
@@ -42,7 +43,7 @@ export default function ReceiptsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { receipts, loading, refreshing, error } = useReceipts(member?.company.id ?? null);
+  const { receipts, loading, refreshing, error, downloaded } = useReceipts(member?.company.id ?? null);
   const [timespan, setTimespan] = useState<Timespan>('this-year');
   const [crewId, setCrewId] = useState('all');
   const [busyId, setBusyId] = useState('');
@@ -113,6 +114,7 @@ export default function ReceiptsScreen() {
       {isOwner ? <View style={styles.filterGroup}><Text style={styles.filterLabel}>Crew member</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><FilterChip label="All crew" selected={crewId === 'all'} onPress={() => setCrewId('all')} styles={styles} />{crew.map((person) => <FilterChip key={person.id} label={person.name} selected={crewId === person.id} onPress={() => setCrewId(person.id)} styles={styles} />)}</ScrollView></View> : null}
       <View style={styles.filterGroup}><Text style={styles.filterLabel}>Timespan</Text><FilterSelect accessibilityLabel="Receipt timespan" onChange={setTimespan} options={timespanOptions} value={timespan} /></View>
 
+      <DownloadedListNotice info={downloaded} />
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Receipts unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshReceipts} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {saved.length ? <View style={styles.list}>{saved.map((receipt, index) => <View key={receipt.id} style={[styles.row, index > 0 && styles.rowBorder]}><View style={styles.rowMain}><View style={styles.receiptIcon}><AppSymbol name={{ ios: 'icloud.and.arrow.up', android: 'cloud_upload' } as never} color={theme.secondary} size={21} /></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{receipt.name}</Text><Text numberOfLines={2} style={styles.rowMeta}>{receipt.state === 'action_needed' ? 'Saved on this device — needs attention in Saved changes & sync' : receipt.state === 'posted' ? 'Uploaded — refreshing list' : 'Saved on this device — uploads when connected'}</Text><Text numberOfLines={1} style={styles.fileName}>{receipt.fileName}</Text></View><View style={styles.rowEnd}><Text style={styles.amount}>{formatMoney(receipt.amountCents)}</Text></View></View></View>)}</View> : null}

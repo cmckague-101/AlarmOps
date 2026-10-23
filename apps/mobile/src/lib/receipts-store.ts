@@ -5,6 +5,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { LocalFleetFile } from '@/lib/fleet-files';
 import { createFleetId } from '@/lib/fleet-store';
 import { supabase } from '@/lib/supabase';
+import { isOffline } from '@/providers/network-provider';
+import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 
 const bucket = 'receipt-files';
 const maxFileSize = 10 * 1024 * 1024;
@@ -36,7 +38,8 @@ type ReceiptRow = {
   created_at: string;
 };
 
-type Snapshot = { receipts: CompanyReceipt[]; loading: boolean; refreshing: boolean; error: string | null };
+/** `downloaded`: shown from the verified offline download, not a live read. */
+type Snapshot = { receipts: CompanyReceipt[]; loading: boolean; refreshing: boolean; error: string | null; downloaded?: DownloadedListInfo | null };
 
 let snapshot: Snapshot = { receipts: [], loading: true, refreshing: false, error: null };
 let activeCompanyId: string | null | undefined;
@@ -78,6 +81,8 @@ export function effectiveMimeType(file: LocalFleetFile) {
   return 'image/jpeg';
 }
 
+subscribeOfflineCompanyLists(() => { if (isOffline() && activeCompanyId) void refreshReceipts(); });
+
 export function refreshReceipts() {
   if (request) return request;
   const version = selectionVersion;
@@ -93,14 +98,16 @@ export function refreshReceipts() {
       return;
     }
     try {
-      const { data, error } = await supabase
+      // Offline, the verified download replaces cached HTTP reads.
+      const downloaded = isOffline() ? downloadedCompanyList('receipts', companyId) : null;
+      const { data, error } = downloaded ? { data: downloaded.tables.company_receipts, error: null } : await supabase
         .from('company_receipts')
         .select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
       if (version !== selectionVersion) return;
       if (error) emit({ ...snapshot, loading: false, refreshing: false, error: `Receipts could not load. ${error.message}` });
-      else emit({ receipts: ((data ?? []) as ReceiptRow[]).map(fromRow), loading: false, refreshing: false, error: null });
+      else emit({ receipts: ((data ?? []) as ReceiptRow[]).map(fromRow), loading: false, refreshing: false, error: null, downloaded: downloaded?.info ?? null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       emit({ ...snapshot, loading: false, refreshing: false, error: `Receipts could not load. ${loadError instanceof Error ? loadError.message : 'Network request failed.'}` });

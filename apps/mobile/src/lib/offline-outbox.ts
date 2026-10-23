@@ -3,6 +3,7 @@ import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type Of
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
 import {decodeUserSnapshot,newerUserSnapshot,type UserSnapshot} from './offline-user-snapshot';
+import {decodeCompanySnapshot,newerCompanySnapshot,type CompanySnapshot,type CompanySnapshotSection} from './offline-company-snapshot';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
 export type OutboxSqlValue = string | number | null;
@@ -245,7 +246,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
       await tx.execAsync(`CREATE TABLE offline_user_snapshots(user_id TEXT NOT NULL,company_id TEXT NOT NULL,snapshot_json TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(user_id,company_id));
         PRAGMA user_version=11;`);current=11;
     }
-    if (current !== 11) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===11){
+      // Latest verified company-list download per account, company and section.
+      await tx.execAsync(`CREATE TABLE offline_company_snapshots(user_id TEXT NOT NULL,company_id TEXT NOT NULL,section TEXT NOT NULL,snapshot_json TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(user_id,company_id,section));
+        PRAGMA user_version=12;`);current=12;
+    }
+    if (current !== 12) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -462,6 +468,21 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             const saved=row?decodeUserSnapshot(JSON.parse(row.snapshot_json),identity):null;
             if(row&&saved&&!newerUserSnapshot(saved,next))return {snapshot:saved,verifiedAt:row.verified_at};
             await tx.runAsync('INSERT OR REPLACE INTO offline_user_snapshots VALUES(?,?,?,?)',...ids,JSON.stringify(next),verifiedAt);
+            return {snapshot:next,verifiedAt};
+          });
+        },
+        getCompanySnapshot(section:CompanySnapshotSection):Promise<{snapshot:CompanySnapshot;verifiedAt:string}|null>{return read(async()=>{
+          const row=await db.getFirstAsync<{snapshot_json:string;verified_at:string}>('SELECT snapshot_json,verified_at FROM offline_company_snapshots WHERE user_id=? AND company_id=? AND section=?',...ids,section);
+          return row?{snapshot:decodeCompanySnapshot(JSON.parse(row.snapshot_json),identity,section),verifiedAt:row.verified_at}:null;
+        })},
+        /** Never replaces a saved section with an older one; returns what is stored afterwards. */
+        putCompanySnapshot(section:CompanySnapshotSection,value:unknown,verifiedAt:string):Promise<{snapshot:CompanySnapshot;verifiedAt:string}>{
+          let next:CompanySnapshot;try{next=decodeCompanySnapshot(value,identity,section)}catch(error){return Promise.reject(error)}
+          return write(async tx=>{
+            const row=await tx.getFirstAsync<{snapshot_json:string;verified_at:string}>('SELECT snapshot_json,verified_at FROM offline_company_snapshots WHERE user_id=? AND company_id=? AND section=?',...ids,section);
+            const saved=row?decodeCompanySnapshot(JSON.parse(row.snapshot_json),identity,section):null;
+            if(row&&saved&&!newerCompanySnapshot(saved,next))return {snapshot:saved,verifiedAt:row.verified_at};
+            await tx.runAsync('INSERT OR REPLACE INTO offline_company_snapshots VALUES(?,?,?,?,?)',...ids,section,JSON.stringify(next),verifiedAt);
             return {snapshot:next,verifiedAt};
           });
         },

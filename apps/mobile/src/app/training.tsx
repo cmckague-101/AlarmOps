@@ -4,6 +4,7 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshTrainings, useTrainings } from '@/lib/training-store';
 import { useSession } from '@/providers/session-provider';
@@ -20,7 +21,7 @@ export default function TrainingScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { trainings, loading, refreshing, error } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const { trainings, loading, refreshing, error, downloaded } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
   const now = new Date();
   const scheduled = trainings.filter((training) => trainingStage(training, now) === 'scheduled');
   const expired = trainings.filter((training) => trainingStage(training, now) === 'expired').sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
@@ -49,6 +50,7 @@ export default function TrainingScreen() {
         </View>
 
         {loading ? <Text style={styles.stateText}>Loading training schedule…</Text> : null}
+        <DownloadedListNotice info={downloaded} />
         {error ? (
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Training unavailable</Text><Text style={styles.errorText}>{error}</Text>

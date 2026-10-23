@@ -16,6 +16,8 @@ import {File} from 'expo-file-system';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
 import {createNativeSyncTransport} from '../lib/offline-sync-transport';
+import {createCompanySnapshotSync,type CompanySnapshotSync} from '../lib/offline-company-snapshot';
+import {publishOfflineCompanyLists} from '../lib/offline-company-lists';
 import {createNativeReceiptFiles,type OfflineReceiptFiles} from '../lib/offline-receipt-files';
 import {createFleetId} from '../lib/fleet-store';
 import {offlineSyncSessionPaused,registerOfflineSyncSession} from '../lib/offline-sync-session';
@@ -33,6 +35,7 @@ const emptySubscribe=()=>()=>{};
 const emptySnapshot=()=>emptyOfflineSyncState;
 const emptyAttachments=()=>emptyAttachmentDraftState;
 const emptyUserSnapshot=()=>null;
+const emptyCompanyLists=()=>null;
 export function OfflineSyncProvider({children}:PropsWithChildren){
   const {access,session,demoMode}=useSession();const {isOffline:offline}=useNetworkStatus();
   const member=access.status==='ready'&&access.value?.kind==='member'?access.value:null;
@@ -46,7 +49,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech';const syncRole=manager||crew;
   const shopTech=member?.user.role==='shop_tech';
   const runtime=useRef({key,foreground,manager,syncRole,shopTech});runtime.current={key,foreground,manager,syncRole,shopTech};
-  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void;userSync:OfflineUserSync;userSnapshots:UserSnapshotSync;receiptFiles:OfflineReceiptFiles}|null>(null);
+  const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void;userSync:OfflineUserSync;userSnapshots:UserSnapshotSync;receiptFiles:OfflineReceiptFiles;companySnapshots:CompanySnapshotSync}|null>(null);
   const [bootAttempt,setBootAttempt]=useState(0);
   const [startupError,setStartupError]=useState<{key:string;message:string}|null>(null);
   const worker=binding?.key===key?binding.worker:null;
@@ -110,13 +113,16 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
         // Verified own tasks/settings: loaded from the device, refreshed only online.
         const userSnapshots=createUserSnapshotSync({session:scoped,download:signal=>transport.userSnapshot(signal),canRun});
         void userSnapshots.load().then(()=>userSnapshots.refresh());
+        // Verified company lists (inventory, training, payroll, invoices, receipts) for offline display.
+        const companySnapshots=createCompanySnapshotSync({session:scoped,download:(section,signal)=>transport.companySnapshot(section,signal),canRun});
+        void companySnapshots.load().then(()=>companySnapshots.refresh());
         const unregister=registerOfflineSyncSession(identity.userId,{pause:()=>{created.pause();attachments.pause()},resume:()=>{void created.resume();void attachments.resume()}});
         const auth=client.auth.onAuthStateChange((_event,next)=>{
           if(!canAccess())return;
           if(next?.user.id!==identity.userId){model.dispose();editor.dispose();created.stop();attachments.stop();store.pause();setBinding(previous=>previous?.worker===created?null:previous)}
         });
-        cleanup=()=>{userSnapshots.stop();attachmentAbort.abort();unpublish();model.dispose();editor.dispose();created.stop();attachments.stop();store.pause();unregister();auth.data.subscription.unsubscribe();if(current.current?.worker===created)current.current=null};
-        current.current={key,worker:created,attachments};setBinding({key,worker:created,editor,attachments,syncAttachments,userSync,userSnapshots,receiptFiles});setStartupError(null);
+        cleanup=()=>{userSnapshots.stop();companySnapshots.stop();attachmentAbort.abort();unpublish();model.dispose();editor.dispose();created.stop();attachments.stop();store.pause();unregister();auth.data.subscription.unsubscribe();if(current.current?.worker===created)current.current=null};
+        current.current={key,worker:created,attachments};setBinding({key,worker:created,editor,attachments,syncAttachments,userSync,userSnapshots,receiptFiles,companySnapshots});setStartupError(null);
         await created.refresh();
       }catch{
         if(!cancelled&&runtime.current.key===key)setStartupError({key,message:'Device sync storage is unavailable. Saved work has not been discarded.'});
@@ -156,6 +162,14 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const confirmedUserCommands=state.entries.filter(entry=>entry.status==='synced'&&entry.operation.mutation.kind==='command').length;
   useEffect(()=>{if(userSnapshots&&!offline&&foreground)void userSnapshots.refresh()},[userSnapshots,offline,foreground,confirmedUserCommands]);
   const refreshUserSnapshot=useCallback(async()=>{await userSnapshots?.refresh()},[userSnapshots]);
+  const companySnapshots=binding?.key===key?binding.companySnapshots:null;
+  const companyLists=useSyncExternalStore(companySnapshots?.subscribe??emptySubscribe,companySnapshots?.getSnapshot??emptyCompanyLists,emptyCompanyLists);
+  useEffect(()=>{if(companySnapshots&&!offline&&foreground)void companySnapshots.refresh()},[companySnapshots,offline,foreground,confirmedUserCommands]);
+  useEffect(()=>{
+    if(!companySnapshots||!userSync||!companyLists){publishOfflineCompanyLists(null);return}
+    publishOfflineCompanyLists({companyId:userSync.scope.companyId,userId:userSync.scope.userId,sections:companyLists.sections});
+  },[companySnapshots,companyLists,userSync]);
+  useEffect(()=>()=>publishOfflineCompanyLists(null),[]);
   useEffect(()=>{
     if(!userSync){publishOfflineChatInbox(null);return}
     const {userId:owner,companyId:tenant}=userSync.scope;const entries=scopedUserEntries(state.entries,owner,tenant);

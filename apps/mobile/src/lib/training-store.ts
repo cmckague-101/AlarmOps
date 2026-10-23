@@ -3,6 +3,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { Training, TrainingSignup } from '@fireops/domain';
 
 import { supabase } from '@/lib/supabase';
+import { isOffline } from '@/providers/network-provider';
+import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 
 export type TrainingValues = Omit<Training, 'id' | 'createdAt' | 'updatedAt' | 'viewedAt' | 'signups'>;
 
@@ -20,7 +22,8 @@ type TrainingRow = {
 };
 type SignupRow = { training_id: string; user_id: string; user_name: string; signed_up_at: string };
 type ReadRow = { training_id: string; viewed_at: string };
-type TrainingSnapshot = { trainings: Training[]; loading: boolean; refreshing: boolean; error: string | null };
+/** `downloaded`: shown from the verified offline download (time and receipt watermark), not a live read. */
+type TrainingSnapshot = { trainings: Training[]; loading: boolean; refreshing: boolean; error: string | null; downloaded?: DownloadedListInfo | null };
 
 let snapshot: TrainingSnapshot = { trainings: [], loading: true, refreshing: false, error: null };
 let activeCompanyId: string | null | undefined;
@@ -62,6 +65,8 @@ function orderTrainings(trainings: Training[]) {
   return [...trainings].sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
 }
 
+subscribeOfflineCompanyLists(() => { if (isOffline() && activeCompanyId) void refreshTrainings(); });
+
 export function refreshTrainings() {
   if (request && requestVersion === selectionVersion) {
     refreshQueued = true;
@@ -83,7 +88,9 @@ export function refreshTrainings() {
       return;
     }
     try {
-      const [trainingResult, signupResult, readResult] = await Promise.all([
+      // Offline, the verified download replaces cached HTTP reads.
+      const downloaded = isOffline() ? downloadedCompanyList('training', companyId) : null;
+      const [trainingResult, signupResult, readResult] = downloaded ? [{ data: downloaded.tables.company_trainings, error: null }, { data: downloaded.tables.company_training_signups, error: null }, { data: downloaded.tables.company_training_reads, error: null }] : await Promise.all([
         supabase.from('company_trainings').select('id,course_code,course_title,starts_at,location,instructor,capacity,course_information,created_at,updated_at').eq('company_id', companyId).order('starts_at', { ascending: true }),
         supabase.from('company_training_signups').select('training_id,user_id,user_name,signed_up_at').eq('company_id', companyId),
         supabase.from('company_training_reads').select('training_id,viewed_at').eq('company_id', companyId).eq('user_id', userId),
@@ -102,7 +109,7 @@ export function refreshTrainings() {
       }
       const reads = new Map(((readResult.data ?? []) as ReadRow[]).map((read) => [read.training_id, read.viewed_at]));
       const trainings = ((trainingResult.data ?? []) as TrainingRow[]).map((row) => fromRow(row, signupsByTraining.get(row.id), reads.get(row.id)));
-      emit({ trainings: orderTrainings(trainings), loading: false, refreshing: false, error: null });
+      emit({ trainings: orderTrainings(trainings), loading: false, refreshing: false, error: null, downloaded: downloaded?.info ?? null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';

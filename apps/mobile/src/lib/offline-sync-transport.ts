@@ -6,7 +6,7 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 import {isUserSyncOperation,offlineReceiptPath,userSyncCommands} from './offline-user-sync';
 
 /** Bind each request to the verified local session token; never use a service key. */
-export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,receiptFiles?:OfflineReceiptFiles):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>> & {userSnapshot(signal:AbortSignal):Promise<unknown>}{
+export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,receiptFiles?:OfflineReceiptFiles):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>> & {userSnapshot(signal:AbortSignal):Promise<unknown>;companySnapshot(section:string,signal:AbortSignal):Promise<unknown>}{
   const identity={...scope};
   async function verifiedSession(signal:AbortSignal){
     if(signal.aborted||!canRun())throw Object.assign(new Error('Sync paused'),{code:'SYNC_PAUSED'});
@@ -55,6 +55,8 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
     canonical(operation,signal){const args=recordArgs(operation);return userSyncCommands[operation.entityType]?invoke('get_user_sync_state',args,signal):invoke('get_fleet_sync_record',args,signal)},
     /** Verified own tasks/settings for this account and company. */
     userSnapshot(signal:AbortSignal){return invoke('get_user_sync_snapshot',{target_company_id:identity.companyId},signal)},
+    /** Verified company list section (inventory, training, payroll, invoices, receipts) for this account and company. */
+    companySnapshot(section:string,signal:AbortSignal){return invoke('get_company_sync_snapshot',{target_company_id:identity.companyId,section},signal)},
     downloadPage(progress,signal){return invoke('download_fleet_sync_page',{target_company_id:identity.companyId,expected_snapshot:progress.snapshotToken,record_cursor:progress.cursor},signal)},
     readRecord(target,signal){return invoke('get_fleet_sync_record',{target_company_id:identity.companyId,entity_type:target.entityType,record_id:target.entityId},signal)},
     outcome(operation,signal){

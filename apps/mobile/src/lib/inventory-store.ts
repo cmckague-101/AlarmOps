@@ -3,10 +3,13 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useSyncExternalStore } from 'react';
 
 import { supabase } from '@/lib/supabase';
+import { isOffline } from '@/providers/network-provider';
+import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 
 type InventoryRow = { id: string; name: string; quantity: number; created_at: string; updated_at: string };
 type CheckoutRow = { item_id: string; user_id: string; user_name: string; quantity: number; checked_out_at: string; updated_at: string };
-type InventorySnapshot = { items: InventoryItem[]; loading: boolean; refreshing: boolean; error: string | null };
+/** `downloaded`: shown from the verified offline download (time and receipt watermark), not a live read. */
+type InventorySnapshot = { items: InventoryItem[]; loading: boolean; refreshing: boolean; error: string | null; downloaded?: DownloadedListInfo | null };
 
 let snapshot: InventorySnapshot = { items: [], loading: true, refreshing: false, error: null };
 let activeCompanyId: string | null | undefined;
@@ -35,6 +38,8 @@ function mutationError(error: { code?: string; message: string }, fallback: stri
   return new Error(error.message || fallback);
 }
 
+subscribeOfflineCompanyLists(() => { if (isOffline() && activeCompanyId) void refreshInventory(); });
+
 export function refreshInventory() {
   if (request && requestVersion === selectionVersion) {
     refreshQueued = true;
@@ -54,7 +59,9 @@ export function refreshInventory() {
       return;
     }
     try {
-      const [itemResult, checkoutResult] = await Promise.all([
+      // Offline, the verified download replaces cached HTTP reads.
+      const downloaded = isOffline() ? downloadedCompanyList('inventory', companyId) : null;
+      const [itemResult, checkoutResult] = downloaded ? [{ data: downloaded.tables.company_inventory_items, error: null }, { data: downloaded.tables.company_inventory_checkouts, error: null }] : await Promise.all([
         supabase.from('company_inventory_items').select('id,name,quantity,created_at,updated_at').eq('company_id', companyId).order('name', { ascending: true }),
         supabase.from('company_inventory_checkouts').select('item_id,user_id,user_name,quantity,checked_out_at,updated_at').eq('company_id', companyId),
       ]);
@@ -69,7 +76,7 @@ export function refreshInventory() {
         checkouts.push(checkout);
         checkoutsByItem.set(checkout.item_id, checkouts);
       }
-      emit({ items: orderItems(((itemResult.data ?? []) as InventoryRow[]).map((row) => fromRow(row, checkoutsByItem.get(row.id)))), loading: false, refreshing: false, error: null });
+      emit({ items: orderItems(((itemResult.data ?? []) as InventoryRow[]).map((row) => fromRow(row, checkoutsByItem.get(row.id)))), loading: false, refreshing: false, error: null, downloaded: downloaded?.info ?? null });
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';

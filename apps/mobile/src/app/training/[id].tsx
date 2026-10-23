@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppSymbol } from '@/components/app-symbol';
 import { cancelTrainingSignup, deleteTraining, markTrainingViewed, signupForTraining, useTrainings } from '@/lib/training-store';
 import { pendingTrainingSignups, scopedUserEntries } from '@/lib/offline-user-sync';
+import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -24,14 +25,14 @@ export default function TrainingDetailScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { trainings, loading, error } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const { trainings, loading, error, downloaded } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
   const training = trainings.find((item) => item.id === id);
   const expired = training ? trainingStage(training) !== 'scheduled' : false;
   // Offline, sign-up changes save on the device; capacity is checked when they arrive.
   const offlineSync = useOptionalOfflineSync();
   const offline = !!offlineSync?.offline;
   const userSync = offlineSync?.userSync && offlineSync.userSync.scope.companyId === member?.company.id && offlineSync.userSync.scope.userId === member?.user.id ? offlineSync.userSync : null;
-  const saved = useMemo(() => member && id ? pendingTrainingSignups(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id)).get(id) : undefined, [offlineSync?.state.entries, member, id]);
+  const saved = useMemo(() => member && id ? pendingTrainingSignups(entriesAfterDownload(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id), downloaded?.receiptWatermark)).get(id) : undefined, [offlineSync?.state.entries, member, id, downloaded?.receiptWatermark]);
   const signedUp = saved ?? Boolean(training?.signups.some((signup) => signup.userId === member?.user.id));
   const full = Boolean(training && training.signups.length >= training.capacity);
   const [busy, setBusy] = useState(false);
