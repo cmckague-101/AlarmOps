@@ -3,6 +3,7 @@ import {createAvailabilityController,createAvailabilityTransport,emptyAvailabili
 import {supabase} from '@/lib/supabase';
 import {createFleetId} from './fleet-store';
 import {latestUserSetting,pendingAvailability,scopedUserEntries} from './offline-user-sync';
+import {receiptsAfter} from './offline-user-snapshot';
 import {useUserDataScope} from './user-data-scope';
 import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 import {isOffline} from '@/providers/network-provider';
@@ -31,9 +32,18 @@ export function useAvailability(companyId?:string|null,selfId?:string|null){
   const ack=useMemo(()=>companyId&&selfId?latestUserSetting(entries,{companyId,userId:selfId},'availability'):undefined,[entries,companyId,selfId]);
   const ownPending=selfId?pendingAvailability(entries,selfId):undefined;
   const shown={...state.statuses};
-  if(selfId&&ack&&local.ack!==ack.id){if(typeof ack.record?.available==='boolean')shown[selfId]=ack.record.available;else if(ack.record===null)delete shown[selfId]}
+  // Offline, own status comes from the verified download plus own receipts newer than it,
+  // never from the cached roster; receipts it already covers cannot override later web changes.
+  const saved=offlineSync?.userSnapshot?.snapshot;
+  const downloaded=offline&&saved&&saved.companyId===companyId&&saved.userId===selfId?saved:null;
+  if(selfId&&downloaded){
+    const newer=receiptsAfter(entries.filter(entry=>entry.operation.entityType==='availability'&&entry.operation.entityId===selfId),downloaded).at(-1);
+    const value=newer?.receipt?.kind==='applied'?newer.receipt.record?.available:downloaded.availability;
+    if(typeof value==='boolean')shown[selfId]=value;else delete shown[selfId];
+  }
+  else if(selfId&&ack&&local.ack!==ack.id){if(typeof ack.record?.available==='boolean')shown[selfId]=ack.record.available;else if(ack.record===null)delete shown[selfId]}
   if(selfId&&ownPending!==undefined)shown[selfId]=ownPending;
-  const stamp=JSON.stringify([ack?.id,ownPending,local.ack,selfId?state.statuses[selfId]:undefined]);
+  const stamp=JSON.stringify([ack?.id,ownPending,local.ack,selfId?state.statuses[selfId]:undefined,downloaded?.serverRequestAt,downloaded?.receiptWatermark]);
   if(gate.stamp!==stamp){gate.stamp=stamp;gate.base=selfId?shown[selfId]??null:null}
   const busy=local.busy||(state.busy&&(state.owner?.()??false));
   function patch(change:Partial<Local>){if(current())setStored(before=>current()?{...(before.token===token?before:{token,busy:false,error:''}),...change}:before)}
@@ -77,5 +87,5 @@ export function useAvailability(companyId?:string|null,selfId?:string|null){
     if(controller&&await controller.retry(current)&&current())patch({ack:ack?.id});
   }
   const canSave=(userId:string)=>current()&&!busy&&!state.loading&&!state.pending&&(userId===selfId&&queueRequired?!!userSync&&!controller?.accessDenied:!offline&&state.verified&&!gate.failed);
-  return {statuses:shown,verified:state.verified,ownPending,loading:state.loading,busy,error:local.error||state.error||(!busy&&state.pending?onlineAvailabilityError(undefined,state.pending.acknowledged):''),note:state.note,pending:state.pending,save,retry,canSave};
+  return {statuses:shown,verified:state.verified,ownPending,ownDownloadedAt:downloaded?.serverRequestAt??null,loading:state.loading,busy,error:local.error||state.error||(!busy&&state.pending?onlineAvailabilityError(undefined,state.pending.acknowledged):''),note:state.note,pending:state.pending,save,retry,canSave};
 }

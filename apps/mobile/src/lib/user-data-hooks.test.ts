@@ -152,6 +152,30 @@ describe('scoped availability hooks',()=>{
   });
 });
 
+describe('verified downloads for own settings offline',()=>{
+  const snapshot=(changes={})=>({snapshot:{schemaVersion:1,companyId:company,userId:user,serverRequestAt:'2026-01-02T00:00:00Z',receiptWatermark:'5',tasks:[],availability:false,dashboard:{tasks:false},...changes},verifiedAt:'x',loaded:true,refreshing:false,error:''});
+  type Context=typeof mocks.context&{userSnapshot?:unknown;refreshUserSnapshot?:()=>Promise<void>};
+  afterEach(()=>{delete (mocks.context as Context).userSnapshot});
+  it('shows own availability from the download; covered receipts never override it, newer ones and pending do',async()=>{
+    (mocks.context as Context).userSnapshot=snapshot({userId:user});
+    mocks.context.state.entries=[entry('availability','availability.set',{available:true,base:null},'synced',{id:user,available:true},3)];
+    mocks.execute.mockResolvedValue({data:[{user_id:user,available:true}],error:null});
+    const f=hook(()=>useAvailability(company,user));f.render();f.effects();await flush();
+    expect(f.render().statuses[user]).toBe(false);expect(f.render().ownDownloadedAt).toBe('2026-01-02T00:00:00Z');
+    mocks.context.state.entries=[entry('availability','availability.set',{available:true,base:false},'synced',{id:user,available:true},7)];expect(f.render().statuses[user]).toBe(true);
+    mocks.context.state.entries=[entry('availability','availability.set',{available:true,base:false},'synced',null,8)];expect(f.render().statuses[user]).toBeUndefined();
+    mocks.context.state.entries=[entry('availability','availability.set',{available:false,base:null})];expect(f.render().statuses[user]).toBe(false);
+    (mocks.context as Context).userSnapshot=snapshot({userId:'20000000-0000-4000-8000-999999999999'});mocks.context.state.entries=[];expect(f.render().ownDownloadedAt).toBeNull();
+  });
+  it('shows the downloaded layout offline instead of the HTTP cache or a covered receipt',async()=>{
+    (mocks.context as Context).userSnapshot=snapshot({userId:user});
+    mocks.context.state.entries=[entry('dashboard','dashboard.set',{changes:{tasks:true}},'synced',{id:user,items:{tasks:true}},3)];
+    mocks.execute.mockResolvedValue({data:{items:{tasks:true,inventory:false}},error:null});
+    const f=hook(()=>useDashboardPreferences(user));f.render();f.effects();await flush();expect(f.render().items).toEqual({tasks:false});
+    mocks.context.state.entries=[entry('dashboard','dashboard.set',{changes:{inventory:false}},'synced',{id:user,items:{tasks:false,inventory:false}},9)];f.render();f.effects();await flush();
+    expect(f.render().items).toEqual({tasks:false,inventory:false});
+  });
+});
 describe('scoped dashboard hooks',()=>{
   it('excludes other users’ pending layouts and never applies real pending values to demo',async()=>{
     const own=entry('dashboard','dashboard.set',{changes:{greeting:false}});const other={...own,operation:{...own.operation,provenance:{...own.operation.provenance,userId:'other'}}};mocks.context.state.entries=[other];

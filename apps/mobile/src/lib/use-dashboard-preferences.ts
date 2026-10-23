@@ -3,6 +3,7 @@ import {createDashboardPreferenceTransport,createOnlineDashboardWrite,onlineDash
 import {supabase} from './supabase';
 import {createFleetId} from './fleet-store';
 import {latestUserSetting, pendingDashboard, scopedUserEntries} from './offline-user-sync';
+import {receiptsAfter} from './offline-user-snapshot';
 import {readUserSetting} from './read-user-setting';
 import {useUserDataScope} from './user-data-scope';
 import {isOffline} from '@/providers/network-provider';
@@ -37,6 +38,14 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
   const entries=useMemo(()=>demoMode?[]:scopedUserEntries(offlineSync?.state.entries??[],userId,userSync?.scope.companyId),[demoMode,offlineSync?.state.entries,userId,userSync]);
   const ack=useMemo(()=>userSync?latestUserSetting(entries,userSync.scope,'dashboard'):undefined,[entries,userSync]);
   const pendingItems=parseDashboardPreferences(pendingDashboard(entries));
+  // Offline: the verified download plus own receipts newer than it (receipts it covers are already in it).
+  const saved=userSync?offlineSync?.userSnapshot?.snapshot:undefined;
+  const downloaded=offline&&saved&&userSync&&saved.userId===userSync.scope.userId&&saved.companyId===userSync.scope.companyId?saved:null;
+  const downloadedItems=useMemo(()=>{
+    if(!downloaded)return null;
+    const newer=receiptsAfter(entries.filter(entry=>entry.operation.entityType==='dashboard'),downloaded).at(-1);
+    return parseDashboardPreferences(newer?.receipt?.kind==='applied'?newer.receipt.record?.items:downloaded.dashboard);
+  },[downloaded,entries]);
   const confirmed=ack&&stored.ack!==ack.id?parseDashboardPreferences(ack.record?.items):stored.items;
   const saving=stored.saving&&(stored.writer?.()??true);
   const state={...stored,saving,retryRequired:!!stored.pending,error:stored.error||(!saving&&stored.pending?onlineDashboardWriteError(undefined,stored.pending.acknowledged):''),items:{...confirmed,...pendingItems}};
@@ -56,7 +65,8 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
             void cached.catch(()=>{});
             const result=await readUserSetting(supabase!,userSync.scope,'dashboard',()=>valid()&&!liveOffline.current,ack?.revision);
             items=parseDashboardPreferences(result.record?.items);acknowledged=ack?.id;
-          }else items=await cached.catch(error=>{if(!ack)throw error;return parseDashboardPreferences(ack.record?.items)});
+          }else if(downloadedItems){void cached.catch(()=>{});items=downloadedItems;acknowledged=ack?.id}
+          else items=await cached.catch(error=>{if(!ack)throw error;return parseDashboardPreferences(ack.record?.items)});
         }else{
           items=await readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,()=>!isOffline()),userId!,valid);
         }
@@ -64,7 +74,7 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
       }catch(error){if(valid())publish(key,{...before,loading:false,loadFailed:true,error:error instanceof Error?error.message:'Dashboard preferences could not be loaded.'})}
     })();
     return()=>{active=false};
-  },[key,token,remote,userId,attempt,ack?.id,offline,userSync]);
+  },[key,token,remote,userId,attempt,ack?.id,offline,userSync,downloadedItems]);
   async function perform(write:OnlineDashboardWrite){
     const previous=states.get(key)!;
     if(!current()||gate.locked||(previous.saving&&(previous.writer?.()??true)))return;
