@@ -58,6 +58,7 @@ export async function loadUserSyncSchema(db, beforeTaskIdentities = async () => 
   await db.exec(migration('20261129000100_personal_task_identities'));
   await db.exec(migration('20261130000100_online_dashboard_preferences'));
   await db.exec(migration('20261201000100_online_crew_availability'));
+  await db.exec(migration('20261206000100_user_sync_snapshot'));
 }
 
 /** User sync schema plus the real Crew Chat and notification inbox tables/policies, then read markers. */

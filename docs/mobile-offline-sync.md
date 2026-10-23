@@ -684,6 +684,16 @@ Tests: `user-sync-vehicle-notes.test.mjs` (4 embedded PostgreSQL tests on the re
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, per-vehicle overlay, confirmed/deleted outcomes and label). 155 targeted mobile tests and the mobile typecheck pass. The screen wiring itself has no UI test (no app launch).
 
+### Verified user-domain snapshot: server (not deployed)
+
+`20261206000100_user_sync_snapshot.sql` adds `get_user_sync_snapshot(target_company_id)`, an account-bound POST read of the caller's own personal tasks, own availability (`null` when unset) and dashboard layout. It comes with `serverRequestAt` and `receiptWatermark`, the caller's highest `user_sync_receipts` sequence. Everything is read in **one statement**, so in one database snapshot. Devices show the snapshot, then their own receipts newer than the watermark, then pending commands.
+
+A sequence number is assigned before its transaction commits, so a bare max could cover a receipt still committing. To prevent that, `sync_user_command` now takes a per-user advisory lock before its entity/operation locks. This was an in-place edit of the undeployed `20261127000100`; it serializes one user's commands, which are low-volume. The snapshot takes the same lock **shared**, so no command by that user is mid-commit while it reads.
+
+Tasks follow the current task roles (owner/admin/shop-tech). Other roles get `tasks: null` ("not available"), never `[]`, so lost access is never read as deletions. More than 1000 tasks fails with `54000` rather than returning a truncated list. Membership is required. Online availability/dashboard writes have no device receipts; they simply appear in the next snapshot.
+
+Tests: `user-sync-snapshot.test.mjs` (4 embedded PostgreSQL tests: own-data scoping across users/companies, watermark versus command receipts, role denial as `null`, membership, the 1000-task cap and a structural lock-order check; PGlite cannot run concurrent sessions). Existing user-sync suites and grant checks pass (53 tests).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -715,6 +725,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 25. `20261203000100_user_sync_read_markers.sql`
 26. `20261204000100_user_sync_crew_chat_replies.sql`
 27. `20261205000100_user_sync_vehicle_notes.sql`
+28. `20261206000100_user_sync_snapshot.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

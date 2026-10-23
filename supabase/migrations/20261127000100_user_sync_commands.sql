@@ -192,6 +192,9 @@ begin
     raise exception 'Only your own settings can sync offline' using errcode = '42501';
   end if;
   request_hash := sha256(convert_to(operation::text, 'UTF8'));
+  -- Per-user lock first: get_user_sync_snapshot takes it shared, so a snapshot
+  -- never sees a later receipt while an earlier one is still committing.
+  perform pg_advisory_xact_lock(hashtextextended('user-sync-user:' || actor::text, 0));
   perform pg_advisory_xact_lock(hashtextextended('user-sync:' || actor::text || ':' || entity || ':' || record_uuid::text, 0));
   perform pg_advisory_xact_lock(hashtextextended(company::text || ':' || actor::text || ':' || operation_uuid::text, 0));
   select * into previous from public.user_sync_receipts r where r.company_id = company and r.user_id = actor and r.operation_id = operation_uuid;
