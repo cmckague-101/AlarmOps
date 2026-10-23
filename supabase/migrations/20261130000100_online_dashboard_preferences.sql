@@ -2,6 +2,12 @@
 -- commands use the same atomic merge helper. No browser queue/offline replay.
 begin;
 
+-- Quiesce legacy direct writes before changing ACLs. Parent first also matches
+-- profile/account deletion's FK cascade order. Validate real-session contention
+-- on the target database; these locks are held only for this forward migration.
+lock table public.profiles in share row exclusive mode;
+lock table public.dashboard_preferences in share row exclusive mode;
+
 create table public.dashboard_preference_receipts (
   user_id uuid not null references public.profiles(user_id) on delete cascade,
   request_id uuid not null,

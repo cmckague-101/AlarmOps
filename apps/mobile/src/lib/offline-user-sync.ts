@@ -1,4 +1,4 @@
-import {createSyncPatch,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {createSyncPatch,decodeDashboardPreferenceChanges,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
@@ -79,9 +79,9 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     },
     /** `base` is the value shown on this device; if someone changed it since, the server keeps theirs. */
     setAvailability(available:boolean,base:boolean|null){return enqueue('availability',scope.userId,'availability.set',{available,base},{id:scope.userId,available})},
-    setDashboard(changes:Record<string,boolean>){
-      if(!Object.keys(changes).length)return Promise.reject(new Error('No dashboard changes.'));
-      return enqueue('dashboard',scope.userId,'dashboard.set',{changes},null);
+    async setDashboard(changes:Record<string,boolean>){
+      const patch=decodeDashboardPreferenceChanges(changes);
+      return enqueue('dashboard',scope.userId,'dashboard.set',{changes:patch},null);
     },
   };
 }

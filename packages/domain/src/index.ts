@@ -7,6 +7,7 @@ export * from './payroll';
 export * from './invoices';
 export * from './tasks';
 export * from './dashboard-preferences';
+export * from './online-dashboard-preferences';
 
 export * from './command-center';
 export * from './dot-inspection';

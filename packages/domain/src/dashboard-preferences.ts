@@ -7,7 +7,7 @@ export function parseDashboardPreferences(value:unknown):DashboardPreferences {
   if(!value||typeof value!=='object'||Array.isArray(value))return {};
   return Object.fromEntries(Object.entries(value).filter(([key,value])=>dashboardItems.includes(key as DashboardItem)&&typeof value==='boolean'));
 }
-const dashboardItems:DashboardItem[]=['greeting','incidents','personnel','resources','attention','currentIssues','currentPicture','availability','tasks','inspections','inventory','payroll','receipts','invoices','nationalFireActivity','recentActivity'];
+export const dashboardItems:readonly DashboardItem[]=['greeting','incidents','personnel','resources','attention','currentIssues','currentPicture','availability','tasks','inspections','inventory','payroll','receipts','invoices','nationalFireActivity','recentActivity'];
 export function dashboardPreferenceGroups(role:UserRole, platform:'web'|'mobile') {
   const manager=isCompanyManager(role);
   const item=(id:DashboardItem,label:string)=>({id,label});

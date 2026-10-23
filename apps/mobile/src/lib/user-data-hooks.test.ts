@@ -4,34 +4,17 @@ import type {OutboxEntry} from './offline-outbox';
 // Execute production hooks and effects with persistent hook slots. No DOM,
 // native UI, server, or visual rendering. Effects flush explicitly so tests
 // can inspect the account-switch render before old effects clean up.
-const runtime=vi.hoisted(()=>{
-  type Slot={value?:unknown;deps?:readonly unknown[];cleanup?:()=>void;effect?:()=>void|(()=>void)};
-  type Frame={slots:Slot[];index:number;effects:Set<number>};
-  let active:Frame;
-  const changed=(a:readonly unknown[]|undefined,b:readonly unknown[]|undefined)=>!a||!b||a.length!==b.length||a.some((value,index)=>!Object.is(value,b[index]));
-  function slot(){const index=active.index++;return {frame:active,index,value:active.slots[index]??(active.slots[index]={})}}
-  const hooks={
-    useState<T>(initial:T|(()=>T)){
-      const {value}=slot();if(!('value' in value))value.value=typeof initial==='function'?(initial as ()=>T)():initial;
-      return [value.value as T,(next:T|((old:T)=>T))=>{value.value=typeof next==='function'?(next as (old:T)=>T)(value.value as T):next}] as const;
-    },
-    useRef<T>(initial:T){const {value}=slot();return (value.value??(value.value={current:initial})) as {current:T}},
-    useMemo<T>(fn:()=>T,deps:readonly unknown[]){const {value}=slot();if(changed(value.deps,deps)){value.value=fn();value.deps=deps}return value.value as T},
-    useCallback<T>(fn:T,deps:readonly unknown[]){return hooks.useMemo(()=>fn,deps)},
-    useEffect(effect:()=>void|(()=>void),deps?:readonly unknown[]){const {frame,index,value}=slot();if(changed(value.deps,deps)){value.deps=deps;value.effect=effect;frame.effects.add(index)}},
-    useSyncExternalStore(subscribe:(fn:()=>void)=>()=>void,get:()=>unknown){hooks.useEffect(()=>subscribe(()=>{}),[subscribe]);return get()},
-  };
-  return {hooks,frame:()=>({slots:[],index:0,effects:new Set<number>()} as Frame),enter:(frame:Frame)=>{active=frame;frame.index=0}};
-});
+const runtime=await vi.hoisted(async()=>{const {createHookRuntime}=await import('../../../../packages/domain/test-fixtures/hook-runtime');return createHookRuntime()});
 vi.mock('react',()=>runtime.hooks);
 const mocks=vi.hoisted(()=>({
   context:{offline:true,available:true,userSync:{scope:{userId:'',companyId:''},createTask:vi.fn(),completeTask:vi.fn(),setAvailability:vi.fn(),setDashboard:vi.fn()},state:{entries:[] as OutboxEntry[]}},
   client:{from:vi.fn(),rpc:vi.fn(),auth:{getSession:vi.fn()},channel:vi.fn(),removeChannel:vi.fn()},
-  execute:vi.fn(),canonical:vi.fn(),headers:vi.fn(),events:[] as (()=>void)[],id:0,
+  execute:vi.fn(),canonical:vi.fn(),onlineWrite:vi.fn(),onlineRead:vi.fn(),headers:vi.fn(),events:[] as (()=>void)[],id:0,
 }));
 vi.mock('./supabase',()=>({supabase:mocks.client}));
 vi.mock('@/lib/supabase',()=>({supabase:mocks.client}));
 vi.mock('@/providers/offline-sync-provider',()=>({useOptionalOfflineSync:()=>mocks.context}));
+vi.mock('@/providers/network-provider',()=>({isOffline:()=>mocks.context.offline}));
 vi.mock('./fleet-store',()=>({createFleetId:()=>`40000000-0000-4000-8000-${String(++mocks.id).padStart(12,'0')}`}));
 import {usePersonalTasks} from './use-personal-tasks';
 import {useAvailability} from './use-availability';
@@ -40,7 +23,7 @@ import {readUserSetting} from './read-user-setting';
 import type {SupabaseClient} from '@supabase/supabase-js';
 
 const company='10000000-0000-4000-8000-000000000001',otherCompany='10000000-0000-4000-8000-000000000002';
-let user:string;let serial=0;
+let user:string;let serial=0;const nativeSync=mocks.context.userSync;
 const disposals:(()=>void)[]=[];
 function hook<T>(fn:()=>T){
   const frame=runtime.frame();
@@ -58,13 +41,15 @@ function entry(entity:'availability'|'dashboard'|'personal_task',command:string,
 }
 beforeEach(()=>{
   vi.clearAllMocks();user=`20000000-0000-4000-8000-${String(++serial).padStart(12,'0')}`;
-  mocks.context.offline=true;mocks.context.available=true;mocks.context.state.entries=[];mocks.events=[];
+  mocks.context.userSync=nativeSync;mocks.context.offline=true;mocks.context.available=true;mocks.context.state.entries=[];mocks.events=[];
   mocks.context.userSync.scope={userId:user,companyId:company};
   for(const method of ['createTask','completeTask','setAvailability','setDashboard'] as const)mocks.context.userSync[method].mockReset().mockResolvedValue({});
   mocks.client.auth.getSession.mockResolvedValue({data:{session:{user:{id:user},access_token:'bound-token'}},error:null});
   mocks.execute.mockReset().mockImplementation(async({table})=>({data:table==='dashboard_preferences'?{items:{}}:[],error:null}));
   mocks.canonical.mockReset().mockImplementation(async(args)=>({data:{revision:'100',record:{id:args.record_id,...(args.entity_type==='dashboard'?{items:{}}:{available:false})}},error:null}));
-  mocks.client.rpc.mockImplementation((_name,args)=>({setHeader:mocks.headers.mockImplementation(()=>({abortSignal:()=>mocks.canonical(args)}))}));
+  mocks.onlineWrite.mockReset().mockImplementation(async(request)=>({data:{kind:'applied',requestId:request.requestId,userId:user,items:request.changes,receivedAt:'2026-01-01T00:00:00Z'},error:null}));
+  mocks.onlineRead.mockReset().mockResolvedValue({data:{userId:user,items:{}},error:null});
+  mocks.client.rpc.mockImplementation((name,args)=>({setHeader:mocks.headers.mockImplementation(()=>({abortSignal:()=>name==='get_dashboard_preferences'?mocks.onlineRead():name==='set_dashboard_preferences_once'?mocks.onlineWrite(args.request):mocks.canonical(args)}))}));
   mocks.client.from.mockImplementation(table=>{
     const request={table,action:'read',data:undefined as unknown,filters:[] as unknown[]};
     const query={select(){return query},eq(...values:unknown[]){request.filters.push(values);return query},order(){return query},maybeSingle(){return query},
@@ -162,6 +147,21 @@ describe('scoped dashboard hooks',()=>{
     const old=deferred<unknown>();const next=deferred<unknown>();mocks.context.userSync.setDashboard.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);let who=user;
     const f=hook(()=>useDashboardPreferences(who));const first=f.render().save('greeting',false);who='other';f.render();who=user;const second=f.render().save('tasks',false);
     expect(mocks.context.userSync.setDashboard).toHaveBeenCalledTimes(2);old.reject(new Error('Stale failure'));await first;expect(f.render().saving).toBe(true);expect(f.render().error).toBe('');next.resolve({});await second;expect(f.render().saving).toBe(false);
+  });
+  it('keeps offline preferences editable from a verified receipt when the read cache is unavailable',async()=>{
+    mocks.context.state.entries=[entry('dashboard','dashboard.set',{changes:{tasks:false}},'synced',{id:user,items:{tasks:false}})];mocks.execute.mockRejectedValue(new Error('No cached response'));
+    const f=hook(()=>useDashboardPreferences(user));f.render();f.effects();await flush();expect(f.render().visible('tasks')).toBe(false);expect(f.render().loadFailed).toBe(false);await f.render().save('greeting',false);expect(mocks.context.userSync.setDashboard).toHaveBeenCalledWith({greeting:false});
+  });
+  it('retains mobile online fallback nonce/body and never falls back to table mutation',async()=>{
+    mocks.context.available=false;mocks.context.offline=false;mocks.context.userSync=null as never;
+    const f=hook(()=>useDashboardPreferences(user));f.render();f.effects();await flush();mocks.onlineWrite.mockRejectedValueOnce(new Error('Response lost'));
+    await f.render().save('greeting',false);expect(f.render().retryRequired).toBe(true);await f.render().save('tasks',false);expect(mocks.onlineWrite).toHaveBeenCalledTimes(1);
+    mocks.onlineRead.mockResolvedValue({data:{userId:user,items:{greeting:false,tasks:false}},error:null});await f.render().retry();expect(mocks.onlineWrite.mock.calls[1][0]).toBe(mocks.onlineWrite.mock.calls[0][0]);expect(f.render().visible('tasks')).toBe(false);expect(f.render().retryRequired).toBe(false);expect(mocks.client.from).not.toHaveBeenCalled();
+  });
+  it('retries only refresh after mobile online acknowledgment, keeping current independent server choices',async()=>{
+    mocks.context.available=false;mocks.context.offline=false;mocks.context.userSync=null as never;
+    const f=hook(()=>useDashboardPreferences(user));f.render();f.effects();await flush();mocks.onlineRead.mockRejectedValueOnce(new Error('Read failed'));await f.render().save('greeting',false);
+    expect(f.render().pending?.acknowledged).toBe(true);expect(f.render().error).toContain('Saved on server');mocks.onlineRead.mockResolvedValue({data:{userId:user,items:{greeting:true,resources:false}},error:null});await f.render().retry();expect(mocks.onlineWrite).toHaveBeenCalledTimes(1);expect(f.render().visible('greeting')).toBe(true);expect(f.render().visible('resources')).toBe(false);
   });
   it('queues native online toggles too, without bypassing earlier commands',async()=>{
     mocks.context.offline=false;const f=hook(()=>useDashboardPreferences(user));await f.render().save('greeting',false);expect(mocks.context.userSync.setDashboard).toHaveBeenCalledWith({greeting:false});expect(mocks.client.from).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {after,before,beforeEach,test} from 'node:test';
 import {PGlite} from '@electric-sql/pglite';
-import {loadUserSyncSchema} from './fixtures/fleet-sync-harness.mjs';
+import {loadUserSyncSchema,migration} from './fixtures/fleet-sync-harness.mjs';
 const db=new PGlite();
 const user='20000000-0000-4000-8000-000000000001',other='20000000-0000-4000-8000-000000000002',company='10000000-0000-4000-8000-000000000001';
 const row=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
@@ -20,6 +20,11 @@ beforeEach(async()=>{
 });
 after(async()=>{await db.close()});
 
+test('migration fences legacy writers parent-first before ACL changes (structural, not multi-session)',()=>{
+  const sql=migration('20261130000100_online_dashboard_preferences');
+  const parent=sql.indexOf('lock table public.profiles in share row exclusive mode');const child=sql.indexOf('lock table public.dashboard_preferences in share row exclusive mode');const revoke=sql.indexOf('revoke insert, update, delete on public.dashboard_preferences');
+  assert.ok(parent>=0&&parent<child&&child<revoke);
+});
 test('independent online patches and native commands preserve unrelated layout choices',async()=>{
   const first=request({greeting:false});const original=await send(first);
   const native={schemaVersion:1,operationId:randomUUID(),companyId:company,entityType:'dashboard',entityId:user,provenance:{userId:user,deviceId:'phone',savedAt:'2026-01-01T12:00:00.000Z',connectivity:'offline'},dependsOn:[],mutation:{kind:'command',command:'dashboard.set',payload:{changes:{tasks:false}}}};

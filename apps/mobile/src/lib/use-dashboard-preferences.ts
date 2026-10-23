@@ -1,15 +1,24 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
-import {parseDashboardPreferences, type DashboardItem, type DashboardPreferences} from '@fireops/domain';
+import {createDashboardPreferenceTransport,createOnlineDashboardWrite,onlineDashboardWriteError,parseDashboardPreferences,readOnlineDashboardPreferences,type DashboardItem,type DashboardPreferences,type OnlineDashboardWrite} from '@fireops/domain';
 import {supabase} from './supabase';
+import {createFleetId} from './fleet-store';
 import {latestUserSetting, pendingDashboard, scopedUserEntries} from './offline-user-sync';
 import {readUserSetting} from './read-user-setting';
 import {useUserDataScope} from './user-data-scope';
+import {isOffline} from '@/providers/network-provider';
 import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 
-type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean;ack?:string;writer?:()=>boolean};
+type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean;ack?:string;writer?:()=>boolean;pending?:OnlineDashboardWrite};
 const states=new Map<string,State>();
 const listeners=new Set<()=>void>();
-function publish(key:string,state:State){states.set(key,state);listeners.forEach(listener=>listener())}
+const leaving=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''};
+function publish(key:string,state:State){
+  states.set(key,state);listeners.forEach(listener=>listener());
+  if(typeof window!=='undefined'&&typeof window.addEventListener==='function'){
+    if([...states.values()].some(value=>!!value.pending))window.addEventListener('beforeunload',leaving);
+    else window.removeEventListener('beforeunload',leaving);
+  }
+}
 function subscribe(listener:()=>void){listeners.add(listener);return()=>{listeners.delete(listener)}}
 const validId=(id:string)=>/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id);
 export function useDashboardPreferences(userId:string|undefined,demoMode=false){
@@ -29,7 +38,8 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
   const ack=useMemo(()=>userSync?latestUserSetting(entries,userSync.scope,'dashboard'):undefined,[entries,userSync]);
   const pendingItems=parseDashboardPreferences(pendingDashboard(entries));
   const confirmed=ack&&stored.ack!==ack.id?parseDashboardPreferences(ack.record?.items):stored.items;
-  const state={...stored,saving:stored.saving&&(stored.writer?.()??true),items:{...confirmed,...pendingItems}};
+  const saving=stored.saving&&(stored.writer?.()??true);
+  const state={...stored,saving,retryRequired:!!stored.pending,error:stored.error||(!saving&&stored.pending?onlineDashboardWriteError(undefined,stored.pending.acknowledged):''),items:{...confirmed,...pendingItems}};
   useEffect(()=>{
     if(!remote)return;
     let active=true;const before=states.get(key)!;
@@ -38,31 +48,53 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
       try{
         let items:DashboardPreferences;
         let acknowledged:string|undefined;
-        if(userSync&&!liveOffline.current){
-          const result=await readUserSetting(supabase!,userSync.scope,'dashboard',()=>valid()&&!liveOffline.current,ack?.revision);
-          items=parseDashboardPreferences(result.record?.items);acknowledged=ack?.id;
+        if(userSync||liveOffline.current){
+          // Keep the existing account-bound read cache warm for native restart
+          // reads. It is not canonical proof and cannot override a verified ack.
+          const cached=Promise.resolve(supabase!.from('dashboard_preferences').select('items').eq('user_id',userId!).maybeSingle()).then(({data,error})=>{if(error)throw error;return parseDashboardPreferences(data?.items)});
+          if(userSync&&!liveOffline.current){
+            void cached.catch(()=>{});
+            const result=await readUserSetting(supabase!,userSync.scope,'dashboard',()=>valid()&&!liveOffline.current,ack?.revision);
+            items=parseDashboardPreferences(result.record?.items);acknowledged=ack?.id;
+          }else items=await cached.catch(error=>{if(!ack)throw error;return parseDashboardPreferences(ack.record?.items)});
         }else{
-          const {data,error}=await supabase!.from('dashboard_preferences').select('items').eq('user_id',userId!).maybeSingle();
-          if(error)throw error;items=parseDashboardPreferences(data?.items);
+          items=await readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,()=>!isOffline()),userId!,valid);
         }
-        if(valid())publish(key,{items,ack:acknowledged,loading:false,saving:before.saving&&(before.writer?.()??false),writer:before.writer,error:''});
+        if(valid())publish(key,{...before,items,ack:acknowledged,loading:false,loadFailed:false,saving:before.saving&&(before.writer?.()??false),writer:before.writer,error:before.pending?before.error:''});
       }catch(error){if(valid())publish(key,{...before,loading:false,loadFailed:true,error:error instanceof Error?error.message:'Dashboard preferences could not be loaded.'})}
     })();
     return()=>{active=false};
   },[key,token,remote,userId,attempt,ack?.id,offline,userSync]);
+  async function perform(write:OnlineDashboardWrite){
+    const previous=states.get(key)!;
+    if(!current()||gate.locked||(previous.saving&&(previous.writer?.()??true)))return;
+    gate.locked=true;publish(key,{...previous,pending:write,saving:true,writer:current,error:''});
+    try{
+      const items=await write.run(current);
+      if(current()&&states.get(key)?.pending===write&&states.get(key)?.writer===current)publish(key,{items,ack:ack?.id,loading:false,saving:false,error:''});
+    }catch(error){if(current()&&states.get(key)?.writer===current)publish(key,{...states.get(key)!,saving:false,error:onlineDashboardWriteError(error,write.acknowledged)})}
+    finally{gate.locked=false;if(current()&&states.get(key)?.writer===current)publish(key,{...states.get(key)!,saving:false,writer:undefined})}
+  }
   async function save(id:DashboardItem,enabled:boolean){
     if(!current()||gate.locked)return;
     const previous=states.get(key)!;
-    if(previous.saving&&(previous.writer?.()??true))return;
+    if(previous.pending||(previous.saving&&(previous.writer?.()??true)))return;
     if(!queueRequired&&(previous.loading||previous.loadFailed))return;
+    if(remote&&!queueRequired){
+      try{
+        const write=createOnlineDashboardWrite({userId:userId!,id:createFleetId,transport:createDashboardPreferenceTransport(supabase!,userId!,()=>!isOffline()),connectivity:()=>isOffline()?'offline':'online'},{[id]:enabled});
+        await perform(write);
+      }catch{if(current())publish(key,{...states.get(key)!,error:'Dashboard request could not be prepared. Please retry.'})}
+      return;
+    }
     gate.locked=true;publish(key,{...previous,saving:true,writer:current,error:''});
     try{
       if(queueRequired){
         if(!userSync)throw new Error('Device saving is unavailable. Wait for account storage or retry.');
         await userSync.setDashboard({[id]:enabled});
       }else{
+        if(!demoMode)throw new Error('Dashboard saving is unavailable. Verify your account and connection.');
         const items={...previous.items,[id]:enabled};
-        if(remote){const {error}=await supabase!.from('dashboard_preferences').upsert({user_id:userId,items});if(error)throw error}
         if(current())publish(key,{items,loading:false,saving:false,error:''});
       }
     }catch(error){
@@ -72,6 +104,7 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
       if(current()&&states.get(key)?.writer===current)publish(key,{...states.get(key)!,saving:false,writer:undefined});
     }
   }
-  function reload(){if(current()){publish(key,{...states.get(key)!,loading:true,loadFailed:false,error:''});setAttempt(value=>value+1)}}
-  return {...state,reload,visible:(id:DashboardItem)=>state.items[id]!==false,save};
+  function reload(){if(current()&&!states.get(key)?.pending){publish(key,{...states.get(key)!,loading:true,loadFailed:false,error:''});setAttempt(value=>value+1)}}
+  async function retry(){if(current()){const write=states.get(key)?.pending;if(write)await perform(write)}}
+  return {...state,reload,retry,visible:(id:DashboardItem)=>state.items[id]!==false,save};
 }
