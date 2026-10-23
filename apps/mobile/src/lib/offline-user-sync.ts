@@ -429,6 +429,31 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     },
     /** Own annual record; applies only if it is unchanged since `seen` (null when none was saved). */
     setAnnualRecord(record:SyncRecord,seen:SyncRecord|null){return enqueue('annual_record',scope.userId,'annual.set',{record,base:seen},null)},
+    /**
+     * Sends a refused or kept-current change again as a new change. Guarded edits are checked against
+     * the version the server reported when it refused them, so they apply only if nothing changed since.
+     */
+    resubmit(entry:OutboxEntry){
+      const op=entry.operation;if(op.mutation.kind!=='command')return Promise.reject(new Error('Only saved commands can be sent again.'));
+      const payload=op.mutation.payload as Record<string,SyncRecord[string]>;
+      const record=((entry.delivery as {record?:unknown}|null)?.record??(entry.receipt?.kind==='applied'?entry.receipt.record:null)) as SyncRecord|null;
+      let next:Record<string,SyncRecord[string]>={...payload};
+      if(op.entityType==='availability')next={...payload,base:record&&typeof record.available==='boolean'?record.available:null};
+      else if('base' in payload){
+        if(!record)return Promise.reject(new Error('This record no longer exists, so the change cannot be sent again.'));
+        const updatedAt=(value:unknown)=>typeof value==='string'?{updatedAt:value}:null;
+        const base=['training','inventory_item','vehicle_note','payroll_review'].includes(op.entityType)?updatedAt(record.updatedAt)
+          :op.entityType==='inventory_return'?updatedAt(((record.checkouts as Record<string,SyncRecord>|undefined)?.[payload.userId as string])?.updatedAt)
+          :op.entityType==='receipt'?{name:record.name,amountCents:record.amountCents,storagePath:record.storagePath}
+          :op.entityType==='annual_record'?(record.record??null)
+          :record;
+        if(base===null&&op.entityType!=='annual_record')return Promise.reject(new Error('This record changed in a way that cannot be sent again. Cancel it and make the change again.'));
+        next={...payload,base:base as SyncRecord[string]};
+      }
+      return enqueue(op.entityType,op.entityId,op.mutation.command,next as SyncRecord,null).then(async saved=>{await session.dismissNotice(op.operationId);return saved});
+    },
+    /** Cancels a refused change: hides its notice; nothing is sent. */
+    async cancelRefused(operationId:string){await session.dismissNotice(operationId);try{await options.changed()}catch{/* Dismissal is saved. */}},
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));
       return enqueue('notification',id,'notification.read',{},null);

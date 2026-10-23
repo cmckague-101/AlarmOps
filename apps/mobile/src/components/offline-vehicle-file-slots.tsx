@@ -11,7 +11,7 @@ import {useFireOpsTheme} from '../theme';
 
 const fileName=(value:SyncRecord[string]|undefined)=>value&&typeof value==='object'&&!Array.isArray(value)&&typeof (value as {name?:unknown}).name==='string'?(value as {name:string}).name:null;
 
-/** Each replacement/clear is its own saved change; the server may require owner/admin review if someone else changed the slot. */
+/** Each replacement/clear is its own saved change; if someone else changed the slot meanwhile, the user is warned and decides. */
 export function OfflineVehicleFileSlots({editor,controller,entityId,record,onSaved}:{editor:OfflineDetailEditor;controller:OfflineAttachmentController;entityId:string;record:SyncRecord;onSaved?:()=>void}){
   const theme=useFireOpsTheme();const live=useRef(true);const current=useRef({editor,controller});current.current={editor,controller};
   useFocusEffect(useCallback(()=>{live.current=true;return()=>{live.current=false}},[]));
@@ -31,7 +31,7 @@ export function OfflineVehicleFileSlots({editor,controller,entityId,record,onSav
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" disabled={disabled} onPress={action} style={{minHeight:44,paddingHorizontal:12,paddingVertical:10,borderWidth:1,borderColor:theme.divider,borderRadius:10,justifyContent:'center',opacity:disabled?0.5:1}}><Text style={body}>{label}</Text></Pressable>;
   return <View style={{gap:12,borderWidth:1,borderColor:theme.divider,borderRadius:14,padding:16}}>
     <Text accessibilityRole="header" style={[body,{fontSize:19,fontWeight:'800'}]}>Vehicle files</Text>
-    <Text style={meta}>Replace or clear one file at a time (JPEG, PNG, WebP, GIF or PDF up to 8 MB). Files are copied into app storage on this device (not encrypted by FireOps) and upload when online. If someone else changed the same file, an owner/admin chooses which to keep. Previous files are never deleted.</Text>
+    <Text style={meta}>Replace or clear one file at a time (JPEG, PNG, WebP, GIF or PDF up to 8 MB). Files are copied into app storage on this device (not encrypted by FireOps) and upload when online. If someone else changed the same file meanwhile, you are warned and can submit again or cancel. Previous files are never deleted.</Text>
     {vehicleFileSlots.map(slot=>{const name=fileName(record[slot]);const locked=!!busy||(!!failed&&failed!==slot);
       return <View key={slot} style={{gap:8,paddingVertical:10,borderTopWidth:1,borderColor:theme.divider}}>
         <Text style={[body,{fontWeight:'700'}]}>{syncReviewFieldLabel(slot)}</Text>

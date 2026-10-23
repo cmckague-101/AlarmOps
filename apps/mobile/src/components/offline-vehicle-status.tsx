@@ -10,7 +10,7 @@ import {useFireOpsTheme} from '../theme';
 type Member={id:string;name:string};
 const present=(record:SyncRecord,field:string)=>Object.prototype.hasOwnProperty.call(record,field);
 
-/** Saved status/assignment changes; overlaps with someone else's change go to owner/admin review. */
+/** Saved status/assignment changes; if someone else changed them meanwhile, the user is warned and decides. */
 /** With `self`, crew mode: claim a Ready vehicle, release one's own, clear its fire (the server role trigger decides). */
 export function OfflineVehicleStatus({editor,entityId,record,crew,self,onSaved}:{editor:OfflineDetailEditor;entityId:string;record:SyncRecord;crew:readonly Member[];self?:Member;onSaved?:()=>void}){
   const theme=useFireOpsTheme();const live=useRef(true);const current=useRef(editor);current.current=editor;
@@ -39,7 +39,7 @@ export function OfflineVehicleStatus({editor,entityId,record,crew,self,onSaved}:
   const fire=record.assignedFire&&typeof record.assignedFire==='object'?(record.assignedFire as {name?:unknown}).name:null;
   return <View style={{gap:12,borderWidth:1,borderColor:theme.divider,borderRadius:14,padding:16}}>
     <Text accessibilityRole="header" style={[body,{fontSize:19,fontWeight:'800'}]}>Status & assignment</Text>
-    <Text style={meta}>Downloaded: {String(record.status??'Unknown')}{assignee?` · assigned to ${assignee}`:''}{typeof fire==='string'?` · ${fire}`:''}. Changes are saved on device and checked against the current server state; if someone else changed status or assignment meanwhile, an owner/admin chooses. Fires come from the list last downloaded{fires?` (${new Date(fires.savedAt).toLocaleString()})`:''}.</Text>
+    <Text style={meta}>Downloaded: {String(record.status??'Unknown')}{assignee?` · assigned to ${assignee}`:''}{typeof fire==='string'?` · ${fire}`:''}. Changes are saved on device and checked against the current server state; if someone else changed status or assignment meanwhile, you are warned and can submit again or cancel. Fires come from the list last downloaded{fires?` (${new Date(fires.savedAt).toLocaleString()})`:''}.</Text>
     {failed?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{button(busy?'Saving on device…':'Retry saving this change',()=>void run(saved||'Change',()=>actions.retry()))}{button('Cancel this change',()=>{actions.cancel();setFailed(false);setError('')})}</View>:self?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
       {record.status==='Ready'&&!present(record,'assignedTo')?button('Claim this vehicle',()=>void assign(self)):null}
       {record.assignedTo===self.id?button('Release this vehicle',()=>void unassign()):null}

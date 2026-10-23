@@ -62,6 +62,10 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
     companySnapshot(section:string,signal:AbortSignal){return invoke('get_company_sync_snapshot',{target_company_id:identity.companyId,section},signal)},
     downloadPage(progress,signal){return invoke('download_fleet_sync_page',{target_company_id:identity.companyId,expected_snapshot:progress.snapshotToken,record_cursor:progress.cursor},signal)},
     readRecord(target,signal){return invoke('get_fleet_sync_record',{target_company_id:identity.companyId,entity_type:target.entityType,record_id:target.entityId},signal)},
+    withdrawConflict(operation,signal){
+      recordArgs(operation);
+      return invoke('withdraw_my_fleet_sync_conflict',{target_company_id:identity.companyId,operation_id:operation.operationId},signal);
+    },
     outcome(operation,signal){
       recordArgs(operation);
       return invoke('get_fleet_sync_outcome',{target_company_id:identity.companyId,operation_id:operation.operationId},signal);

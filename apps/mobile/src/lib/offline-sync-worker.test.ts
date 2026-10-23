@@ -3,7 +3,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {SyncOperation,SyncReviewOutcome} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
-import {createOfflineSyncWorker,offlineSyncEntryLabel,offlineSyncNotice,offlineSyncVisible,type OfflineSyncWorker} from './offline-sync-worker';
+import {createOfflineSyncWorker,offlineSyncDecisions,offlineSyncEntryLabel,offlineSyncNotice,offlineSyncVisible,type OfflineSyncWorker} from './offline-sync-worker';
+import {resolveOfflineDecision} from './offline-sync-decisions';
 
 const scope={userId:'20000000-0000-4000-8000-000000000001',companyId:'10000000-0000-4000-8000-000000000001'};
 const entity='30000000-0000-4000-8000-000000000001';
@@ -120,8 +121,25 @@ describe('native durable sync worker (real SQLite, no native UI)',()=>{
   });
   it('uploads a conflict once, polls its decision and presents a truthful final notice',async()=>{
     const f=await setup();f.transport.deliver.mockResolvedValue(pending);await f.worker.wake();
-    expect((await entry(f)).status).toBe('awaiting_review');expect(offlineSyncNotice(f.worker.getSnapshot())?.message).toContain('owner/admin review');
+    expect((await entry(f)).status).toBe('awaiting_review');expect(offlineSyncNotice(f.worker.getSnapshot())?.message).toContain('needs your decision');
     f.transport.outcome.mockResolvedValue(outcome());await f.worker.wake();expect((await entry(f)).status).toBe('synced');expect(f.transport.deliver).toHaveBeenCalledTimes(1);
+  });
+  it('lets the submitter cancel a conflict: withdrawn as not selected, finished through the verified outcome path',async()=>{
+    const f=await setup();f.transport.deliver.mockResolvedValue(pending);await f.worker.wake();
+    const [decision]=offlineSyncDecisions(f.worker.getSnapshot());expect(decision).toMatchObject({kind:'conflict',canResubmit:true});
+    const withdrawn=vi.fn().mockResolvedValue(outcome('not_selected'));(f.transport as Record<string,unknown>).withdrawConflict=withdrawn;
+    await resolveOfflineDecision(decision,'cancel',{worker:f.worker,editor:null,userSync:null});
+    expect(withdrawn).toHaveBeenCalledTimes(1);expect((await entry(f)).status).toBe('not_selected');expect(offlineSyncDecisions(f.worker.getSnapshot())).toEqual([]);
+    expect(f.transport.deliver).toHaveBeenCalledTimes(1);
+  });
+  it('submits a conflicted change again from the current version as a new change',async()=>{
+    const f=await setup();f.transport.deliver.mockResolvedValue(pending);await f.worker.wake();
+    (f.transport as Record<string,unknown>).withdrawConflict=vi.fn().mockResolvedValue(outcome('not_selected'));
+    const editor=createOfflineDetailEditor({session:f.session,readRecord:f.transport.readRecord,canEdit:()=>true,offline:()=>false,id:()=>'40000000-0000-4000-8000-000000000009',now:()=>date,changed:async()=>{}});cleanups.push(()=>editor.dispose());
+    await resolveOfflineDecision(offlineSyncDecisions(f.worker.getSnapshot())[0],'resubmit',{worker:f.worker,editor,userSync:null});
+    const entries=await f.session.list();const again=entries.find(item=>item.operation.operationId!==operationId)!;
+    expect(again.status).toBe('pending');
+    expect(again.operation.mutation).toMatchObject({kind:'update',baseRevision:'3',base:canonical.record,patch:{notes:{present:true,value:'Submitted'}}});
   });
   it('persists review results before catch-up and does not keep polling an already known decision',async()=>{
     const f=await setup();f.transport.deliver.mockResolvedValue(pending);await f.worker.wake();f.transport.outcome.mockResolvedValue(outcome());f.transport.canonical.mockRejectedValueOnce(new Error('Read failed'));

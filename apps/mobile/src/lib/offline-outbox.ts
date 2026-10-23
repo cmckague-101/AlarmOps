@@ -847,6 +847,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
             AND (continuation_json IS NULL OR json_extract(continuation_json,'$.phase')='ready')`, ...ids, operationId)).changes === 1);
         },
 
+        /** Hides one finished change's notice (its history stays). */
+        dismissNotice(operationId: string): Promise<boolean> {
+          return write(async tx => (await tx.runAsync(`UPDATE offline_operations SET notice_dismissed = 1 WHERE user_id = ? AND company_id = ? AND operation_id = ?
+            AND status IN ('synced','not_selected')`, ...ids, operationId)).changes === 1);
+        },
+
         dismissCompletedNotices(): Promise<void> {
           return write(async tx => { await tx.runAsync(`UPDATE offline_operations SET notice_dismissed = 1 WHERE user_id = ? AND company_id = ?
             AND (status IN ('synced','not_selected') OR (status = 'blocked' AND review_outcome_json IS NOT NULL))

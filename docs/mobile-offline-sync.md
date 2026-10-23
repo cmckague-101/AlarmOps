@@ -892,6 +892,17 @@ A new entry may not carry a file, and an edit must keep the entry's existing fil
 
 Vehicle and issue detail screens now show an **Offline changes** section at the bottom (above Delete vehicle) with plain wording: "Available offline · updated …" or "Not on this device yet. It downloads automatically while you are online.", plus **Edit offline** / **Device edit history** (owners/admins), **Claim / release offline** (crew vehicles) and **Notes and status offline** (crew, issues they reported). A crew member's own issue still needs to be opened once while online, because crew downloads cover vehicles only.
 
+### The person who made the change resolves conflicts (replaces owner/admin review)
+
+**Decided (product owner, 2026-10-23):** owners and admins no longer approve offline changes. Everything downloads automatically. When a change made offline syncs and conflicts with someone else's change, or the server refuses it, **the person who made it is warned in a banner at the top of the app** and chooses **Submit again** or **Cancel change**. Nothing is overwritten automatically.
+
+- **Fleet conflicts** (vehicle/issue fields someone else changed): `20261222000100_fleet_sync_submitter_conflicts.sql` adds `withdraw_my_fleet_sync_conflict(company, operation)`. It is submitter-only, runs under the record-group lock, and is idempotent. It closes the user's own pending conflict and records a `not_selected` outcome through the existing decision/outcome audit (decision `result.kind = 'withdrawn'`), so the device finishes the original change through the same verified outcome path a manager decision used. **Cancel** stops there. **Submit again** then saves the same field values as a new verified update from the current version (`resolveOfflineDecision`), re-appending notes/inspections onto the current list and keeping file bindings. It is checked like any change, so it can conflict again if someone edits in between. New narrow policies let the sync writer read, close and record only the caller's own conflict.
+- **Refused or kept-current commands** (`notApplied` / `keptCurrent`): **Submit again** re-sends the same command (`userSync.resubmit`). Guarded edits are checked against the version the server reported when it refused them (`updatedAt`, receipt values, entry values or annual record), so they apply only if nothing changed since. **Cancel** clears the notice; nothing is sent. Refusals that cannot succeed again (deleted records, already submitted forms, another draft, file mismatch, incomplete invoice, taken name) offer only Cancel.
+- `offlineSyncDecisions(state)` lists what needs a decision. The banner shows the first ("1 of N") with **Submit again / Cancel change / Details**, and Saved changes & sync shows both buttons on each affected row. Fleet conflicts need a connection to resolve.
+- **Owner/admin review is removed:** the dashboard conflict alerts on mobile and web are gone, and the mobile conflict screen is now **Device edit history** only. The server review functions remain but are no longer used by the clients.
+
+Tests: `fleet-sync-submitter-conflicts.test.mjs` (2), two worker tests (cancel through the verified outcome; submit again from the current version) and one command test (re-send with the reported version; cancel a final refusal).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -939,6 +950,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 41. `20261219000100_user_sync_guarded_edits.sql`
 42. `20261220000100_user_sync_vehicle_entries.sql`
 43. `20261221000100_user_sync_crew_qualifications.sql`
+44. `20261222000100_fleet_sync_submitter_conflicts.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

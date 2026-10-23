@@ -1,6 +1,6 @@
 # Offline sync deployment runbook
 
-Deploys the offline sync migrations (`20261109000100` … `20261221000100`, 43 files) and the Edge Functions they need to the linked production project (`pkfwlhtihudagxxyqyyg`). Nothing here was run by the implementation. The ordered list with per-migration notes is in `docs/mobile-offline-sync.md` → *Deployment checkpoint*.
+Deploys the offline sync migrations (`20261109000100` … `20261222000100`, 44 files) and the Edge Functions they need to the linked production project (`pkfwlhtihudagxxyqyyg`). Nothing here was run by the implementation. The ordered list with per-migration notes is in `docs/mobile-offline-sync.md` → *Deployment checkpoint*.
 
 Commands use `npx supabase` (no global CLI needed). Run them from the repository root.
 
@@ -83,7 +83,7 @@ Only built-in secrets are used (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_S
 ## 6. Verify
 
 ```sh
-npx supabase migration list --linked     # local and remote columns now match through 20261221000100
+npx supabase migration list --linked     # local and remote columns now match through 20261222000100
 ```
 In Dashboard → SQL Editor (read-only checks):
 ```sql
@@ -91,7 +91,7 @@ select rolname, rolbypassrls from pg_roles where rolname = 'fireops_sync_writer'
 select count(*) from public.user_sync_commands;                                       -- 44
 select proname from pg_proc where pronamespace = 'public'::regnamespace and proname in (
   'sync_user_command','get_user_sync_snapshot','get_company_sync_snapshot','sync_fleet_update',
-  'sync_fleet_create','download_fleet_sync_page','user_sync_base_matches') order by 1;  -- 7 rows
+  'sync_fleet_create','download_fleet_sync_page','user_sync_base_matches','withdraw_my_fleet_sync_conflict') order by 1;  -- 8 rows
 select policyname from pg_policies where tablename = 'objects' and policyname like 'uploaders remove own %';  -- includes receipt, invoices and payroll
 ```
 Then on the web app: sign in, toggle your availability, change a dashboard card, and open a vehicle. On a phone with the new build: run the offline → restart → reconnect → Saved changes & sync review.

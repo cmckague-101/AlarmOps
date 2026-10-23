@@ -9,7 +9,9 @@ import {OfflineAttachmentDrafts} from '../components/offline-attachment-drafts';
 import {useFireOpsTheme} from '../theme';
 
 export default function SyncStatusScreen(){
-  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor,downloadFleet,stopFleetDownload,attachmentController,attachmentState}=useOfflineSync();const theme=useFireOpsTheme();const router=useRouter();
+  const {state,available,loading,offline,refresh,retry,dismiss,detailEditor,downloadFleet,stopFleetDownload,attachmentController,attachmentState,decisions,resolveDecision}=useOfflineSync();
+  const [deciding,setDeciding]=useState('');const [decisionError,setDecisionError]=useState('');
+  const decide=async(operationId:string,action:'resubmit'|'cancel')=>{const decision=decisions.find(item=>item.entry.operation.operationId===operationId);if(!decision||deciding)return;setDeciding(operationId);setDecisionError('');try{await resolveDecision(decision,action)}catch(failure){setDecisionError(failure instanceof Error?failure.message:'This change could not be resolved.')}finally{setDeciding('')}};const theme=useFireOpsTheme();const router=useRouter();
   useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
   const [history,setHistory]=useState(false);
   const visible=history?state.entries:state.entries.filter(offlineSyncVisible);
@@ -43,6 +45,11 @@ export default function SyncStatusScreen(){
         {entry.noticeDismissed&&<Text style={[styles.meta,{color:theme.secondary}]}>Notice dismissed — retained in this account's device history.</Text>}
         {detailEditor&&(entry.operation.entityType==='vehicle'||entry.operation.entityType==='issue')&&button('Inspect backed-up device history (online)',()=>router.push({pathname:'/sync-conflict',params:{entityType:entry.operation.entityType,entityId:entry.operation.entityId}} as never),offline)}
         {entry.error&&<Text style={[styles.meta,{color:theme.danger}]}>{entry.error}</Text>}
+        {(()=>{const decision=decisions.find(item=>item.entry.operation.operationId===entry.operation.operationId);if(!decision)return null;const locked=!!deciding||(decision.kind==='conflict'&&offline);
+          return <View style={{gap:6}}><Text style={[styles.meta,{color:theme.danger}]}>{decision.label}</Text>
+            {decision.canResubmit&&button(deciding===entry.operation.operationId?'Working…':'Submit again',()=>void decide(entry.operation.operationId,'resubmit'),locked)}
+            {button('Cancel change',()=>void decide(entry.operation.operationId,'cancel'),locked)}
+            {deciding===''&&decisionError?<Text accessibilityRole="alert" style={[styles.meta,{color:theme.danger}]}>{decisionError}</Text>:null}</View>})()}
         {entry.status==='blocked'&&entry.continuation?.phase==='waiting'&&detailEditor&&button('Review / rebase later edit',()=>router.push(continuationReviewHref(entry.operation.operationId)),state.busy)}
         {entry.status==='blocked'&&!entry.reviewOutcome&&entry.continuation?.phase!=='waiting'&&button('Retry after fixing access or updating the app',()=>void retry(entry.operation.operationId),offline||state.busy)}
       </View>)}

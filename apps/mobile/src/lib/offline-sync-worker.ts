@@ -10,6 +10,8 @@ export interface OfflineSyncTransport{
   outcome(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
   downloadPage?(progress:Pick<FleetDownloadProgress,'snapshotToken'|'cursor'>,signal:AbortSignal):Promise<unknown>;
   readRecord?(target:Pick<SyncOperation,'entityType'|'entityId'>,signal:AbortSignal):Promise<unknown>;
+  /** Closes this user's own pending fleet conflict; returns the recorded not_selected outcome. */
+  withdrawConflict?(operation:SyncOperation,signal:AbortSignal):Promise<unknown>;
 }
 export type OfflineSyncState={readonly records:readonly CachedOfflineRecord[];readonly entries:readonly OutboxEntry[];readonly busy:boolean;readonly loaded:boolean;readonly error:string|null;readonly setupPending:boolean;readonly download?:FleetDownloadProgress|null;readonly downloadError?:string|null};
 export const emptyOfflineSyncState:OfflineSyncState={records:[],entries:[],busy:false,loaded:false,error:null,setupPending:false,download:null,downloadError:null};
@@ -262,6 +264,22 @@ export function createOfflineSyncWorker(options:{
     },
     pause(){epoch+=1;recovering=null;requestAbort?.abort();requestAbort=null;emit({busy:false})},
     stop(){stopped=true;epoch+=1;recovering=null;requestAbort?.abort();requestAbort=null},
+    /**
+     * The submitter's decision on their own fleet conflict: withdraw it (recorded server-side as
+     * not_selected), then finish the entry through the normal verified outcome path. "Submit again"
+     * is a new change saved afterwards from the current version.
+     */
+    async withdrawConflict(operationId:string):Promise<void>{
+      const version=epoch;if(!ready(version))throw new Error('Connect to resolve this conflict.');
+      if(!transport.withdrawConflict)throw new Error('Resolving conflicts needs an app update.');
+      const entry=(await session.list()).find(item=>item.operation.operationId===operationId);
+      if(!entry||entry.status!=='awaiting_review'||entry.receipt?.kind!=='awaiting_review')throw new Error('This change is no longer waiting for a decision.');
+      const conflictId=entry.receipt.conflictId;
+      const raw=await rpc(version,signal=>transport.withdrawConflict!(entry.operation,signal));
+      const outcome=decodeSyncOutcome(entry.operation,conflictId,raw);if(!outcome)throw new Error('The conflict could not be closed. Try again.');
+      if(!entry.reviewOutcome)await persist(()=>session.recordReviewOutcome(operationId,outcome));
+      if(running)await running;await pollReviews(version);await refresh();
+    },
     async startFleetDownload(){
       if(!ready(epoch)||!options.canReadRecords?.())return;
       const version=epoch;try{await session.restartFleetDownload(options.token());if(running)await running;if(ready(version))await startRun()}
@@ -309,10 +327,28 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='file_mismatch')return 'Not saved — the uploaded receipt file did not match; the file is kept on this device';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';
   if(entry.reviewOutcome?.outcome==='kept')return 'Reviewed — changes accepted; shared-data refresh pending';
-  if(entry.status==='awaiting_review')return 'Uploaded — awaiting owner/admin review';
+  if(entry.status==='awaiting_review')return 'Conflict — someone else changed this; submit again or cancel';
   if(entry.status==='blocked')return entry.delivery?.kind==='applied'?'Uploaded — shared-data refresh blocked':'Saved on device — action needed';
   if(entry.delivery?.kind==='applied')return 'Uploaded — confirming shared data';
   return busy?'Syncing saved changes':'Saved on device — waiting for connection or retry';
+}
+/** Reasons a refused change can never succeed by sending it again (only Cancel is offered). */
+const finalRefusals=new Set(['record_deleted','form_deleted','thread_deleted','vehicle_deleted','item_deleted','training_deleted','customer_deleted','already_submitted','other_draft','file_mismatch','incomplete','name_taken']);
+export type OfflineSyncDecision={entry:OutboxEntry;kind:'conflict'|'refused';label:string;canResubmit:boolean};
+/**
+ * Changes that need their own user's decision: fleet conflicts (someone else changed the record while
+ * this device was offline) and refused/kept-current commands. Each can be cancelled; most can be
+ * submitted again on top of the current version.
+ */
+export function offlineSyncDecisions(state:Pick<OfflineSyncState,'entries'>):OfflineSyncDecision[]{
+  const decisions:OfflineSyncDecision[]=[];
+  for(const entry of state.entries){
+    if(entry.status==='awaiting_review'&&entry.receipt?.kind==='awaiting_review'&&!entry.reviewOutcome){decisions.push({entry,kind:'conflict',label:'Someone changed this while you were offline. Submit your change again on top of theirs, or cancel it.',canResubmit:true});continue}
+    const delivery=entry.delivery as {notApplied?:unknown;keptCurrent?:unknown}|null;
+    if(entry.status!=='synced'||entry.noticeDismissed||!delivery||(delivery.notApplied===undefined&&delivery.keptCurrent!==true))continue;
+    decisions.push({entry,kind:'refused',label:offlineSyncEntryLabel(entry),canResubmit:typeof delivery.notApplied!=='string'||!finalRefusals.has(delivery.notApplied)});
+  }
+  return decisions;
 }
 export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail:string|null;dismissible:boolean}|null{
   const visible=state.entries.filter(offlineSyncVisible);
@@ -323,7 +359,7 @@ export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail
   const pending=visible.filter(entry=>entry.status==='pending'||entry.status==='syncing'||entry.status==='awaiting_review'&&!!entry.reviewOutcome);
   let message='';
   if(blocked.length)message=blocked.length===1?offlineSyncEntryLabel(blocked[0]):`${blocked.length} saved changes need attention`;
-  else if(review.length)message=`Uploaded — ${review.length} ${review.length===1?'change awaits':'changes await'} owner/admin review`;
+  else if(review.length)message=`${review.length} ${review.length===1?'change needs':'changes need'} your decision`;
   else if(history.length)message=`${history.length} device ${history.length===1?'history backup is':'history backups are'} pending`;
   else if(pending.length)message=pending.every(entry=>entry.delivery?.kind==='applied'||entry.reviewOutcome?.outcome==='kept')?'Uploaded — confirming shared data':state.busy?`Syncing ${pending.length} saved ${pending.length===1?'change':'changes'}`:`${pending.length} saved ${pending.length===1?'change is':'changes are'} waiting to sync`;
   else if(completed.length)message=completed.length===1?offlineSyncEntryLabel(completed[0]):`${completed.length} changes finished syncing or review — see details`;
