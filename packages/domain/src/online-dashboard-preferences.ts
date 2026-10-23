@@ -1,5 +1,6 @@
 import {dashboardItems,parseDashboardPreferences,type DashboardItem,type DashboardPreferences} from './dashboard-preferences';
 import {createSyncPatch,type SyncConnectivity,type SyncRecord} from './offline-sync';
+import {createAccountRpcTransport,createOnlineWrite,readOnlineValue,type AccountRpcClient} from './online-write';
 
 export type DashboardPreferenceChanges=Readonly<Partial<Record<DashboardItem,boolean|null>>>;
 export type OnlineDashboardRequest=Readonly<{schemaVersion:1;requestId:string;userId:string;changes:DashboardPreferenceChanges;savedAt:string;connectivity:SyncConnectivity}>;
@@ -21,25 +22,12 @@ function acknowledgment(value:unknown,request:OnlineDashboardRequest){
   for(const [key,expected] of Object.entries(request.changes))if(expected===null?Object.prototype.hasOwnProperty.call(raw,key):raw[key]!==expected)throw new Error('Dashboard acknowledgment omitted the saved choice.');
 }
 export type DashboardPreferenceTransport={invoke(name:'set_dashboard_preferences_once'|'get_dashboard_preferences',args:Record<string,unknown>,signal:AbortSignal,current:()=>boolean):Promise<unknown>};
-type RpcClient={auth:{getSession():PromiseLike<{data:{session:{user:{id:string};access_token:string}|null};error:unknown}>};rpc(name:string,args:Record<string,unknown>):{setHeader(key:string,value:string):{abortSignal(signal:AbortSignal):PromiseLike<{data:unknown;error:unknown}>}}};
 /** Each POST binds the expected account's JWT; SDK replacement cannot retarget it. */
-export function createDashboardPreferenceTransport(client:RpcClient,userId:string,online:()=>boolean=()=>true):DashboardPreferenceTransport{
-  return {async invoke(name,args,signal,current){
-    const guard=()=>{if(!current()||signal.aborted)throw new Error('Dashboard account changed.');if(!online())throw new Error('A connection is required. This choice remains only on this page.');};
-    guard();const {data,error}=await client.auth.getSession();guard();
-    if(error||!data.session||data.session.user.id!==userId)throw new Error('Verify the current dashboard account before retrying.');
-    const result=await client.rpc(name,args).setHeader('Authorization',`Bearer ${data.session.access_token}`).abortSignal(signal);
-    if(!current()||signal.aborted)throw new Error('Dashboard account changed.');
-    if(result.error)throw result.error;return result.data;
-  }};
+export function createDashboardPreferenceTransport(client:AccountRpcClient,userId:string,online:()=>boolean=()=>true):DashboardPreferenceTransport{
+  return createAccountRpcTransport(client,userId,online);
 }
-
-export async function readOnlineDashboardPreferences(transport:DashboardPreferenceTransport,userId:string,current:()=>boolean){
-  const abort=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
-  try{return await Promise.race([
-    transport.invoke('get_dashboard_preferences',{},abort.signal,current).then(value=>{if(!current()||abort.signal.aborted)throw new Error('Dashboard account changed.');return snapshot(value,userId).items}),
-    new Promise<never>((_yes,no)=>{timer=setTimeout(()=>{abort.abort();no(new Error('Dashboard refresh timed out.'))},15_000)}),
-  ])}finally{if(timer)clearTimeout(timer);abort.abort()}
+export function readOnlineDashboardPreferences(transport:DashboardPreferenceTransport,userId:string,current:()=>boolean){
+  return readOnlineValue('Dashboard',current,async signal=>snapshot(await transport.invoke('get_dashboard_preferences',{},signal,current),userId).items);
 }
 
 /** Memory-only online request. Explicit retry only; no storage or reconnect replay. */
@@ -48,30 +36,12 @@ export function createOnlineDashboardWrite(options:{userId:string;id:()=>string;
   const request:OnlineDashboardRequest=Object.freeze({schemaVersion:1,userId:options.userId,requestId:options.id(),changes:patch,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.connectivity?.()??'unknown'});
   if(!uuid.test(request.userId)||!uuid.test(request.requestId)||!date(request.savedAt)||!['online','offline','unknown'].includes(request.connectivity))throw new Error('Invalid dashboard request identity or provenance.');
   const requestArgs=Object.freeze({request});
-  let delivered=false;
-  let flight:{current:()=>boolean;abort:AbortController;promise:Promise<DashboardPreferences>}|undefined;
-  function run(current:()=>boolean):Promise<DashboardPreferences>{
-    if(!current())return Promise.reject(new Error('Dashboard account changed.'));
-    if(flight?.current())return flight.promise;
-    flight?.abort.abort();
-    const abort=new AbortController();let timedOut=false;let timer:ReturnType<typeof setTimeout>|undefined;let cancel:()=>void=()=>{};
-    const attempt={current,abort,promise:undefined as unknown as Promise<DashboardPreferences>};flight=attempt;
-    const guard=()=>{if(!current()||abort.signal.aborted)throw new Error('Dashboard account changed.');};
-    attempt.promise=(async()=>{
-      try{
-        return await Promise.race([
-          (async()=>{
-            guard();
-            if(!delivered){const result=await options.transport.invoke('set_dashboard_preferences_once',requestArgs,abort.signal,current);guard();acknowledgment(result,request);delivered=true;}
-            const result=await options.transport.invoke('get_dashboard_preferences',{},abort.signal,current);guard();return snapshot(result,request.userId).items;
-          })(),
-          new Promise<never>((_yes,no)=>{cancel=()=>no(new Error(timedOut?'Dashboard request timed out. Retry the original choice.':'Dashboard account changed.'));abort.signal.addEventListener('abort',cancel,{once:true});timer=setTimeout(()=>{timedOut=true;abort.abort()},options.timeoutMs??15_000)}),
-        ]);
-      }finally{if(timer)clearTimeout(timer);abort.signal.removeEventListener('abort',cancel);abort.abort();if(flight===attempt)flight=undefined}
-    })();
-    return attempt.promise;
-  }
-  return {request,run,get acknowledged(){return delivered}};
+  const write=createOnlineWrite({label:'Dashboard',timeoutMs:options.timeoutMs,
+    send:(signal,current)=>options.transport.invoke('set_dashboard_preferences_once',requestArgs,signal,current),
+    accept:raw=>{acknowledgment(raw,request);return true},
+    read:async(_receipt,signal,current)=>snapshot(await options.transport.invoke('get_dashboard_preferences',{},signal,current),request.userId).items,
+  });
+  return {request,run:write.run,get acknowledged(){return write.acknowledged}};
 }
 export type OnlineDashboardWrite=ReturnType<typeof createOnlineDashboardWrite>;
 export function onlineDashboardWriteError(error:unknown,acknowledged=false){

@@ -9,7 +9,7 @@ vi.mock('react',()=>runtime.hooks);
 const mocks=vi.hoisted(()=>({
   context:{offline:true,available:true,userSync:{scope:{userId:'',companyId:''},createTask:vi.fn(),completeTask:vi.fn(),setAvailability:vi.fn(),setDashboard:vi.fn()},state:{entries:[] as OutboxEntry[]}},
   client:{from:vi.fn(),rpc:vi.fn(),auth:{getSession:vi.fn()},channel:vi.fn(),removeChannel:vi.fn()},
-  execute:vi.fn(),canonical:vi.fn(),onlineWrite:vi.fn(),onlineRead:vi.fn(),headers:vi.fn(),events:[] as (()=>void)[],id:0,
+  execute:vi.fn(),canonical:vi.fn(),availability:vi.fn(),onlineWrite:vi.fn(),onlineRead:vi.fn(),headers:vi.fn(),events:[] as (()=>void)[],id:0,
 }));
 vi.mock('./supabase',()=>({supabase:mocks.client}));
 vi.mock('@/lib/supabase',()=>({supabase:mocks.client}));
@@ -48,8 +48,9 @@ beforeEach(()=>{
   mocks.execute.mockReset().mockImplementation(async({table})=>({data:table==='dashboard_preferences'?{items:{}}:[],error:null}));
   mocks.canonical.mockReset().mockImplementation(async(args)=>({data:{revision:'100',record:{id:args.record_id,...(args.entity_type==='dashboard'?{items:{}}:{available:false})}},error:null}));
   mocks.onlineWrite.mockReset().mockImplementation(async(request)=>({data:{kind:'applied',requestId:request.requestId,userId:user,items:request.changes,receivedAt:'2026-01-01T00:00:00Z'},error:null}));
+  mocks.availability.mockReset().mockImplementation(async(_name,args)=>({data:{actorId:user,companyId:args.target_company_id,statuses:{}},error:null}));
   mocks.onlineRead.mockReset().mockResolvedValue({data:{userId:user,items:{}},error:null});
-  mocks.client.rpc.mockImplementation((name,args)=>({setHeader:mocks.headers.mockImplementation(()=>({abortSignal:()=>name==='get_dashboard_preferences'?mocks.onlineRead():name==='set_dashboard_preferences_once'?mocks.onlineWrite(args.request):mocks.canonical(args)}))}));
+  mocks.client.rpc.mockImplementation((name,args)=>({setHeader:mocks.headers.mockImplementation(()=>({abortSignal:()=>name==='get_dashboard_preferences'?mocks.onlineRead():name==='set_dashboard_preferences_once'?mocks.onlineWrite(args.request):name.includes('crew_availability')?mocks.availability(name,args):mocks.canonical(args)}))}));
   mocks.client.from.mockImplementation(table=>{
     const request={table,action:'read',data:undefined as unknown,filters:[] as unknown[]};
     const query={select(){return query},eq(...values:unknown[]){request.filters.push(values);return query},order(){return query},maybeSingle(){return query},
@@ -106,7 +107,7 @@ describe('scoped availability hooks',()=>{
   });
   it('refreshes canonically after acknowledgment instead of replaying the historical result forever',async()=>{
     mocks.context.offline=false;mocks.context.state.entries=[entry('availability','availability.set',{available:false,base:false},'synced',{id:user,available:false})];
-    mocks.execute.mockResolvedValue({data:[{user_id:user,available:false}],error:null});mocks.canonical.mockResolvedValue({data:{revision:'100',record:{id:user,available:true}},error:null});
+    mocks.execute.mockResolvedValue({data:[{user_id:user,available:false}],error:null});mocks.availability.mockResolvedValue({data:{actorId:user,companyId:company,statuses:{[user]:true}},error:null});
     const f=hook(()=>useAvailability(company,user));expect(f.render().statuses[user]).toBe(false);f.effects();await flush();expect(f.render().statuses[user]).toBe(true);expect(mocks.headers).toHaveBeenCalledWith('Authorization','Bearer bound-token');
   });
   it('ignores out-of-order roster responses and preserves newest pending intent',async()=>{
@@ -122,9 +123,11 @@ describe('scoped availability hooks',()=>{
     mocks.context.state.entries=[entry('availability','availability.set',{available:true,base:false})];await f.render().save(user,true);expect(mocks.context.userSync.setAvailability.mock.calls.at(-1)).toEqual(failed);
   });
   it('binds online crew edits to the original actor and fences late acknowledgments',async()=>{
-    mocks.context.offline=false;const response=deferred<unknown>();mocks.execute.mockReturnValue(response.promise);let tenant=company;
-    const f=hook(()=>useAvailability(tenant,user));const saving=f.render().save('crew-member',true);await flush();expect(mocks.headers).toHaveBeenCalledWith('Authorization','Bearer bound-token');
-    tenant=otherCompany;f.render();response.resolve({data:null,error:null});await saving;expect(f.render().statuses).toEqual({});expect(f.render().busy).toBe(false);
+    mocks.context.offline=false;const crew='20000000-0000-4000-8000-999999999999';let tenant=company;const f=hook(()=>useAvailability(tenant,user));f.render();f.effects();await flush();expect(f.render().canSave(crew)).toBe(true);
+    const response=deferred<unknown>();mocks.availability.mockImplementationOnce(()=>response.promise);const saving=f.render().save(crew,true);await flush();
+    expect(mocks.availability).toHaveBeenLastCalledWith('set_crew_availability_once',expect.objectContaining({request:expect.objectContaining({actorId:user,companyId:company,userId:crew,available:true,base:null})}));expect(mocks.headers).toHaveBeenCalledWith('Authorization','Bearer bound-token');
+    const {request}=mocks.availability.mock.lastCall![1] as {request:{requestId:string}};tenant=otherCompany;f.render();response.resolve({data:{actorId:user,companyId:company,userId:crew,requestId:request.requestId,receivedAt:'2026-01-01T00:00:00Z',kind:'applied',available:true},error:null});await saving;expect(f.render().statuses).toEqual({});expect(f.render().busy).toBe(false);
+    expect(mocks.client.from).not.toHaveBeenCalledWith('crew_availability',expect.anything());expect(mocks.execute.mock.calls.some(([request])=>request.action==='upsert')).toBe(false);
   });
   it('locks duplicate saves synchronously and blocks foreign-scope command services',async()=>{
     const saving=deferred<unknown>();mocks.context.userSync.setAvailability.mockReturnValue(saving.promise);const f=hook(()=>useAvailability(company,user));const result=f.render();const first=result.save(user,true);await result.save(user,false);expect(mocks.context.userSync.setAvailability).toHaveBeenCalledTimes(1);saving.resolve({});await first;
