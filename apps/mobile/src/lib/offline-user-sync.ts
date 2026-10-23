@@ -7,7 +7,7 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
   notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
-  communication_thread:['thread.create'],training:['training.create'],inventory_item:['item.create']};
+  communication_thread:['thread.create'],training:['training.create'],inventory_item:['item.create'],company_document:['document.create']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -82,6 +82,16 @@ export const deviceReceipts=(entries:readonly OutboxEntry[])=>deviceCreates<Rece
 export const receiptMimeTypes=['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
 /** Server path an offline receipt's file is uploaded to before its command is sent. */
 export const offlineReceiptPath=(scope:OutboxScope,receiptId:string)=>`${scope.companyId}/${scope.userId}/sync-${receiptId}`;
+/** Commands whose kept device file is uploaded first: bucket and fixed path in the caller's own folder. */
+export const offlineFileUploads:Readonly<Record<string,{bucket:string;path:(scope:OutboxScope,id:string)=>string}>>={
+  receipt:{bucket:'receipt-files',path:offlineReceiptPath},
+  company_document:{bucket:'fleet-files',path:(scope,id)=>`${scope.companyId}/${scope.userId}/doc-${id}`},
+};
+export type DocumentDetails={name:string;fileName:string;mimeType:string;byteSize:number};
+export type DeviceDocument=DeviceCreate<DocumentDetails>;
+/** Company documents added on this device (owners/admins); the file is kept on the device until created. */
+export const deviceDocuments=(entries:readonly OutboxEntry[])=>deviceCreates<DocumentDetails>(entries,'company_document');
+export const documentMimeTypes=['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
 export type DeviceThread=DeviceCreate<{subject:string;description:string}>;
 /** Crew Chat threads started on this device (owners/admins). */
 export const deviceThreads=(entries:readonly OutboxEntry[])=>deviceCreates<{subject:string;description:string}>(entries,'communication_thread');
@@ -296,6 +306,15 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       const name=item.name.trim();
       if(!uuid.test(item.id)||!name||name.length>160||!Number.isInteger(item.quantity)||item.quantity<0||item.quantity>999999)return Promise.reject(new Error('Check the item name and quantity.'));
       return enqueue('inventory_item',item.id,'item.create',{name,quantity:item.quantity},null);
+    },
+    /** Owners/admins. Keeps the file on the device first (8 MB, as fleet files), then saves the command. */
+    async createCompanyDocument(document:{id:string;name:string;fileName:string;mimeType:string},fileUri:string){
+      const name=document.name.trim();const fileName=document.fileName.trim();
+      if(!uuid.test(document.id)||!name||name.length>160||!fileName||fileName.length>255||/[\x00-\x1f\x7f]/.test(fileName)||!documentMimeTypes.includes(document.mimeType))throw new Error('Check the document name and file type (JPG, PNG, WebP, GIF or PDF).');
+      if(!options.receiptFiles)throw new Error('Saving documents offline is unavailable on this device.');
+      guard();const byteSize=await options.receiptFiles.keep(document.id,fileUri);
+      if(byteSize>8*1024*1024){options.receiptFiles.remove(document.id);throw new Error('Documents must be 8 MB or smaller.')}
+      return enqueue('company_document',document.id,'document.create',{name,fileName,mimeType:document.mimeType,byteSize},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

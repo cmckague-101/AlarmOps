@@ -4,6 +4,9 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeviceSavedList } from '@/components/device-saved-list';
+import { deviceDocuments, scopedUserEntries } from '@/lib/offline-user-sync';
+import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { AppSymbol } from '@/components/app-symbol';
 import { deleteCompanyDocument, markCompanyDocumentViewed, refreshDocuments, useCompanyDocuments } from '@/lib/documents-store';
 import { openFleetFile } from '@/lib/fleet-files';
@@ -24,6 +27,9 @@ export default function CompanyDocumentsScreen() {
   const member = access.value?.kind === 'member' ? access.value : null;
   const canManage = member?.user.role === 'owner' || member?.user.role === 'admin';
   const { documents, loading, refreshing, error } = useCompanyDocuments(member?.company.id ?? null, member?.user.id ?? null);
+  // Documents added on this device that the list does not include yet.
+  const deviceSync = useOfflineUserSync(member?.company.id, member?.user.id);
+  const savedDocuments = useMemo(() => member ? deviceDocuments(scopedUserEntries(deviceSync.entries, member.user.id, member.company.id)).filter((item) => !documents.some((entry) => entry.id === item.id)) : [], [deviceSync.entries, member, documents]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
@@ -98,6 +104,7 @@ export default function CompanyDocumentsScreen() {
         </View>
 
         {loading ? <Text style={styles.stateText}>Loading company documents…</Text> : null}
+        <DeviceSavedList rows={savedDocuments.map((item) => ({ id: item.id, title: item.name, detail: item.fileName, state: item.state }))} />
         {error ? (
           <View style={styles.errorBlock}>
             <Text style={styles.errorTitle}>Documents unavailable</Text>

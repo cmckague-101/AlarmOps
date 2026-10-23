@@ -77,4 +77,14 @@ describe('authenticated native sync RPC transport',()=>{
     files.read.mockResolvedValue(null);upload.mockClear();f.builder.abortSignal.mockResolvedValue({data:{kind:'applied',revision:'1',record:{id:'receipt-1'}},error:null});
     await transport.deliver(receipt,f.signal);expect(upload).not.toHaveBeenCalled();
   });
+  it('uploads a kept company document into the caller fleet-files folder before creating it',async()=>{
+    const f=setup();const files={read:vi.fn().mockResolvedValue(new ArrayBuffer(4)),remove:vi.fn(),keep:vi.fn(),uri:vi.fn()};
+    const upload=vi.fn().mockResolvedValue({data:{},error:null});const storage={from:vi.fn(()=>({upload}))};
+    const transport=createNativeSyncTransport({...f.client,storage} as unknown as SupabaseClient,scope,()=>f.mode.ready,files);
+    const document:SyncOperation={...operation,entityType:'company_document',entityId:'doc-1',mutation:{kind:'command',command:'document.create',payload:{name:'SOP',fileName:'sop.pdf',mimeType:'application/pdf',byteSize:4}}};
+    f.builder.abortSignal.mockResolvedValue({data:{kind:'applied',revision:'1',record:{id:'doc-1'}},error:null});
+    await transport.deliver(document,f.signal);
+    expect(storage.from).toHaveBeenCalledWith('fleet-files');expect(upload).toHaveBeenCalledWith('company-1/user-1/doc-doc-1',expect.any(ArrayBuffer),{contentType:'application/pdf',upsert:false});
+    expect(files.remove).toHaveBeenCalledWith('doc-1');
+  });
 });

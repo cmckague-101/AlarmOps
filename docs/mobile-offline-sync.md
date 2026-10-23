@@ -829,6 +829,12 @@ Client: `createThread`, `createTraining` and `createInventoryItem` (one ID per i
 
 Tests: `manager-creates-offline.test.mjs` (3 embedded PostgreSQL tests on the real migrations, including the manager-only thread policy) and 1 more SQLite command test.
 
+### Offline company documents (not deployed)
+
+`20261218000100_user_sync_company_documents.sql` follows the offline receipt design for owners/admins. **Add document** offline keeps the picked file on the device (same app storage as receipts, not app-encrypted). When connected, the transport uploads it into the caller's own `fleet-files` folder at `<company>/<user>/doc-<document id>` with `upsert: false` (the `doc-` prefix stays clear of the protected `sync-` fleet copies), and only then sends `document.create` `{name, fileName, mimeType, byteSize}`. The server creates the document for exactly that path through the existing attribution trigger and owner insert policy, if the object exists (otherwise retryable `55000`) at the declared size (otherwise `notApplied: 'file_mismatch'`). Crew are refused (`42501`) and a reused ID is refused (`23505`). Files must be JPG, PNG, WebP, GIF or PDF, 8 MB or smaller, as for fleet files. Renaming, replacing files and deleting stay online. The Documents list shows documents added on this device until the list includes them.
+
+Client: `offlineFileUploads` (in `offline-user-sync.ts`) maps both receipts and documents to their bucket and fixed path for the shared upload-before-command step in the transport, and `createCompanyDocument`/`deviceDocuments` handle the document side. Tests: `company-documents-offline.test.mjs` (2), 1 transport test and 1 SQLite command test. 317 mobile offline tests pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceDocuments,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -241,5 +241,16 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     for(let i=0;i<5;i++)await f.worker.wake();const done=await f.session.list();
     expect(offlineSyncEntryLabel(done.find(entry=>entry.operation.entityId===gloves)!)).toContain('already exists');expect(deviceInventoryItems(done)).toEqual([]);
     expect(deviceThreads(done).map(row=>row.state)).toEqual(['posted']);
+  });
+  it('keeps a company document file within the fleet-file limit before saving the command',async()=>{
+    const f=await setup();let size=2048;
+    const files={keep:vi.fn(async()=>size),read:vi.fn(),uri:vi.fn(),remove:vi.fn()};
+    const sync=createOfflineUserSync({session:f.session,id:nextId,now:()=>date,offline:()=>true,canEdit:()=>true,changed:async()=>{},receiptFiles:files});
+    const id=nextId();
+    await expect(sync.createCompanyDocument({id,name:'SOP',fileName:'sop.txt',mimeType:'text/plain'},'file:///tmp/sop.txt')).rejects.toThrow();expect(files.keep).not.toHaveBeenCalled();
+    size=9*1024*1024;await expect(sync.createCompanyDocument({id,name:'SOP',fileName:'sop.pdf',mimeType:'application/pdf'},'file:///tmp/sop.pdf')).rejects.toThrow(/8 MB/);expect(files.remove).toHaveBeenCalledWith(id);
+    size=2048;const saved=await sync.createCompanyDocument({id,name:' SOP ',fileName:'sop.pdf',mimeType:'application/pdf'},'file:///tmp/sop.pdf');
+    expect(saved.operation.mutation).toEqual({kind:'command',command:'document.create',payload:{name:'SOP',fileName:'sop.pdf',mimeType:'application/pdf',byteSize:2048}});
+    expect(deviceDocuments(await f.session.list()).map(item=>item.name)).toEqual(['SOP']);
   });
 });

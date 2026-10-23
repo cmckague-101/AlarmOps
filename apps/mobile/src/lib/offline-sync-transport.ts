@@ -3,7 +3,7 @@ import type {SyncOperation} from '@fireops/domain';
 import type {OutboxScope} from './offline-outbox';
 import type {OfflineSyncTransport} from './offline-sync-worker';
 import type {OfflineReceiptFiles} from './offline-receipt-files';
-import {isUserSyncOperation,offlineReceiptPath,userSyncCommands} from './offline-user-sync';
+import {isUserSyncOperation,offlineFileUploads,userSyncCommands} from './offline-user-sync';
 
 /** Bind each request to the verified local session token; never use a service key. */
 export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScope,canRun:()=>boolean,receiptFiles?:OfflineReceiptFiles):OfflineSyncTransport & Required<Pick<OfflineSyncTransport,'readRecord'>> & {userSnapshot(signal:AbortSignal):Promise<unknown>;companySnapshot(section:string,signal:AbortSignal):Promise<unknown>}{
@@ -25,15 +25,15 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
     if(operation.companyId!==identity.companyId)throw Object.assign(new Error('Sync company changed'),{code:'42501'});
     return {target_company_id:identity.companyId,entity_type:operation.entityType,record_id:operation.entityId};
   };
-  // Offline receipts: upload the kept file into the caller's own folder (same
-  // policies as the online flow, never overwriting) before the command creates
-  // the receipt for that path. A lost upload response retries as "already exists".
-  async function deliverReceipt(operation:SyncOperation,signal:AbortSignal){
+  // Offline receipts and company documents: upload the kept file into the caller's
+  // own folder (same policies as the online flow, never overwriting) before the
+  // command creates the record for that path. A lost upload response retries as "already exists".
+  async function deliverWithFile(operation:SyncOperation,signal:AbortSignal,target:{bucket:string;path:(scope:OutboxScope,id:string)=>string}){
     const bytes=receiptFiles?await receiptFiles.read(operation.entityId):null;
     if(bytes){
       await verifiedSession(signal);
       const mimeType=operation.mutation.kind==='command'?String(operation.mutation.payload.mimeType):'';
-      const {error}=await client.storage.from('receipt-files').upload(offlineReceiptPath(identity,operation.entityId),bytes,{contentType:mimeType,upsert:false});
+      const {error}=await client.storage.from(target.bucket).upload(target.path(identity,operation.entityId),bytes,{contentType:mimeType,upsert:false});
       if(error&&!/already exists|duplicate/i.test(error.message)&&String((error as {statusCode?:unknown}).statusCode??'')!=='409')throw error;
     }
     const result=await invoke('sync_user_command',{operation},signal) as {kind?:string;notApplied?:unknown}|null;
@@ -43,7 +43,7 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
   return {
     deliver(operation,signal,history=[]){
       recordArgs(operation);
-      if(isUserSyncOperation(operation)&&operation.entityType==='receipt')return deliverReceipt(operation,signal) as never;
+      if(isUserSyncOperation(operation)&&offlineFileUploads[operation.entityType])return deliverWithFile(operation,signal,offlineFileUploads[operation.entityType]) as never;
       if(isUserSyncOperation(operation))return invoke('sync_user_command',{operation},signal);
       if(operation.mutation.kind==='create')return invoke('sync_fleet_create',{operation},signal);
       return history.length?invoke('sync_fleet_update_with_history',{operation,device_history:history},signal):invoke('sync_fleet_update',{operation},signal);

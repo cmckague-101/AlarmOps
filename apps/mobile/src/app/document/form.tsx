@@ -4,6 +4,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useIntentId, useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { AppSymbol } from '@/components/app-symbol';
 import { createCompanyDocument, removeCompanyDocumentFiles, updateCompanyDocument, useCompanyDocuments } from '@/lib/documents-store';
 import { LocalFleetFile, uploadFleetFile } from '@/lib/fleet-files';
@@ -18,6 +19,9 @@ export default function CompanyDocumentFormScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
+  // Offline, a new document's file is kept on this device and uploaded when connected; edits need a connection.
+  const { offline, userSync } = useOfflineUserSync(member?.company.id, member?.user.id);
+  const intent = useIntentId();
   const { documents, loading } = useCompanyDocuments(member?.company.id ?? null, member?.user.id ?? null);
   const document = id ? documents.find((item) => item.id === id) : undefined;
   const [name, setName] = useState<string | null>(null);
@@ -46,6 +50,24 @@ export default function CompanyDocumentFormScreen() {
   const submit = async () => {
     setAttempted(true);
     if (!member || !effectiveName.trim() || (!document && !pickedFile)) return;
+    if (offline && Platform.OS !== 'web') {
+      setSaving(true);
+      setSaveError('');
+      try {
+        if (document) throw new Error('Editing documents needs a connection.');
+        if (!userSync || !pickedFile) throw new Error('Saving documents offline is unavailable on this device.');
+        const mimeType = pickedFile.type || (/\.pdf$/i.test(pickedFile.name) ? 'application/pdf' : /\.png$/i.test(pickedFile.name) ? 'image/png' : 'image/jpeg');
+        const content = { name: effectiveName.trim(), fileName: pickedFile.name, mimeType, uri: pickedFile.uri };
+        await userSync.createCompanyDocument({ id: intent.for(content), name: content.name, fileName: content.fileName, mimeType }, pickedFile.uri);
+        intent.reset();
+        router.back();
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Document could not be saved on this device.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     setSaving(true);
     setSaveError('');
     let uploaded: FleetVehicleFile | null = null;
