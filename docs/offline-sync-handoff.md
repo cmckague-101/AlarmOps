@@ -80,6 +80,8 @@ Source inspection identified additional areas needing focused regression tests/f
 
 ## Remaining feature scope
 
+Done since the last checkpoint (all through the user command registry): notification reads, Crew Chat seen markers and replies, and vehicle note creation. Deliberately not done: **document "viewed" markers**, because opening a company document needs an online signed URL, so an offline marker would never fire until offline document files exist. **Note edits/deletes, reply deletes and thread creation** also stay online-only (last-write-wins or manager-only today; they need revision tracking or review design first).
+
 Complete authorization-aware download/catch-up and explicit adapters for crew/qualifications/roles/invitations, notes/types/templates, communications/read markers, company/stored documents, training/enrollment, inventory adjustments, notifications/preferences/tokens, financials, settings/feedback/integrations and remaining fleet mutations. Remote actions remain pending intentions until authorized online execution; never fabricate sends/payments/seat reservations/external success. Sensitive-file encryption/retention, compatibility/recovery/performance and installed-device offline → restart → reconnect → review testing remain rollout blockers.
 
 ## Targeted validation examples
