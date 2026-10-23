@@ -132,3 +132,14 @@ export async function loadInvoiceSchema(db) {
   await db.exec(invoices.slice(0, invoices.indexOf('insert into storage.buckets')) + invoices.slice(invoices.indexOf('create or replace function public.notify_submitted_invoice')));
   await db.exec(migration('20261210000100_user_sync_invoice_forms'));
 }
+
+/** Invoice schema plus the Storage metadata fixture, the real receipt table/bucket policies and offline receipt creation. */
+export async function loadReceiptSchema(db) {
+  await loadInvoiceSchema(db);
+  await db.exec(readFileSync(new URL('./storage.sql', import.meta.url), 'utf8'));
+  await db.exec(migration('20260907000100_company_receipts'));
+  await db.exec(migration('20260908000100_owner_manage_company_receipts'));
+  await db.exec(migration('20260912000100_quick_action_documents'));
+  await db.exec(migration('20261211000100_fix_storage_file_retention_policies'));
+  await db.exec(migration('20261212000100_user_sync_receipts'));
+}

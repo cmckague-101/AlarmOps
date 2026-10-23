@@ -769,6 +769,14 @@ Same design as payroll: `saveInvoiceForm(formId, changes)` / `submitInvoiceForm(
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, ordering, overlay of a device-created submitted invoice, incomplete refusal label).
 
+### Receipts: server (not deployed)
+
+**Bug fixed (affects online use too):** the uploader delete policies on `receipt-files`, `invoices-files` and `payroll-files` compared the saved row's `storage_path` with that row's own `name` column instead of the object's name. So the "still referenced" check never matched, and crew could delete the files behind their saved receipts, invoice documents, payroll documents and submitted payroll forms. `20261211000100_fix_storage_file_retention_policies.sql` recreates the three policies with the same rules and the object name qualified. Test: `storage-file-retention.test.mjs` (4 cases; all fail without the fix). Owners' own delete policies are unchanged.
+
+`20261212000100_user_sync_receipts.sql` registers `receipt` / `receipt.create` `{name, amountCents, fileName, mimeType, byteSize}` (entity ID = receipt ID chosen on the device). The device first uploads the file into the caller's own `receipt-files` folder at the fixed path `<company>/<user>/sync-<receipt id>`, under the same storage policies the online upload uses (own folder only, no overwrite). The command then creates the receipt for exactly that path through the existing attribution trigger and RLS, but only if the object exists (otherwise retryable error `55000`) and has the declared size (otherwise `notApplied: 'file_mismatch'`, nothing created). A reused receipt ID or path is refused (`23505`). No server-side hash check: trust is the same as the online flow, where the uploader writes its own folder directly. Edits and deletes stay online (owners).
+
+Tests: `receipts-offline.test.mjs` (4 embedded PostgreSQL tests on the real receipt migrations and Storage metadata fixture: attributed create with replay and file retained, missing file and size mismatch, foreign folder and ID reuse, validation and outsider denial).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -805,6 +813,8 @@ You do not need to push the site or apply Supabase changes while implementation 
 30. `20261208000100_user_sync_training_signups.sql`
 31. `20261209000100_user_sync_payroll_forms.sql`
 32. `20261210000100_user_sync_invoice_forms.sql`
+33. `20261211000100_fix_storage_file_retention_policies.sql` (independent bug fix; safe to apply early)
+34. `20261212000100_user_sync_receipts.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
