@@ -233,11 +233,6 @@ export default function IssueDetailScreen() {
                 </Pressable>
               ) : null}
 
-              {((user?.role==='owner'||user?.role==='admin')||((user?.role==='fire_fighter'||user?.role==='shop_tech')&&issue.createdById===user?.id))&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
-                <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'issue',entityId:issue.id}))} style={styles.editButton}><Text style={styles.editButtonLabel}>{user?.role==='owner'||user?.role==='admin'?(savedDetailBase?'Edit downloaded details':'Download / edit saved details'):(savedDetailBase?'Add notes offline':'Download for offline notes')}</Text></Pressable>
-                {user?.role==='owner'||user?.role==='admin'?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={styles.editButton}><Text style={styles.editButtonLabel}>Inspect device edit history (online)</Text></Pressable>:null}
-                <Text style={styles.sectionHelp}>{savedDetailBase?(user?.role==='owner'||user?.role==='admin'?'Verified details downloaded. Details, notes and resolve/reopen can be saved offline in this editor.':'Verified issue downloaded. Notes can be saved offline; resolve/reopen needs a connection.'):'Open the saved-detail editor online once to download verified details before working offline.'}</Text>
-              </View>:null}
               {!editingDetails ? <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Add update</Text>
                 <Text style={styles.sectionHelp}>Progress, repair, or inspection notes</Text>
@@ -289,6 +284,14 @@ export default function IssueDetailScreen() {
                   </View>
                 ) : <Text style={styles.noUpdates}>No updates yet.</Text>}
               </View> : null}
+              {((user?.role==='owner'||user?.role==='admin')||((user?.role==='fire_fighter'||user?.role==='shop_tech')&&issue.createdById===user?.id))&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
+                <Text style={styles.sectionTitle}>Offline changes</Text>
+                <Text style={styles.sectionHelp}>{user?.role==='owner'||user?.role==='admin'
+                  ?`${savedDetailBase?'Available offline. ':'Not on this device yet. It downloads automatically while you are online. '}Edit details, add notes and resolve or reopen without a connection; changes sync when you reconnect.`
+                  :`${savedDetailBase?'Available offline. ':'Open this once while online to keep it on this device. '}Add notes, and resolve or reopen with a note, without a connection; changes sync when you reconnect.`}</Text>
+                <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'issue',entityId:issue.id}))} style={styles.editButton}><Text style={styles.editButtonLabel}>{user?.role==='owner'||user?.role==='admin'?'Edit offline':'Notes and status offline'}</Text></Pressable>
+                {user?.role==='owner'||user?.role==='admin'?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={styles.editButton}><Text style={styles.editButtonLabel}>Device edit history</Text></Pressable>:null}
+              </View>:null}
             </>
           ) : null}
         </ScrollView>
