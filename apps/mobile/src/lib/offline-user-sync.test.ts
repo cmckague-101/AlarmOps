@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -213,5 +213,16 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     f.transport.deliver.mockResolvedValue({kind:'applied',receivedAt:date,revision:'3',record:null,notApplied:'file_mismatch'} as never);f.transport.canonical.mockResolvedValue({revision:'3',record:null});
     for(let i=0;i<3;i++)await f.worker.wake();const entry=(await f.session.list())[0];
     expect(entry.status).toBe('synced');expect(offlineSyncEntryLabel(entry)).toContain('file is kept on this device');expect(deviceReceipts([entry])).toEqual([]);
+  });
+  it('queues own notification preferences per key and feedback once per ID',async()=>{
+    const f=await setup();
+    for(const changes of [{},{vehicleAssigned:false},{pushEnabled:'no' as never}])await expect(f.sync.setNotificationPreferences(changes)).rejects.toThrow();
+    const first=await f.sync.setNotificationPreferences({pushEnabled:false});const second=await f.sync.setNotificationPreferences({trainingCreated:false,pushEnabled:true});
+    expect(first.operation.entityId).toBe(user);expect(second.operation.dependsOn).toContain(first.operation.operationId);
+    expect(pendingNotificationPreferences(await f.session.list())).toEqual({pushEnabled:true,trainingCreated:false});
+    const id=nextId();
+    for(const bad of [{category:'bug'},{message:' '},{source:'web'}])await expect(f.sync.sendFeedback({id,category:'idea',message:'Hi',source:'ios',...bad})).rejects.toThrow();
+    const sent=await f.sync.sendFeedback({id,category:'idea',message:' Hi ',source:'ios'});expect(sent.operation.mutation).toEqual({kind:'command',command:'feedback.send',payload:{category:'idea',message:'Hi',source:'ios'}});
+    expect((await f.sync.sendFeedback({id,category:'idea',message:'Hi',source:'ios'})).operation.operationId).not.toBe(sent.operation.operationId);
   });
 });

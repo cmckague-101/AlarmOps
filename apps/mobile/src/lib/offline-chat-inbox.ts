@@ -17,6 +17,9 @@ export type OfflineChatInbox = {
   newId(): string;
   /** Crew Chat replies saved on this device (see deviceReplies). */
   replies: readonly DeviceReply[];
+  savePreferences(changes: Record<string, boolean>): Promise<unknown>;
+  /** Notification preference values saved on this device and not yet synced. */
+  preferences: Readonly<Record<string, boolean>>;
 };
 
 let current: OfflineChatInbox | null = null;

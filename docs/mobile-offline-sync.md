@@ -801,6 +801,14 @@ Client: `detailEditor.createVehicle(record)` (one operation per new vehicle ID, 
 
 Tests: `fleet-sync-vehicle-create.test.mjs` (4: create with activity and replay, identity reuse and deleted-vehicle refusal, crew/outsider/invalid refusals, issue reports unchanged); 1 more client test in `offline-status-assignments.test.ts`; two older tests that used vehicle creates as the "unsupported" example now use activities. 307 mobile offline tests pass.
 
+### Feedback and notification preferences (not deployed)
+
+`20261215000100_user_sync_feedback_and_preferences.sql` registers two user commands. `feedback.send` `{category, message, source}` inserts one `app_feedback` row per device-chosen ID as the caller, through the existing insert policy, source-attribution trigger and owner notification. A reused ID is refused. A new policy lets only the sync writer read back the caller's own feedback for the receipt; ordinary clients still cannot. `preferences.set` `{changes}` (self only) merges boolean `pushEnabled`, `communicationReplies`, `documentAdded`, `trainingCreated` and `issueUpdates` per key over the caller's row, creating it with defaults if missing. Later arrival wins per key, like the dashboard layout.
+
+Client: `sendFeedback` and `setNotificationPreferences` in `offline-user-sync.ts`, plus `pendingNotificationPreferences` for the overlay. Settings → **Send feedback** offline saves on the device ("Feedback saved — it will be sent when you are connected"), keeping one ID per intended message for retries. Notification toggles queue per key on the device while offline, or while earlier device preference changes are still unsynced, through the inbox bridge (`offline-chat-inbox.ts`), and the Settings screen shows the saved values. Online behavior is unchanged otherwise.
+
+Tests: `feedback-preferences-offline.test.mjs` (3 embedded PostgreSQL tests on the real feedback and preference migrations); 1 more SQLite command test and 1 store test.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -841,6 +849,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 34. `20261212000100_user_sync_receipts.sql`
 35. `20261213000100_fleet_sync_issue_status_with_note.sql`
 36. `20261214000100_fleet_sync_vehicle_create.sql`
+37. `20261215000100_user_sync_feedback_and_preferences.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

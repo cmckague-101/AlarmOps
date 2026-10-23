@@ -17,7 +17,7 @@ vi.mock('@/lib/supabase',()=>{
   return {supabase:{from:query,channel:()=>channel,removeChannel:async()=>undefined}};
 });
 import {publishOfflineChatInbox,type OfflineChatInbox} from './offline-chat-inbox';
-import {markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
+import {markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,saveNotificationPreferences,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
 import {displayedThroughOf,markCommunicationThreadSeen,refreshCommunications,replyToCommunicationThread,useCommunications,withOfflineReplies,withOfflineSeen} from './communications-store';
 
 const company='10000000-0000-4000-8000-000000000001',user='20000000-0000-4000-8000-000000000001';
@@ -29,7 +29,7 @@ function hook<T>(fn:()=>T){
   return {render(){runtime.enter(frame);return fn()},effects(){for(const index of [...frame.effects]){frame.effects.delete(index);const value=frame.slots[index];value.cleanup?.();value.cleanup=value.effect?.()??undefined}}};
 }
 function markers(changes:Partial<OfflineChatInbox>={}):OfflineChatInbox{
-  return {companyId:company,userId:user,markNotificationRead:vi.fn(async()=>({})),markThreadSeen:vi.fn(async()=>({})),reads:new Map(),seen:new Map(),postReply:vi.fn(async()=>({})),newId:vi.fn(()=>'50000000-0000-4000-8000-000000000001'),replies:[],...changes};
+  return {companyId:company,userId:user,markNotificationRead:vi.fn(async()=>({})),markThreadSeen:vi.fn(async()=>({})),reads:new Map(),seen:new Map(),postReply:vi.fn(async()=>({})),newId:vi.fn(()=>'50000000-0000-4000-8000-000000000001'),replies:[],savePreferences:vi.fn(async()=>({})),preferences:{},...changes};
 }
 beforeEach(()=>{
   mocks.offline=true;mocks.writes=[];
@@ -93,5 +93,13 @@ describe('offline store actions',()=>{
     expect(withOfflineReplies(downloaded,{replies:[]},user)).toBe(downloaded);
     const queue=markers({replies});publishOfflineChatInbox(queue);const f=hook(()=>useCommunications(company,user));f.render();f.effects();await refreshCommunications();await flush();
     expect(f.render().threads[0].replies.at(-1)?.id).toBe('r2');await markCommunicationThreadSeen(thread);expect(queue.markThreadSeen).toHaveBeenCalledWith(thread,'2026-01-01T10:00:00.123456+00:00');
+  });
+  it('queues notification preferences per key offline and overlays them until synced',async()=>{
+    const value=markers();publishOfflineChatInbox(value);
+    await saveNotificationPreferences({trainingCreated:false});
+    expect(value.savePreferences).toHaveBeenCalledWith({trainingCreated:false});expect(mocks.writes).toEqual([]);
+    const base={notifications:[],unreadCount:0,loading:false,refreshing:false,error:null,preferences:{pushEnabled:true,communicationReplies:true,documentAdded:true,trainingCreated:true,issueUpdates:true},savingPreferences:false} as never;
+    expect((withOfflineReads(base,{reads:new Map(),preferences:{trainingCreated:false}}) as {preferences:{trainingCreated:boolean;pushEnabled:boolean}}).preferences).toMatchObject({trainingCreated:false,pushEnabled:true});
+    publishOfflineChatInbox(null);await expect(saveNotificationPreferences({pushEnabled:false})).rejects.toThrow(/unavailable/);
   });
 });

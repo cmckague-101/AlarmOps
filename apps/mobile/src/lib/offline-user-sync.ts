@@ -6,7 +6,7 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create'],feedback:['feedback.send'],notification_preferences:['preferences.set']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -138,6 +138,11 @@ const payrollDate=/^(\d{4}-\d{2}-\d{2})?$/;
 const validPayrollRows=(rows:unknown):rows is PayrollDay[]=>Array.isArray(rows)&&rows.length===21&&rows.every(day=>day&&typeof day==='object'&&Object.keys(day).sort().join()==='crewIds,date,hoursWorked,notes'
   &&typeof day.date==='string'&&payrollDate.test(day.date)&&typeof day.hoursWorked==='number'&&Number.isFinite(day.hoursWorked)&&day.hoursWorked>=0&&typeof day.notes==='string'&&day.notes.length<=2000
   &&Array.isArray(day.crewIds)&&day.crewIds.length<=200&&day.crewIds.every((id:unknown)=>typeof id==='string'&&uuid.test(id)));
+export const notificationPreferenceKeys=['pushEnabled','communicationReplies','documentAdded','trainingCreated','issueUpdates'] as const;
+/** Latest unapplied notification preference value per key saved on this device. */
+export function pendingNotificationPreferences(entries:readonly OutboxEntry[]):Record<string,boolean>{
+  const changes:Record<string,boolean>={};for(const entry of entries){const op=entry.operation;if(op.entityType==='notification_preferences'&&op.mutation.kind==='command'&&unresolved(entry))Object.assign(changes,(op.mutation.payload as {changes:Record<string,boolean>}).changes)}return changes;
+}
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>;receiptFiles?:OfflineReceiptFiles}){
   const {session}=options;const scope={...session.scope};
@@ -249,6 +254,18 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       if(!options.receiptFiles)throw new Error('Saving receipts offline is unavailable on this device.');
       guard();const byteSize=await options.receiptFiles.keep(receipt.id,fileUri);
       return enqueue('receipt',receipt.id,'receipt.create',{name,amountCents:receipt.amountCents,fileName,mimeType:receipt.mimeType,byteSize},null);
+    },
+    /** Own notification preferences, merged per key on the server (later arrival wins). */
+    setNotificationPreferences(changes:Record<string,boolean>){
+      const keys=Object.keys(changes);
+      if(!keys.length||keys.some(key=>!(notificationPreferenceKeys as readonly string[]).includes(key)||typeof changes[key]!=='boolean'))return Promise.reject(new Error('Invalid notification preferences.'));
+      return enqueue('notification_preferences',scope.userId,'preferences.set',{changes:{...changes}},null);
+    },
+    /** `id` is chosen once per intended feedback message and reused for retries. */
+    sendFeedback(feedback:{id:string;category:string;message:string;source:string}){
+      const message=feedback.message.trim();
+      if(!uuid.test(feedback.id)||!['idea','issue','other'].includes(feedback.category)||!message||message.length>5000||!['ios','android'].includes(feedback.source))return Promise.reject(new Error('Check the feedback message.'));
+      return enqueue('feedback',feedback.id,'feedback.send',{category:feedback.category,message,source:feedback.source},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

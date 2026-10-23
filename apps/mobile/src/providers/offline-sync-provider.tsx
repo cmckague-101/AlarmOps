@@ -9,7 +9,7 @@ import {createOfflineAttachmentUploader} from '../lib/offline-attachment-upload'
 import {createOfflineAttachmentDocumentSync} from '../lib/offline-attachment-documents';
 import {createNativeAttachmentUploadTransport} from '../lib/offline-attachment-upload-transport';
 import {createSlotAttachmentPreparer,createSlotAttachmentSettler} from '../lib/offline-attachment-slots';
-import {createOfflineUserSync,deviceReplies,pendingNotificationReads,pendingThreadSeen,scopedUserEntries,type OfflineUserSync} from '../lib/offline-user-sync';
+import {createOfflineUserSync,deviceReplies,pendingNotificationPreferences,pendingNotificationReads,pendingThreadSeen,scopedUserEntries,type OfflineUserSync} from '../lib/offline-user-sync';
 import {publishOfflineChatInbox} from '../lib/offline-chat-inbox';
 import {createUserSnapshotSync,type UserSnapshotState,type UserSnapshotSync} from '../lib/offline-user-snapshot';
 import {File} from 'expo-file-system';
@@ -160,7 +160,8 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
     if(!userSync){publishOfflineChatInbox(null);return}
     const {userId:owner,companyId:tenant}=userSync.scope;const entries=scopedUserEntries(state.entries,owner,tenant);
     publishOfflineChatInbox({companyId:tenant,userId:owner,markNotificationRead:id=>userSync.markNotificationRead(id),markThreadSeen:(id,seenThrough)=>userSync.markThreadSeen(id,seenThrough),reads:pendingNotificationReads(entries),seen:pendingThreadSeen(entries),
-      postReply:reply=>userSync.postReply(reply),newId:createFleetId,replies:deviceReplies(entries)});
+      postReply:reply=>userSync.postReply(reply),newId:createFleetId,replies:deviceReplies(entries),
+      savePreferences:changes=>userSync.setNotificationPreferences(changes),preferences:pendingNotificationPreferences(entries)});
   },[userSync,state.entries]);
   useEffect(()=>()=>publishOfflineChatInbox(null),[]);
   const value=useMemo<ContextValue>(()=>({userSync:binding?.key===key?binding.userSync:null,receiptFiles:binding?.key===key?binding.receiptFiles:null,attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&syncRole?binding.editor:null,hasSavedDetails:binding?.key===key&&syncRole&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload,userSnapshot,refreshUserSnapshot}),[userSnapshot,refreshUserSnapshot,attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);

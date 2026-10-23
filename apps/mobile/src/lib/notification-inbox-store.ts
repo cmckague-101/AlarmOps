@@ -106,7 +106,8 @@ function syncBadge(count: number) {
 }
 
 /** Overlays reads saved on this device onto the last downloaded list. */
-export function withOfflineReads(value: InboxSnapshot, markers: Pick<OfflineChatInbox, 'reads'> | null): InboxSnapshot {
+export function withOfflineReads(value: InboxSnapshot, markers: (Pick<OfflineChatInbox, 'reads'> & Partial<Pick<OfflineChatInbox, 'preferences'>>) | null): InboxSnapshot {
+  if (markers?.preferences && Object.keys(markers.preferences).length) value = {...value, preferences: {...value.preferences, ...markers.preferences}};
   if (!markers?.reads.size) return value;
   let cleared = 0;
   const notifications = value.notifications.map((item) => {
@@ -310,6 +311,17 @@ export async function markAllInboxNotificationsRead() {
 }
 
 export async function saveNotificationPreferences(patch: Partial<NotificationPreferences>) {
+  // Offline, and online while earlier device changes are unsynced, preferences queue per key on the device.
+  const markers = offlineChatInbox(activeCompanyId, activeUserId);
+  if (isOffline() || (markers && Object.keys(markers.preferences).length)) {
+    if (!markers) {
+      const error = new Error('Changing notification preferences offline is unavailable on this device.');
+      emit({...snapshot, error: error.message});
+      throw error;
+    }
+    await markers.savePreferences(Object.fromEntries(Object.entries(patch).filter(([, value]) => typeof value === 'boolean')) as Record<string, boolean>);
+    return;
+  }
   if (!supabase || !activeCompanyId || !activeUserId) throw new Error('Notification preferences are unavailable.');
   const previous = snapshot.preferences;
   const next = {...previous, ...patch};
