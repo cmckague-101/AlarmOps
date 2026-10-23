@@ -12,7 +12,7 @@ import { useFleetVehicles } from '@/lib/fleet-store';
 import { createFleetId } from '@/lib/fleet-store';
 import { openPayrollFile, removePayrollFile, uploadPayrollFile } from '@/lib/payroll-files';
 import { approvePayroll, deletePayroll, markPayrollPaid, rejectPayroll, savePayroll, submitPayroll, usePayroll } from '@/lib/payroll-store';
-import { useDevicePayroll } from '@/lib/use-device-payroll';
+import { useDevicePayroll } from '@/lib/use-device-forms';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 

@@ -7,7 +7,7 @@ import { AppSymbol } from '@/components/app-symbol';
 import { FilterSelect, type FilterSelectOption } from '@/components/filter-select';
 import { useFleetVehicles } from '@/lib/fleet-store';
 import { refreshPayroll, usePayroll } from '@/lib/payroll-store';
-import { useDevicePayroll } from '@/lib/use-device-payroll';
+import { useDevicePayroll } from '@/lib/use-device-forms';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 

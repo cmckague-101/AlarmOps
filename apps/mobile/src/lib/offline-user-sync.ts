@@ -1,11 +1,11 @@
-import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type InvoiceForm,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -89,17 +89,32 @@ export function pendingTrainingSignups(entries:readonly OutboxEntry[]):Map<strin
   return pending;
 }
 export type PayrollChanges=Partial<Pick<PayrollForm,'engineNumber'|'incidents'|'rows'>>;
-export type DevicePayroll={changes:PayrollChanges;submitted:boolean;savedAt:string;actionNeeded:boolean};
-/** Unapplied payroll saves/submission per form on this device, merged in save order. */
-export function devicePayrollForms(entries:readonly OutboxEntry[]):Map<string,DevicePayroll>{
-  const forms=new Map<string,DevicePayroll>();
+export type DeviceForm<Changes>={changes:Changes;submitted:boolean;savedAt:string;actionNeeded:boolean};
+export type DevicePayroll=DeviceForm<PayrollChanges>;
+/** Unapplied draft saves/submission per form on this device, merged in save order. */
+function deviceForms<Changes extends object>(entries:readonly OutboxEntry[],entityType:'payroll_form'|'invoice_form'):Map<string,DeviceForm<Changes>>{
+  const forms=new Map<string,DeviceForm<Changes>>();
   for(const entry of entries){
-    const op=entry.operation;if(op.entityType!=='payroll_form'||op.mutation.kind!=='command'||!unresolved(entry))continue;
-    const current=forms.get(op.entityId)??{changes:{},submitted:false,savedAt:op.provenance.savedAt,actionNeeded:false};
-    forms.set(op.entityId,{changes:op.mutation.command==='form.save'?{...current.changes,...(op.mutation.payload as PayrollChanges)}:current.changes,
+    const op=entry.operation;if(op.entityType!==entityType||op.mutation.kind!=='command'||!unresolved(entry))continue;
+    const current=forms.get(op.entityId)??{changes:{} as Changes,submitted:false,savedAt:op.provenance.savedAt,actionNeeded:false};
+    forms.set(op.entityId,{changes:op.mutation.command==='form.save'?{...current.changes,...(op.mutation.payload as Changes)}:current.changes,
       submitted:current.submitted||op.mutation.command==='form.submit',savedAt:op.provenance.savedAt,actionNeeded:current.actionNeeded||entry.status==='blocked'});
   }
   return forms;
+}
+export const devicePayrollForms=(entries:readonly OutboxEntry[])=>deviceForms<PayrollChanges>(entries,'payroll_form');
+export type InvoiceChanges=Partial<Pick<InvoiceForm,'invoiceNumber'|'invoiceDate'|'invoiceAmount'|'customerId'>>;
+export type DeviceInvoice=DeviceForm<InvoiceChanges>;
+export const deviceInvoiceForms=(entries:readonly OutboxEntry[])=>deviceForms<InvoiceChanges>(entries,'invoice_form');
+/** Downloaded invoices with this device's unapplied changes on top; invoices created on the device appear as drafts. */
+export function overlayInvoiceForms(forms:readonly InvoiceForm[],device:ReadonlyMap<string,DeviceInvoice>,author:{companyId:string;userId:string;name:string}):InvoiceForm[]{
+  const result=forms.map(form=>{const saved=device.get(form.id);return saved&&form.createdBy===author.userId?{...form,...saved.changes,status:saved.submitted?'submitted' as const:form.status,submittedAt:saved.submitted?form.submittedAt??saved.savedAt:form.submittedAt,updatedAt:saved.savedAt}:form});
+  for(const [id,saved] of device){
+    if(forms.some(form=>form.id===id))continue;
+    result.unshift({id,companyId:author.companyId,createdBy:author.userId,createdByName:author.name,invoiceNumber:'',invoiceDate:'',invoiceAmount:0,customerId:'',attachment:null,...saved.changes,
+      status:saved.submitted?'submitted':'draft',submittedAt:saved.submitted?saved.savedAt:null,createdAt:saved.savedAt,updatedAt:saved.savedAt});
+  }
+  return result;
 }
 /** Downloaded payroll forms with this device's unapplied changes on top; forms created on the device appear as drafts. */
 export function overlayPayrollForms(forms:readonly PayrollForm[],device:ReadonlyMap<string,DevicePayroll>,author:{companyId:string;userId:string;name:string}):PayrollForm[]{
@@ -196,6 +211,23 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
         ||(payload.incidents!==undefined&&(typeof payload.incidents!=='string'||payload.incidents.length>500))||(payload.rows!==undefined&&!validPayrollRows(payload.rows)))
         return Promise.reject(new Error('Check the payroll resource, incidents and days.'));
       return enqueue('payroll_form',formId,'form.save',payload as SyncRecord,null);
+    },
+    /** Same rules as payroll; the customer must still exist and a submission must be complete when it arrives. */
+    saveInvoiceForm(formId:string,changes:InvoiceChanges){
+      const payload:InvoiceChanges={};
+      if(changes.invoiceNumber!==undefined)payload.invoiceNumber=changes.invoiceNumber;if(changes.invoiceDate!==undefined)payload.invoiceDate=changes.invoiceDate;
+      if(changes.invoiceAmount!==undefined)payload.invoiceAmount=changes.invoiceAmount;if(changes.customerId!==undefined)payload.customerId=changes.customerId;
+      const amount=payload.invoiceAmount;
+      if(!uuid.test(formId)||!Object.keys(payload).length||(payload.invoiceNumber!==undefined&&(typeof payload.invoiceNumber!=='string'||payload.invoiceNumber.length>160))
+        ||(payload.invoiceDate!==undefined&&(typeof payload.invoiceDate!=='string'||!payrollDate.test(payload.invoiceDate)))
+        ||(amount!==undefined&&(typeof amount!=='number'||!Number.isFinite(amount)||amount<0||amount>=1e10||Math.round(amount*100)/100!==amount))
+        ||(payload.customerId!==undefined&&(typeof payload.customerId!=='string'||(payload.customerId!==''&&!uuid.test(payload.customerId)))))
+        return Promise.reject(new Error('Check the invoice number, date, amount and customer.'));
+      return enqueue('invoice_form',formId,'form.save',payload as SyncRecord,null);
+    },
+    submitInvoiceForm(formId:string){
+      if(!uuid.test(formId))return Promise.reject(new Error('Invalid invoice.'));
+      return enqueue('invoice_form',formId,'form.submit',{},null);
     },
     submitPayrollForm(formId:string){
       if(!uuid.test(formId))return Promise.reject(new Error('Invalid payroll form.'));

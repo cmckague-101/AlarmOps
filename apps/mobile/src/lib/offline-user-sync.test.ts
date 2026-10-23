@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -184,5 +184,19 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(f.transport.deliver.mock.calls.filter(call=>call[0].entityId===draft).map(call=>call[0].mutation.kind==='command'&&call[0].mutation.command)).toEqual(['form.save','form.save','form.submit']);
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===sent)!)).toContain('already submitted');
     expect(entries.find(entry=>entry.operation.entityId===sent)!.operation.mutation).toMatchObject({payload:{engineNumber:'late'}});
+  });
+  it('queues invoice saves and submission per field, overlays a new draft, and labels refusals',async()=>{
+    const f=await setup();const draft=nextId(),customer=nextId();
+    for(const changes of [{},{invoiceAmount:-1},{invoiceAmount:1.005},{invoiceDate:'07/04/2026'},{customerId:'county'}])await expect(f.sync.saveInvoiceForm(draft,changes)).rejects.toThrow();
+    const first=await f.sync.saveInvoiceForm(draft,{invoiceNumber:'INV-7',invoiceDate:'2026-07-04',invoiceAmount:1250.5,customerId:''});
+    const second=await f.sync.saveInvoiceForm(draft,{customerId:customer});const submit=await f.sync.submitInvoiceForm(draft);
+    expect(submit.operation.dependsOn).toContain(second.operation.operationId);expect(first.operation.mutation).toMatchObject({command:'form.save',payload:{invoiceAmount:1250.5,customerId:''}});
+    const shown=overlayInvoiceForms([],deviceInvoiceForms(await f.session.list()),{companyId:company,userId:user,name:'Me'});
+    expect(shown).toHaveLength(1);expect(shown[0]).toMatchObject({id:draft,status:'submitted',invoiceNumber:'INV-7',customerId:customer,invoiceAmount:1250.5});
+    f.transport.deliver.mockImplementation(async operation=>operation.operationId===submit.operation.operationId?{kind:'applied',receivedAt:date,revision:'9',record:{id:draft,status:'draft'},notApplied:'incomplete'} as never:{kind:'applied',receivedAt:date,revision:'8',record:{id:draft,status:'draft'}});
+    f.transport.canonical.mockImplementation(async()=>({revision:'9',record:{id:draft,status:'draft'}}));
+    for(let i=0;i<5;i++)await f.worker.wake();const entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(deviceInvoiceForms(entries).size).toBe(0);
+    expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.operationId===submit.operation.operationId)!)).toContain('Not submitted');
   });
 });
