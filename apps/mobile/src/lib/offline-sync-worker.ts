@@ -287,6 +287,7 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.reviewOutcome?.outcome==='not_selected'||entry.status==='not_selected')return 'Reviewed — another version was kept';
   if(entry.status==='synced'&&(entry.delivery as {keptCurrent?:unknown}|null)?.keptCurrent===true)return 'Synced — a newer change by someone else was kept';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='thread_deleted')return 'Not posted — the conversation was deleted before this reply synced';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='vehicle_deleted')return 'Not saved — the vehicle was deleted before this note synced';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';
   if(entry.reviewOutcome?.outcome==='kept')return 'Reviewed — changes accepted; shared-data refresh pending';
   if(entry.status==='awaiting_review')return 'Uploaded — awaiting owner/admin review';

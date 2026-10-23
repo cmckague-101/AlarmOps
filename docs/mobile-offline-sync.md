@@ -678,6 +678,12 @@ Tests: 1 more SQLite-backed test (`offline-user-sync.test.ts`: validation, singl
 
 Tests: `user-sync-vehicle-notes.test.mjs` (4 embedded PostgreSQL tests on the real notes migration: single attributed insert with replay, deleted vehicle, firefighter/outsider/demotion denial, identity reuse and validation).
 
+### Offline vehicle notes: client (native)
+
+`offline-user-sync.ts` adds `createVehicleNote` and `deviceVehicleNotes(entries, vehicleId)`. Replies and notes now share one `deviceCreates` helper for saved, action-needed and confirmed-until-downloaded records. Offline, **New note** on the vehicle notes screen (owner/admin/shop-tech) saves `note.create` with one client UUID per intended note (account, vehicle, subject and body) until the device save succeeds. The screen merges saved notes into the downloaded list, with a byline *Saved on this device — syncs when connected* or *action needed*. Edit and Delete are hidden for device notes and while offline, and editing an existing note offline is refused with "Editing notes requires a connection." A note whose vehicle was deleted before sync shows *Not saved — the vehicle was deleted before this note synced* in Saved changes & sync. Online saving, editing and deleting are unchanged.
+
+Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, per-vehicle overlay, confirmed/deleted outcomes and label). 155 targeted mobile tests and the mobile typecheck pass. The screen wiring itself has no UI test (no app launch).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

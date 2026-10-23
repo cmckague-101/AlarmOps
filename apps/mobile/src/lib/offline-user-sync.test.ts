@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceReplies,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -119,5 +119,20 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(f.transport.deliver).toHaveBeenCalledTimes(2);
     expect(deviceReplies(entries)).toEqual([{id,threadId:thread,body:'On my way',savedAt:date,state:'posted',createdAt:'2026-01-01T12:00:00.5+00:00'}]);
     const deleted=entries.find(entry=>entry.operation.entityId===other)!;expect(offlineSyncEntryLabel(deleted)).toContain('Not posted');expect(deleted.operation.mutation).toMatchObject({payload:{body:'Late'}});
+  });
+  it('creates vehicle notes once per client ID, per vehicle, and reports deleted vehicles',async()=>{
+    const f=await setup();const vehicle=nextId(),gone=nextId(),id=nextId(),other=nextId();
+    for(const bad of [{subject:' ',body:'x'},{subject:'x'.repeat(161),body:'x'},{subject:'s',body:''}])await expect(f.sync.createVehicleNote({id,vehicleId:vehicle,...bad})).rejects.toThrow();
+    const saved=await f.sync.createVehicleNote({id,vehicleId:vehicle,subject:' Brakes ',body:' Pads at 30% '});
+    expect(saved.operation.mutation).toEqual({kind:'command',command:'note.create',payload:{vehicleId:vehicle,subject:'Brakes',body:'Pads at 30%'}});
+    await f.sync.createVehicleNote({id:other,vehicleId:gone,subject:'Old',body:'Gone'});
+    expect(deviceVehicleNotes(await f.session.list(),vehicle).map(note=>[note.id,note.state])).toEqual([[id,'saved']]);
+    f.transport.deliver.mockImplementation(async operation=>operation.entityId===id
+      ?{kind:'applied',receivedAt:date,revision:'7',record:{id,vehicleId:vehicle,subject:'Brakes',body:'Pads at 30%',createdAt:'2026-01-01T12:00:00+00:00'}}
+      :{kind:'applied',receivedAt:date,revision:'8',record:null,notApplied:'vehicle_deleted'} as never);
+    f.transport.canonical.mockImplementation(async operation=>({revision:operation.entityId===id?'7':'8',record:operation.entityId===id?{id,vehicleId:vehicle,subject:'Brakes',body:'Pads at 30%',createdAt:'2026-01-01T12:00:00+00:00'}:null}));
+    await f.worker.wake();await f.worker.wake();await f.worker.wake();const entries=await f.session.list();
+    expect(deviceVehicleNotes(entries,vehicle)).toEqual([{id,vehicleId:vehicle,subject:'Brakes',body:'Pads at 30%',savedAt:date,state:'posted',createdAt:'2026-01-01T12:00:00+00:00'}]);
+    expect(deviceVehicleNotes(entries,gone)).toEqual([]);expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===other)!)).toContain('vehicle was deleted');
   });
 });
