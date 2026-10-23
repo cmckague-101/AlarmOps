@@ -10,6 +10,7 @@ import type { LocalFleetFile } from '@/lib/fleet-files';
 import { createFleetId } from '@/lib/fleet-store';
 import { createReceipt, effectiveMimeType, updateReceipt, useReceipts } from '@/lib/receipts-store';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
+import { useReceiptEdits } from '@/lib/use-offline-edits';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -28,7 +29,11 @@ export default function ReceiptFormScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { receipts, loading } = useReceipts(member?.company.id ?? null);
+  const receiptList = useReceipts(member?.company.id ?? null);
+  const { loading } = receiptList;
+  // Offline edits saved on this device are shown and apply only to an unchanged receipt.
+  const edits = useReceiptEdits(receiptList.receipts, member, receiptList.downloaded?.receiptWatermark);
+  const receipts = edits.items;
   const receipt = receiptId ? receipts.find((item) => item.id === receiptId) : undefined;
   const editing = Boolean(receiptId);
   const [name, setName] = useState<string | null>(null);
@@ -74,7 +79,11 @@ export default function ReceiptFormScreen() {
     setSaving(true);
     setSaveError('');
     try {
-      if (editing && receipt) await updateReceipt(member.company.id, receipt.id, resolvedName, amountCents);
+      if (editing && receipt && offline) {
+        if (!userSync) throw new Error('Editing receipts offline is unavailable on this device.');
+        const seen = receiptList.receipts.find((item) => item.id === receipt.id) ?? receipt;
+        await userSync.updateReceipt(receipt.id, { name: resolvedName, amountCents }, edits.baseFor(receipt.id, { name: seen.name, amountCents: seen.amountCents, storagePath: seen.storagePath }));
+      } else if (editing && receipt) await updateReceipt(member.company.id, receipt.id, resolvedName, amountCents);
       else if (file && offline) {
         if (!userSync) throw new Error('Saving receipts offline is unavailable on this device.');
         await userSync.createReceipt({ id: offlineId.current, name: resolvedName, amountCents, fileName: file.name, mimeType: effectiveMimeType(file) }, file.uri);

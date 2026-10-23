@@ -9,6 +9,7 @@ import { cancelTrainingSignup, deleteTraining, markTrainingViewed, signupForTrai
 import { pendingTrainingSignups, scopedUserEntries } from '@/lib/offline-user-sync';
 import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
+import { useTrainingEdits } from '@/lib/use-offline-edits';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -25,7 +26,11 @@ export default function TrainingDetailScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { trainings, loading, error, downloaded } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const trainingList = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const { loading, error, downloaded } = trainingList;
+  // Offline edits/deletes saved on this device are shown on top; deleting offline applies only to an unchanged training.
+  const edits = useTrainingEdits(trainingList.trainings, member, downloaded?.receiptWatermark);
+  const trainings = edits.items;
   const training = trainings.find((item) => item.id === id);
   const expired = training ? trainingStage(training) !== 'scheduled' : false;
   // Offline, sign-up changes save on the device; capacity is checked when they arrive.
@@ -74,7 +79,7 @@ export default function TrainingDetailScreen() {
         { text: 'Delete', style: 'destructive', onPress: () => {
           setBusy(true);
           setActionError('');
-          void deleteTraining(training.id)
+          void (offline ? (userSync ? userSync.deleteTraining(training.id, edits.baseFor(training.id, { updatedAt: training.updatedAt })) : Promise.reject(new Error('Deleting training offline is unavailable on this device.'))) : deleteTraining(training.id))
             .then(() => router.back())
             .catch((deleteError) => setActionError(deleteError instanceof Error ? deleteError.message : 'Training could not be deleted.'))
             .finally(() => setBusy(false));

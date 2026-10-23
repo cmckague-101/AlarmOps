@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DeviceSavedList } from '@/components/device-saved-list';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
-import { deviceInventoryItems, pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
+import { deviceInventoryItems, editBase, pendingCheckouts, scopedUserEntries } from '@/lib/offline-user-sync';
+import { useInventoryEdits } from '@/lib/use-offline-edits';
 import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { checkinInventoryItem, checkoutInventoryItem, deleteInventoryItem, refreshInventory, updateInventoryItem, useInventory } from '@/lib/inventory-store';
@@ -20,7 +21,11 @@ export default function InventoryScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { items, loading, refreshing, error, downloaded } = useInventory(member?.company.id ?? null);
+  const inventory = useInventory(member?.company.id ?? null);
+  const { loading, refreshing, error, downloaded } = inventory;
+  // Offline renames, stock edits and deletes saved on this device are shown on top; each applies only to an unchanged item.
+  const edits = useInventoryEdits(inventory.items, member, downloaded?.receiptWatermark);
+  const items = edits.items;
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
   const [actionError, setActionError] = useState('');
@@ -45,7 +50,10 @@ export default function InventoryScreen() {
     setBusyId(item.id);
     setActionError('');
     try {
-      await updateInventoryItem(item, { quantity });
+      if (offline) {
+        if (!userSync) throw new Error('Changing stock offline is unavailable on this device.');
+        await userSync.updateInventoryItem(item.id, { quantity }, edits.baseFor(item.id, { updatedAt: item.updatedAt }));
+      } else await updateInventoryItem(item, { quantity });
     } catch (updateError) {
       setActionError(updateError instanceof Error ? updateError.message : 'Quantity could not be updated.');
     } finally {
@@ -61,7 +69,7 @@ export default function InventoryScreen() {
       { text: 'Delete item', style: 'destructive', onPress: () => {
         setBusyId(item.id);
         setActionError('');
-        void deleteInventoryItem(item).catch((deleteError) => {
+        void (offline ? (userSync ? userSync.deleteInventoryItem(item.id, edits.baseFor(item.id, { updatedAt: item.updatedAt })) : Promise.reject(new Error('Deleting items offline is unavailable on this device.'))) : deleteInventoryItem(item)).catch((deleteError) => {
           setActionError(deleteError instanceof Error ? deleteError.message : 'Item could not be deleted.');
         }).finally(() => setBusyId(''));
       } },
@@ -82,7 +90,12 @@ export default function InventoryScreen() {
       {error ? <View style={styles.error}><Text style={styles.errorTitle}>Inventory unavailable</Text><Text style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={refreshInventory} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
       {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
       {loading ? <Text style={styles.state}>Loading inventory…</Text> : null}
-      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => canManage ? <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} onCheckin={async (userId, quantity) => { setBusyId(item.id); setActionError(''); try { await checkinInventoryItem(item, userId, quantity); } catch (checkinError) { setActionError(checkinError instanceof Error ? checkinError.message : 'Item could not be checked in.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} /> : <CrewInventoryRow key={item.id} item={item} userId={member?.user.id ?? ''} saved={saved.get(item.id) ?? 0} busy={busyId === item.id} onCheckout={async (quantity) => { setBusyId(item.id); setActionError(''); try { await checkOut(item, quantity); } catch (checkoutError) { setActionError(checkoutError instanceof Error ? checkoutError.message : 'Item could not be checked out.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
+      {!loading && !error ? <View style={styles.list}>{filtered.map((item) => canManage ? <InventoryRow key={`${item.id}:${item.quantity}`} item={item} busy={busyId === item.id} onQuantity={(quantity) => updateQuantity(item, quantity)} onRename={() => router.push({ pathname: '/inventory/form', params: { id: item.id } } as never)} onDelete={() => confirmDelete(item)} onCheckin={async (userId, quantity) => { setBusyId(item.id); setActionError(''); try {
+        const checkout = item.checkouts.find((entry) => entry.userId === userId);
+        if (!offline) await checkinInventoryItem(item, userId, quantity);
+        else if (!userSync || !checkout || !member) throw new Error('Checking in offline is unavailable on this device.');
+        else await userSync.checkInInventory(item.id, userId, quantity, editBase(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id), 'inventory_return', item.id, { updatedAt: checkout.updatedAt }, downloaded?.receiptWatermark));
+      } catch (checkinError) { setActionError(checkinError instanceof Error ? checkinError.message : 'Item could not be checked in.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} /> : <CrewInventoryRow key={item.id} item={item} userId={member?.user.id ?? ''} saved={saved.get(item.id) ?? 0} busy={busyId === item.id} onCheckout={async (quantity) => { setBusyId(item.id); setActionError(''); try { await checkOut(item, quantity); } catch (checkoutError) { setActionError(checkoutError instanceof Error ? checkoutError.message : 'Item could not be checked out.'); } finally { setBusyId(''); } }} styles={styles} theme={theme} />)}{!filtered.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'shippingbox', android: 'inventory_2' } as never} color={theme.secondary} size={27} /></View><Text style={styles.emptyTitle}>{items.length ? 'No items found' : 'No inventory items'}</Text><Text style={styles.emptyText}>{items.length ? 'Try another search.' : 'Add first item to begin tracking company stock.'}</Text>{items.length ? <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clear}><Text style={styles.clearText}>Clear search</Text></Pressable> : null}</View> : null}</View> : null}
     </ScrollView>
     </KeyboardAvoidingView>
   </SafeAreaView>;

@@ -5,6 +5,7 @@ import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DeviceSavedList } from '@/components/device-saved-list';
+import { useTrainingEdits } from '@/lib/use-offline-edits';
 import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { deviceTrainings, scopedUserEntries } from '@/lib/offline-user-sync';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
@@ -24,7 +25,9 @@ export default function TrainingScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { trainings, loading, refreshing, error, downloaded } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const trainingList = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const { loading, refreshing, error, downloaded } = trainingList;
+  const trainings = useTrainingEdits(trainingList.trainings, member, downloaded?.receiptWatermark).items;
   // Trainings created on this device that the list does not include yet.
   const deviceSync = useOfflineUserSync(member?.company.id, member?.user.id);
   const savedTrainings = useMemo(() => member ? deviceTrainings(scopedUserEntries(deviceSync.entries, member.user.id, member.company.id)).filter((training) => !trainings.some((item) => item.id === training.id)) : [], [deviceSync.entries, member, trainings]);

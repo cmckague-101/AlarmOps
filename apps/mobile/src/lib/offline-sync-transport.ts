@@ -38,6 +38,9 @@ export function createNativeSyncTransport(client:SupabaseClient,scope:OutboxScop
     }
     const result=await invoke('sync_user_command',{operation},signal) as {kind?:string;notApplied?:unknown}|null;
     if(result?.kind==='applied'&&result.notApplied===undefined)try{receiptFiles?.remove(operation.entityId)}catch{/* Removed on a later delivery or kept; never blocks the receipt. */}
+    // A deleted receipt's stored file is removed afterwards, as online (owners may remove company receipt files).
+    const base=operation.mutation.kind==='command'&&operation.mutation.command==='receipt.delete'?(operation.mutation.payload.base as {storagePath?:unknown}|undefined):undefined;
+    if(result?.kind==='applied'&&result.notApplied===undefined&&typeof base?.storagePath==='string')try{await client.storage.from('receipt-files').remove([base.storagePath])}catch{/* An orphan file is safer than failing an applied delete. */}
     return result;
   }
   return {

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createTraining, updateTraining, useTrainings } from '@/lib/training-store';
 import { useIntentId, useOfflineUserSync } from '@/lib/use-offline-user-sync';
+import { useTrainingEdits } from '@/lib/use-offline-edits';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -35,10 +36,13 @@ export default function TrainingFormScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  // Offline, a new training is saved on this device and created when connected; edits need a connection.
+  // Offline, new trainings and edits are saved on this device; an edit applies only if nobody changed the training meanwhile.
   const { offline, userSync } = useOfflineUserSync(member?.company.id, member?.user.id);
   const intent = useIntentId();
-  const { trainings, loading } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const trainingList = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
+  const { loading } = trainingList;
+  const edits = useTrainingEdits(trainingList.trainings, member, trainingList.downloaded?.receiptWatermark);
+  const trainings = edits.items;
   const training = id ? trainings.find((item) => item.id === id) : undefined;
   const parts = localParts(training?.date);
   const initial: FormState = {
@@ -77,9 +81,13 @@ export default function TrainingFormScreen() {
     setSaveError('');
     try {
       if (offline && Platform.OS !== 'web') {
-        if (training) throw new Error('Editing training needs a connection.');
-        if (!userSync) throw new Error('Creating training offline is unavailable on this device.');
+        if (!userSync) throw new Error('Saving training offline is unavailable on this device.');
         const content = { courseCode: next.courseCode, courseTitle: next.courseTitle, startsAt: next.date, location: next.location, instructor: next.instructor, capacity: next.capacity, courseInformation: next.information };
+        if (training) {
+          await userSync.updateTraining(training.id, content, edits.baseFor(training.id, { updatedAt: training.updatedAt }));
+          router.back();
+          return;
+        }
         await userSync.createTraining({ id: intent.for(content), ...content });
         intent.reset();
         router.back();

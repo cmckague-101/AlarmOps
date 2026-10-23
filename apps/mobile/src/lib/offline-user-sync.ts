@@ -6,8 +6,9 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
-  communication_thread:['thread.create'],training:['training.create'],inventory_item:['item.create'],company_document:['document.create']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create','reply.delete'],vehicle_note:['note.create','note.update','note.delete'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create','receipt.update','receipt.delete'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
+  communication_thread:['thread.create'],training:['training.create','training.update','training.delete'],inventory_item:['item.create','item.update','item.delete'],company_document:['document.create'],
+  inventory_return:['return.checkin'],payroll_review:['review.approve','review.reject','review.mark_paid']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -164,6 +165,35 @@ export const notificationPreferenceKeys=['pushEnabled','communicationReplies','d
 export function pendingNotificationPreferences(entries:readonly OutboxEntry[]):Record<string,boolean>{
   const changes:Record<string,boolean>={};for(const entry of entries){const op=entry.operation;if(op.entityType==='notification_preferences'&&op.mutation.kind==='command'&&unresolved(entry))Object.assign(changes,(op.mutation.payload as {changes:Record<string,boolean>}).changes)}return changes;
 }
+/**
+ * What a guarded edit/delete is checked against (server: user_sync_base_matches):
+ * this user's latest own command for the same record that the shown data does
+ * not include yet (unresolved, or applied after the shown download's watermark),
+ * else the version the device shows.
+ */
+export type EditBase={updatedAt:string}|{afterOperation:string}|{name:string;amountCents:number;storagePath:string};
+export function editBase(entries:readonly OutboxEntry[],entityType:string,entityId:string,seen:Exclude<EditBase,{afterOperation:string}>,receiptWatermark?:string|null):EditBase{
+  const watermark=receiptWatermark==null?null:BigInt(receiptWatermark);let latest:OutboxEntry|undefined;
+  for(const entry of entries){
+    const op=entry.operation;if(op.entityType!==entityType||op.entityId!==entityId||op.mutation.kind!=='command')continue;
+    const receipt=entry.receipt;const afterDownload=watermark!==null&&entry.status==='synced'&&receipt?.kind==='applied'&&/^\d+$/.test(receipt.revision)&&BigInt(receipt.revision)>watermark;
+    if((unresolved(entry)||afterDownload)&&(!latest||entry.sequence>latest.sequence))latest=entry;
+  }
+  return latest?{afterOperation:latest.operation.operationId}:seen;
+}
+export type PendingEdit={deleted:boolean;changes:Record<string,unknown>;actionNeeded:boolean};
+/** Unresolved edits/deletes per record of one entity type, merged in save order (shown on top of the list). */
+export function pendingEdits(entries:readonly OutboxEntry[],entityType:string,commands:{update?:string;delete?:string}):Map<string,PendingEdit>{
+  const edits=new Map<string,PendingEdit>();
+  for(const entry of entries){
+    const op=entry.operation;if(op.entityType!==entityType||op.mutation.kind!=='command'||!unresolved(entry))continue;
+    const current=edits.get(op.entityId)??{deleted:false,changes:{},actionNeeded:false};
+    const {base:_base,...changes}=op.mutation.payload as Record<string,unknown>;
+    if(op.mutation.command===commands.delete)edits.set(op.entityId,{...current,deleted:true,actionNeeded:current.actionNeeded||entry.status==='blocked'});
+    else if(op.mutation.command===commands.update)edits.set(op.entityId,{...current,changes:{...current.changes,...changes},actionNeeded:current.actionNeeded||entry.status==='blocked'});
+  }
+  return edits;
+}
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>;receiptFiles?:OfflineReceiptFiles}){
   const {session}=options;const scope={...session.scope};
@@ -315,6 +345,47 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       guard();const byteSize=await options.receiptFiles.keep(document.id,fileUri);
       if(byteSize>8*1024*1024){options.receiptFiles.remove(document.id);throw new Error('Documents must be 8 MB or smaller.')}
       return enqueue('company_document',document.id,'document.create',{name,fileName,mimeType:document.mimeType,byteSize},null);
+    },
+    /** Owners/admins: applies only if the training is unchanged since `base`. */
+    updateTraining(id:string,values:TrainingDetails,base:EditBase){
+      const value={courseCode:values.courseCode.trim(),courseTitle:values.courseTitle.trim(),startsAt:values.startsAt,location:values.location.trim(),instructor:values.instructor.trim(),capacity:values.capacity,courseInformation:values.courseInformation};
+      if(!uuid.test(id)||!value.courseCode||value.courseCode.length>80||!value.courseTitle||value.courseTitle.length>200||!value.location||value.location.length>300||!value.instructor||value.instructor.length>160
+        ||value.courseInformation.length>5000||!Number.isInteger(value.capacity)||value.capacity<1||value.capacity>10000||!serverTime.test(value.startsAt))return Promise.reject(new Error('Check the training details.'));
+      return enqueue('training',id,'training.update',{...value,base},null);
+    },
+    deleteTraining(id:string,base:EditBase){if(!uuid.test(id))return Promise.reject(new Error('Invalid training.'));return enqueue('training',id,'training.delete',{base},null)},
+    /** Owners/admins: rename and/or set stock; applies only if the item is unchanged since `base`. */
+    updateInventoryItem(id:string,changes:{name?:string;quantity?:number},base:EditBase){
+      const payload:Record<string,string|number>={};if(changes.name!==undefined)payload.name=changes.name.trim();if(changes.quantity!==undefined)payload.quantity=changes.quantity;
+      if(!uuid.test(id)||!Object.keys(payload).length||(payload.name!==undefined&&(!payload.name||(payload.name as string).length>160))||(payload.quantity!==undefined&&(!Number.isInteger(payload.quantity)||(payload.quantity as number)<0||(payload.quantity as number)>999999)))return Promise.reject(new Error('Check the item name and quantity.'));
+      return enqueue('inventory_item',id,'item.update',{...payload,base},null);
+    },
+    deleteInventoryItem(id:string,base:EditBase){if(!uuid.test(id))return Promise.reject(new Error('Invalid item.'));return enqueue('inventory_item',id,'item.delete',{base},null)},
+    /** Owners/admins: returns a borrower's gear; applies only if that checkout is unchanged since `base`. */
+    checkInInventory(itemId:string,userId:string,quantity:number,base:EditBase){
+      if(!uuid.test(itemId)||!uuid.test(userId)||!Number.isInteger(quantity)||quantity<1||quantity>999999)return Promise.reject(new Error('Check the check-in quantity.'));
+      return enqueue('inventory_return',itemId,'return.checkin',{userId,quantity,base},null);
+    },
+    /** Owners/admins: applies only if name, amount and file are unchanged since `base`. */
+    updateReceipt(id:string,changes:{name?:string;amountCents?:number},base:EditBase){
+      const payload:Record<string,string|number>={};if(changes.name!==undefined)payload.name=changes.name.trim();if(changes.amountCents!==undefined)payload.amountCents=changes.amountCents;
+      if(!uuid.test(id)||!Object.keys(payload).length||(payload.name!==undefined&&(!payload.name||(payload.name as string).length>160))||(payload.amountCents!==undefined&&(!Number.isInteger(payload.amountCents)||(payload.amountCents as number)<1||(payload.amountCents as number)>100000000)))return Promise.reject(new Error('Check the receipt name and amount.'));
+      return enqueue('receipt',id,'receipt.update',{...payload,base},null);
+    },
+    deleteReceipt(id:string,base:EditBase){if(!uuid.test(id))return Promise.reject(new Error('Invalid receipt.'));return enqueue('receipt',id,'receipt.delete',{base},null)},
+    updateVehicleNote(id:string,note:{subject:string;body:string},base:EditBase){
+      const subject=note.subject.trim();const body=note.body.trim();
+      if(!uuid.test(id)||!subject||subject.length>160||!body||body.length>5000)return Promise.reject(new Error('Check the note subject and details.'));
+      return enqueue('vehicle_note',id,'note.update',{subject,body,base},null);
+    },
+    deleteVehicleNote(id:string,base:EditBase){if(!uuid.test(id))return Promise.reject(new Error('Invalid note.'));return enqueue('vehicle_note',id,'note.delete',{base},null)},
+    /** Owners/admins. */
+    deleteReply(id:string){if(!uuid.test(id))return Promise.reject(new Error('Invalid reply.'));return enqueue('communication_reply',id,'reply.delete',{},null)},
+    /** Owners/admins: payroll decisions apply only if the form is unchanged since `base`. */
+    reviewPayroll(formId:string,decision:'approve'|'reject'|'mark_paid',base:EditBase,notes?:string){
+      const trimmed=notes?.trim()??'';
+      if(!uuid.test(formId)||(decision==='reject'&&(!trimmed||trimmed.length>1000)))return Promise.reject(new Error(decision==='reject'?'Rejection notes are required.':'Invalid payroll form.'));
+      return enqueue('payroll_review',formId,`review.${decision}`,decision==='reject'?{base,notes:trimmed}:{base},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

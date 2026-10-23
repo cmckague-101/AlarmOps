@@ -9,8 +9,12 @@ import { createFleetId, useFleetVehicles } from "@/lib/fleet-store";
 import { deleteVehicleNote, listVehicleNotes, saveVehicleNote } from "@/lib/vehicle-notes-store";
 import { deviceVehicleNotes, scopedUserEntries, type DeviceVehicleNote } from "@/lib/offline-user-sync";
 import { useOptionalOfflineSync } from "@/providers/offline-sync-provider";
+import { useOfflineEdits } from "@/lib/use-offline-edits";
 import { useSession } from "@/providers/session-provider";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
+
+const noteCommands = { update: "note.update", delete: "note.delete" };
+const applyNote = (note: VehicleNote, changes: Record<string, unknown>): VehicleNote => ({ ...note, subject: (changes.subject as string) ?? note.subject, body: (changes.body as string) ?? note.body });
 
 export default function VehicleNotesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -39,6 +43,11 @@ export default function VehicleNotesScreen() {
     id: note.id, vehicleId: note.vehicleId, subject: note.subject, body: note.body, createdBy: user?.name ?? "You", createdById: user?.id ?? "",
     createdAt: note.createdAt ?? note.savedAt, updatedAt: note.createdAt ?? note.savedAt,
   }))].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [notes, deviceNotes, user]);
+  // Offline edits/deletes saved on this device are shown on top; each applies only to an unchanged note.
+  const editMember = useMemo(() => companyId && user ? { company: { id: companyId }, user: { id: user.id } } : null, [companyId, user]);
+  const edits = useOfflineEdits(shown, editMember, "vehicle_note", noteCommands, applyNote);
+  const visible = edits.items;
+  const seenVersion = (note: VehicleNote) => ({ updatedAt: notes.find((item) => item.id === note.id)?.updatedAt ?? note.updatedAt });
   // One client ID per intended note, reused when a failed device save is retried.
   const offlineIds = useRef(new Map<string, string>());
 
@@ -69,8 +78,12 @@ export default function VehicleNotesScreen() {
     setError("");
     if (offline) {
       try {
-        if (editing) throw new Error("Editing notes requires a connection.");
         if (!userSync) throw new Error("Saving notes offline is unavailable on this device.");
+        if (editing) {
+          await userSync.updateVehicleNote(editing.id, { subject, body }, edits.baseFor(editing.id, seenVersion(editing)));
+          setEditing(undefined);
+          return;
+        }
         const key = `${companyId}:${user.id}:${id}:${subject.trim()}:${body.trim()}`;
         const noteId = offlineIds.current.get(key) ?? createFleetId();
         offlineIds.current.set(key, noteId);
@@ -93,7 +106,12 @@ export default function VehicleNotesScreen() {
     { text: "Cancel", style: "cancel" },
     { text: "Delete", style: "destructive", onPress: () => void (async () => {
       if (!companyId) return;
-      try { await deleteVehicleNote(companyId, note.id); setNotes((current) => current.filter((item) => item.id !== note.id)); }
+      try {
+        if (offline) {
+          if (!userSync) throw new Error("Deleting notes offline is unavailable on this device.");
+          await userSync.deleteVehicleNote(note.id, edits.baseFor(note.id, seenVersion(note)));
+        } else { await deleteVehicleNote(companyId, note.id); setNotes((current) => current.filter((item) => item.id !== note.id)); }
+      }
       catch { setError("Vehicle note could not be deleted. Try again."); }
     })() },
   ]);
@@ -102,7 +120,7 @@ export default function VehicleNotesScreen() {
     <Stack.Screen options={{ title: vehicle ? `${vehicle.name} Notes` : "Vehicle Notes" }} />
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.heading}>
-        <View><Text accessibilityRole="header" style={styles.title}>Vehicle Notes</Text><Text style={styles.subtitle}>{vehicle?.name ?? "Vehicle"} · {shown.length} {shown.length === 1 ? "note" : "notes"}</Text></View>
+        <View><Text accessibilityRole="header" style={styles.title}>Vehicle Notes</Text><Text style={styles.subtitle}>{vehicle?.name ?? "Vehicle"} · {visible.length} {visible.length === 1 ? "note" : "notes"}</Text></View>
         {editing === undefined ? <Pressable accessibilityRole="button" onPress={() => begin()} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><AppSymbol name={{ ios: "plus", android: "add" }} size={18} color="#fff" /><Text style={styles.addLabel}>New note</Text></Pressable> : null}
       </View>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
@@ -110,7 +128,7 @@ export default function VehicleNotesScreen() {
         <Text style={styles.label}>Subject</Text><TextInput value={subject} onChangeText={setSubject} maxLength={160} autoFocus style={styles.input} placeholder="Note subject" placeholderTextColor={theme.secondary} />
         <Text style={styles.label}>Body</Text><TextInput value={body} onChangeText={setBody} maxLength={5000} multiline textAlignVertical="top" style={[styles.input, styles.bodyInput]} placeholder="Add note details" placeholderTextColor={theme.secondary} />
         <View style={styles.formActions}><Pressable onPress={() => setEditing(undefined)} style={styles.cancelButton}><Text style={styles.cancelLabel}>Cancel</Text></Pressable><Pressable disabled={saving || !subject.trim() || !body.trim()} onPress={() => void save()} style={[styles.saveButton, (saving || !subject.trim() || !body.trim()) && styles.disabled]}><Text style={styles.saveLabel}>{saving ? "Saving…" : editing ? "Save changes" : "Create note"}</Text></Pressable></View>
-      </View> : loading ? <ActivityIndicator color={theme.ember} /> : shown.length ? <View style={styles.list}>{shown.map((note) => <View key={note.id} style={styles.card}>
+      </View> : loading ? <ActivityIndicator color={theme.ember} /> : visible.length ? <View style={styles.list}>{visible.map((note) => <View key={note.id} style={styles.card}>
         <View style={styles.cardTop}><View style={styles.cardCopy}><Text style={styles.date}>{new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</Text><Text style={styles.subject}>{note.subject}</Text></View>{offline || deviceState.has(note.id) ? null : <View style={styles.actions}><Pressable accessibilityLabel={`Edit ${note.subject}`} onPress={() => begin(note)} style={styles.iconButton}><AppSymbol name={{ ios: "pencil", android: "edit" }} size={17} color={theme.ember} /></Pressable><Pressable accessibilityLabel={`Delete ${note.subject}`} onPress={() => remove(note)} style={styles.iconButton}><AppSymbol name={{ ios: "trash", android: "delete" }} size={17} color={theme.danger} /></Pressable></View>}</View>
         <Text numberOfLines={3} style={styles.preview}>{note.body}</Text><Text style={styles.byline}>{deviceState.get(note.id) === "saved" ? "Saved on this device — syncs when connected" : deviceState.get(note.id) === "action_needed" ? "Saved on this device — action needed in Saved changes & sync" : `${note.createdBy}${note.updatedAt !== note.createdAt ? " · Edited" : ""}`}</Text>
       </View>)}</View> : <View style={styles.empty}><AppSymbol name={{ ios: "note.text", android: "notes" }} size={34} color={theme.secondary} /><Text style={styles.emptyTitle}>No vehicle notes</Text><Text style={styles.subtitle}>Create first note for this vehicle.</Text></View>}

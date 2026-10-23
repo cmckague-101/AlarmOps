@@ -850,6 +850,14 @@ Client: `offlineFileUploads` (in `offline-user-sync.ts`) maps both receipts and 
 
 Permission checks run first (owners/admins, or vehicle-note access), so a refused role gets `42501` rather than a misleading "deleted". The existing triggers and RLS still apply. The training, inventory item, receipt, vehicle note and reply state functions now return any record the caller may read (no creator filter) and include `updatedAt` where the table has one. The original create adapters are renamed `*_create` and called by the new dispatch functions. Tests: `guarded-edits-offline.test.mjs` (4).
 
+### Guarded offline edits and deletes: client (native)
+
+`offline-user-sync.ts` adds `updateTraining`/`deleteTraining`, `updateInventoryItem`/`deleteInventoryItem`, `checkInInventory`, `updateReceipt`/`deleteReceipt`, `updateVehicleNote`/`deleteVehicleNote`, `deleteReply` and `reviewPayroll`. `editBase(entries, entity, id, seen, watermark)` picks the base: this user's latest own command for the record that the shown data does not include yet (unresolved, or applied after the shown download's watermark) as `afterOperation`, else the version shown. `pendingEdits` merges unsynced edits/deletes per record. `use-offline-edits.ts` shows them on top of the training, inventory, receipt and vehicle-note lists, hiding deleted rows and showing changed fields.
+
+Wired screens: training edit (form) and delete (detail); inventory rename (form), stock edit, check-in and delete; receipt edit (form) and delete (list); vehicle note edit/delete; Crew Chat reply delete (hidden until synced); payroll approve/reject/mark paid. The payroll form shows *Approval saved on this device — applies when connected if the form is unchanged*. After an offline receipt delete applies, the transport removes the stored file, as online. Labels: *Not saved — someone changed this since you downloaded it; their version was kept*, *…this was deleted before your change arrived*, *…more units are checked out than the new quantity*. Online behavior is unchanged.
+
+Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (base selection and chaining, merged overlay, validation, refusal label, chaining after a download watermark).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

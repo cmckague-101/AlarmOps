@@ -298,6 +298,9 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='other_draft')return `Not saved — another ${form} is already in progress`;
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='customer_deleted')return 'Not saved — the chosen customer was removed';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='incomplete')return 'Not submitted — number, date, amount and customer are required';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='changed_elsewhere')return 'Not saved — someone changed this since you downloaded it; their version was kept';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='record_deleted')return 'Not saved — this was deleted before your change arrived';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='below_checked_out')return 'Not saved — more units are checked out than the new quantity';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='name_taken')return 'Not added — an item with this name already exists';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='file_mismatch')return 'Not saved — the uploaded receipt file did not match; the file is kept on this device';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';

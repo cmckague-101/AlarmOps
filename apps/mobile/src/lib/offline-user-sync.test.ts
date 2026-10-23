@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceDocuments,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,editBase,pendingEdits,deviceDocuments,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -252,5 +252,23 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     size=2048;const saved=await sync.createCompanyDocument({id,name:' SOP ',fileName:'sop.pdf',mimeType:'application/pdf'},'file:///tmp/sop.pdf');
     expect(saved.operation.mutation).toEqual({kind:'command',command:'document.create',payload:{name:'SOP',fileName:'sop.pdf',mimeType:'application/pdf',byteSize:2048}});
     expect(deviceDocuments(await f.session.list()).map(item=>item.name)).toEqual(['SOP']);
+  });
+  it('chains guarded edits on their own earlier commands, overlays them and labels refusals',async()=>{
+    const f=await setup();const course=nextId(),seen={updatedAt:'2026-01-01T00:00:00.123456+00:00'};
+    const values={courseCode:'S-130',courseTitle:'Training',startsAt:'2026-08-01T15:00:00.000Z',location:'Station',instructor:'Lee',capacity:12,courseInformation:''};
+    expect(editBase(await f.session.list(),'training',course,seen)).toEqual(seen);
+    const first=await f.sync.updateTraining(course,{...values,location:'Station 2'},editBase(await f.session.list(),'training',course,seen));
+    expect(first.operation.mutation).toMatchObject({command:'training.update',payload:{location:'Station 2',base:seen}});
+    const second=await f.sync.deleteTraining(course,editBase(await f.session.list(),'training',course,seen));
+    expect(second.operation.mutation).toMatchObject({payload:{base:{afterOperation:first.operation.operationId}}});expect(second.operation.dependsOn).toContain(first.operation.operationId);
+    expect(pendingEdits(await f.session.list(),'training',{update:'training.update',delete:'training.delete'}).get(course)).toMatchObject({deleted:true,changes:{location:'Station 2'}});
+    await expect(f.sync.reviewPayroll(nextId(),'reject',seen,' ')).rejects.toThrow(/notes/);
+    await expect(f.sync.updateInventoryItem(nextId(),{},seen)).rejects.toThrow();
+    f.transport.deliver.mockImplementation(async operation=>operation.operationId===first.operation.operationId?{kind:'applied',receivedAt:date,revision:'4',record:{id:course},notApplied:'changed_elsewhere'} as never:{kind:'applied',receivedAt:date,revision:'5',record:{id:course},notApplied:'changed_elsewhere'} as never);
+    f.transport.canonical.mockResolvedValue({revision:'5',record:{id:course}});
+    for(let i=0;i<4;i++)await f.worker.wake();const done=await f.session.list();
+    expect(offlineSyncEntryLabel(done[0])).toContain('their version was kept');expect(pendingEdits(done,'training',{update:'training.update',delete:'training.delete'}).size).toBe(0);
+    // Applied after the shown download's watermark: later edits still chain on it.
+    expect(editBase(done.map(entry=>({...entry,receipt:{kind:'applied',revision:'9',receivedAt:date,record:null}}) as never),'training',course,seen,'5')).toEqual({afterOperation:second.operation.operationId});
   });
 });

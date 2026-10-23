@@ -9,6 +9,8 @@ import { FilterSelect, type FilterSelectOption } from '@/components/filter-selec
 import { deleteReceipt, openReceipt, refreshReceipts, useReceipts, type CompanyReceipt } from '@/lib/receipts-store';
 import { deviceReceipts, scopedUserEntries } from '@/lib/offline-user-sync';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
+import { useReceiptEdits } from '@/lib/use-offline-edits';
+import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -43,7 +45,12 @@ export default function ReceiptsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access } = useSession();
   const member = access.value?.kind === 'member' ? access.value : null;
-  const { receipts, loading, refreshing, error, downloaded } = useReceipts(member?.company.id ?? null);
+  const receiptList = useReceipts(member?.company.id ?? null);
+  const { loading, refreshing, error, downloaded } = receiptList;
+  // Offline edits/deletes saved on this device are shown on top; each applies only to an unchanged receipt.
+  const edits = useReceiptEdits(receiptList.receipts, member, downloaded?.receiptWatermark);
+  const receipts = edits.items;
+  const { offline: deviceOffline, userSync } = useOfflineUserSync(member?.company.id, member?.user.id);
   const [timespan, setTimespan] = useState<Timespan>('this-year');
   const [crewId, setCrewId] = useState('all');
   const [busyId, setBusyId] = useState('');
@@ -93,7 +100,8 @@ export default function ReceiptsScreen() {
       { text: 'Delete', style: 'destructive', onPress: () => {
         setBusyId(receipt.id);
         setActionError('');
-        void deleteReceipt(member.company.id, receipt)
+        const seen = receiptList.receipts.find((item) => item.id === receipt.id) ?? receipt;
+        void (deviceOffline ? (userSync ? userSync.deleteReceipt(receipt.id, edits.baseFor(receipt.id, { name: seen.name, amountCents: seen.amountCents, storagePath: seen.storagePath })) : Promise.reject(new Error('Deleting receipts offline is unavailable on this device.'))) : deleteReceipt(member.company.id, receipt))
           .catch((deleteError) => setActionError(deleteError instanceof Error ? deleteError.message : 'Receipt could not be deleted.'))
           .finally(() => setBusyId(''));
       } },

@@ -5,6 +5,8 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { deleteCommunicationReply, deleteCommunicationThread, markCommunicationThreadSeen, refreshCommunications, replyToCommunicationThread, useCommunications } from '@/lib/communications-store';
+import { pendingEdits, scopedUserEntries } from '@/lib/offline-user-sync';
+import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -28,7 +30,11 @@ export default function CommunicationThreadScreen() {
   const companyId = member?.company.id ?? null;
   const userId = member?.user.id ?? null;
   const { threads, loading, error, deviceReplies } = useCommunications(companyId, userId);
-  const thread = threads.find((item) => item.id === id);
+  // Reply deletes saved on this device (managers) hide the reply until synced.
+  const deviceSync = useOfflineUserSync(companyId, userId);
+  const deletedReplies = useMemo(() => companyId && userId ? pendingEdits(scopedUserEntries(deviceSync.entries, userId, companyId), 'communication_reply', { delete: 'reply.delete' }) : new Map(), [deviceSync.entries, companyId, userId]);
+  const listed = threads.find((item) => item.id === id);
+  const thread = useMemo(() => listed && deletedReplies.size ? { ...listed, replies: listed.replies.filter((reply) => !deletedReplies.get(reply.id)?.deleted) } : listed, [listed, deletedReplies]);
   const joined = Boolean(thread && (thread.createdById === member?.user.id || thread.replies.some((item) => item.createdById === member?.user.id)));
   const [reply, setReply] = useState('');
   const [saving, setSaving] = useState(false);
@@ -88,7 +94,10 @@ export default function CommunicationThreadScreen() {
           setDeletingReplyId(replyId);
           setSaveError('');
           try {
-            await deleteCommunicationReply(thread.id, replyId);
+            if (deviceSync.offline) {
+              if (!deviceSync.userSync) throw new Error('Deleting comments offline is unavailable on this device.');
+              await deviceSync.userSync.deleteReply(replyId);
+            } else await deleteCommunicationReply(thread.id, replyId);
           } catch (deleteError) {
             setSaveError(deleteError instanceof Error ? deleteError.message : 'Comment could not be deleted.');
           } finally {
