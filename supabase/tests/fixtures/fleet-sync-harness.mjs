@@ -124,3 +124,11 @@ export async function loadPayrollSchema(db) {
   await db.exec(rejection.slice(0, rejection.indexOf('drop policy if exists "uploaders remove own payroll files"')));
   await db.exec(migration('20261209000100_user_sync_payroll_forms'));
 }
+
+/** Payroll schema plus the real invoice form/customer tables and offline drafts/submission. */
+export async function loadInvoiceSchema(db) {
+  await loadPayrollSchema(db);
+  const invoices = migration('20261104000100_invoice_submissions');
+  await db.exec(invoices.slice(0, invoices.indexOf('insert into storage.buckets')) + invoices.slice(invoices.indexOf('create or replace function public.notify_submitted_invoice')));
+  await db.exec(migration('20261210000100_user_sync_invoice_forms'));
+}

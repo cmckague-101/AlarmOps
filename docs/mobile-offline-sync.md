@@ -757,6 +757,12 @@ On the payroll form, edits made offline save on the device as per-field changes 
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, ordering, merged overlay for new and existing forms, refusal label with the edit retained). Mobile typecheck and 80 targeted mobile tests pass.
 
+### Invoices: server (not deployed)
+
+`20261210000100_user_sync_invoice_forms.sql` mirrors payroll for `invoice_form`: `form.save` `{invoiceNumber?, invoiceDate?, invoiceAmount?, customerId?}` (`''` clears the date or customer; amounts are non-negative with at most 2 decimals) creates the caller's draft if new or merges the given fields (later arrival wins per field), and `form.submit` `{}` submits it through the existing trigger, which notifies managers. Nothing changes, and the device keeps its intent, when the invoice was already submitted (`already_submitted`), was deleted after this user's device saw it (`form_deleted`), another draft is in progress (`other_draft`), the chosen customer was removed (`customer_deleted`), or a submission lacks number, date, positive amount or customer (`incomplete`). The invoice update policy hides submitted rows, so the writes re-check `status = 'draft'` instead of locking first. Deleting, attachments and customer management stay online.
+
+Tests: `invoice-forms-offline.test.mjs` (4 embedded PostgreSQL tests on the real invoice migration: create/merge/replay/submit with notification, incomplete submit and removed customer, deleted invoice never recreated, second draft refused, validation, foreign identity and outsider denial).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -792,6 +798,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 29. `20261207000100_inventory_checkout_offline.sql` (also restores online crew checkout)
 30. `20261208000100_user_sync_training_signups.sql`
 31. `20261209000100_user_sync_payroll_forms.sql`
+32. `20261210000100_user_sync_invoice_forms.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
