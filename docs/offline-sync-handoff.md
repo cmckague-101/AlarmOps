@@ -35,7 +35,7 @@ Continuation fixes:
 
 Prior focused validation: 66 mobile tests (user hooks/commands, worker and transport), mobile typecheck; 15 user-command embedded PostgreSQL tests plus 5 grant checks, including identity retirement/backfill/rollback/role revocation, the full 18-case availability matrix, deterministic read/write interleaving and registry RLS repair. Earlier continuation passed 83 outbox/native/user-command tests and mobile/domain typechecks. Prior baseline checks also passed 40 mobile attachment/status/user-command tests and 5 user-command database tests. These are selected checks, **not a full audit or production validation**.
 
-SQLite outbox schema is **v12**. Pending forward sync migrations run from `20261109000100` through `20261217000100`, plus earlier project prerequisites. None was applied by this continuation. Claude edited some undeployed earlier migrations in place; inspect the design document and actual migration chain rather than assuming only append-only changes occurred historically.
+SQLite outbox schema is **v12**. Pending forward sync migrations run from `20261109000100` through `20261218000100`, plus earlier project prerequisites. None was applied by this continuation. Claude edited some undeployed earlier migrations in place; inspect the design document and actual migration chain rather than assuming only append-only changes occurred historically.
 
 ## Implemented adapters (code, not deployed)
 

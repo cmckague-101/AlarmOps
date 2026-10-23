@@ -872,6 +872,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 37. `20261215000100_user_sync_feedback_and_preferences.sql`
 38. `20261216000100_company_sync_snapshots.sql`
 39. `20261217000100_user_sync_manager_creates.sql`
+40. `20261218000100_user_sync_company_documents.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

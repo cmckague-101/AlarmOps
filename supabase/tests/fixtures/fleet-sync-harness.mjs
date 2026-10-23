@@ -172,3 +172,12 @@ export async function loadManagerCreateSchema(db) {
   await db.exec(migration('20261019000100_manager_communication_controls'));
   await db.exec(migration('20261217000100_user_sync_manager_creates'));
 }
+
+/** Manager-create schema plus the real company documents and fleet-files policies, then offline document creation. */
+export async function loadCompanyDocumentSchema(db) {
+  await loadManagerCreateSchema(db);
+  await db.exec(migration('202508310001_company_documents'));
+  const fleet = migration('202508240002_fleet_state');
+  await db.exec(fleet.slice(fleet.indexOf("insert into storage.buckets"), fleet.indexOf('create policy "uploaders delete own fleet files"')));
+  await db.exec(migration('20261218000100_user_sync_company_documents'));
+}
