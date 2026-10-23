@@ -74,3 +74,9 @@ export async function loadReadMarkerSchema(db) {
   await db.exec('grant select on public.user_notifications to authenticated; grant update (read_at) on public.user_notifications to authenticated');
   await db.exec(migration('20261203000100_user_sync_read_markers'));
 }
+
+/** Read-marker schema plus offline Crew Chat replies. */
+export async function loadCrewChatReplySchema(db) {
+  await loadReadMarkerSchema(db);
+  await db.exec(migration('20261204000100_user_sync_crew_chat_replies'));
+}

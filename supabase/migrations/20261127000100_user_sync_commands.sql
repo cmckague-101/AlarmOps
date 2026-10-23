@@ -14,7 +14,7 @@
 begin;
 
 -- Registry: each entity type has public.user_sync_apply_<entity>(company, actor,
--- record, command, payload) -> jsonb {keptCurrent?} and public.user_sync_state_<entity>(
+-- record, command, payload) -> jsonb {keptCurrent?, notApplied?: reason} and public.user_sync_state_<entity>(
 -- company, actor, record) -> jsonb. Later adapters register more types without
 -- copying the dispatcher.
 create table public.user_sync_commands (
@@ -210,7 +210,9 @@ begin
 
   revision := nextval('public.user_sync_receipts_sequence_seq');
   result := jsonb_build_object('kind', 'applied', 'receivedAt', statement_timestamp(), 'revision', revision::text,
-    'record', public.user_sync_state(company, actor, entity, record_uuid)) || case when kept then jsonb_build_object('keptCurrent', true) else '{}'::jsonb end;
+    'record', public.user_sync_state(company, actor, entity, record_uuid)) || case when kept then jsonb_build_object('keptCurrent', true) else '{}'::jsonb end
+    -- An adapter may report why nothing changed (for example a deleted parent); the device keeps its intent.
+    || case when jsonb_typeof(applied -> 'notApplied') = 'string' then jsonb_build_object('notApplied', applied -> 'notApplied') else '{}'::jsonb end;
   insert into public.user_sync_receipts (sequence, company_id, user_id, operation_id, entity_type, entity_id, request_sha256, device_id, saved_at, connectivity, result)
     values (revision, company, actor, operation_uuid, entity, record_uuid, request_hash, provenance ->> 'deviceId', (provenance ->> 'savedAt')::timestamptz, provenance ->> 'connectivity', result);
   return result;

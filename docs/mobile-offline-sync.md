@@ -656,6 +656,14 @@ Tests: `user-sync-read-markers.test.mjs` (5 embedded PostgreSQL tests on the rea
 
 Each marker is its own outbox entry, so an offline "mark all" can add up to 100 entries (shown as `notification` in Saved changes & sync) and one completed notice. Tests: 2 new SQLite-backed command/overlay tests in `offline-user-sync.test.ts` and 5 store tests (`offline-read-marker-stores.test.ts`: account binding, no table writes offline, revert on save failure, verbatim microsecond markers, save-before-show). 81 targeted mobile tests and the mobile typecheck pass. Web is unchanged (online-only).
 
+### Offline Crew Chat replies: server (not deployed)
+
+`20261204000100_user_sync_crew_chat_replies.sql` registers `communication_reply` / `reply.create` (`{threadId, body}`, client UUID as the entity ID) on the user command registry. The reply is inserted under the existing RLS, attribution trigger (author and name from the caller's JWT) and notification trigger. The idempotent receipt makes the insert, and therefore its notifications (also keyed by reply ID), happen exactly once. `created_at` is server receipt time, so a reply appears where it actually joined the conversation; the device time stays in the receipt. The canonical record is visible only to its author.
+
+A thread deleted before sync inserts nothing and returns `notApplied: 'thread_deleted'`; the text stays in the device outbox. To carry that reason, the undeployed dispatcher in `20261127000100` was edited in place to pass a whitelisted string `notApplied` from adapters into the receipt (existing adapters never set it). Reusing a reply ID with a different thread, body or author fails with `23505`; an exact replay returns the stored receipt. Unlike tasks, reply IDs have no retirement set, so a manager-deleted reply could be recreated only by a *new* operation reusing its ID. The client never does that: retries reuse the original operation.
+
+Tests: `user-sync-crew-chat-replies.test.mjs` (4 embedded PostgreSQL tests: single attributed insert with replay counted by a stand-in trigger, deleted thread, identity reuse, payload/membership validation), plus the existing user-command, read-marker and grant suites.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -685,6 +693,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 23. `20261201000100_online_crew_availability.sql` (requires updated online availability clients; legacy direct writes are denied)
 24. `20261202000100_fleet_sync_storage_cleanup_fences.sql` (redeploy `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `copy-fleet-sync-attachment` and `delete-fleet-files` with it; the functions call its RPCs)
 25. `20261203000100_user_sync_read_markers.sql`
+26. `20261204000100_user_sync_crew_chat_replies.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
