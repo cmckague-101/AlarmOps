@@ -3,6 +3,9 @@ import type { CommunicationReply, CommunicationThread, UserRole } from '@fireops
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
+import { offlineReadMarkers, subscribeOfflineReadMarkers, type OfflineReadMarkers } from './offline-read-markers';
+import { laterTimestamp } from './offline-user-sync';
+import { isOffline } from '@/providers/network-provider';
 
 type CommunicationThreadRow = {
   id: string;
@@ -50,6 +53,34 @@ const listeners = new Set<() => void>();
 function emit(next: CommunicationsSnapshot) {
   snapshot = next;
   listeners.forEach((listener) => listener());
+}
+
+/** Overlays seen markers saved on this device onto the last downloaded threads. */
+export function withOfflineSeen(value: CommunicationsSnapshot, markers: Pick<OfflineReadMarkers, 'seen'> | null): CommunicationsSnapshot {
+  if (!markers?.seen.size) return value;
+  let changed = false;
+  const threads = value.threads.map((thread) => {
+    const saved = markers.seen.get(thread.id);
+    if (saved === undefined) return thread;
+    const seenAt = laterTimestamp(thread.seenAt, saved);
+    if (seenAt === thread.seenAt) return thread;
+    changed = true;
+    return { ...thread, seenAt };
+  });
+  return changed ? { ...value, threads } : value;
+}
+
+let view: { source: CommunicationsSnapshot; markers: OfflineReadMarkers | null; value: CommunicationsSnapshot } | null = null;
+function currentView() {
+  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+  if (view?.source !== snapshot || view.markers !== markers) view = { source: snapshot, markers, value: withOfflineSeen(snapshot, markers) };
+  return view.value;
+}
+subscribeOfflineReadMarkers(() => listeners.forEach((listener) => listener()));
+
+/** Newest server timestamp this device displays for a thread, verbatim (keeps microseconds). */
+export function displayedThroughOf(thread: CommunicationThread) {
+  return thread.replies.reduce((latest, reply) => laterTimestamp(latest, reply.createdAt), thread.createdAt);
 }
 
 function orderThreads(threads: CommunicationThread[]) {
@@ -229,6 +260,20 @@ export async function deleteCommunicationReply(threadId: string, replyId: string
 
 export async function markCommunicationThreadSeen(threadId: string) {
   if (!supabase || !activeCompanyId || !activeUserId) throw new Error('Company communications are unavailable.');
+  if (isOffline()) {
+    // Offline: seen only through what this device displays, so replies posted
+    // meanwhile stay unread. Saved first, then shown, so failures cannot loop.
+    const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+    const thread = snapshot.threads.find((item) => item.id === threadId);
+    if (!markers || !thread) throw new Error('Marking this thread seen offline is unavailable on this device.');
+    const seenThrough = displayedThroughOf(thread);
+    await markers.markThreadSeen(threadId, seenThrough);
+    emit({
+      ...snapshot,
+      threads: snapshot.threads.map((item) => item.id === threadId ? { ...item, seenAt: laterTimestamp(item.seenAt, seenThrough) } : item),
+    });
+    return seenThrough;
+  }
   const seenAt = new Date().toISOString();
   const { data, error } = await supabase
     .from('communication_reads')
@@ -276,5 +321,5 @@ function subscribe(listener: () => void) {
 
 export function useCommunications(companyId: string | null, userId: string | null) {
   useEffect(() => selectAccount(companyId, userId), [companyId, userId]);
-  return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
+  return useSyncExternalStore(subscribe, currentView, currentView);
 }

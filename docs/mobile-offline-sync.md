@@ -644,7 +644,17 @@ Residual risk: a tiny window remains between a copy-removal authorization and it
 - `notification` / `notification.read` (empty payload): sets `read_at` at server receipt time if still unread. The device's own time stays in the receipt provenance. A missing, deleted or other user's notification is a no-op with a `null` record, never an error or a disclosure.
 - `communication_read` / `communication.seen` (`{seenThrough}`): raises the caller's thread seen marker to `seenThrough`, the newest server timestamp (thread or reply `created_at`) the device actually displayed. The value is clamped to receipt time and never lowered. Replies posted while the device was offline therefore stay unread, unlike stamping the sync time. A deleted thread is a no-op; nothing is recreated.
 
-Tests: `user-sync-read-markers.test.mjs` (5 embedded PostgreSQL tests on the real Crew Chat/inbox tables and policies via `loadReadMarkerSchema`: idempotent replay, foreign/missing rows, forward-only clamping, deleted threads, payload validation, executor privacy). Client wiring follows.
+Tests: `user-sync-read-markers.test.mjs` (5 embedded PostgreSQL tests on the real Crew Chat/inbox tables and policies via `loadReadMarkerSchema`: idempotent replay, foreign/missing rows, forward-only clamping, deleted threads, payload validation, executor privacy). Client wiring is described below.
+
+### Offline read markers: client (native)
+
+`offline-user-sync.ts` adds `markNotificationRead(id)` and `markThreadSeen(threadId, seenThrough)` on the existing scoped session. `seenThrough` must be a server timestamp string and is sent **verbatim**: `toISOString()` would truncate microseconds and leave the newest reply unread after sync. The provider publishes the current account's commands and overlays (`pendingNotificationReads`, `pendingThreadSeen`) through `offline-read-markers.ts` to the module-level inbox and Crew Chat stores, which use them only for the exact same company/user.
+
+- **Inbox:** offline taps queue `notification.read` (optimistic, reverted with an error if the device save fails). Offline **Mark all read** queues only the downloaded notifications the device shows unread (at most the 100 loaded), never ones it has not seen. The badge and unread count subtract only those. Online behavior is unchanged.
+- **Crew Chat:** offline, opening an unread thread queues `communication.seen` through the newest displayed thread/reply timestamp, and shows it **only after** the device save, so a failure cannot retrigger the screen's unread effect in a loop.
+- **Overlays:** pending and synced markers keep overlaying a stale downloaded list (forward-only, so this is always safe); refused or discarded ones do not.
+
+Each marker is its own outbox entry, so an offline "mark all" can add up to 100 entries (shown as `notification` in Saved changes & sync) and one completed notice. Tests: 2 new SQLite-backed command/overlay tests in `offline-user-sync.test.ts` and 5 store tests (`offline-read-marker-stores.test.ts`: account binding, no table writes offline, revert on save failure, verbatim microsecond markers, save-before-show). 81 targeted mobile tests and the mobile typecheck pass. Web is unchanged (online-only).
 
 ### Deployment checkpoint (nothing deployed by this implementation)
 

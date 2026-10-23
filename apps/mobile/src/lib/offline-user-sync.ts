@@ -2,8 +2,10 @@ import {createSyncPatch,decodeDashboardPreferenceChanges,type SyncOperation,type
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
-// tasks are private, availability/dashboard target the caller only.
-export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set']};
+// tasks are private, availability/dashboard target the caller only, and read
+// markers touch only the caller's own notification/thread state.
+export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
+  notification:['notification.read'],communication_read:['communication.seen']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -37,6 +39,24 @@ export function pendingAvailability(entries:readonly OutboxEntry[],userId:string
 export function pendingDashboard(entries:readonly OutboxEntry[]):Record<string,SyncRecord[string]>{
   const changes:Record<string,SyncRecord[string]>={};for(const entry of entries){const op=entry.operation;if(op.entityType==='dashboard'&&op.mutation.kind==='command'&&unresolved(entry))Object.assign(changes,(op.mutation.payload as {changes:Record<string,SyncRecord[string]>}).changes)}return changes;
 }
+// Read markers only move forward, so synced ones may keep overlaying a stale
+// downloaded list until it refreshes. Refused ones never overlay.
+const marking=(entry:OutboxEntry)=>unresolved(entry)||(entry.status==='synced'&&entry.receipt?.kind==='applied');
+/** Notifications this user marked read on the device (pending or confirmed), with the device time. */
+export function pendingNotificationReads(entries:readonly OutboxEntry[]):Map<string,string>{
+  const reads=new Map<string,string>();for(const entry of entries){const op=entry.operation;if(op.entityType==='notification'&&op.mutation.kind==='command'&&marking(entry)&&!reads.has(op.entityId))reads.set(op.entityId,op.provenance.savedAt)}return reads;
+}
+/** Newer server timestamp of two; ties keep the longer (more precise) string. */
+export function laterTimestamp(left:string|undefined,right:string){
+  if(left===undefined)return right;const a=Date.parse(left),b=Date.parse(right);return b>a||(b===a&&right.length>left.length)?right:left;
+}
+/** Highest seen marker per thread this user saved on the device (pending or confirmed). */
+export function pendingThreadSeen(entries:readonly OutboxEntry[]):Map<string,string>{
+  const seen=new Map<string,string>();
+  for(const entry of entries){const op=entry.operation;if(op.entityType!=='communication_read'||op.mutation.kind!=='command'||!marking(entry))continue;seen.set(op.entityId,laterTimestamp(seen.get(op.entityId),(op.mutation.payload as {seenThrough:string}).seenThrough))}
+  return seen;
+}
+const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
   const guard=()=>{if(!options.canEdit())throw new Error('Offline saving is unavailable for the current account.')};
@@ -82,6 +102,15 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     async setDashboard(changes:Record<string,boolean>){
       const patch=decodeDashboardPreferenceChanges(changes);
       return enqueue('dashboard',scope.userId,'dashboard.set',{changes:patch},null);
+    },
+    markNotificationRead(id:string){
+      if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));
+      return enqueue('notification',id,'notification.read',{},null);
+    },
+    /** `seenThrough` is the newest server timestamp displayed for the thread, verbatim. */
+    markThreadSeen(threadId:string,seenThrough:string){
+      if(!uuid.test(threadId)||!serverTime.test(seenThrough)||!Number.isFinite(Date.parse(seenThrough)))return Promise.reject(new Error('Invalid thread seen marker.'));
+      return enqueue('communication_read',threadId,'communication.seen',{seenThrough},null);
     },
   };
 }

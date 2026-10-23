@@ -4,6 +4,8 @@ import type {RealtimeChannel} from '@supabase/supabase-js';
 import type {UserRole} from '@fireops/domain';
 
 import {supabase} from '@/lib/supabase';
+import {offlineReadMarkers, subscribeOfflineReadMarkers, type OfflineReadMarkers} from './offline-read-markers';
+import {isOffline} from '@/providers/network-provider';
 
 export type NotificationEventType =
   | 'communication_reply'
@@ -103,10 +105,42 @@ function syncBadge(count: number) {
   void Notifications.setBadgeCountAsync(count).catch(() => undefined);
 }
 
+/** Overlays reads saved on this device onto the last downloaded list. */
+export function withOfflineReads(value: InboxSnapshot, markers: Pick<OfflineReadMarkers, 'reads'> | null): InboxSnapshot {
+  if (!markers?.reads.size) return value;
+  let cleared = 0;
+  const notifications = value.notifications.map((item) => {
+    const readAt = item.readAt ? undefined : markers.reads.get(item.id);
+    if (readAt === undefined) return item;
+    cleared += 1;
+    return {...item, readAt};
+  });
+  return cleared ? {...value, notifications, unreadCount: Math.max(0, value.unreadCount - cleared)} : value;
+}
+
+let view: {source: InboxSnapshot; markers: OfflineReadMarkers | null; value: InboxSnapshot} | null = null;
+function currentView() {
+  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+  if (view?.source !== snapshot || view.markers !== markers) view = {source: snapshot, markers, value: withOfflineReads(snapshot, markers)};
+  return view.value;
+}
+
 function emit(next: InboxSnapshot) {
   snapshot = next;
-  syncBadge(next.unreadCount);
+  syncBadge(currentView().unreadCount);
   listeners.forEach((listener) => listener());
+}
+subscribeOfflineReadMarkers(() => {
+  syncBadge(currentView().unreadCount);
+  listeners.forEach((listener) => listener());
+});
+
+/** Offline, reads queue on the device for this exact account; none is pretended. */
+function offlineReads() {
+  if (!isOffline()) return null;
+  const markers = offlineReadMarkers(activeCompanyId, activeUserId);
+  if (!markers) throw new Error('Marking notifications read offline is unavailable on this device.');
+  return markers;
 }
 
 function notificationFromRow(row: NotificationRow): InboxNotification {
@@ -223,7 +257,19 @@ export async function markInboxNotificationRead(notificationId: string) {
   const readAt = new Date().toISOString();
   const previous = snapshot.notifications;
   const wasUnread = previous.some((item) => item.id === notificationId && !item.readAt);
+  let queue: OfflineReadMarkers | null;
+  try { queue = offlineReads(); } catch (offlineError) {
+    emit({...snapshot, error: (offlineError as Error).message});
+    throw offlineError;
+  }
   emit({...snapshot, unreadCount: Math.max(0, snapshot.unreadCount - (wasUnread ? 1 : 0)), notifications: previous.map((item) => item.id === notificationId ? {...item, readAt} : item)});
+  if (queue) {
+    try { await queue.markNotificationRead(notificationId); } catch (queueError) {
+      emit({...snapshot, unreadCount: snapshot.unreadCount + (wasUnread ? 1 : 0), notifications: previous, error: `Notification could not be marked read on this device. ${(queueError as Error).message}`});
+      throw queueError;
+    }
+    return;
+  }
   const {error} = await supabase.from('user_notifications').update({read_at: readAt})
     .eq('company_id', activeCompanyId).eq('user_id', activeUserId).eq('id', notificationId);
   if (error) {
@@ -237,6 +283,21 @@ export async function markAllInboxNotificationsRead() {
   const readAt = new Date().toISOString();
   const previous = snapshot.notifications;
   const previousUnreadCount = snapshot.unreadCount;
+  let queue: OfflineReadMarkers | null;
+  try { queue = offlineReads(); } catch (offlineError) {
+    emit({...snapshot, error: (offlineError as Error).message});
+    throw offlineError;
+  }
+  if (queue) {
+    // Offline: only notifications this device downloaded and shows unread.
+    const unread = currentView().notifications.filter((item) => !item.readAt).map((item) => item.id);
+    emit({...snapshot, unreadCount: Math.max(0, previousUnreadCount - unread.length), notifications: previous.map((item) => unread.includes(item.id) ? {...item, readAt} : item)});
+    try { for (const id of unread) await queue.markNotificationRead(id); } catch (queueError) {
+      emit({...snapshot, unreadCount: previousUnreadCount, notifications: previous, error: `Some notifications could not be marked read on this device. ${(queueError as Error).message}`});
+      throw queueError;
+    }
+    return;
+  }
   emit({...snapshot, unreadCount: 0, notifications: previous.map((item) => item.readAt ? item : {...item, readAt})});
   let updateQuery = supabase.from('user_notifications').update({read_at: readAt})
     .eq('company_id', activeCompanyId).eq('user_id', activeUserId).is('read_at', null);
@@ -294,5 +355,5 @@ function subscribe(listener: () => void) {
 
 export function useNotificationInbox(companyId: string | null, userId: string | null, role: UserRole | null = null) {
   useEffect(() => selectAccount(companyId, userId, role), [companyId, userId, role]);
-  return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
+  return useSyncExternalStore(subscribe, currentView, currentView);
 }

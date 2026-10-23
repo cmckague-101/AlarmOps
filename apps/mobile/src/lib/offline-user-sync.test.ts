@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,pendingAvailability,pendingDashboard,pendingTaskChanges} from './offline-user-sync';
+import {createOfflineUserSync,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -82,5 +82,27 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     const transport=createNativeSyncTransport(client as unknown as SupabaseClient,scope,()=>true);const signal=new AbortController().signal;
     await transport.deliver(op,signal);await transport.canonical(op,signal);
     expect(client.rpc).toHaveBeenNthCalledWith(1,'sync_user_command',{operation:op});expect(client.rpc).toHaveBeenNthCalledWith(2,'get_user_sync_state',{target_company_id:company,entity_type:'personal_task',record_id:'t'});
+  });
+  it('queues read markers, overlays them while pending and after sync, and validates server timestamps',async()=>{
+    const f=await setup();const notification=nextId(),thread=nextId();
+    await expect(f.sync.markNotificationRead('not-a-uuid')).rejects.toThrow();
+    for(const bad of ['yesterday','2026-01-01 10:00:00','2026-13-45T00:00:00Z'])await expect(f.sync.markThreadSeen(thread,bad)).rejects.toThrow();
+    const read=await f.sync.markNotificationRead(notification);expect(read.operation).toMatchObject({entityType:'notification',entityId:notification,mutation:{kind:'command',command:'notification.read',payload:{}}});
+    const micro='2026-01-01T10:00:00.123456+00:00';
+    await f.sync.markThreadSeen(thread,'2026-01-01T09:00:00+00:00');const seen=await f.sync.markThreadSeen(thread,micro);
+    expect(seen.operation.mutation).toEqual({kind:'command',command:'communication.seen',payload:{seenThrough:micro}});
+    let entries=await f.session.list();expect(pendingNotificationReads(entries)).toEqual(new Map([[notification,date]]));expect(pendingThreadSeen(entries).get(thread)).toBe(micro);
+    await f.worker.wake();await f.worker.wake();await f.worker.wake();entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);
+    expect(f.transport.deliver.mock.calls.map(call=>call[0].mutation.kind==='command'&&call[0].mutation.command)).toEqual(['notification.read','communication.seen','communication.seen']);
+    expect(pendingNotificationReads(entries).has(notification)).toBe(true);expect(pendingThreadSeen(entries).get(thread)).toBe(micro);
+  });
+  it('drops refused read markers from overlays and keeps the most precise later timestamp',async()=>{
+    const f=await setup();const notification=nextId();await f.sync.markNotificationRead(notification);
+    f.transport.deliver.mockRejectedValue({code:'42501'});await f.worker.wake();await f.worker.resume();
+    const [entry]=await f.session.list();expect(entry.status).toBe('blocked');
+    expect(laterTimestamp('2026-01-01T10:00:00.123Z','2026-01-01T10:00:00.123456+00:00')).toBe('2026-01-01T10:00:00.123456+00:00');
+    expect(laterTimestamp('2026-01-01T11:00:00Z','2026-01-01T10:00:00.999999+00:00')).toBe('2026-01-01T11:00:00Z');expect(laterTimestamp(undefined,'2026-01-01T11:00:00Z')).toBe('2026-01-01T11:00:00Z');
+    expect(pendingNotificationReads([{...entry,reviewOutcome:'discarded'} as never]).size).toBe(0);
   });
 });

@@ -9,7 +9,8 @@ import {createOfflineAttachmentUploader} from '../lib/offline-attachment-upload'
 import {createOfflineAttachmentDocumentSync} from '../lib/offline-attachment-documents';
 import {createNativeAttachmentUploadTransport} from '../lib/offline-attachment-upload-transport';
 import {createSlotAttachmentPreparer,createSlotAttachmentSettler} from '../lib/offline-attachment-slots';
-import {createOfflineUserSync,type OfflineUserSync} from '../lib/offline-user-sync';
+import {createOfflineUserSync,pendingNotificationReads,pendingThreadSeen,scopedUserEntries,type OfflineUserSync} from '../lib/offline-user-sync';
+import {publishOfflineReadMarkers} from '../lib/offline-read-markers';
 import {File} from 'expo-file-system';
 import {getNativeOfflineOutbox} from '../lib/offline-outbox-native';
 import {createOfflineSyncWorker,emptyOfflineSyncState,type OfflineSyncWorker,type OfflineSyncState} from '../lib/offline-sync-worker';
@@ -137,6 +138,14 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const dismiss=useCallback(async()=>{await worker?.dismiss()},[worker]);
   const downloadFleet=useCallback(async()=>{await worker?.startFleetDownload()},[worker]);
   const stopFleetDownload=useCallback(async()=>{await worker?.stopFleetDownload()},[worker]);
+  // Inbox/Crew Chat stores are module-level; hand them this account's read-marker commands and overlays.
+  const userSync=binding?.key===key?binding.userSync:null;
+  useEffect(()=>{
+    if(!userSync){publishOfflineReadMarkers(null);return}
+    const {userId:owner,companyId:tenant}=userSync.scope;const entries=scopedUserEntries(state.entries,owner,tenant);
+    publishOfflineReadMarkers({companyId:tenant,userId:owner,markNotificationRead:id=>userSync.markNotificationRead(id),markThreadSeen:(id,seenThrough)=>userSync.markThreadSeen(id,seenThrough),reads:pendingNotificationReads(entries),seen:pendingThreadSeen(entries)});
+  },[userSync,state.entries]);
+  useEffect(()=>()=>publishOfflineReadMarkers(null),[]);
   const value=useMemo<ContextValue>(()=>({userSync:binding?.key===key?binding.userSync:null,attachmentController,syncAttachments:()=>{if(!offline)syncAttachments?.()},attachmentState,detailEditor:binding?.key===key&&syncRole?binding.editor:null,hasSavedDetails:binding?.key===key&&syncRole&&state.records.some(record=>record.record!==null),state:startupError?.key===key?{...state,error:startupError.message}:state,available:!!key,loading:!!key&&(!worker||!state.loaded)&&startupError?.key!==key,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload}),[attachmentController,syncAttachments,attachmentState,binding,manager,state,startupError,key,worker,offline,refresh,retry,dismiss,downloadFleet,stopFleetDownload]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
