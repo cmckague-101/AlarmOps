@@ -672,6 +672,12 @@ The thread shows the device's replies after the downloaded ones until a refreshe
 
 Tests: 1 more SQLite-backed test (`offline-user-sync.test.ts`: validation, single delivery per ID, posted/deleted outcomes and label) and 2 more store tests (stable ID across a failed save, account/thread binding, no direct insert, overlay until downloaded, seen markers ignoring device times). 154 targeted mobile tests and the mobile typecheck pass. Web is unchanged (online-only).
 
+### Offline vehicle notes: server (not deployed)
+
+`20261205000100_user_sync_vehicle_notes.sql` registers `vehicle_note` / `note.create` (`{vehicleId, subject, body}`, client UUID) on the user command registry. It works like replies: one insert under the real notes RLS (owner/admin/shop-tech, rechecked through `can_access_vehicle_notes` on every delivery), attribution and notification triggers. The receipt makes the insert, and so its notifications, happen once; `created_at` is receipt time. A vehicle deleted before sync returns `notApplied: 'vehicle_deleted'` and creates nothing. Reusing an ID with different content or a different author fails with `23505`. **Editing and deleting notes stay online-only**: they are last-write-wins for every authorized user today and would need revision tracking before offline support.
+
+Tests: `user-sync-vehicle-notes.test.mjs` (4 embedded PostgreSQL tests on the real notes migration: single attributed insert with replay, deleted vehicle, firefighter/outsider/demotion denial, identity reuse and validation).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -702,6 +708,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 24. `20261202000100_fleet_sync_storage_cleanup_fences.sql` (redeploy `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `copy-fleet-sync-attachment` and `delete-fleet-files` with it; the functions call its RPCs)
 25. `20261203000100_user_sync_read_markers.sql`
 26. `20261204000100_user_sync_crew_chat_replies.sql`
+27. `20261205000100_user_sync_vehicle_notes.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

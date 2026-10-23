@@ -80,3 +80,10 @@ export async function loadCrewChatReplySchema(db) {
   await loadReadMarkerSchema(db);
   await db.exec(migration('20261204000100_user_sync_crew_chat_replies'));
 }
+
+/** Crew Chat reply schema plus the real vehicle notes table/policies and offline note creation. */
+export async function loadVehicleNoteSchema(db) {
+  await loadCrewChatReplySchema(db);
+  await db.exec(migration('20261014000100_vehicle_notes'));
+  await db.exec(migration('20261205000100_user_sync_vehicle_notes'));
+}
