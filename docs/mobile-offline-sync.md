@@ -694,6 +694,16 @@ Tasks follow the current task roles (owner/admin/shop-tech). Other roles get `ta
 
 Tests: `user-sync-snapshot.test.mjs` (4 embedded PostgreSQL tests: own-data scoping across users/companies, watermark versus command receipts, role denial as `null`, membership, the 1000-task cap and a structural lock-order check; PGlite cannot run concurrent sessions). Existing user-sync suites and grant checks pass (53 tests).
 
+### Verified user-domain snapshot: client (native tasks)
+
+SQLite migrates **v10 → v11**, adding scoped `offline_user_snapshots`. `putUserSnapshot` decodes strictly against the exact account/company (`offline-user-snapshot.ts`). It never replaces a stored snapshot with one older in server time **or** receipt watermark. The provider's `createUserSnapshotSync` (same scoped session and account-bound transport, `get_user_sync_snapshot`) loads the saved download at start and refreshes single-flight, with a 15-second timeout, only when online and in the foreground. Refreshes happen at start, on reconnect/foreground, after this account's commands are confirmed, and on Retry. A failed refresh keeps the last download and reports why (too many tasks, access, server not updated).
+
+**Tasks:** with a verified snapshot for this account, the list is the snapshot, then this device's applied receipts above its watermark (creates add, completions remove), then pending commands. Online and offline behave the same; the unverified HTTP read cache is no longer shown for tasks. Offline without a download, the screen says tasks have not been downloaded yet instead of showing a stale cached list. `tasks: null` reads as "not available for your current role", never as deletions. Online without a snapshot (old server, first run) the existing GET path remains. The Tasks screen shows when the copy was downloaded and that web changes appear after the next download.
+
+Not yet: own availability and dashboard layout still use their earlier display sources. The snapshot already carries both values, but adopting them is a follow-up.
+
+Tests: `offline-user-snapshot.test.ts` (3: strict decoding, monotonic per-scope storage across restart, single-flight refresh, failures keep the last download) and 1 new hook test (snapshot → newer receipts → pending, no HTTP list offline, foreign-scope snapshot ignored, role `null`). Two existing list-fencing hook tests now run online explicitly. Upgrade tests expect v11. 171 targeted mobile tests and the mobile typecheck pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

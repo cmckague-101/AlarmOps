@@ -2,6 +2,7 @@ import { createSyncPatch, mergeSyncUpdate, isVehicleFileSlot, fleetSyncFields, f
 import {attachmentId,validateAttachmentIntent,offlineAttachmentUserQuota,type OfflineAttachment,type OfflineAttachmentIntent,type OfflineAttachmentUpload,type OfflineAttachmentUploadStage,type OfflineAttachmentDocument} from './offline-attachment-types';
 import {decodeFleetDownloadProgress,decodeFleetDownloadPage,initialFleetDownload,type FleetDownloadProgress,type FleetDownloadPage} from './offline-fleet-download';
 import {decodeSyncReceipt,decodeSyncOutcome,decodeCanonicalSyncRecord,type CanonicalSyncRecord} from './offline-sync-protocol';
+import {decodeUserSnapshot,newerUserSnapshot,type UserSnapshot} from './offline-user-snapshot';
 
 /** Small injectable SQLite surface: native Expo in production, real SQLite in tests. */
 export type OutboxSqlValue = string | number | null;
@@ -239,7 +240,12 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
         UPDATE offline_attachments SET remote_attempted=1 WHERE EXISTS (SELECT 1 FROM offline_attachment_uploads u WHERE u.user_id=offline_attachments.user_id AND u.company_id=offline_attachments.company_id AND u.attachment_id=offline_attachments.attachment_id);
         PRAGMA user_version=10;`);current=10;
     }
-    if (current !== 10) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
+    if(current===10){
+      // Latest verified own tasks/settings download per account and company.
+      await tx.execAsync(`CREATE TABLE offline_user_snapshots(user_id TEXT NOT NULL,company_id TEXT NOT NULL,snapshot_json TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(user_id,company_id));
+        PRAGMA user_version=11;`);current=11;
+    }
+    if (current !== 11) throw new Error('Unsupported offline database version. Update FireOps before syncing.');
   });
   let generation = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -444,6 +450,21 @@ export async function createOfflineOutbox(db: OutboxDatabase) {
           await tx.runAsync("UPDATE offline_attachments SET remote_release=?,remote_release_error=? WHERE user_id=? AND company_id=? AND attachment_id=? AND remote_release='pending'",next.state,next.state==='pending'?next.error??null:null,...ids,id);
         })},
         getFleetDownload():Promise<FleetDownloadProgress|null>{return read(()=>downloadProgress(db))},
+        getUserSnapshot():Promise<{snapshot:UserSnapshot;verifiedAt:string}|null>{return read(async()=>{
+          const row=await db.getFirstAsync<{snapshot_json:string;verified_at:string}>('SELECT snapshot_json,verified_at FROM offline_user_snapshots WHERE user_id=? AND company_id=?',...ids);
+          return row?{snapshot:decodeUserSnapshot(JSON.parse(row.snapshot_json),identity),verifiedAt:row.verified_at}:null;
+        })},
+        /** Never replaces a saved snapshot with an older one; returns what is stored afterwards. */
+        putUserSnapshot(value:unknown,verifiedAt:string):Promise<{snapshot:UserSnapshot;verifiedAt:string}>{
+          let next:UserSnapshot;try{next=decodeUserSnapshot(value,identity)}catch(error){return Promise.reject(error)}
+          return write(async tx=>{
+            const row=await tx.getFirstAsync<{snapshot_json:string;verified_at:string}>('SELECT snapshot_json,verified_at FROM offline_user_snapshots WHERE user_id=? AND company_id=?',...ids);
+            const saved=row?decodeUserSnapshot(JSON.parse(row.snapshot_json),identity):null;
+            if(row&&saved&&!newerUserSnapshot(saved,next))return {snapshot:saved,verifiedAt:row.verified_at};
+            await tx.runAsync('INSERT OR REPLACE INTO offline_user_snapshots VALUES(?,?,?,?)',...ids,JSON.stringify(next),verifiedAt);
+            return {snapshot:next,verifiedAt};
+          });
+        },
         restartFleetDownload(generationId:string,expectedGeneration?:string):Promise<boolean>{required(generationId,'download generation');return write(async tx=>{
           const previous=await downloadProgress(tx);if(expectedGeneration!==undefined&&previous?.generationId!==expectedGeneration)return false;const progress={...initialFleetDownload(generationId),lastCompletedAt:previous?.lastCompletedAt??null};
           await tx.runAsync('DELETE FROM offline_fleet_download_members WHERE user_id=? AND company_id=?',...ids);

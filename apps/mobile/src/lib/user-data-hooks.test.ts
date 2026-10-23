@@ -64,12 +64,12 @@ afterEach(()=>{for(const dispose of disposals.splice(0))dispose()});
 
 describe('scoped personal-task hooks',()=>{
   it('hides old account data before effect cleanup and refuses retained old handlers',async()=>{
-    mocks.execute.mockResolvedValue({data:[task('Private task')],error:null});let who=user;
+    mocks.context.offline=false;mocks.execute.mockResolvedValue({data:[task('Private task')],error:null});let who=user;
     const f=hook(()=>usePersonalTasks(company,who));let result=f.render();f.effects();await flush();result=f.render();expect(result.tasks[0].subject).toBe('Private task');
     const old=result;who='replacement';expect(f.render().tasks).toEqual([]);expect(await old.save(draft)).toBe(false);expect(mocks.context.userSync.createTask).not.toHaveBeenCalled();
   });
   it('fences an old list response across A → B → A',async()=>{
-    const old=deferred<unknown>();mocks.execute.mockReturnValueOnce(old.promise).mockImplementation(async()=>({data:[task('Fresh')],error:null}));let who=user;
+    mocks.context.offline=false;const old=deferred<unknown>();mocks.execute.mockReturnValueOnce(old.promise).mockImplementation(async()=>({data:[task('Fresh')],error:null}));let who=user;
     const f=hook(()=>usePersonalTasks(company,who));f.render();f.effects();await flush();who='other';f.render();f.effects();await flush();who=user;f.render();f.effects();await flush();old.resolve({data:[task('Stale private task')],error:null});await flush();expect(f.render().tasks.map(row=>row.subject)).toEqual(['Fresh']);
   });
   it('reuses task identity after failed local acknowledgment, even after reconnect',async()=>{
@@ -88,6 +88,23 @@ describe('scoped personal-task hooks',()=>{
     const elsewhere={...own,operation:{...own.operation,companyId:otherCompany}};mocks.context.state.entries=[own,foreign,elsewhere];
     const f=hook(()=>usePersonalTasks(company,user));expect(f.render().pendingCount).toBe(1);expect(f.render().tasks).toHaveLength(1);
     mocks.context.state.entries=[entry('personal_task','task.complete',{},'synced',null,2)];mocks.execute.mockResolvedValue({data:[task('Stale deleted task')],error:null});f.render();f.effects();await flush();expect(f.render().tasks).toEqual([]);
+  });
+  it('shows the verified download, newer own receipts and pending commands, never the offline HTTP list',async()=>{
+    const kept={id:'50000000-0000-4000-8000-000000000001',subject:'Kept',description:'',dueDate:'2026-01-03'},done={...kept,id:'50000000-0000-4000-8000-000000000002',subject:'Done elsewhere'};
+    const snapshot=(changes={})=>({snapshot:{schemaVersion:1,companyId:company,userId:user,serverRequestAt:'2026-01-02T00:00:00Z',receiptWatermark:'5',tasks:[kept,done],availability:null,dashboard:{},...changes},verifiedAt:'x',loaded:true,refreshing:false,error:''});
+    const context=mocks.context as typeof mocks.context&{userSnapshot?:unknown;refreshUserSnapshot?:()=>Promise<void>};context.userSnapshot=snapshot();context.refreshUserSnapshot=vi.fn(async()=>{});
+    mocks.context.state.entries=[
+      entry('personal_task','task.complete',{},'synced',null,1),
+      {...entry('personal_task','task.create',draft,'synced',{id:'task',...draft},2),receipt:{kind:'applied',revision:'7',record:{id:'task',...draft} as never,receivedAt:'2026-01-01T00:00:00Z'}},
+      {...entry('personal_task','task.complete',{},'synced',null,3),operation:{...entry('personal_task','task.complete',{},'synced',null,3).operation,entityId:done.id},receipt:{kind:'applied',revision:'8',record:null,receivedAt:'2026-01-01T00:00:00Z'}},
+    ];
+    const f=hook(()=>usePersonalTasks(company,user));f.render();f.effects();await flush();const result=f.render();
+    expect(result.tasks.map(row=>row.subject)).toEqual(['Kept','Order filters']);expect(result.downloadedAt).toBe('2026-01-02T00:00:00Z');expect(mocks.client.from).not.toHaveBeenCalled();
+    result.retry();expect(context.refreshUserSnapshot).toHaveBeenCalled();
+    context.userSnapshot=snapshot({userId:'20000000-0000-4000-8000-999999999999'});mocks.context.state.entries=[];f.render();f.effects();await flush();
+    expect(f.render().tasks).toEqual([]);expect(f.render().error).toContain('not been downloaded');expect(mocks.client.from).not.toHaveBeenCalled();
+    context.userSnapshot=snapshot({tasks:null});f.render();f.effects();await flush();expect(f.render().tasks).toEqual([]);expect(f.render().error).toContain('current role');
+    delete context.userSnapshot;delete context.refreshUserSnapshot;
   });
   it('does not let an old save clear a replacement account’s busy state',async()=>{
     const old=deferred<unknown>();const next=deferred<unknown>();mocks.context.userSync.createTask.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);let who=user;

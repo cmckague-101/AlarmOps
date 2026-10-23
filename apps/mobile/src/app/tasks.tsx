@@ -14,7 +14,7 @@ export default function TasksScreen() {
   const member = access.value?.kind==='member'?access.value:null;
   const allowed = member && canManagePersonalTasks(member.user.role);
   const theme = useFireOpsTheme();
-  const {tasks,pendingCount,loading,busy,error,save,remove,retry,connected} = usePersonalTasks(allowed?member.company.id:undefined,allowed?member.user.id:undefined);
+  const {tasks,pendingCount,loading,busy,error,save,remove,retry,connected,downloadedAt} = usePersonalTasks(allowed?member.company.id:undefined,allowed?member.user.id:undefined);
   const [creating,setCreating] = useState(false);
   const [subject,setSubject] = useState('');
   const [description,setDescription] = useState('');
@@ -38,6 +38,7 @@ export default function TasksScreen() {
       <Pressable accessibilityRole="button" disabled={busy||!connected} style={[styles.button,(busy||!connected)&&styles.disabled]} onPress={()=>void submit()}><Text style={styles.buttonText}>{busy?'Saving…':'Save task'}</Text></Pressable>
       <Pressable accessibilityRole="button" disabled={busy} style={[styles.button,styles.secondary,busy&&styles.disabled]} onPress={()=>{setCreating(false);setPickerOpen(false);}}><Text style={styles.secondaryText}>Cancel</Text></Pressable>
     </View>}
+    {downloadedAt?<Text style={styles.copy}>{`Downloaded for offline use ${new Date(downloadedAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}. Changes made on the web appear after the next download.`}</Text>:null}
     {pendingCount?<Text style={styles.copy}>{pendingCount} task change{pendingCount===1?'':'s'} saved on this device — waiting to sync.</Text>:null}
     {loading?<Text style={styles.copy}>Loading tasks…</Text>:<>{tasks.map(task=><View key={task.id} style={styles.card}><Text accessibilityRole="header" style={styles.heading}>{task.subject}</Text><Text style={styles.copy}>Due {new Date(`${task.due_date}T12:00:00`).toLocaleDateString()}</Text>{task.description?<Text style={styles.body}>{task.description}</Text>:null}<View style={styles.actions}><Pressable accessibilityRole="button" accessibilityLabel={`Mark ${task.subject} as completed`} disabled={busy} style={[styles.button,busy&&styles.disabled]} onPress={()=>void remove(task.id)}><Text style={styles.buttonText}>Mark completed</Text></Pressable></View></View>)}{connected&&!error&&!tasks.length&&<Text style={styles.copy}>No open tasks. Select New task to create one.</Text>}</>}
   </ScrollView></KeyboardAvoidingView></SafeAreaView>;

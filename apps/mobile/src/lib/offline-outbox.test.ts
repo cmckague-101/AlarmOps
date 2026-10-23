@@ -329,19 +329,19 @@ describe('durable mobile outbox', () => {
 
   it('rejects unsupported database versions without modifying existing data', async () => {
     const { db, sqlite } = database();
-    sqlite.exec('PRAGMA user_version = 11; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
+    sqlite.exec('PRAGMA user_version = 12; CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES (\'preserve\');');
     await expect(createOfflineOutbox(db)).rejects.toThrow(/Unsupported offline database version/);
     expect(sqlite.prepare('SELECT value FROM future_data').get()).toEqual({ value: 'preserve' });
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 11 });
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({ user_version: 12 });
   });
 
   it('upgrades v1 storage without losing queued work, projections or ordering', async () => {
     const {session,store,sqlite,db}=await setup();await session.enqueue(operation(),{name:'Saved'});store.pause();
-    sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=1;');
+    sqlite.exec('DROP TABLE offline_user_snapshots; DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN delivery_json; ALTER TABLE offline_operations DROP COLUMN review_outcome_json; ALTER TABLE offline_operations DROP COLUMN notice_dismissed; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=1;');
     const restored=(await createOfflineOutbox(db)).activate(scope);
     expect((await restored.list())[0]).toMatchObject({status:'pending',delivery:null,reviewOutcome:null,noticeDismissed:false});
     expect(await restored.getProjection('vehicle','vehicle-1')).toEqual({operationId:'op-1',record:{name:'Saved'}});
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:11});
   });
 
   it('persists delivery before catch-up and retains it across retries without replacing local data', async () => {
@@ -437,10 +437,10 @@ describe('verified offline detail bases',()=>{
   });
   it('migrates v2 without discarding pending operations or delivery metadata',async()=>{
     const {session,sqlite,db,store}=await setup();await session.enqueue(operation(),{name:'pending'});store.pause();
-    sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=2;');
+    sqlite.exec('DROP TABLE offline_user_snapshots; DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; ALTER TABLE offline_operations DROP COLUMN history_backed_up; ALTER TABLE offline_operations DROP COLUMN continuation_json; DROP TABLE offline_rebase_history; DROP TABLE offline_records; DROP TABLE offline_devices; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=2;');
     const migrated=(await createOfflineOutbox(db)).activate(scope);
     expect(await migrated.list()).toHaveLength(1);expect(await migrated.listRecords()).toEqual([]);
-    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
+    expect(sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:11});
   });
   it('commits canonical raw data and completion together, without downgrading a newer download',async()=>{
     const {session,sqlite}=await setup();await session.enqueue(operation(),{name:'pending'});const {attempt}=(await session.claimNext('token',0))!;
@@ -485,7 +485,7 @@ function recoveryWorker(session:OfflineOutboxSession,proof:unknown){
 describe('older-build device history recovery',()=>{
   it('upgrades real v4 storage, recovers dismissed completed history and retains confirmation across close/reopen',async()=>{
     const dir=mkdtempSync(join(tmpdir(),'fireops-history-'));cleanup.push(()=>rmSync(dir,{recursive:true,force:true}));const path=join(dir,'history.db');const old=await oldCompletedHistory(path);
-    old.editor.dispose();old.store.pause();old.sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; UPDATE offline_operations SET notice_dismissed=1; ALTER TABLE offline_operations DROP COLUMN history_backed_up; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=4;');old.close();
+    old.editor.dispose();old.store.pause();old.sqlite.exec('DROP TABLE offline_user_snapshots; DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; UPDATE offline_operations SET notice_dismissed=1; ALTER TABLE offline_operations DROP COLUMN history_backed_up; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=4;');old.close();
     const reopened=database(path);const upgraded=await createOfflineOutbox(reopened.db);const session=upgraded.activate(scope);expect((await session.list())[1]).toMatchObject({status:'synced',noticeDismissed:true,historyBackupPending:true});expect(await upgraded.countUnresolvedForUser(scope.userId)).toBe(1);expect(offlineSyncVisible((await session.list())[1])).toBe(true);
     const {worker,transport}=recoveryWorker(session,old.proof);await worker.wake();expect(transport.deliver).not.toHaveBeenCalled();expect(transport.backfillHistory).toHaveBeenCalledOnce();expect(await upgraded.countUnresolvedForUser(scope.userId)).toBe(0);
     const saved=(await session.list())[1];expect(saved.historyBackupPending).toBe(false);expect(saved.operation.operationId).toBe(old.child.operation.operationId);worker.stop();upgraded.pause();reopened.close();
@@ -502,7 +502,7 @@ describe('older-build device history recovery',()=>{
   });
   it('upgrades v5 without losing history confirmations or business intent',async()=>{
     const f=await oldCompletedHistory();await f.session.confirmHistoryBackup(f.child.operation.operationId,await f.session.listRebases(f.child.operation.operationId),f.proof);const before=await f.session.list();f.editor.dispose();f.store.pause();
-    f.sqlite.exec('DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=5;');const restored=(await createOfflineOutbox(f.db)).activate(scope);expect(await restored.list()).toEqual(before);expect(await restored.getFleetDownload()).toBeNull();expect(f.sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:10});
+    f.sqlite.exec('DROP TABLE offline_user_snapshots; DROP TABLE offline_attachment_documents; DROP TABLE offline_attachment_uploads; DROP TABLE offline_attachment_refs; DROP TABLE offline_attachments; ALTER TABLE offline_operations DROP COLUMN attachment_ids_json; DROP TABLE offline_fleet_downloads; DROP TABLE offline_fleet_download_members; PRAGMA user_version=5;');const restored=(await createOfflineOutbox(f.db)).activate(scope);expect(await restored.list()).toEqual(before);expect(await restored.getFleetDownload()).toBeNull();expect(f.sqlite.prepare('PRAGMA user_version').get()).toEqual({user_version:11});
   });
   it('does not let one missing submission prevent other history backups',async()=>{
     const f=await oldCompletedHistory();const id=f.child.operation.operationId;
