@@ -8,7 +8,7 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
   notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create','reply.delete'],vehicle_note:['note.create','note.update','note.delete'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create','receipt.update','receipt.delete'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
   communication_thread:['thread.create'],training:['training.create','training.update','training.delete'],inventory_item:['item.create','item.update','item.delete'],company_document:['document.create'],
-  inventory_return:['return.checkin'],payroll_review:['review.approve','review.reject','review.mark_paid']};
+  inventory_return:['return.checkin'],vehicle_inspection:['inspection.delete'],vehicle_document:['document.remove'],payroll_review:['review.approve','review.reject','review.mark_paid']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -386,6 +386,16 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       const trimmed=notes?.trim()??'';
       if(!uuid.test(formId)||(decision==='reject'&&(!trimmed||trimmed.length>1000)))return Promise.reject(new Error(decision==='reject'?'Rejection notes are required.':'Invalid payroll form.'));
       return enqueue('payroll_review',formId,`review.${decision}`,decision==='reject'?{base,notes:trimmed}:{base},null);
+    },
+    /** Owners/admins: removes one failed inspection only if it is unchanged since the device saw it (`seen` = the entry exactly as downloaded). */
+    deleteVehicleInspection(vehicleId:string,seen:SyncRecord){
+      if(!uuid.test(vehicleId)||typeof seen.id!=='string'||!uuid.test(seen.id))return Promise.reject(new Error('Invalid inspection.'));
+      return enqueue('vehicle_inspection',seen.id,'inspection.delete',{vehicleId,base:seen},null);
+    },
+    /** Owners/admins: removes one vehicle document only if it is unchanged since the device saw it. */
+    removeVehicleDocument(vehicleId:string,seen:SyncRecord){
+      if(!uuid.test(vehicleId)||typeof seen.id!=='string'||!uuid.test(seen.id))return Promise.reject(new Error('Invalid document.'));
+      return enqueue('vehicle_document',seen.id,'document.remove',{vehicleId,base:seen},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

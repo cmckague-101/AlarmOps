@@ -31,7 +31,7 @@ export default function SavedDetailsScreen(){
 
 function DetailForm({editor,target,user,companyId,crewMode}:{editor:OfflineDetailEditor;target:DetailTarget;user:{id:string;name:string};companyId:string;crewMode:boolean}){
   const {crew}=useFleetVehicles(companyId);const activeCrew=crew.filter(member=>member.status==='Active');
-  const theme=useFireOpsTheme();const router=useRouter();const {offline,state:syncState,attachmentController,syncAttachments}=useOfflineSync();
+  const theme=useFireOpsTheme();const router=useRouter();const {offline,state:syncState,attachmentController,syncAttachments,userSync}=useOfflineSync();
   const hasDownload=syncState.records.some(record=>record.entityType===target.entityType&&record.entityId===target.entityId&&record.record!==null);
   const [downloadedOnly,setDownloadedOnly]=useState(false);
   const [draft,setDraft]=useState<OfflineDetailDraft|null>(null);const [form,setForm]=useState<Record<string,string>>({});
@@ -76,7 +76,7 @@ function DetailForm({editor,target,user,companyId,crewMode}:{editor:OfflineDetai
         {draft&&target.entityType==='issue'&&(!crewMode||draft.record.createdById===user.id)?<OfflineIssueUpdates editor={editor} entityId={target.entityId} record={draft.record} user={user} notesOnly={crewMode}/>:null}
         {draft&&crewMode&&target.entityType==='issue'&&draft.record.createdById!==user.id?<Text style={{color:theme.secondary}}>You can add offline notes only to issues you reported.</Text>:null}
         {draft&&!crewMode&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleFileSlots editor={editor} controller={attachmentController} entityId={target.entityId} record={draft.record} onSaved={syncAttachments}/>:null}
-        {draft&&!crewMode&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleDocumentForm controller={attachmentController} entityId={target.entityId} onSaved={syncAttachments}/>:null}
+        {draft&&!crewMode&&target.entityType==='vehicle'&&attachmentController?<OfflineVehicleDocumentForm controller={attachmentController} entityId={target.entityId} onSaved={syncAttachments} documents={Array.isArray(draft.record.documents)?(draft.record.documents as SyncRecord[]).filter(document=>typeof document.id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(document.id)):[]} onRemove={userSync?document=>userSync.removeVehicleDocument(target.entityId,document):undefined}/>:null}
         {error?<Text accessibilityRole="alert" style={{color:theme.danger}}>{error}</Text>:null}
         {crewMode?null:saved?<View style={styles.field}><Text style={{color:theme.secondary}}>Check Saved changes & sync for uploading, review or completion. Review may keep another version. Return to the record for current shared data.</Text><Pressable accessibilityRole="button" onPress={()=>router.replace('/sync-status' as never)} style={styles.button}><Text style={{color:theme.ember}}>Saved changes & sync</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>router.dismissTo(detailRecordHref(target))} style={styles.button}><Text style={{color:theme.ember}}>Back to record</Text></Pressable></View>:draft?<>
           <Text style={{color:theme.secondary}}>Changes are not saved until Save on device completes. Leaving before Save discards entered values. Do not uninstall or clear app data before changes sync. Later edits wait for earlier changes. Conflicting changes or a changed review outcome require explicit rebase before upload.</Text>

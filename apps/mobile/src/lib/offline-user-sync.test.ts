@@ -271,4 +271,11 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     // Applied after the shown download's watermark: later edits still chain on it.
     expect(editBase(done.map(entry=>({...entry,receipt:{kind:'applied',revision:'9',receivedAt:date,record:null}}) as never),'training',course,seen,'5')).toEqual({afterOperation:second.operation.operationId});
   });
+  it('removes vehicle inspections and documents against the exact entry seen',async()=>{
+    const f=await setup();const vehicle=nextId(),inspection={id:nextId(),items:[{id:'i1',result:'Fail'}]},document={id:nextId(),name:'Registration'};
+    await expect(f.sync.removeVehicleDocument(vehicle,{id:'contract',name:'Contract'})).rejects.toThrow();
+    const removed=await f.sync.removeVehicleDocument(vehicle,document);expect(removed.operation).toMatchObject({entityType:'vehicle_document',entityId:document.id,mutation:{command:'document.remove',payload:{vehicleId:vehicle,base:document}}});
+    const deleted=await f.sync.deleteVehicleInspection(vehicle,inspection as never);expect(deleted.operation.mutation).toMatchObject({command:'inspection.delete',payload:{base:inspection}});
+    expect(pendingEdits(await f.session.list(),'vehicle_inspection',{delete:'inspection.delete'}).get(inspection.id)?.deleted).toBe(true);
+  });
 });

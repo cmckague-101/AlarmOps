@@ -7,6 +7,8 @@ import {AppSymbol} from '@/components/app-symbol';
 import {openFleetFile} from '@/lib/fleet-files';
 import {deleteFleetInspection, useFleetVehicles} from '@/lib/fleet-store';
 import type {FleetVehicle} from '@/lib/fleet-store';
+import {pendingEdits,scopedUserEntries} from '@/lib/offline-user-sync';
+import {useOfflineUserSync} from '@/lib/use-offline-user-sync';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme, useFireOpsTheme} from '@/theme';
 
@@ -14,10 +16,13 @@ function formatDate(value:string){const date=new Date(value);return Number.isNaN
 
 export default function InspectionsScreen(){
   const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const router=useRouter();const {session,access}=useSession();
-  const member=access.value?.kind==='member'?access.value:null;const {vehicles,loading,error}=useFleetVehicles(member?.company.id??null);const [photoError,setPhotoError]=useState('');
+  const member=access.value?.kind==='member'?access.value:null;const {vehicles,loading,error}=useFleetVehicles(member?.company.id??null);
+  // Offline, a delete is saved on this device and applies only if the inspection is unchanged; it is hidden meanwhile.
+  const deviceSync=useOfflineUserSync(member?.company.id,member?.user.id);
+  const deleted=useMemo(()=>member?pendingEdits(scopedUserEntries(deviceSync.entries,member.user.id,member.company.id),'vehicle_inspection',{delete:'inspection.delete'}):new Map(),[deviceSync.entries,member]);const [photoError,setPhotoError]=useState('');
   const [deleting,setDeleting]=useState(false);const [deleteError,setDeleteError]=useState('');
   const currentYear=new Date().getFullYear();const [year,setYear]=useState(currentYear);const [vehicleId,setVehicleId]=useState('all');const [picker,setPicker]=useState<'year'|'vehicle'|null>(null);
-  const allFailed=useMemo(()=>vehicles.flatMap(vehicle=>vehicle.inspections.flatMap(inspection=>inspection.items.some(item=>item.result==='Fail')?[{vehicle,inspection}]:[])),[vehicles]);
+  const allFailed=useMemo(()=>vehicles.flatMap(vehicle=>vehicle.inspections.flatMap(inspection=>inspection.items.some(item=>item.result==='Fail')&&!deleted.get(inspection.id)?.deleted?[{vehicle,inspection}]:[])),[vehicles,deleted]);
   const years=useMemo(()=>[...new Set([currentYear,...allFailed.map(entry=>new Date(entry.inspection.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a,b)=>b-a),[allFailed,currentYear]);
   const failed=useMemo(()=>allFailed.filter(entry=>new Date(entry.inspection.createdAt).getFullYear()===year&&(vehicleId==='all'||entry.vehicle.id===vehicleId)).sort((left,right)=>Date.parse(right.inspection.createdAt)-Date.parse(left.inspection.createdAt)),[allFailed,vehicleId,year]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
@@ -30,7 +35,12 @@ export default function InspectionsScreen(){
       {text:'Cancel',style:'cancel'},
       {text:'Delete',style:'destructive',onPress:()=>{void (async()=>{
         setDeleting(true);setDeleteError('');
-        try{await deleteFleetInspection(vehicle,inspectionId,member.user)}
+        try{
+          if(deviceSync.offline){
+            const seen=(Array.isArray(vehicle.source.inspections)?vehicle.source.inspections as Record<string,unknown>[]:[]).find(item=>item.id===inspectionId);
+            if(!deviceSync.userSync||!seen)throw new Error('Deleting inspections offline is unavailable on this device.');
+            await deviceSync.userSync.deleteVehicleInspection(vehicle.id,seen as never);
+          }else await deleteFleetInspection(vehicle,inspectionId,member.user)}
         catch(error){setDeleteError(error instanceof Error?error.message:'Inspection could not be deleted.')}
         finally{setDeleting(false)}
       })()}},
