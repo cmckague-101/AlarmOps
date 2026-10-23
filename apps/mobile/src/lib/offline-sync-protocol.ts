@@ -44,8 +44,8 @@ export function decodeSyncOutcome(operation:SyncOperation,conflictId:string,valu
 export function offlineSyncAdapterBlock(operation:SyncOperation,verifiedContinuation=false):string|null{
   // User-owned commands carry their own dependency checks on the server.
   if(operation.schemaVersion===1&&isUserSyncOperation(operation))return null;
-  // New issue reports use the dedicated idempotent create endpoint; other creates stay online-only.
-  if(operation.schemaVersion===1&&operation.mutation.kind==='create'&&operation.entityType==='issue')return operation.dependsOn.length?'This new issue depends on other work and cannot sync.':null;
+  // New issue reports and vehicles use the dedicated idempotent create endpoint; other creates stay online-only.
+  if(operation.schemaVersion===1&&operation.mutation.kind==='create'&&(operation.entityType==='issue'||operation.entityType==='vehicle'))return operation.dependsOn.length?'This new record depends on other work and cannot sync.':null;
   if(operation.schemaVersion!==1||operation.mutation.kind!=='update'||!['vehicle','issue'].includes(operation.entityType))return 'This workflow is not enabled for offline sync yet. Work remains on this device.';
   if(operation.dependsOn.length&&!verifiedContinuation)return 'This edit depends on earlier work and needs an explicit rebase before syncing.';
   const allowed=fleetSyncFields[operation.entityType as 'vehicle'|'issue'];

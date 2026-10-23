@@ -793,6 +793,14 @@ Client: `mergeFleetSyncDetail` (shared domain) mirrors this for local rebase; th
 
 Tests: `fleet-sync-issue-status-notes.test.mjs` (4: resolve and reopen with notes, existing resolution kept with no conflict, refusals with nothing written, manager combined change); `fleet-sync-fields.test.ts` and `offline-status-assignments.test.ts` updated. 306 mobile offline tests, domain field tests and the related fleet database suites pass.
 
+### Offline vehicle creation (not deployed)
+
+`20261214000100_fleet_sync_vehicle_create.sql` extends the idempotent `sync_fleet_create` endpoint (issue reports, `20261126000100`) to **vehicles, owners/admins only** (as online). The new vehicle is fully validated: unit, type, make and model non-blank, 4-digit year, VIN/plate/notes strings, status **Ready or Out of service**, unassigned, and no photo, files, documents or inspections (their own adapters add those once it exists). It is inserted through `apply_fleet_changes` together with the same "*unit* added to fleet" activity the online form writes, plus device-reported provenance. An ID with any revision history or an existing vehicle/issue row is refused (`23505`), so a deleted vehicle is never recreated. Issue creation is unchanged apart from sharing the function.
+
+Client: `detailEditor.createVehicle(record)` (one operation per new vehicle ID, retried identically; crew refused locally), the adapter block and read model accept vehicle creates (a device-created vehicle shows as a local proposal until synced), and **Add vehicle** saves on the device when offline. Offline it refuses a chosen photo (add it later through the vehicle files) and full-form edits of existing vehicles (use Edit saved details).
+
+Tests: `fleet-sync-vehicle-create.test.mjs` (4: create with activity and replay, identity reuse and deleted-vehicle refusal, crew/outsider/invalid refusals, issue reports unchanged); 1 more client test in `offline-status-assignments.test.ts`; two older tests that used vehicle creates as the "unsupported" example now use activities. 307 mobile offline tests pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -832,6 +840,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 33. `20261211000100_fix_storage_file_retention_policies.sql` (independent bug fix; safe to apply early)
 34. `20261212000100_user_sync_receipts.sql`
 35. `20261213000100_fleet_sync_issue_status_with_note.sql`
+36. `20261214000100_fleet_sync_vehicle_create.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

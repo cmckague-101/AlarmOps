@@ -24,7 +24,7 @@ export function projectOfflineFleet(remote:readonly FleetModelRecord[],local:Off
     const target={entityType:op.entityType as DetailTarget['entityType'],entityId:op.entityId};const key=fleetDetailKey(target);
     pending[key]=offlineSyncEntryLabel(entry);
     // A locally reported issue is previewed only until a verified record exists.
-    if(op.mutation.kind==='create'){if(op.entityType==='issue'&&!records.has(key)){records.set(key,{...target,revision:'0',record:op.mutation.record});pending[key]=`Local proposal · ${pending[key]}`}continue}
+    if(op.mutation.kind==='create'){if((op.entityType==='issue'||op.entityType==='vehicle')&&!records.has(key)){records.set(key,{...target,revision:'0',record:op.mutation.record});pending[key]=`Local proposal · ${pending[key]}`}continue}
     if(op.mutation.kind!=='update'||entry.reviewOutcome&&entry.reviewOutcome.outcome!=='kept')continue;
     // File slots are not overlaid: their copy may not exist until the change syncs.
     // Inspections are not overlaid either: their photos may not be copied yet.

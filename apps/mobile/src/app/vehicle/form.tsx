@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppSymbol } from '@/components/app-symbol';
 import { removeFleetFiles, uploadFleetFile, type LocalFleetFile } from '@/lib/fleet-files';
 import { assertFleetRecordVersion, fleetReadVersion, createFleetId, saveFleetVehicleRecord, useFleetVehicles, type FleetVehicle, type FleetVehicleFile } from '@/lib/fleet-store';
+import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { useSession } from '@/providers/session-provider';
 import { useVehicleTypes } from '@/lib/vehicle-type-store';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -87,6 +88,10 @@ export default function VehicleFormScreen() {
   const originalScopeRef=useRef(scopeKey);
   if(originalScopeRef.current===null&&scopeKey)originalScopeRef.current=scopeKey;
   const [newVehicleId] = useState(() => createFleetId());
+  // Offline, a new vehicle (no photo) is saved on this device and created when connected.
+  const offlineSync = useOptionalOfflineSync();
+  const offlineCreate = !!offlineSync?.offline && Platform.OS !== 'web';
+  const offlineVehicle = useRef<Record<string, unknown> | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -161,6 +166,27 @@ export default function VehicleFormScreen() {
 
     if ((binderFiles.dotInspection || attachedBinderFile(vehicle, 'DOT Inspection')) && !inspectionExpirationDate(inspectionDate)) {
       setSaveError('Select a valid DOT inspection date.');
+      return;
+    }
+    if (offlineCreate) {
+      if (editing) { setSaveError('Editing all vehicle details needs a connection. Use Edit saved details on the vehicle to change fields offline.'); return; }
+      if (photo) { setSaveError('Vehicle photos need a connection. Remove the photo to save this vehicle on the device, then add the photo later.'); return; }
+      setSaving(true);
+      setSaveError('');
+      try {
+        if (!offlineSync?.detailEditor) throw new Error('Adding vehicles offline needs saved device data. Reconnect to add this vehicle.');
+        // The same record (identity and time) is retried until saved; edits start a new record with the same ID.
+        const draft = { id: newVehicleId, unit: form.unit.trim(), type: selectedType, year, make: form.make.trim(), model: form.model.trim(), vin: form.vin.trim().toUpperCase(), plate: form.plate.trim().toUpperCase(), notes: form.notes.trim(), status: form.status };
+        const previous = offlineVehicle.current;
+        const record = previous && Object.entries(draft).every(([key, value]) => JSON.stringify(previous[key]) === JSON.stringify(value)) ? previous : { ...draft, createdAt: new Date().toISOString() };
+        offlineVehicle.current = record;
+        await offlineSync.detailEditor.createVehicle(record as never);
+        router.back();
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Vehicle could not be saved on this device. Try again.');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     setSaving(true);

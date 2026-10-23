@@ -156,7 +156,7 @@ describe('native durable sync worker (real SQLite, no native UI)',()=>{
     f.advance(5000);await f.worker.wake();expect((await entry(f)).status).toBe('synced');expect(f.transport.deliver).toHaveBeenCalledTimes(2);
   });
   it('blocks unsupported workflows and dependent edits instead of blindly replaying them',async()=>{
-    const f=await setup({...op(),mutation:{kind:'create',record:base}});await f.worker.wake();expect((await entry(f)).status).toBe('blocked');expect(f.transport.deliver).not.toHaveBeenCalled();
+    const f=await setup({...op(),entityType:'activity',mutation:{kind:'create',record:base}});await f.worker.wake();expect((await entry(f)).status).toBe('blocked');expect(f.transport.deliver).not.toHaveBeenCalled();
     const second=await setup();await second.worker.wake();await second.session.enqueue({...op(),operationId:'child',dependsOn:[operationId]},base);await second.worker.wake();
     expect((await second.session.list())[1].status).toBe('blocked');expect(second.transport.deliver).toHaveBeenCalledTimes(1);
   });

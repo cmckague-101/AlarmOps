@@ -76,6 +76,20 @@ export function createOfflineDetailEditor(options:{
   const requests=new Set<AbortController>();
   const rebaseReviews=new WeakMap<ContinuationReview,ContinuationReview>();
   const creates=new Map<string,SyncOperation>();
+  // Idempotent creates: one operation per new record ID; a retry must carry the identical record.
+  async function createRecord(entityType:'issue'|'vehicle',id:string,value:SyncRecord,changedMessage:string):Promise<OutboxEntry>{
+    let operation=creates.get(id);
+    if(operation&&(operation.entityType!==entityType||JSON.stringify(operation.mutation.kind==='create'&&operation.mutation.record)!==JSON.stringify(value)))throw new Error(changedMessage);
+    if(!operation){
+      const deviceId=await options.session.getDeviceId(options.id);guard();
+      operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType,entityId:id,
+        provenance:{userId:options.session.scope.userId,deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},dependsOn:[],mutation:{kind:'create',record:value}};
+      creates.set(id,operation);
+    }
+    const entry=await options.session.enqueue(clone(operation),value,{exclusiveRecord:true});
+    try{await options.changed()}catch{/* Committed create remains durable. */}
+    return entry;
+  }
   const drafts=new WeakMap<OfflineDetailDraft,{base:OfflineDetailDraft;deviceId:string;parent?:OutboxEntry;operation?:SyncOperation;values?:SyncRecord;extras?:{remove:string[];attachmentIds:string[]}}>();
   function guard(){if(disposed||!options.canEdit())throw new Error('This offline editor is no longer available for the current account or permissions.')}
   async function available(target:DetailTarget){
@@ -140,17 +154,18 @@ export function createOfflineDetailEditor(options:{
         ||!shortText(value.title)||!shortText(value.description,10000)||!['Low','Medium','High','Critical'].includes(value.priority as string)||!shortText(value.createdBy)||typeof value.createdAt!=='string'||!Number.isFinite(Date.parse(value.createdAt)))
         throw new Error('Check the issue title, description, priority and vehicle.');
       const restricted=options.restrictFields?.()??null;if(restricted&&!restricted.issue.includes('create'))throw new Error('Your role cannot report issues offline.');
-      let operation=creates.get(id);
-      if(operation&&JSON.stringify(operation.mutation.kind==='create'&&operation.mutation.record)!==JSON.stringify(value))throw new Error('Retry the original issue or start a new report.');
-      if(!operation){
-        const deviceId=await options.session.getDeviceId(options.id);guard();
-        operation={schemaVersion:1,operationId:options.id(),companyId:options.session.scope.companyId,entityType:'issue',entityId:id,
-          provenance:{userId:options.session.scope.userId,deviceId,savedAt:(options.now??(()=>new Date().toISOString()))(),connectivity:options.offline()?'offline':'online'},dependsOn:[],mutation:{kind:'create',record:value}};
-        creates.set(id,operation);
-      }
-      const entry=await options.session.enqueue(clone(operation),value,{exclusiveRecord:true});
-      try{await options.changed()}catch{/* Committed report remains durable. */}
-      return entry;
+      return createRecord('issue',id,value,'Retry the original issue or start a new report.');
+    },
+    /** Saves one new vehicle on device (owners/admins). Ready or Out of service, no files yet; retrying the same record reuses its operation. */
+    async createVehicle(record:SyncRecord):Promise<OutboxEntry>{
+      guard();const value=clone(record);const id=value.id;
+      if(typeof id!=='string'||!uuid.test(id)||Object.keys(value).sort().join()!=='createdAt,id,make,model,notes,plate,status,type,unit,vin,year'
+        ||!['unit','type','make','model'].every(field=>shortText(value[field]))||!['vin','plate'].every(field=>typeof value[field]==='string'&&(value[field] as string).length<=200)
+        ||typeof value.notes!=='string'||value.notes.length>10000||typeof value.year!=='number'||!Number.isInteger(value.year)||value.year<1000||value.year>9999
+        ||!['Ready','Out of service'].includes(value.status as string)||typeof value.createdAt!=='string'||!Number.isFinite(Date.parse(value.createdAt)))
+        throw new Error('Check the unit, type, make, model, year and status.');
+      if(options.restrictFields?.())throw new Error('Only owners and admins can add vehicles.');
+      return createRecord('vehicle',id,value,'Retry the original vehicle or start a new one.');
     },
     async save(draft:OfflineDetailDraft,values:SyncRecord,extras:DetailSaveExtras={}):Promise<OutboxEntry>{
       guard();const owned=drafts.get(draft);if(!owned)throw new Error('Reload verified details before saving.');

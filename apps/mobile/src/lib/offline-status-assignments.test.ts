@@ -102,4 +102,16 @@ describe('offline issue reports (actual SQLite)',()=>{
   it('lets restricted roles report only when allowed',async()=>{
     const f=await setup(true);await expect(f.editor.createIssue(report())).rejects.toThrow(/cannot report/);
   });
+  it('saves one new vehicle durably, retries the same operation, and refuses crew or invalid vehicles',async()=>{
+    const f=await setup();const id=nextId();
+    const vehicleRecord=(changes:Record<string,unknown>={})=>({id,unit:'E7',type:'Engine',year:2020,make:'Pierce',model:'Enforcer',vin:'',plate:'',notes:'',status:'Ready',createdAt:date,...changes});
+    for(const bad of [vehicleRecord({status:'Assigned'}),vehicleRecord({unit:' '}),vehicleRecord({year:20}),vehicleRecord({photo:{}})])await expect(f.editor.createVehicle(bad)).rejects.toThrow();
+    const first=await f.editor.createVehicle(vehicleRecord());expect(first.operation).toMatchObject({entityType:'vehicle',entityId:id,mutation:{kind:'create',record:vehicleRecord()}});
+    expect((await f.editor.createVehicle(vehicleRecord())).operation.operationId).toBe(first.operation.operationId);
+    await expect(f.editor.createVehicle(vehicleRecord({unit:'E8'}))).rejects.toThrow(/original vehicle/);
+    f.transport.deliver.mockResolvedValueOnce({kind:'applied',receivedAt:date,revision:'1',record:vehicleRecord()});f.transport.canonical.mockResolvedValue({revision:'1',record:vehicleRecord()});
+    await f.worker.wake();expect((await f.session.list())[0].status).toBe('synced');
+    expect((await f.session.listRecords()).find(row=>row.entityId===id)?.revision).toBe('1');
+    const crewSetup=await setup(true);await expect(crewSetup.editor.createVehicle(vehicleRecord({id:nextId()}))).rejects.toThrow(/owners and admins/);
+  });
 });
