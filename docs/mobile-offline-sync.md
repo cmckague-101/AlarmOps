@@ -592,6 +592,14 @@ The append-only, RLS-protected UUID set survives company/profile deletion withou
 
 Tests cover both reproduced resurrection bugs (fresh operation and legacy online insert), live/receipt backfill, missing-task completion, private minimal schema, ownership immutability, company deletion, permission revocation, RLS/receipt-failure rollback and exact retries. No migrations were applied to Supabase. Real multi-session migration/insert races remain a rollout check.
 
+### Atomic online dashboard preference writes (server)
+
+`20261130000100_online_dashboard_preferences.sql` adds account-bound `set_dashboard_preferences_once` and uncached `get_dashboard_preferences`. Explicit known boolean/null key changes merge atomically with the same helper and per-user lock as native queued commands. Current unrelated choices and legacy stored keys survive; new arbitrary keys/objects are rejected by both write paths.
+
+Private immutable receipts preserve exact request/nonce, reported save time/connectivity, separate server time, previous values and original result. Exact replay returns that historical result without repeating the write; clients must subsequently read fresh state. Receipt insertion failure rolls back the preference mutation. Account/profile deletion purges private receipt history. The non-bypass executor owns functions, not the preference table; direct whole-layout INSERT/UPDATE/DELETE privileges are revoked from clients and service role, while own-user SELECT remains. No manager review access is introduced.
+
+This is a **client-version rollout boundary**: old whole-layout clients must be replaced with the per-key RPC clients before enabling saves against this migration. Missing setup must never fall back to unsafe table upserts. Browser retries remain memory-only and explicit; no browser offline replay is authorized. Server validation: 27 embedded PostgreSQL/grant checks, including mixed native/online changes, cached replay, private scope, typed patches, legacy-value retention, rollback and direct-write denial. Real multi-session validation and deployment remain outstanding.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -617,6 +625,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 19. `20261127000100_user_sync_commands.sql`
 20. `20261128000100_user_sync_availability_cas.sql`
 21. `20261129000100_personal_task_identities.sql`
+22. `20261130000100_online_dashboard_preferences.sql` (requires updated per-key online clients; do not retain legacy whole-layout upserts)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

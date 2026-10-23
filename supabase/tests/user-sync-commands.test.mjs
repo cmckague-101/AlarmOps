@@ -147,10 +147,10 @@ test('availability handles missing, unchanged, identical and stale bases without
   }
 });
 test('dashboard changes merge per key and later arrivals win',async()=>{
-  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{fleet:{visible:true},tasks:{visible:true}}}));
-  const result=await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{tasks:{visible:false},weather:null}}));
-  assert.deepEqual(result.record,{id:owner,items:{fleet:{visible:true},tasks:{visible:false}}});
-  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{fleet:null}}));assert.deepEqual((await state(owner,'dashboard',owner)).record.items,{tasks:{visible:false}});
+  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{resources:true,tasks:true}}));
+  const result=await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{tasks:false,greeting:null}}));
+  assert.deepEqual(result.record,{id:owner,items:{resources:true,tasks:false}});
+  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{resources:null}}));assert.deepEqual((await state(owner,'dashboard',owner)).record.items,{tasks:false});
   await assert.rejects(send(command(owner,'dashboard',crew,'dashboard.set',{changes:{a:1}})),error=>error.code==='42501');
   await assert.rejects(send(command(owner,'dashboard',owner,'dashboard.set',{changes:{}})),error=>error.code==='22023');
 });
@@ -162,8 +162,8 @@ test('command registry has RLS and remains executor-only, including forward repa
   assert.equal((await actor(owner,()=>row('select count(*)::int count from public.user_sync_commands'),'fireops_sync_writer')).count,4);
 });
 test('receipts are private, and unsupported commands or forged provenance are refused',async()=>{
-  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{a:1}}));
+  await send(command(owner,'dashboard',owner,'dashboard.set',{changes:{greeting:false}}));
   await assert.rejects(actor(owner,()=>db.query('select * from public.user_sync_receipts')),error=>error.code==='42501');
   await assert.rejects(send(command(owner,'personal_task',randomUUID(),'task.update',task())),error=>error.code==='22023');
-  const forged=command(owner,'dashboard',owner,'dashboard.set',{changes:{a:1}});await assert.rejects(send(forged,crew),error=>error.code==='22023');
+  const forged=command(owner,'dashboard',owner,'dashboard.set',{changes:{greeting:false}});await assert.rejects(send(forged,crew),error=>error.code==='22023');
 });

@@ -22,6 +22,8 @@ Claude's latest commit when continuation began was `1594bb8` (`refactor(sync): r
 
 Continuation fixes:
 
+- `20261130000100_online_dashboard_preferences.sql`: atomic per-key online preference writes, private immutable original-request/preimage receipts and uncached canonical reads. Direct whole-layout table mutations are denied; both native/online helpers accept only known boolean/null changes. 27 database/grant checks pass. This requires updated online RPC clients before rollout; never fall back to old upserts. Client wiring follows as its own tested slice.
+
 - `12615dd`: transactionally sequence repeated/concurrent user commands; retain exact operation identity, payload, provenance and stored dependencies after uncertain local acknowledgment; freeze input before asynchronous device lookup. Scalar rebase safeguards remain unchanged.
 - Forward migration `20261129000100_personal_task_identities.sql`: private UUID-only task retirement for every writer, receipt-target backfill/retirement, ownership immutability and current task-role enforcement for canonical reads/cached receipts. Exact replay cannot recreate completed tasks; native identity collisions block without changing IDs. No private task content or tenant/author metadata is retained in the UUID set. Consult Git log for this slice's commit.
 - `19e2b88` — native user-owned hook hardening: account/company/ABA callback fences, canonical setting acknowledgment recovery, bounded account-bound POST refresh, stable task UI retry IDs and frozen availability retry bases. Own-user native writes now queue durably online too, so reconnect cannot bypass pending commands. 65 targeted mobile tests and mobile typecheck passed; consult Git log for this slice's commit.
@@ -29,7 +31,7 @@ Continuation fixes:
 
 Latest focused validation: 66 mobile tests (user hooks/commands, worker and transport), mobile typecheck; 15 user-command embedded PostgreSQL tests plus 5 grant checks, including identity retirement/backfill/rollback/role revocation, the full 18-case availability matrix, deterministic read/write interleaving and registry RLS repair. Earlier continuation passed 83 outbox/native/user-command tests and mobile/domain typechecks. Prior baseline checks also passed 40 mobile attachment/status/user-command tests and 5 user-command database tests. These are selected checks, **not a full audit or production validation**.
 
-SQLite outbox schema is **v10**. Pending forward sync migrations run from `20261109000100` through `20261129000100`, plus earlier project prerequisites. None was applied by this continuation. Claude edited some undeployed earlier migrations in place; inspect the design document and actual migration chain rather than assuming only append-only changes occurred historically.
+SQLite outbox schema is **v10**. Pending forward sync migrations run from `20261109000100` through `20261130000100`, plus earlier project prerequisites. None was applied by this continuation. Claude edited some undeployed earlier migrations in place; inspect the design document and actual migration chain rather than assuming only append-only changes occurred historically.
 
 ## Implemented adapters (code, not deployed)
 
