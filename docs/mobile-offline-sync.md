@@ -610,6 +610,14 @@ Installed native own-user writes continue through their durable scoped outbox. N
 
 Targeted checks: 15 domain, 70 mobile and 15 web unit tests; domain/mobile/web typechecks; 28 embedded PostgreSQL/grant/structural checks (including a parent-before-child migration lock-order check, not a real concurrent-session test). Hook/effect tests use a shared injected persistent-slot harness; markup tests are nonvisual. No UI/server launch, push, migration application or deployment occurred. Remaining online availability writer safety, attachment cleanup races and real multi-session/Storage validation are not completed by this slice.
 
+### Online crew availability value-CAS (server)
+
+`20261201000100_online_crew_availability.sql` adds scoped `set_crew_availability_once` and uncached full-roster `get_crew_availability`. Requests pin actor, company, target, boolean/null base, proposed value, nonce and reported time/connectivity. Current membership/manager authority and target membership are checked before cached replay and again around mutation. Own crew edits and owner/admin edits of current crew retain the existing RLS rules; the executor remains non-bypass and does not own the table.
+
+Native own commands and online edits share the same conditional mutation and target-user lock. Only an explicitly missing base can insert; old non-null bases cannot recreate a removed status. Changed current values are kept with an immutable `kept_current` outcome, never silently resubmitted. This is **value-CAS**, not revision/ABA detection. Exact retry cannot reapply an old choice over a later change. Private receipts retain full original intent, previous status, original result and separate server time; audit failure rolls back the mutation. Permission loss is denial, not an empty roster/deletion.
+
+Legacy direct INSERT/UPDATE/DELETE privileges are revoked, so updated clients are required at rollout. Parent-before-child migration locks quiesce old writers; target-session contention remains untested. Full-roster POST aggregation avoids treating a truncated GET list as proof of missing status. Targeted server validation: 28 embedded PostgreSQL/grant checks, including the 18-case base/value matrix, native/online interoperability, role/target revocation, rollback, replay, audit privacy and direct-write denial. Client wiring follows in its own tested slice. Nothing deployed.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -636,6 +644,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 20. `20261128000100_user_sync_availability_cas.sql`
 21. `20261129000100_personal_task_identities.sql`
 22. `20261130000100_online_dashboard_preferences.sql` (requires updated per-key online clients; do not retain legacy whole-layout upserts)
+23. `20261201000100_online_crew_availability.sql` (requires updated online availability clients; legacy direct writes are denied)
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

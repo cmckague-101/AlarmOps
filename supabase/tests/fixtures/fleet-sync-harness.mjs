@@ -56,4 +56,5 @@ export async function loadUserSyncSchema(db, beforeTaskIdentities = async () => 
   await beforeTaskIdentities();
   await db.exec(migration('20261129000100_personal_task_identities'));
   await db.exec(migration('20261130000100_online_dashboard_preferences'));
+  await db.exec(migration('20261201000100_online_crew_availability'));
 }

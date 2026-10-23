@@ -102,7 +102,7 @@ test('tasks stay private and limited to eligible roles',async()=>{
 });
 test('availability applies over an unchanged base and keeps a value someone else changed',async()=>{
   const first=await send(command(crew,'availability',crew,'availability.set',{available:true,base:null}));assert.deepEqual(first.record,{id:crew,available:true});
-  await actor(owner,()=>db.query('update public.crew_availability set available=false where user_id=$1',[crew]));
+  await actor(owner,()=>db.query('select public.set_crew_availability_once($1::jsonb)',[JSON.stringify({schemaVersion:1,requestId:randomUUID(),companyId:company,actorId:owner,userId:crew,base:true,available:false,savedAt:'2026-01-01T12:00:00Z',connectivity:'online'})]));
   const kept=await send(command(crew,'availability',crew,'availability.set',{available:true,base:true}));assert.equal(kept.keptCurrent,true);assert.deepEqual(kept.record,{id:crew,available:false});
   const same=await send(command(crew,'availability',crew,'availability.set',{available:false,base:true}));assert.equal(same.keptCurrent,undefined);
   await assert.rejects(send(command(crew,'availability',owner,'availability.set',{available:true,base:null})),error=>error.code==='42501');
