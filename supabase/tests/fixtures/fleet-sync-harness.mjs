@@ -107,3 +107,20 @@ export async function loadTrainingSchema(db) {
   await db.exec(migration('202509010001_company_training'));
   await db.exec(migration('20261208000100_user_sync_training_signups'));
 }
+
+/** Training schema plus the real payroll form table/trigger/policies and offline drafts/submission. */
+export async function loadPayrollSchema(db) {
+  await loadTrainingSchema(db);
+  // Notification delivery is out of scope here; record calls instead.
+  await db.exec(`create table public.test_notifications (company_id uuid, user_id uuid, title text);
+    create function public.create_user_notification(target_company_id uuid, target_user_id uuid, actor_id uuid, a text, b text, c uuid, title text, d text, e text, f text, g text)
+    returns void language sql security definer set search_path = '' as $$ insert into public.test_notifications values (target_company_id, target_user_id, title) $$`);
+  await db.exec(migration('20261022000100_digital_payroll_forms'));
+  await db.exec(migration('20261024000100_delete_draft_payroll_forms'));
+  await db.exec(migration('20261025000100_managers_delete_payroll_forms'));
+  const attachments = migration('20261028000100_payroll_form_attachments');
+  await db.exec(attachments.slice(0, attachments.indexOf('-- Once submitted')));
+  const rejection = migration('20261101000100_payroll_rejection_and_payment');
+  await db.exec(rejection.slice(0, rejection.indexOf('drop policy if exists "uploaders remove own payroll files"')));
+  await db.exec(migration('20261209000100_user_sync_payroll_forms'));
+}

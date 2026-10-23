@@ -446,7 +446,7 @@ Not included: vehicle photos/named file slots (contract, registration, insurance
 
 Decisions (non-production project):
 
-1. **Device encryption:** non-sensitive vehicle documents may use unencrypted app-managed device copies now. App-level encryption is **required before** any sensitive workflow (crew, qualifications, payroll, receipts, invoices) accepts offline files.
+1. **Device encryption:** non-sensitive vehicle documents may use unencrypted app-managed device copies now. Decided 2026-10-23: receipts, payroll and invoices do **not** need app-level encryption. Crew and qualification files still need a decision before they accept offline files.
 2. **Applied documents:** the service deletes the `fleet-sync-files` staging object once the document result is applied; the `fleet-files` copy is canonical. Reservation, receipt, request and release audit rows are kept.
 3. **Unattached or rejected uploads:** released only by an **explicit user release**, which deletes the staging object and frees quota. Nothing expires silently.
 4. **Device copy after attach:** removed automatically once the applied result is stored **and** a verified canonical vehicle record at or after that revision contains the document (metadata kept).
@@ -736,6 +736,19 @@ Tests: `training-signups-offline.test.mjs` (3 embedded PostgreSQL tests on the r
 
 Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (ordering, pending intent, full-class outcome and label). 159 targeted mobile tests and the mobile typecheck pass.
 
+### Payroll forms: server (not deployed)
+
+**Decided policy (product owner, 2026-10-23):** receipts, payroll and invoices **do not need app-level encryption** of device copies. They follow the same device-storage rules as vehicle files.
+
+`20261209000100_user_sync_payroll_forms.sql` registers `payroll_form` (entity ID = form ID chosen on the device) with two commands:
+
+- `form.save` `{engineNumber?, incidents?, rows?}` (at least one; `rows` = 21 validated days). It creates the caller's draft if it does not exist yet (name from the caller's profile), otherwise merges the given fields over the current form. Later arrival wins per field, because only the creator edits a draft or returned form. The attachment is never changed offline.
+- `form.submit` `{}` sends a draft or returned form for approval through the existing protect trigger, which also notifies managers. An already submitted form is a no-op.
+
+Nothing changes and the device keeps its edits when the form was already submitted (`notApplied: 'already_submitted'`), was deleted after this user's device saw it on the server (`form_deleted`; the adapter checks the caller's earlier receipts for this form, so it never recreates a deleted form), or another draft is already in progress (`other_draft`, from the one-draft-per-user index). A reused form ID owned by someone else is refused (`23505`). The protect trigger and RLS still enforce creator-only edits. Approve, reject, mark paid, delete and attachments stay online-only.
+
+Tests: `payroll-forms-offline.test.mjs` (5 embedded PostgreSQL tests on the real payroll migrations: create and per-field merge with replay, submit with manager notification, revise-and-resend of a returned form, approved forms read only, deleted forms never recreated, second draft refused, payload validation, foreign identity and outsider denial).
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -770,6 +783,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 28. `20261206000100_user_sync_snapshot.sql`
 29. `20261207000100_inventory_checkout_offline.sql` (also restores online crew checkout)
 30. `20261208000100_user_sync_training_signups.sql`
+31. `20261209000100_user_sync_payroll_forms.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 
