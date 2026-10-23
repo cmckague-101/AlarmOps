@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,pendingCheckouts,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -151,5 +151,19 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(f.transport.deliver.mock.calls.map(call=>call[0].operationId).slice(0,2)).toEqual([first.operation.operationId,second.operation.operationId]);
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.operationId===second.operation.operationId)!)).toContain('not enough stock');
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===gone)!)).toContain('item was deleted');
+  });
+  it('queues training join/cancel in order and labels full classes as not signed up',async()=>{
+    const f=await setup();const course=nextId(),full=nextId();
+    await expect(f.sync.joinTraining('nope')).rejects.toThrow();
+    const join=await f.sync.joinTraining(course);const cancel=await f.sync.cancelTraining(course);await f.sync.joinTraining(full);
+    expect(cancel.operation.dependsOn).toContain(join.operation.operationId);
+    expect(pendingTrainingSignups(await f.session.list())).toEqual(new Map([[course,false],[full,true]]));
+    f.transport.deliver.mockImplementation(async operation=>operation.entityId===full
+      ?{kind:'applied',receivedAt:date,revision:'9',record:{id:full,signedUp:false},notApplied:'course_full'} as never
+      :{kind:'applied',receivedAt:date,revision:operation.operationId===join.operation.operationId?'7':'8',record:{id:course,signedUp:operation.operationId===join.operation.operationId}});
+    f.transport.canonical.mockImplementation(async operation=>({revision:operation.entityId===full?'9':'8',record:{id:operation.entityId,signedUp:false}}));
+    for(let i=0;i<4;i++)await f.worker.wake();const entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(pendingTrainingSignups(entries).size).toBe(0);
+    expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===full)!)).toContain('course was full');
   });
 });

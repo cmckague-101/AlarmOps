@@ -5,7 +5,7 @@ import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbo
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -82,6 +82,12 @@ export function pendingCheckouts(entries:readonly OutboxEntry[]):Map<string,numb
   for(const entry of entries){const op=entry.operation;if(op.entityType==='inventory_checkout'&&op.mutation.kind==='command'&&unresolved(entry))pending.set(op.entityId,(pending.get(op.entityId)??0)+(op.mutation.payload as {quantity:number}).quantity)}
   return pending;
 }
+/** Latest unapplied sign-up intent per training saved on this device (true = join, false = cancel). */
+export function pendingTrainingSignups(entries:readonly OutboxEntry[]):Map<string,boolean>{
+  const pending=new Map<string,boolean>();
+  for(const entry of entries){const op=entry.operation;if(op.entityType==='training_signup'&&op.mutation.kind==='command'&&unresolved(entry))pending.set(op.entityId,op.mutation.command==='signup.join')}
+  return pending;
+}
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
@@ -145,6 +151,15 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     checkOut(itemId:string,quantity:number){
       if(!uuid.test(itemId)||!Number.isInteger(quantity)||quantity<1||quantity>999999)return Promise.reject(new Error('Check the checkout quantity.'));
       return enqueue('inventory_checkout',itemId,'checkout.add',{quantity},null);
+    },
+    /** Capacity is checked when it reaches the server; a full class is rejected and kept on the device. */
+    joinTraining(trainingId:string){
+      if(!uuid.test(trainingId))return Promise.reject(new Error('Invalid training.'));
+      return enqueue('training_signup',trainingId,'signup.join',{},null);
+    },
+    cancelTraining(trainingId:string){
+      if(!uuid.test(trainingId))return Promise.reject(new Error('Invalid training.'));
+      return enqueue('training_signup',trainingId,'signup.cancel',{},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

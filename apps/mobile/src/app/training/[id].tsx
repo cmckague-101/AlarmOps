@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
 import { cancelTrainingSignup, deleteTraining, markTrainingViewed, signupForTraining, useTrainings } from '@/lib/training-store';
+import { pendingTrainingSignups, scopedUserEntries } from '@/lib/offline-user-sync';
+import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
@@ -25,7 +27,12 @@ export default function TrainingDetailScreen() {
   const { trainings, loading, error } = useTrainings(member?.company.id ?? null, member?.user.id ?? null);
   const training = trainings.find((item) => item.id === id);
   const expired = training ? trainingStage(training) !== 'scheduled' : false;
-  const signedUp = Boolean(training?.signups.some((signup) => signup.userId === member?.user.id));
+  // Offline, sign-up changes save on the device; capacity is checked when they arrive.
+  const offlineSync = useOptionalOfflineSync();
+  const offline = !!offlineSync?.offline;
+  const userSync = offlineSync?.userSync && offlineSync.userSync.scope.companyId === member?.company.id && offlineSync.userSync.scope.userId === member?.user.id ? offlineSync.userSync : null;
+  const saved = useMemo(() => member && id ? pendingTrainingSignups(scopedUserEntries(offlineSync?.state.entries ?? [], member.user.id, member.company.id)).get(id) : undefined, [offlineSync?.state.entries, member, id]);
+  const signedUp = saved ?? Boolean(training?.signups.some((signup) => signup.userId === member?.user.id));
   const full = Boolean(training && training.signups.length >= training.capacity);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -43,7 +50,11 @@ export default function TrainingDetailScreen() {
     setBusy(true);
     setActionError('');
     try {
-      if (signedUp) await cancelTrainingSignup(training.id);
+      if (offline) {
+        if (!userSync) throw new Error('Changing registration offline is unavailable on this device.');
+        if (signedUp) await userSync.cancelTraining(training.id);
+        else await userSync.joinTraining(training.id);
+      } else if (signedUp) await cancelTrainingSignup(training.id);
       else await signupForTraining(training.id, member.user.name);
     } catch (registrationError) {
       setActionError(registrationError instanceof Error ? registrationError.message : 'Registration could not be changed.');
@@ -102,7 +113,7 @@ export default function TrainingDetailScreen() {
                     <Pressable accessibilityRole="button" disabled={busy || (!signedUp && full)} onPress={() => void toggleRegistration()} style={({ pressed }) => [signedUp ? styles.secondaryButton : styles.primaryButton, (busy || (!signedUp && full)) && styles.disabled, pressed && styles.pressed]}>
                       <Text style={signedUp ? styles.secondaryLabel : styles.primaryLabel}>{busy ? 'Saving…' : signedUp ? 'Cancel registration' : full ? 'Course full' : 'Sign up for training'}</Text>
                     </Pressable>
-                    {signedUp ? <Text style={styles.registeredMessage}>✓ You are registered for this course.</Text> : null}
+                    {saved === true ? <Text style={styles.registeredMessage}>Sign-up saved on this device — confirmed when connected if a seat is still open.</Text> : saved === false ? <Text style={styles.registeredMessage}>Cancellation saved on this device — sent when connected.</Text> : signedUp ? <Text style={styles.registeredMessage}>✓ You are registered for this course.</Text> : null}
                   </>
                 )}
                 {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}

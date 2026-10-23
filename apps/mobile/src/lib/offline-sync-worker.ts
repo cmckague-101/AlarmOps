@@ -290,6 +290,8 @@ export function offlineSyncEntryLabel(entry:OutboxEntry,busy=false):string{
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='vehicle_deleted')return 'Not saved — the vehicle was deleted before this note synced';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='insufficient_stock')return 'Not checked out — not enough stock was left when it synced';
   if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='item_deleted')return 'Not checked out — the item was deleted before it synced';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='course_full')return 'Not signed up — the course was full when your sign-up arrived';
+  if(entry.status==='synced'&&(entry.delivery as {notApplied?:unknown}|null)?.notApplied==='training_deleted')return 'Not signed up — the training was deleted before your sign-up arrived';
   if(entry.status==='synced')return entry.operation.provenance.connectivity==='offline'?'Offline changes synced':'Changes synced';
   if(entry.reviewOutcome?.outcome==='kept')return 'Reviewed — changes accepted; shared-data refresh pending';
   if(entry.status==='awaiting_review')return 'Uploaded — awaiting owner/admin review';

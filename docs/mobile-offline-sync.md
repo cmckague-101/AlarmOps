@@ -730,6 +730,12 @@ Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, per
 
 Tests: `training-signups-offline.test.mjs` (3 embedded PostgreSQL tests on the real training migration: single attributed seat with replay, full class rejection with nothing changed, deleted training, cancel scope, validation and outsider denial).
 
+### Training sign-ups: client (native)
+
+`offline-user-sync.ts` adds `joinTraining`/`cancelTraining` (ordered per training by the outbox) and `pendingTrainingSignups(entries)`, the latest unapplied intent per training. Offline, the training detail button saves the change on the device. The screen reflects the saved intent with *Sign-up saved on this device — confirmed when connected if a seat is still open* or *Cancellation saved on this device — sent when connected*. Saved changes & sync labels rejections *Not signed up — the course was full when your sign-up arrived* or *the training was deleted*; the request stays in the device outbox. Online registration is unchanged. The training list offline still comes from the earlier read cache.
+
+Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (ordering, pending intent, full-class outcome and label). 159 targeted mobile tests and the mobile typecheck pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
