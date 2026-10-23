@@ -1,5 +1,5 @@
    (
-     cd /home/ryan/dev/fireco || exit 1
+     cd /home/ryan/fireco || exit 1
 
      VENV="$HOME/.local/share/fireops/usfs-venv"
      python3 -m venv "$VENV" || exit 1

@@ -25,7 +25,9 @@ expo-env.d.ts
 
 # Scheduled importer working data
 jobs/usfs-dispatch/data/
+jobs/usfs-dispatch/__pycache__/
 *.pid
+
 
 # Logs
 *.log
@@ -48,3 +50,6 @@ Thumbs.db
 *.key
 *.mobileprovision
 *.pem
+
+#other
+supabase/.temp*
