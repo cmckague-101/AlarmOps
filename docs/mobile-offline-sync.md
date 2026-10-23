@@ -637,6 +637,15 @@ Unchanged and already safe: staging release removals (`release-fleet-sync-attach
 
 Residual risk: a tiny window remains between a copy-removal authorization and its Storage call, if another invocation copies, proves and applies in between. That requires a pre-existing bad object at the uploader's own `sync-` path plus concurrent replays. Lease-based fencing still assumes the Storage service finishes a request within minutes of accepting it. Real Storage `DELETE` semantics and timing need validation on Supabase. Tests: 6 new embedded PostgreSQL tests (`fleet-sync-storage-cleanup-fences.test.mjs`, including the stalled-verifier takeover and proven-copy retention), 54 related attachment/grant checks, and Vitest specs for verify/attach/copy/release logic.
 
+### Offline read markers: server (not deployed)
+
+`20261203000100_user_sync_read_markers.sql` registers two more user commands on the existing `sync_user_command` registry; no new endpoint. Both only touch the caller's own rows, only move forward, and are authorized by existing RLS through the non-bypass sync writer.
+
+- `notification` / `notification.read` (empty payload): sets `read_at` at server receipt time if still unread. The device's own time stays in the receipt provenance. A missing, deleted or other user's notification is a no-op with a `null` record, never an error or a disclosure.
+- `communication_read` / `communication.seen` (`{seenThrough}`): raises the caller's thread seen marker to `seenThrough`, the newest server timestamp (thread or reply `created_at`) the device actually displayed. The value is clamped to receipt time and never lowered. Replies posted while the device was offline therefore stay unread, unlike stamping the sync time. A deleted thread is a no-op; nothing is recreated.
+
+Tests: `user-sync-read-markers.test.mjs` (5 embedded PostgreSQL tests on the real Crew Chat/inbox tables and policies via `loadReadMarkerSchema`: idempotent replay, foreign/missing rows, forward-only clamping, deleted threads, payload validation, executor privacy). Client wiring follows.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:
@@ -665,6 +674,7 @@ You do not need to push the site or apply Supabase changes while implementation 
 22. `20261130000100_online_dashboard_preferences.sql` (requires updated per-key online clients; do not retain legacy whole-layout upserts)
 23. `20261201000100_online_crew_availability.sql` (requires updated online availability clients; legacy direct writes are denied)
 24. `20261202000100_fleet_sync_storage_cleanup_fences.sql` (redeploy `verify-fleet-sync-attachment`, `attach-fleet-sync-document`, `copy-fleet-sync-attachment` and `delete-fleet-files` with it; the functions call its RPCs)
+25. `20261203000100_user_sync_read_markers.sql`
 
 Apply any earlier pending project migrations as well; do not reset production. Verify role-creation/ownership privileges, backfill timing, RLS and multi-session locking on the target Supabase PostgreSQL version as described above. These migrations are intentionally not auto-applied by either client.
 

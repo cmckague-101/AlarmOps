@@ -59,3 +59,18 @@ export async function loadUserSyncSchema(db, beforeTaskIdentities = async () => 
   await db.exec(migration('20261130000100_online_dashboard_preferences'));
   await db.exec(migration('20261201000100_online_crew_availability'));
 }
+
+/** User sync schema plus the real Crew Chat and notification inbox tables/policies, then read markers. */
+export async function loadReadMarkerSchema(db) {
+  await loadUserSyncSchema(db);
+  const communications = migration('202508280001_company_communications');
+  await db.exec(communications.slice(0, communications.indexOf('do $$')));
+  const crewChat = migration('20260918000100_crew_chat_access_and_notifications');
+  await db.exec(crewChat.slice(0, crewChat.indexOf('-- Notify every other company member')));
+  const inbox = migration('20260909000100_notification_inbox_and_delivery');
+  await db.exec(inbox.slice(inbox.indexOf('create table public.user_notifications'), inbox.indexOf('create table public.push_notification_jobs')));
+  await db.exec('alter table public.user_notifications enable row level security');
+  await db.exec(inbox.slice(inbox.indexOf('create policy "users read own notifications"'), inbox.indexOf('revoke all on public.notification_preferences')));
+  await db.exec('grant select on public.user_notifications to authenticated; grant update (read_at) on public.user_notifications to authenticated');
+  await db.exec(migration('20261203000100_user_sync_read_markers'));
+}
