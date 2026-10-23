@@ -749,6 +749,14 @@ Nothing changes and the device keeps its edits when the form was already submitt
 
 Tests: `payroll-forms-offline.test.mjs` (5 embedded PostgreSQL tests on the real payroll migrations: create and per-field merge with replay, submit with manager notification, revise-and-resend of a returned form, approved forms read only, deleted forms never recreated, second draft refused, payload validation, foreign identity and outsider denial).
 
+### Payroll forms: client (native)
+
+`offline-user-sync.ts` adds `savePayrollForm(formId, changes)` (only changed fields, validated like the server) and `submitPayrollForm(formId)`, ordered per form by the outbox. `devicePayrollForms(entries)` merges unsynced saves per form, and `overlayPayrollForms` shows them over the downloaded list. A form created on the device appears as a draft (or as pending once its submission is saved). `use-device-payroll.ts` wires both payroll screens.
+
+On the payroll form, edits made offline save on the device as per-field changes against the last sent copy. While that form still has unsynced device changes, edits keep using the device queue even after reconnecting, so an older queued value can never land after a newer online save. Submitting offline saves the submission behind those edits. Attachments and deleting need a connection and wait until device changes have synced. Manager approve/reject/paid stay online. Labels: *Saved on this device — syncs when connected*, *Submission saved on this device — sends when connected*, and in Saved changes & sync *Not saved — this payroll was already submitted*, *…form was deleted* or *another payroll form is already in progress*. Refused edits stay in the device outbox. The payroll list itself still comes from the online read (no verified payroll download yet).
+
+Tests: 1 more SQLite-backed test in `offline-user-sync.test.ts` (validation, ordering, merged overlay for new and existing forms, refusal label with the edit retained). Mobile typecheck and 80 targeted mobile tests pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

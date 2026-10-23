@@ -1,11 +1,11 @@
-import {createSyncPatch,decodeDashboardPreferenceChanges,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 
 // User-owned offline commands (server: sync_user_command). No manager review:
 // tasks are private, availability/dashboard target the caller only, and read
 // markers touch only the caller's own notification/thread state.
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
-  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel']};
+  notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create'],vehicle_note:['note.create'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -88,6 +88,33 @@ export function pendingTrainingSignups(entries:readonly OutboxEntry[]):Map<strin
   for(const entry of entries){const op=entry.operation;if(op.entityType==='training_signup'&&op.mutation.kind==='command'&&unresolved(entry))pending.set(op.entityId,op.mutation.command==='signup.join')}
   return pending;
 }
+export type PayrollChanges=Partial<Pick<PayrollForm,'engineNumber'|'incidents'|'rows'>>;
+export type DevicePayroll={changes:PayrollChanges;submitted:boolean;savedAt:string;actionNeeded:boolean};
+/** Unapplied payroll saves/submission per form on this device, merged in save order. */
+export function devicePayrollForms(entries:readonly OutboxEntry[]):Map<string,DevicePayroll>{
+  const forms=new Map<string,DevicePayroll>();
+  for(const entry of entries){
+    const op=entry.operation;if(op.entityType!=='payroll_form'||op.mutation.kind!=='command'||!unresolved(entry))continue;
+    const current=forms.get(op.entityId)??{changes:{},submitted:false,savedAt:op.provenance.savedAt,actionNeeded:false};
+    forms.set(op.entityId,{changes:op.mutation.command==='form.save'?{...current.changes,...(op.mutation.payload as PayrollChanges)}:current.changes,
+      submitted:current.submitted||op.mutation.command==='form.submit',savedAt:op.provenance.savedAt,actionNeeded:current.actionNeeded||entry.status==='blocked'});
+  }
+  return forms;
+}
+/** Downloaded payroll forms with this device's unapplied changes on top; forms created on the device appear as drafts. */
+export function overlayPayrollForms(forms:readonly PayrollForm[],device:ReadonlyMap<string,DevicePayroll>,author:{companyId:string;userId:string;name:string}):PayrollForm[]{
+  const result=forms.map(form=>{const saved=device.get(form.id);return saved&&form.createdBy===author.userId?{...form,...saved.changes,status:saved.submitted&&(form.status==='draft'||form.status==='rejected')?'pending' as const:form.status,submittedAt:saved.submitted?form.submittedAt??saved.savedAt:form.submittedAt,updatedAt:saved.savedAt}:form});
+  for(const [id,saved] of device){
+    if(forms.some(form=>form.id===id))continue;
+    result.unshift({id,companyId:author.companyId,createdBy:author.userId,createdByName:author.name,engineNumber:'',incidents:'',attachment:null,rows:createPayrollRows(),...saved.changes,
+      status:saved.submitted?'pending':'draft',submittedAt:saved.submitted?saved.savedAt:null,approvedAt:null,approvedBy:null,rejectionNotes:null,rejectedAt:null,rejectedBy:null,createdAt:saved.savedAt,updatedAt:saved.savedAt});
+  }
+  return result;
+}
+const payrollDate=/^(\d{4}-\d{2}-\d{2})?$/;
+const validPayrollRows=(rows:unknown):rows is PayrollDay[]=>Array.isArray(rows)&&rows.length===21&&rows.every(day=>day&&typeof day==='object'&&Object.keys(day).sort().join()==='crewIds,date,hoursWorked,notes'
+  &&typeof day.date==='string'&&payrollDate.test(day.date)&&typeof day.hoursWorked==='number'&&Number.isFinite(day.hoursWorked)&&day.hoursWorked>=0&&typeof day.notes==='string'&&day.notes.length<=2000
+  &&Array.isArray(day.crewIds)&&day.crewIds.length<=200&&day.crewIds.every((id:unknown)=>typeof id==='string'&&uuid.test(id)));
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>}){
   const {session}=options;const scope={...session.scope};
@@ -160,6 +187,19 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
     cancelTraining(trainingId:string){
       if(!uuid.test(trainingId))return Promise.reject(new Error('Invalid training.'));
       return enqueue('training_signup',trainingId,'signup.cancel',{},null);
+    },
+    /** Merges the given fields over the creator's draft (created if new); a submitted or deleted form is left unchanged. */
+    savePayrollForm(formId:string,changes:PayrollChanges){
+      const payload:PayrollChanges={};
+      if(changes.engineNumber!==undefined)payload.engineNumber=changes.engineNumber;if(changes.incidents!==undefined)payload.incidents=changes.incidents;if(changes.rows!==undefined)payload.rows=changes.rows;
+      if(!uuid.test(formId)||!Object.keys(payload).length||(payload.engineNumber!==undefined&&(typeof payload.engineNumber!=='string'||payload.engineNumber.length>160))
+        ||(payload.incidents!==undefined&&(typeof payload.incidents!=='string'||payload.incidents.length>500))||(payload.rows!==undefined&&!validPayrollRows(payload.rows)))
+        return Promise.reject(new Error('Check the payroll resource, incidents and days.'));
+      return enqueue('payroll_form',formId,'form.save',payload as SyncRecord,null);
+    },
+    submitPayrollForm(formId:string){
+      if(!uuid.test(formId))return Promise.reject(new Error('Invalid payroll form.'));
+      return enqueue('payroll_form',formId,'form.submit',{},null);
     },
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));

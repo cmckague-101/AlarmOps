@@ -1,10 +1,10 @@
 import {DatabaseSync} from 'node:sqlite';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import type {SyncOperation} from '@fireops/domain';
+import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -165,5 +165,24 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     for(let i=0;i<4;i++)await f.worker.wake();const entries=await f.session.list();
     expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(pendingTrainingSignups(entries).size).toBe(0);
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===full)!)).toContain('course was full');
+  });
+  it('queues payroll saves and submission in order, overlays them, and labels refusals without dropping edits',async()=>{
+    const f=await setup();const draft=nextId(),sent=nextId();const rows=createPayrollRows('2026-07-01');rows[0]={...rows[0],hoursWorked:9,crewIds:[user]};
+    for(const changes of [{},{engineNumber:'x'.repeat(161)},{rows:rows.slice(1)},{rows:rows.map((day,index)=>index?day:{...day,hoursWorked:-1})},{rows:rows.map((day,index)=>index?day:{...day,crewIds:['me']})}])
+      await expect(f.sync.savePayrollForm(draft,changes)).rejects.toThrow();
+    const first=await f.sync.savePayrollForm(draft,{engineNumber:'E-21',rows});const second=await f.sync.savePayrollForm(draft,{incidents:'Oak Fire'});const submit=await f.sync.submitPayrollForm(draft);
+    await f.sync.savePayrollForm(sent,{engineNumber:'late'});
+    expect(first.operation.mutation).toEqual({kind:'command',command:'form.save',payload:{engineNumber:'E-21',rows}});expect(submit.operation.dependsOn).toContain(second.operation.operationId);
+    const device=devicePayrollForms(await f.session.list());expect(device.get(draft)).toMatchObject({changes:{engineNumber:'E-21',incidents:'Oak Fire',rows},submitted:true});
+    const server:PayrollForm={id:sent,companyId:company,createdBy:user,createdByName:'Me',engineNumber:'E-1',incidents:'',attachment:null,rows:createPayrollRows(),status:'pending',submittedAt:date,approvedAt:null,approvedBy:null,rejectionNotes:null,rejectedAt:null,rejectedBy:null,createdAt:date,updatedAt:date};
+    const shown=overlayPayrollForms([server],device,{companyId:company,userId:user,name:'Me'});
+    expect(shown.map(form=>[form.id,form.status,form.engineNumber])).toEqual([[draft,'pending','E-21'],[sent,'pending','late']]);expect(shown[0].rows[0].hoursWorked).toBe(9);
+    f.transport.deliver.mockImplementation(async operation=>operation.entityId===sent?{kind:'applied',receivedAt:date,revision:'9',record:{id:sent,status:'pending'},notApplied:'already_submitted'} as never:{kind:'applied',receivedAt:date,revision:'8',record:{id:draft}});
+    f.transport.canonical.mockImplementation(async operation=>({revision:operation.entityId===sent?'9':'8',record:{id:operation.entityId}}));
+    for(let i=0;i<6;i++)await f.worker.wake();const entries=await f.session.list();
+    expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(devicePayrollForms(entries).size).toBe(0);
+    expect(f.transport.deliver.mock.calls.filter(call=>call[0].entityId===draft).map(call=>call[0].mutation.kind==='command'&&call[0].mutation.command)).toEqual(['form.save','form.save','form.submit']);
+    expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===sent)!)).toContain('already submitted');
+    expect(entries.find(entry=>entry.operation.entityId===sent)!.operation.mutation).toMatchObject({payload:{engineNumber:'late'}});
   });
 });
