@@ -7,17 +7,20 @@ const screen=readFileSync(new URL('../app/inspections.tsx',import.meta.url),'utf
 const handler=screen.slice(screen.indexOf('  const confirmDelete='),screen.indexOf('  return <SafeAreaView'));
 const javascript=ts.transpileModule(handler,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
 
-function setup({busy=false,failure=false}={}){
+function setup({busy=false,failure=false,offline=false}={}){
   const alert=vi.fn();
   const deleteFleetInspection=failure?vi.fn().mockRejectedValue(new Error('Save failed')):vi.fn().mockResolvedValue(undefined);
   const setDeleting=vi.fn();const setDeleteError=vi.fn();
   const user={id:'owner-1',role:'owner'};
-  const vehicle={id:'vehicle-1',name:'Engine 1'};
-  const confirm=new Function('Alert','deleteFleetInspection','member','deleting','setDeleting','setDeleteError',`${javascript}\nreturn confirmDelete;`)(
-    {alert},deleteFleetInspection,{user},busy,setDeleting,setDeleteError,
+  const inspection={id:'inspection-1',items:[{id:'i1',result:'Fail'}]};
+  const vehicle={id:'vehicle-1',name:'Engine 1',source:{inspections:[inspection]}};
+  const deleteVehicleInspection=vi.fn().mockResolvedValue(undefined);
+  const deviceSync={offline,userSync:{deleteVehicleInspection}};
+  const confirm=new Function('Alert','deleteFleetInspection','member','deleting','setDeleting','setDeleteError','deviceSync',`${javascript}\nreturn confirmDelete;`)(
+    {alert},deleteFleetInspection,{user},busy,setDeleting,setDeleteError,deviceSync,
   );
   confirm(vehicle,'inspection-1');
-  return {alert,deleteFleetInspection,setDeleting,setDeleteError,user,vehicle};
+  return {alert,deleteFleetInspection,deleteVehicleInspection,setDeleting,setDeleteError,user,vehicle,inspection};
 }
 
 describe('failed inspection deletion confirmation',()=>{
@@ -42,6 +45,13 @@ describe('failed inspection deletion confirmation',()=>{
     alert.mock.calls[0][2][1].onPress();
     await vi.waitFor(()=>expect(setDeleteError).toHaveBeenCalledWith('Save failed'));
     expect(setDeleting).toHaveBeenLastCalledWith(false);
+  });
+
+  it('offline, saves the delete on the device against the inspection as downloaded',async()=>{
+    const {alert,deleteFleetInspection,deleteVehicleInspection,setDeleting,inspection}=setup({offline:true});
+    alert.mock.calls[0][2][1].onPress();
+    await vi.waitFor(()=>expect(setDeleting).toHaveBeenLastCalledWith(false));
+    expect(deleteVehicleInspection).toHaveBeenCalledWith('vehicle-1',inspection);expect(deleteFleetInspection).not.toHaveBeenCalled();
   });
 
   it('ignores delete requests while saving',()=>{
