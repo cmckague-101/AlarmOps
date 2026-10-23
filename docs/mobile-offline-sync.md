@@ -882,6 +882,10 @@ Crew qualification files have **no device-storage decision yet**, so offline cha
 
 A new entry may not carry a file, and an edit must keep the entry's existing file exactly. License and DOT medical credentials need a photo, so they cannot be added offline. Edits and deletes apply only if the entry still equals the one seen (`changed_elsewhere` otherwise). Re-adding an identical entry is a no-op; a different entry with the same ID is refused (`23505`). Tests: `crew-qualifications-offline.test.mjs` (3).
 
+### Offline own qualification records, without files: client (native)
+
+`saveQualification`, `deleteQualification` and `setAnnualRecord` in `offline-user-sync.ts`, plus `overlayQualifications` (`useOwnQualifications`), which shows unsynced changes in save order on the Qualifications screens. Because the server compares entry values, a chained offline edit uses the shown (already edited) entry as its base. **Add/edit credential**, **incident experience** and **annual records** save on the device when offline. Choosing a new file offline is refused (*Attaching files needs a connection*), and licenses/DOT medical cards can't be added offline (photo required). An edit keeps the existing file. Deletes don't remove files offline. Tests: 1 more SQLite command/overlay test; 322 mobile offline tests pass.
+
 ### Deployment checkpoint (nothing deployed by this implementation)
 
 You do not need to push the site or apply Supabase changes while implementation continues. When ready, use the normal forward migration process, in order:

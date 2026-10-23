@@ -2,7 +2,7 @@ import type { InventoryItem, Training } from '@fireops/domain';
 import type { CompanyReceipt } from '@/lib/receipts-store';
 import { useMemo } from 'react';
 import { entriesAfterDownload } from '@/lib/offline-company-snapshot';
-import { editBase, pendingEdits, scopedUserEntries, type EditBase, type PendingEdit } from '@/lib/offline-user-sync';
+import { editBase, overlayQualifications, pendingEdits, scopedUserEntries, type EditBase, type PendingEdit } from '@/lib/offline-user-sync';
 import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 
 type Member = { company: { id: string }; user: { id: string } } | null;
@@ -44,3 +44,10 @@ const receiptCommands = { update: 'receipt.update', delete: 'receipt.delete' };
 const applyReceipt = (receipt: CompanyReceipt, changes: Record<string, unknown>): CompanyReceipt => ({ ...receipt, name: (changes.name as string) ?? receipt.name, amountCents: (changes.amountCents as number) ?? receipt.amountCents });
 /** Receipts with this device's unsynced edits/deletes on top. */
 export const useReceiptEdits = (receipts: CompanyReceipt[], member: Member, watermark?: string | null) => useOfflineEdits(receipts, member, 'receipt', receiptCommands, applyReceipt, watermark);
+
+/** The caller's own crew record with this device's unsynced qualification changes on top (no files offline). */
+export function useOwnQualifications<Crew extends { id: string; credentials?: unknown[]; experiences?: unknown[]; annualRecord?: unknown }>(member: Crew | undefined, account: Member) {
+  const offlineSync = useOptionalOfflineSync();
+  const entries = offlineSync?.state.entries;
+  return useMemo(() => member && account ? overlayQualifications(member, scopedUserEntries(entries ?? [], account.user.id, account.company.id)) : member, [member, account, entries]);
+}

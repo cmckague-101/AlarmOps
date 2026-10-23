@@ -4,7 +4,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {createPayrollRows,type PayrollForm,type SyncOperation} from '@fireops/domain';
 import {createOfflineOutbox,type OutboxDatabase,type OutboxSqlConnection,type OutboxSqlValue} from './offline-outbox';
 import {createOfflineSyncWorker,offlineSyncEntryLabel,type OfflineSyncTransport} from './offline-sync-worker';
-import {createOfflineUserSync,editBase,pendingEdits,deviceDocuments,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
+import {createOfflineUserSync,overlayQualifications,editBase,pendingEdits,deviceDocuments,deviceInventoryItems,deviceThreads,deviceTrainings,pendingNotificationPreferences,deviceReceipts,deviceInvoiceForms,overlayInvoiceForms,devicePayrollForms,overlayPayrollForms,deviceReplies,deviceVehicleNotes,pendingCheckouts,pendingTrainingSignups,laterTimestamp,pendingAvailability,pendingDashboard,pendingNotificationReads,pendingTaskChanges,pendingThreadSeen} from './offline-user-sync';
 import {offlineSyncAdapterBlock} from './offline-sync-protocol';
 import {createNativeSyncTransport} from './offline-sync-transport';
 const user='20000000-0000-4000-8000-000000000001',company='10000000-0000-4000-8000-000000000001';const scope={userId:user,companyId:company};const date='2026-01-01T00:00:00.000Z';
@@ -277,5 +277,16 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     const removed=await f.sync.removeVehicleDocument(vehicle,document);expect(removed.operation).toMatchObject({entityType:'vehicle_document',entityId:document.id,mutation:{command:'document.remove',payload:{vehicleId:vehicle,base:document}}});
     const deleted=await f.sync.deleteVehicleInspection(vehicle,inspection as never);expect(deleted.operation.mutation).toMatchObject({command:'inspection.delete',payload:{base:inspection}});
     expect(pendingEdits(await f.session.list(),'vehicle_inspection',{delete:'inspection.delete'}).get(inspection.id)?.deleted).toBe(true);
+  });
+  it('saves own qualification entries without files and overlays them in save order',async()=>{
+    const f=await setup();const id=nextId();const entry={id,name:'S-130',recordType:'Training',courseCode:'S-130',completionDate:'2026-05-01',provider:'NWCG'};
+    await expect(f.sync.saveQualification('credential',{...entry,file:{name:'a.pdf'}})).rejects.toThrow(/files/);
+    await expect(f.sync.saveQualification('credential',{...entry,provider:'X'},{...entry,file:{name:'a.pdf'}})).rejects.toThrow(/files/);
+    await f.sync.saveQualification('credential',entry);const edited=await f.sync.saveQualification('credential',{...entry,provider:'CAL FIRE'},entry);
+    expect(edited.operation.mutation).toMatchObject({command:'credential.update',payload:{base:entry}});
+    await f.sync.setAnnualRecord({rt130CompletionDate:'2026-04-01'},null);
+    const shown=overlayQualifications({id:user,credentials:[] as unknown[]},await f.session.list());
+    expect(shown.credentials).toEqual([{...entry,provider:'CAL FIRE'}]);expect(shown).toMatchObject({annualRecord:{rt130CompletionDate:'2026-04-01'}});
+    await f.sync.deleteQualification('credential',{...entry,provider:'CAL FIRE'});expect(overlayQualifications({id:user,credentials:[]},await f.session.list()).credentials).toEqual([]);
   });
 });

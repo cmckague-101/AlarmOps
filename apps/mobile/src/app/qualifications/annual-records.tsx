@@ -4,6 +4,8 @@ import {Redirect,Stack,useRouter} from 'expo-router';
 import {useEffect,useMemo,useState} from 'react';
 import {Platform,Pressable,ScrollView,StyleSheet,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useOwnQualifications} from '@/lib/use-offline-edits';
+import {useOfflineUserSync} from '@/lib/use-offline-user-sync';
 import {AppSymbol} from '@/components/app-symbol';
 import {updateMyAnnualQualificationRecord,useFleetVehicles} from '@/lib/fleet-store';
 import {useSession} from '@/providers/session-provider';
@@ -19,14 +21,16 @@ const fields:{key:DateKey;label:string;placeholder:string}[]=[
 const emptyRecord:AnnualQualificationRecord={rt130CompletionDate:'',rt130CurrencyDate:'',wctCompletionDate:'',wctCurrencyDate:''};
 
 export default function AnnualRecordsScreen(){
-  const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const account=access.value?.kind==='member'?access.value:null;const {crew}=useFleetVehicles(account?.company.id??null);const member=crew.find(item=>item.id===account?.user.id);
+  const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const account=access.value?.kind==='member'?access.value:null;const {crew}=useFleetVehicles(account?.company.id??null);const member=useOwnQualifications(crew.find(item=>item.id===account?.user.id),account);
+  // Offline, the annual record saves on this device and applies only if it is unchanged since shown.
+  const deviceSync=useOfflineUserSync(account?.company.id,account?.user.id);
   const [record,setRecord]=useState<AnnualQualificationRecord>(emptyRecord);const [showDate,setShowDate]=useState<DateKey|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [initialized,setInitialized]=useState(false);
   useEffect(()=>{if(!member||initialized)return;let active=true;void Promise.resolve().then(()=>{if(!active)return;if(member.annualRecord)setRecord(member.annualRecord);setInitialized(true)});return()=>{active=false}},[member,initialized]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   if(!account)return null;
   const valid=fields.every(({key})=>Boolean(record[key]));
   const pick=(key:DateKey)=>(event:DateTimePickerEvent,date?:Date)=>{if(Platform.OS==='android')setShowDate(null);if(event.type==='set'&&date)setRecord(current=>({...current,[key]:toDate(date)}))};
-  const save=async()=>{if(!valid)return;setBusy(true);setError('');try{await updateMyAnnualQualificationRecord(account.company.id,record);router.replace('/qualifications' as never)}catch(saveError){setError(saveError instanceof Error?saveError.message:'Annual record could not be saved.')}finally{setBusy(false)}};
+  const save=async()=>{if(!valid)return;setBusy(true);setError('');try{if(deviceSync.offline){if(!deviceSync.userSync)throw new Error('Saving offline is unavailable on this device.');await deviceSync.userSync.setAnnualRecord(record as never,(member?.annualRecord??null) as never)}else await updateMyAnnualQualificationRecord(account.company.id,record);router.replace('/qualifications' as never)}catch(saveError){setError(saveError instanceof Error?saveError.message:'Annual record could not be saved.')}finally{setBusy(false)}};
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Update annual records'}}/><ScrollView contentContainerStyle={styles.content}>
     <View><Text accessibilityRole="header" style={styles.title}>Update annual records</Text><Text style={styles.subtitle}>Keep current annual fireline and work capacity dates on file.</Text></View>
     <RecordSection title="Annual Fire Line Refresher" fieldKeys={['rt130CompletionDate','rt130CurrencyDate']} record={record} showDate={showDate} setShowDate={setShowDate} pick={pick} styles={styles} theme={theme}/>

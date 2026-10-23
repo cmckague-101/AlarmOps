@@ -8,7 +8,8 @@ import type {OfflineReceiptFiles} from './offline-receipt-files';
 export const userSyncCommands:Readonly<Record<string,readonly string[]>>={personal_task:['task.create','task.complete'],availability:['availability.set'],dashboard:['dashboard.set'],
   notification:['notification.read'],communication_read:['communication.seen'],communication_reply:['reply.create','reply.delete'],vehicle_note:['note.create','note.update','note.delete'],inventory_checkout:['checkout.add'],training_signup:['signup.join','signup.cancel'],payroll_form:['form.save','form.submit'],invoice_form:['form.save','form.submit'],receipt:['receipt.create','receipt.update','receipt.delete'],feedback:['feedback.send'],notification_preferences:['preferences.set'],
   communication_thread:['thread.create'],training:['training.create','training.update','training.delete'],inventory_item:['item.create','item.update','item.delete'],company_document:['document.create'],
-  inventory_return:['return.checkin'],vehicle_inspection:['inspection.delete'],vehicle_document:['document.remove'],payroll_review:['review.approve','review.reject','review.mark_paid']};
+  inventory_return:['return.checkin'],vehicle_inspection:['inspection.delete'],vehicle_document:['document.remove'],
+  crew_credential:['credential.add','credential.update','credential.delete'],crew_experience:['experience.add','experience.update','experience.delete'],annual_record:['annual.set'],payroll_review:['review.approve','review.reject','review.mark_paid']};
 export const isUserSyncOperation=(operation:SyncOperation)=>operation.mutation.kind==='command'&&!!userSyncCommands[operation.entityType]?.includes(operation.mutation.command);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const unresolved=(entry:OutboxEntry)=>['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);
@@ -193,6 +194,20 @@ export function pendingEdits(entries:readonly OutboxEntry[],entityType:string,co
     else if(op.mutation.command===commands.update)edits.set(op.entityId,{...current,changes:{...current.changes,...changes},actionNeeded:current.actionNeeded||entry.status==='blocked'});
   }
   return edits;
+}
+/** The caller's own crew record with unsynced qualification changes from this device applied in save order. */
+export function overlayQualifications<Member extends {credentials?:unknown[];experiences?:unknown[];annualRecord?:unknown}>(member:Member,entries:readonly OutboxEntry[]):Member{
+  let next=member;
+  for(const entry of entries){
+    const op=entry.operation;if(op.mutation.kind!=='command'||!unresolved(entry))continue;
+    const payload=op.mutation.payload as Record<string,SyncRecord|null>;
+    if(op.entityType==='annual_record'){next={...next,annualRecord:payload.record};continue}
+    const field=op.entityType==='crew_credential'?'credentials':op.entityType==='crew_experience'?'experiences':null;if(!field)continue;
+    const list=((next[field] as SyncRecord[]|undefined)??[]).filter(item=>item.id!==op.entityId);
+    const value=payload.credential??payload.experience;
+    next={...next,[field]:op.mutation.command.endsWith('.delete')?list:[...list,value]};
+  }
+  return next;
 }
 const serverTime=/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/;
 export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:()=>string;now?:()=>string;offline:()=>boolean;canEdit:()=>boolean;changed:()=>Promise<void>;receiptFiles?:OfflineReceiptFiles}){
@@ -397,6 +412,23 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       if(!uuid.test(vehicleId)||typeof seen.id!=='string'||!uuid.test(seen.id))return Promise.reject(new Error('Invalid document.'));
       return enqueue('vehicle_document',seen.id,'document.remove',{vehicleId,base:seen},null);
     },
+    /**
+     * Own qualification entries without files (no device-storage decision for crew files):
+     * a new entry has no file and an edit keeps the entry's file exactly; edits/deletes
+     * apply only if the entry is unchanged since `seen`.
+     */
+    saveQualification(kind:'credential'|'experience',entry:SyncRecord,seen?:SyncRecord){
+      const entity=kind==='credential'?'crew_credential':'crew_experience';
+      if(typeof entry.id!=='string'||!uuid.test(entry.id)||(seen&&seen.id!==entry.id))return Promise.reject(new Error('This record cannot be edited offline.'));
+      if(seen?JSON.stringify(entry.file??null)!==JSON.stringify(seen.file??null):'file' in entry)return Promise.reject(new Error('Attaching or changing files needs a connection.'));
+      return seen?enqueue(entity,entry.id,`${kind}.update`,{[kind]:entry,base:seen},null):enqueue(entity,entry.id,`${kind}.add`,{[kind]:entry},null);
+    },
+    deleteQualification(kind:'credential'|'experience',seen:SyncRecord){
+      if(typeof seen.id!=='string'||!uuid.test(seen.id))return Promise.reject(new Error('This record cannot be deleted offline.'));
+      return enqueue(kind==='credential'?'crew_credential':'crew_experience',seen.id,`${kind}.delete`,{base:seen},null);
+    },
+    /** Own annual record; applies only if it is unchanged since `seen` (null when none was saved). */
+    setAnnualRecord(record:SyncRecord,seen:SyncRecord|null){return enqueue('annual_record',scope.userId,'annual.set',{record,base:seen},null)},
     markNotificationRead(id:string){
       if(!uuid.test(id))return Promise.reject(new Error('Invalid notification.'));
       return enqueue('notification',id,'notification.read',{},null);

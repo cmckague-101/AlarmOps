@@ -3,6 +3,7 @@ import {Redirect,Stack,useRouter} from 'expo-router';
 import {useMemo} from 'react';
 import {Pressable,ScrollView,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useOwnQualifications} from '@/lib/use-offline-edits';
 import {AppSymbol} from '@/components/app-symbol';
 import {CrewReview} from '@/components/crew-review';
 import {useFleetVehicles} from '@/lib/fleet-store';
@@ -21,7 +22,7 @@ const qualificationActions=[
 export default function QualificationsScreen(){
   const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {width,fontScale}=useWindowDimensions();const singleColumn=width<360||fontScale>1.3;
   const {session,access}=useSession();const account=access.value?.kind==='member'?access.value:null;
-  const {crew,loading,error}=useFleetVehicles(account?.company.id??null);const member=crew.find(item=>item.id===account?.user.id);const pendingCardCount=usePendingQualificationCardCount(account&&(account.user.role==='owner'||account.user.role==='admin')?account.company.id:null);
+  const {crew,loading,error}=useFleetVehicles(account?.company.id??null);const member=useOwnQualifications(crew.find(item=>item.id===account?.user.id),account);const pendingCardCount=usePendingQualificationCardCount(account&&(account.user.role==='owner'||account.user.role==='admin')?account.company.id:null);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   const credentials=member?crewCredentials(member):[];const experiences=member?.experiences??[];const expiring=credentials.filter(item=>credentialExpiresWithinMonth(item));
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Qualifications'}}/><ScrollView contentContainerStyle={styles.content}>
