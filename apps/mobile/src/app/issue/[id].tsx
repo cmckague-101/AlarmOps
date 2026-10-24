@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { visibleVehicleIssues, type IssuePriority, type IssueStatus } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -9,6 +9,8 @@ import { fleetReadVersion, createFleetId, saveFleetRecord, useFleetVehicles } fr
 import { useSession } from '@/providers/session-provider';
 import { useOfflineSync } from '@/providers/offline-sync-provider';
 import {savedDetailHref} from '@/lib/offline-detail-form';
+import { createDetailChangeActions } from '@/lib/offline-attachment-actions';
+import { offlineIssueChange, offlineIssueChangeKey, type OfflineIssueChange } from '@/lib/offline-issue-changes';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 const priorities: IssuePriority[] = ['Low', 'Medium', 'High', 'Critical'];
@@ -25,7 +27,7 @@ export default function IssueDetailScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access,demoMode } = useSession();
-  const {offline,state:syncState}=useOfflineSync();
+  const {offline,state:syncState,detailEditor}=useOfflineSync();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const { vehicles, issues, loading, error, pendingDetails } = useFleetVehicles(companyId);
@@ -44,6 +46,12 @@ export default function IssueDetailScreen() {
   const [detailErrors, setDetailErrors] = useState<{ title?: string; description?: string }>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  // Offline, or online while this device still has unsynced changes for the issue, updates and
+  // resolve/reopen save on the device through the verified detail editor and sync in order when connected.
+  const onDevice=Platform.OS!=='web'&&!demoMode&&Boolean(detailEditor)&&(offline||Boolean(pendingDetails?.[`issue:${id}`]));
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
+  const deviceActions=useMemo(()=>detailEditor&&id?createDetailChangeActions({isCurrent:()=>mounted.current,prepare:()=>detailEditor.prepare({entityType:'issue',entityId:id}),save:(draft,values,extras)=>detailEditor.save(draft,values,extras)}):null,[detailEditor,id]);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
 
@@ -99,6 +107,16 @@ export default function IssueDetailScreen() {
     setSaving(true);
     setSaveError('');
     try {
+      if (onDevice) {
+        if (!deviceActions) throw new Error('Saving changes on this device is unavailable.');
+        if (!savedDetailBase) throw new Error('This issue is not on this device yet. Open it once while online, or reconnect to save.');
+        const change: OfflineIssueChange = nextStatus && nextStatus !== issue.status ? { kind: 'status', status: nextStatus === 'Resolved' ? 'Resolved' : 'Open', note: updateText.trim() } : { kind: 'note', text: updateText.trim() };
+        // A failed editor save never committed, so the next tap starts a fresh change.
+        try { await deviceActions.start(offlineIssueChangeKey(change), (draft) => offlineIssueChange(change, draft.record, user)); }
+        catch (failure) { deviceActions.cancel(); throw failure; }
+        setUpdateText('');
+        return;
+      }
       await saveFleetRecord('issues', {
         ...issue,
         status,
@@ -285,14 +303,7 @@ export default function IssueDetailScreen() {
                   </View>
                 ) : <Text style={styles.noUpdates}>No updates yet.</Text>}
               </View> : null}
-              {((user?.role==='owner'||user?.role==='admin')||((user?.role==='fire_fighter'||user?.role==='shop_tech')&&issue.createdById===user?.id))&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
-                <Text style={styles.sectionTitle}>Offline changes</Text>
-                <Text style={styles.sectionHelp}>{user?.role==='owner'||user?.role==='admin'
-                  ?`${savedDetailBase?'Available offline. ':'Not on this device yet. It downloads automatically while you are online. '}Edit details, add notes and resolve or reopen without a connection; changes sync when you reconnect.`
-                  :`${savedDetailBase?'Available offline. ':'Open this once while online to keep it on this device. '}Add notes, and resolve or reopen with a note, without a connection; changes sync when you reconnect.`}</Text>
-                <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'issue',entityId:issue.id}))} style={styles.editButton}><Text style={styles.editButtonLabel}>{user?.role==='owner'||user?.role==='admin'?'Edit offline':'Notes and status offline'}</Text></Pressable>
-                {user?.role==='owner'||user?.role==='admin'?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={styles.editButton}><Text style={styles.editButtonLabel}>Device edit history</Text></Pressable>:null}
-              </View>:null}
+              {(user?.role==='owner'||user?.role==='admin')&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={({pressed})=>[styles.historyLink,pressed&&styles.pressed]}><Text style={styles.historyLinkLabel}>Device edit history</Text></Pressable>:null}
             </>
           ) : null}
         </ScrollView>
@@ -307,6 +318,8 @@ function createStyles(theme: FireOpsTheme) {
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 48, gap: 28 },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 32 },
+    historyLink: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
+    historyLinkLabel: { color: theme.commandForeground, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
     vehicleContext: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.surfaceAlt, borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11 },
     vehicleCopy: { flex: 1, gap: 3 },
     vehicleName: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },

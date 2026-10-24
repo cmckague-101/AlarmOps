@@ -4,7 +4,7 @@ import {Pressable,Text,TextInput,View} from 'react-native';
 import type {SyncRecord} from '@fireops/domain';
 import {createDetailChangeActions} from '../lib/offline-attachment-actions';
 import type {OfflineDetailEditor} from '../lib/offline-detail-editor';
-import {createFleetId} from '../lib/fleet-store';
+import {offlineIssueChange,offlineIssueChangeKey,type OfflineIssueChange} from '../lib/offline-issue-changes';
 import {useFireOpsTheme} from '../theme';
 
 /** Notes are appended (never conflict). Managers resolve/reopen as a separate change that may need review;
@@ -21,14 +21,12 @@ export function OfflineIssueUpdates({editor,entityId,record,user,notesOnly=false
     catch(failure){if(isCurrent()){setFailed(!!actions.pendingKey);setError(failure instanceof Error?failure.message:'Change could not be saved. Retry keeps the same change.')}}
     finally{if(isCurrent())setBusy(false)}
   };
-  const addNote=()=>{const note=text.trim();if(!note){setError('Enter an update.');return}
-    // Entry identity and time are fixed when first built, so a retry resends the same note.
-    void run('Update',()=>actions.start('note',draft=>({values:{updates:[{id:createFleetId(),text:note,createdBy:user.name,createdById:user.id,createdAt:new Date().toISOString()},...((draft.record.updates as SyncRecord[]|undefined)??[])]}})),()=>setText(''))};
+  const change=(label:string,next:OfflineIssueChange,after?:()=>void)=>void run(label,()=>actions.start(offlineIssueChangeKey(next),draft=>offlineIssueChange(next,draft.record,user)),after);
+  const addNote=()=>{const note=text.trim();if(!note){setError('Enter an update.');return}change('Update',{kind:'note',text:note},()=>setText(''))};
   const resolved=record.status==='Resolved';
   const toggleWithNote=()=>{const note=text.trim();if(!note){setError(resolved?'Enter a note to reopen this issue.':'Enter a note to resolve this issue.');return}
-    void run(resolved?'Reopened with note':'Resolved with note',()=>actions.start('status-note',(draft):{values:SyncRecord;extras?:{remove:string[]}}=>{const updates=[{id:createFleetId(),text:note,createdBy:user.name,createdById:user.id,createdAt:new Date().toISOString()},...((draft.record.updates as SyncRecord[]|undefined)??[])];
-      return resolved?{values:{status:'Open',updates},extras:{remove:['resolvedAt']}}:{values:{status:'Resolved',resolvedAt:new Date().toISOString(),updates}}}),()=>setText(''))};
-  const toggle=()=>void run(resolved?'Reopened':'Resolved',()=>actions.start('status',():{values:SyncRecord;extras?:{remove:string[]}}=>resolved?{values:{status:'Open'},extras:{remove:['resolvedAt']}}:{values:{status:'Resolved',resolvedAt:new Date().toISOString()}}));
+    change(resolved?'Reopened with note':'Resolved with note',{kind:'status',status:resolved?'Open':'Resolved',note},()=>setText(''))};
+  const toggle=()=>change(resolved?'Reopened':'Resolved',{kind:'status',status:resolved?'Open':'Resolved'});
   const body={color:theme.ink,lineHeight:23};const meta={color:theme.secondary,lineHeight:21};
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" disabled={disabled||busy} onPress={action} style={{minHeight:44,paddingHorizontal:12,paddingVertical:10,borderWidth:1,borderColor:theme.divider,borderRadius:10,justifyContent:'center',opacity:disabled||busy?0.5:1}}><Text style={body}>{label}</Text></Pressable>;
   return <View style={{gap:12,borderWidth:1,borderColor:theme.divider,borderRadius:14,padding:16}}>
