@@ -13,3 +13,9 @@ export function taskDraftError(draft:TaskDraft):string|null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate) || Number.isNaN(date.valueOf()) || date.toISOString().slice(0,10) !== draft.dueDate) return 'Enter a valid due date (YYYY-MM-DD).';
   return null;
 }
+export type TaskDueStatus = 'overdue'|'today'|'upcoming';
+// Compare calendar dates in the viewer's local day so a task due today is never shown as overdue.
+export function taskDueStatus(dueDate:string, today=new Date()):TaskDueStatus {
+  const local=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  return dueDate<local?'overdue':dueDate===local?'today':'upcoming';
+}

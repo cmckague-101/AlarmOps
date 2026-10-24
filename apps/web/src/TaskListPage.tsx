@@ -1,5 +1,5 @@
 import {useState, type FormEvent} from 'react';
-import {canManagePersonalTasks, type FireOpsUser} from '@fireops/domain';
+import {canManagePersonalTasks, formatCalendarDate, taskDueStatus, type FireOpsUser, type PersonalTask} from '@fireops/domain';
 import {usePersonalTasks} from './usePersonalTasks';
 import './TaskListPage.css';
 
@@ -14,6 +14,10 @@ export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:Fir
     event.preventDefault();
     if(await save({subject,description,dueDate})){setSubject('');setDescription('');setDueDate('');setCreating(false);}
   }
+  // Completing deletes the task permanently, so confirm before removing it.
+  function complete(task:PersonalTask) {
+    if (window.confirm(`Mark "${task.subject}" completed? Completed tasks are removed permanently.`)) void remove(task.id);
+  }
   if (!allowed) return <div className="page"><p>Task List is available to owners, admins, and techs.</p></div>;
   return <div className="page task-page"><button className="secondary" onClick={onBack}>← Dashboard</button><div className="page-heading"><div><h1>Task List</h1><p>Your personal tasks. Completing a task removes it permanently.</p></div></div>
     {!connected&&<p>Connect a company account to save tasks.</p>}
@@ -25,6 +29,6 @@ export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:Fir
       <label htmlFor="task-due-date">Due date<input id="task-due-date" type="date" required value={dueDate} onChange={event=>setDueDate(event.target.value)}/></label>
       <div className="task-actions"><button className="primary" type="submit">{busy?'Saving…':'Save task'}</button><button className="secondary" type="button" onClick={()=>setCreating(false)}>Cancel</button></div>
     </fieldset></form>}
-    <section className="task-list" aria-label="Your tasks" aria-busy={loading}>{loading?<p>Loading tasks…</p>:<>{tasks.map(task=><article key={task.id}><h2>{task.subject}</h2><p>Due {new Date(`${task.due_date}T12:00:00`).toLocaleDateString()}</p>{task.description&&<p className="task-description">{task.description}</p>}<div className="task-actions"><button className="primary" disabled={busy} onClick={()=>void remove(task.id)} aria-label={`Mark ${task.subject} as completed`}>Mark completed</button></div></article>)}{connected&&!error&&!tasks.length&&<p>No open tasks. Select New task to create one.</p>}</>}</section>
+    <section className="task-list" aria-label="Your tasks" aria-busy={loading}>{loading?<p>Loading tasks…</p>:<>{tasks.map(task=><article key={task.id}><h2>{task.subject}</h2><p className={`task-due ${taskDueStatus(task.due_date)}`}>{taskDueStatus(task.due_date)==='overdue'?'Overdue · ':''}{taskDueStatus(task.due_date)==='today'?'Due today':`Due ${formatCalendarDate(task.due_date)}`}</p>{task.description&&<p className="task-description">{task.description}</p>}<div className="task-actions"><button className="primary" disabled={busy} onClick={()=>complete(task)} aria-label={`Mark ${task.subject} as completed`}>Mark completed</button></div></article>)}{connected&&!error&&!tasks.length&&<p>No open tasks. Select New task to create one.</p>}</>}</section>
   </div>;
 }
