@@ -2,7 +2,7 @@ import {formatPhoneNumber,type MotiveAuthorization,type MotiveConnection,type Sa
 import * as ImagePicker from 'expo-image-picker';
 import {Redirect,Stack,useLocalSearchParams,useRouter} from 'expo-router';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {Alert,Image,KeyboardAvoidingView,Linking,Modal,Platform,Pressable,RefreshControl,ScrollView,StyleSheet,Switch,Text,TextInput,View} from 'react-native';
+import {Alert,Image,KeyboardAvoidingView,Linking,Modal,Platform,Pressable,RefreshControl,ScrollView,StyleSheet,Switch,Text,TextInput,View,type ScrollViewInstance} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {AppSymbol} from '@/components/app-symbol';
 import {SignaturePad} from '@/components/signature-pad';
@@ -42,7 +42,7 @@ async function connectMotive(companyId:string,clientId:string,clientSecret:strin
 
 export default function SettingsScreen(){
   const router=useRouter();const oauthParams=useLocalSearchParams<{motive?:string;motive_error?:string;section?:string}>();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
-  const settingsScroll=useRef<ScrollView>(null);const dashboardScrolled=useRef(false);
+  const settingsScroll=useRef<ScrollViewInstance>(null);const dashboardScrolled=useRef(false);
   const {session,access,clearCompany,updateCompanyProfile}=useSession();const member=access.value?.kind==='member'?access.value:null;
   const {crew,refreshing}=useFleetVehicles(member?.company.id??null);
   const {preferences,loading:notificationsLoading,refreshing:notificationsRefreshing,savingPreferences,error:notificationsError}=useNotificationInbox(member?.company.id??null,member?.user.id??null,member?.user.role??null);

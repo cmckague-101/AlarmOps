@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "overrides": {
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "scripts": {
     "dev": "npm run dev --workspace=fireops-web",
@@ -31,8 +31,8 @@
   },
   "version": "1.0.0",
   "dependencies": {
-    "expo": "~57.0.22",
-    "react": "19.2.3",
-    "react-native": "0.86.3"
+    "expo": "~58.0.19",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
   }
 }

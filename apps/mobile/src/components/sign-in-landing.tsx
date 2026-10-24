@@ -1,5 +1,5 @@
 import {useRef,useState,type PropsWithChildren} from 'react';
-import {Image,KeyboardAvoidingView,Linking,Platform,Pressable,ScrollView,StyleSheet,Text,View} from 'react-native';
+import {Image,KeyboardAvoidingView,Linking,Platform,Pressable,ScrollView,StyleSheet,Text,View,type ScrollViewInstance} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {BrandWordmark} from '@/components/brand-wordmark';
 import {useFireOpsTheme} from '@/theme';
@@ -25,7 +25,7 @@ const plans=[
 
 export function SignInLanding({children}:PropsWithChildren){
   const theme=useFireOpsTheme();
-  const scroll=useRef<ScrollView>(null);
+  const scroll=useRef<ScrollViewInstance>(null);
   const [height,setHeight]=useState(0);
   const [featuresY,setFeaturesY]=useState(0);
   const [showBackToTop,setShowBackToTop]=useState(false);

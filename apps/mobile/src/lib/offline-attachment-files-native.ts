@@ -24,7 +24,7 @@ export function createNativeAttachmentFiles(scope:OutboxScope):OfflineAttachment
     const {CryptoDigestAlgorithm,digest}=await import('expo-crypto');
     if(!source.exists||source.size<=0||source.size>offlineAttachmentMaxBytes)throw new Error('Selected file is unavailable or exceeds 10 MB.');
     const handle=source.open(FileMode.ReadOnly);const chunks:Uint8Array[]=[];let length=0;
-    try{for(;;){const bytes=handle.readBytes(Math.min(64*1024,offlineAttachmentMaxBytes+1-length));if(!bytes.length)break;length+=bytes.length;if(length>offlineAttachmentMaxBytes)throw new Error('File grew beyond the device attachment limit.');chunks.push(bytes)}}finally{handle.close()}
+    try{for(;;){const bytes=await handle.readBytes(Math.min(64*1024,offlineAttachmentMaxBytes+1-length));if(!bytes.length)break;length+=bytes.length;if(length>offlineAttachmentMaxBytes)throw new Error('File grew beyond the device attachment limit.');chunks.push(bytes)}}finally{handle.close()}
     if(!length)throw new Error('Empty attachments are not supported.');const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length}
     const hash=new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256,bytes));return {byteSize:length,sha256:Array.from(hash,value=>value.toString(16).padStart(2,'0')).join('')};
   }
@@ -36,7 +36,7 @@ export function createNativeAttachmentFiles(scope:OutboxScope):OfflineAttachment
       directory.create({intermediates:true,idempotent:true});const reader=picked(uri).open(FileMode.ReadOnly);let writer:ReturnType<File['open']>|null=null;let written=0;
       try{
         const destination=file(id,'part');destination.create({overwrite:false});writer=destination.open(FileMode.WriteOnly);
-        for(;;){const bytes=reader.readBytes(Math.min(64*1024,expectedBytes+1-written));if(!bytes.length)break;written+=bytes.length;if(written>expectedBytes)throw new Error('Selected bytes changed while copying.');writer.writeBytes(bytes)}
+        for(;;){const bytes=await reader.readBytes(Math.min(64*1024,expectedBytes+1-written));if(!bytes.length)break;written+=bytes.length;if(written>expectedBytes)throw new Error('Selected bytes changed while copying.');await writer.writeBytes(bytes)}
         if(written!==expectedBytes)throw new Error('Selected bytes changed while copying.');
       }finally{try{reader.close()}finally{writer?.close()}}
     },

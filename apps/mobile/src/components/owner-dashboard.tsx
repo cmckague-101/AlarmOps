@@ -5,7 +5,7 @@ import {useSession} from '@/providers/session-provider';
 import type {DashboardItem} from '@fireops/domain';
 import {NationalFireActivitySection} from './national-fire-activity';
 import {useRef, useState} from 'react';
-import {AccessibilityInfo, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
+import {AccessibilityInfo, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ScrollViewInstance} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {commandAlerts, commandCenter, type CrewMember, type FleetIssue, type PayrollForm} from '@fireops/domain';
@@ -21,7 +21,7 @@ export function OwnerDashboard({name,vehicles,crew,issues,payrolls,notifications
   const {access,demoMode}=useSession();
   const {visible}=useDashboardPreferences(access.value?.kind==='member'?access.value.user.id:undefined,demoMode);
   const router=useRouter();
-  const scroll=useRef<ScrollView>(null);
+  const scroll=useRef<ScrollViewInstance>(null);
   const {width,fontScale}=useWindowDimensions();
   const [selected,setSelected]=useState<string|null>(null);
   const commandVehicles=vehicles.map(v=>({...v,unit:v.name}));
