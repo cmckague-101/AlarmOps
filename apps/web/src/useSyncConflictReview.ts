@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useSyncExternalStore} from 'react';
 import {createSyncReviewClient,type SyncReviewTransport} from '@fireops/domain';
 import {supabase} from './supabase';
+import { createId } from './create-id';
 
 export function useSyncConflictReview(companyId?:string,userId?:string,demoMode=false){
   const controller=useMemo(()=>{
@@ -34,7 +35,7 @@ export function useSyncConflictReview(companyId?:string,userId?:string,demoMode=
         if(error)throw error;return data;
       },
     };
-    return createSyncReviewClient(client&&companyId&&userId&&!demoMode?{companyId,userId}:null,transport,()=>crypto.randomUUID());
+    return createSyncReviewClient(client&&companyId&&userId&&!demoMode?{companyId,userId}:null,transport,()=>createId());
   },[companyId,userId,demoMode]);
   const state=useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
   useEffect(()=>{

@@ -5,6 +5,7 @@ import { Check, ChevronDown, CircleDollarSign, CircleX, ExternalLink, FileText, 
 import { createPayrollRows, formatCalendarRange, isCompanyManager, payrollCrewIds, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from './supabase';
 import { useDialogA11y } from './useDialogA11y';
+import { createId } from './create-id';
 
 type PayrollRow = {id:string;company_id:string;created_by:string;created_by_name:string;engine_number:string;incidents:string;attachment:PayrollForm['attachment'];rows:PayrollDay[];status:PayrollForm['status'];submitted_at:string|null;approved_at:string|null;approved_by:string|null;rejection_notes:string|null;rejected_at:string|null;rejected_by:string|null;created_at:string;updated_at:string};
 const columns = 'id,company_id,created_by,created_by_name,engine_number,incidents,attachment,rows,status,submitted_at,approved_at,approved_by,rejection_notes,rejected_at,rejected_by,created_at,updated_at';
@@ -46,7 +47,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
 
   function newForm(){
     if(draft){setSelected(draft);return}
-    setSelected({id:crypto.randomUUID(),companyId:companyId??'',createdBy:user.id,createdByName:user.name,engineNumber:'',incidents:'',attachment:null,rows:createPayrollRows(),status:'draft',submittedAt:null,approvedAt:null,approvedBy:null,rejectionNotes:null,rejectedAt:null,rejectedBy:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    setSelected({id:createId(),companyId:companyId??'',createdBy:user.id,createdByName:user.name,engineNumber:'',incidents:'',attachment:null,rows:createPayrollRows(),status:'draft',submittedAt:null,approvedAt:null,approvedBy:null,rejectionNotes:null,rejectedAt:null,rejectedBy:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
   }
   function queueSave(form:PayrollForm){
     setSelected(form);setDraft(form);if(saveTimer.current)clearTimeout(saveTimer.current);
@@ -63,7 +64,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   async function attach(file:File){
     if(!selected||!supabase||!companyId||saving)return;const mimeType=payrollFileType(file);
     if(!PAYROLL_FILE_TYPES.includes(mimeType)||file.size<=0||file.size>PAYROLL_FILE_LIMIT){setError('Choose a JPG, PNG, WebP, HEIC, or PDF attachment up to 10 MB.');return}
-    if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);setError('');const storagePath=`${companyId}/${user.id}/forms/${selected.id}/${crypto.randomUUID()}-${safePayrollFileName(file.name)}`;
+    if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);setError('');const storagePath=`${companyId}/${user.id}/forms/${selected.id}/${createId()}-${safePayrollFileName(file.name)}`;
     try{const {error:uploadError}=await supabase.storage.from(PAYROLL_BUCKET).upload(storagePath,file,{contentType:mimeType});if(uploadError)throw uploadError;const previous=selected.attachment;const saved=await save({...selected,attachment:{name:file.name,mimeType,byteSize:file.size,storagePath}});if(!saved){await supabase.storage.from(PAYROLL_BUCKET).remove([storagePath]);return}if(previous){const {error:removeError}=await supabase.storage.from(PAYROLL_BUCKET).remove([previous.storagePath]);if(removeError)setError(`Attachment replaced, but old file could not be removed. ${removeError.message}`)}}catch(failure){setError(`Attachment could not upload. ${(failure as {message?:string}).message??'Try again.'}`)}finally{setSaving(false)}
   }
   async function removeAttachment(){

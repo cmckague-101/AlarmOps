@@ -8,6 +8,7 @@ import type { InventoryItem } from './InventoryPage';
 import { supabase, supabaseConfigured } from './supabase';
 import './auth.css';
 import {createOnlineFleetWrites,createOnlineFleetTransport,fleetRecordsEqual} from './online-fleet-writes';
+import { createId } from './create-id';
 export {fleetRecordsEqual} from './online-fleet-writes';
 
 type Membership = { company_id: string; role: UserRole };
@@ -465,7 +466,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const [error,setError]=useState('');
   const persisted=useRef<FleetSnapshot>(emptySnapshot());
   const workspaceActive=useRef(true);const saveEpoch=useRef(0);
-  const [writeModel]=useState(()=>createOnlineFleetWrites({companyId,userId:session.user.id,wire:stripSignedFileUrls,id:()=>crypto.randomUUID()}));
+  const [writeModel]=useState(()=>createOnlineFleetWrites({companyId,userId:session.user.id,wire:stripSignedFileUrls,id:()=>createId()}));
   const [deliver]=useState(()=>supabase?createOnlineFleetTransport(supabase,{companyId,userId:session.user.id},()=>workspaceActive.current):null);
   const deletedVersions=useRef(new Map<string,number>());
   useEffect(()=>{workspaceActive.current=true;return()=>{workspaceActive.current=false;saveEpoch.current++}},[]);
@@ -658,7 +659,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
   const upload=useCallback(async(file:File)=>{
     if(!supabase)throw new Error('Company is unavailable');
     const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'-');
-    const path=`${companyId}/${session.user.id}/${crypto.randomUUID()}-${safeName}`;
+    const path=`${companyId}/${session.user.id}/${createId()}-${safeName}`;
     const {error:uploadError}=await supabase.storage.from('fleet-files').upload(path,file,{contentType:file.type,upsert:false});
     if(uploadError)throw uploadError;
     const {data,error:urlError}=await supabase.storage.from('fleet-files').createSignedUrl(path,86400);

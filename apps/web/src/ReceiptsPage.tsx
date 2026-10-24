@@ -3,6 +3,7 @@ import { useCallback, useContext, useEffect, useMemo, useState, type FormEvent }
 import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
 import { isCompanyManager, type CrewMember, type FireOpsUser } from '@fireops/domain';
 import { supabase } from './supabase';
+import { createId } from './create-id';
 
 const BUCKET = 'receipt-files';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -154,7 +155,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
 
     setSaving(true);
     setError('');
-    const path = `${companyId}/${user.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+    const path = `${companyId}/${user.id}/${createId()}-${safeFileName(file.name)}`;
     try {
       const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: mimeType, upsert: false });
       if (uploadError) throw uploadError;

@@ -5,6 +5,7 @@ import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
 import {Camera, ExternalLink, FileText, Upload} from 'lucide-react';
 import type {CrewMember, FireOpsUser} from '@fireops/domain';
 import {supabase} from './supabase';
+import { createId } from './create-id';
 
 type DocumentRow = {id:string;name:string;original_file_name:string;storage_path:string;uploaded_by:string;uploaded_by_name:string;created_at:string};
 const columns = 'id,name,original_file_name,storage_path,uploaded_by,uploaded_by_name,created_at';
@@ -45,7 +46,7 @@ function StoredDocumentsContent({kind, companyId, user, crew}: {kind:'invoices'|
     const mime = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : /\.hei[cf]$/i.test(file.name) ? 'image/heic' : '');
     if (!['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'].includes(mime) || file.size === 0 || file.size > 10485760) {setError('Choose an image or PDF between 1 byte and 10 MB.');return;}
     setBusy(true);setError('');
-    const path = `${companyId}/${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]+/g,'-')}`;
+    const path = `${companyId}/${user.id}/${createId()}-${file.name.replace(/[^a-zA-Z0-9._-]+/g,'-')}`;
     try {
       const {error:uploadError} = await supabase.storage.from(bucket).upload(path,file,{contentType:mime});
       if (uploadError) throw uploadError;

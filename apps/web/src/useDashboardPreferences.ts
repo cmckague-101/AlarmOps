@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState,useSyncExternalStore} from 'react';
 import {createDashboardPreferenceTransport,createOnlineDashboardWrite,decodeDashboardPreferenceChanges,onlineDashboardWriteError,readOnlineDashboardPreferences,type DashboardItem,type DashboardPreferences,type OnlineDashboardWrite} from '@fireops/domain';
 import {supabase} from './supabase';
 import {useUserDataScope} from './useUserDataScope';
+import { createId } from './create-id';
 
 type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean;pending?:OnlineDashboardWrite;writer?:()=>boolean};
 const states=new Map<string,State>();
@@ -57,7 +58,7 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
       publish(key,{items:{...previous.items,...decodeDashboardPreferenceChanges({[id]:enabled})} as DashboardPreferences,loading:false,saving:false,error:''});return;
     }
     try{
-      const write=createOnlineDashboardWrite({userId:userId!,id:()=>crypto.randomUUID(),transport:createDashboardPreferenceTransport(supabase!,userId!,online),connectivity:()=>typeof navigator==='undefined'||typeof navigator.onLine!=='boolean'?'unknown':online()?'online':'offline'},{[id]:enabled});
+      const write=createOnlineDashboardWrite({userId:userId!,id:()=>createId(),transport:createDashboardPreferenceTransport(supabase!,userId!,online),connectivity:()=>typeof navigator==='undefined'||typeof navigator.onLine!=='boolean'?'unknown':online()?'online':'offline'},{[id]:enabled});
       await perform(write);
     }catch{if(current())publish(key,{...states.get(key)!,error:'Dashboard request could not be prepared. Please retry.'})}
   }

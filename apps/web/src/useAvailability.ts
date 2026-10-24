@@ -2,6 +2,7 @@ import {useEffect,useMemo,useSyncExternalStore} from 'react';
 import {createAvailabilityController,createAvailabilityTransport,emptyAvailabilityState,onlineAvailabilityError,validAvailabilityScope,type AvailabilityController} from '@fireops/domain';
 import {supabase} from './supabase';
 import {useUserDataScope} from './useUserDataScope';
+import { createId } from './create-id';
 const controllers=new Map<string,AvailabilityController>();
 const leaving=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''};
 function changed(){if(typeof window!=='undefined'&&typeof window.addEventListener==='function'){
@@ -14,7 +15,7 @@ export function useAvailability(companyId?:string|null,actorId?:string|null){
   const key=`${companyId}:${actorId}`;const {token,current}=useUserDataScope(key);
   const controller=useMemo(()=>{
     if(!supabase||!validAvailabilityScope(companyId,actorId))return null;
-    let value=controllers.get(key);if(!value){value=createAvailabilityController({scope:{companyId:companyId!,actorId:actorId!},id:()=>crypto.randomUUID(),transport:createAvailabilityTransport(supabase,actorId!,online),connectivity:()=>typeof navigator==='undefined'||typeof navigator.onLine!=='boolean'?'unknown':online()?'online':'offline',changed});controllers.set(key,value)}return value;
+    let value=controllers.get(key);if(!value){value=createAvailabilityController({scope:{companyId:companyId!,actorId:actorId!},id:()=>createId(),transport:createAvailabilityTransport(supabase,actorId!,online),connectivity:()=>typeof navigator==='undefined'||typeof navigator.onLine!=='boolean'?'unknown':online()?'online':'offline',changed});controllers.set(key,value)}return value;
   },[key]);
   const state=useSyncExternalStore(controller?.subscribe??emptySubscribe,controller?.getSnapshot??emptySnapshot,emptySnapshot);
   const busy=state.busy&&(state.owner?.()??false);
