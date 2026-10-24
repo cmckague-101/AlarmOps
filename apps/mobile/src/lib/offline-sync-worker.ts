@@ -353,7 +353,7 @@ export function offlineSyncDecisions(state:Pick<OfflineSyncState,'entries'>):Off
 export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail:string|null;dismissible:boolean}|null{
   const visible=state.entries.filter(offlineSyncVisible);
   const history=visible.filter(entry=>entry.historyBackupPending&&(entry.delivery||entry.reviewOutcome||['synced','not_selected'].includes(entry.status)));
-  const completed=visible.filter(entry=>!entry.historyBackupPending&&(entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked'));
+  const completed=visible.filter(entry=>!entry.historyBackupPending&&!offlineSyncQuietSuccess(entry)&&(entry.status==='synced'||entry.status==='not_selected'||!!entry.reviewOutcome&&entry.status==='blocked'));
   const blocked=visible.filter(entry=>entry.status==='blocked'&&!entry.reviewOutcome);
   const review=visible.filter(entry=>entry.status==='awaiting_review'&&!entry.reviewOutcome);
   const pending=visible.filter(entry=>entry.status==='pending'||entry.status==='syncing'||entry.status==='awaiting_review'&&!!entry.reviewOutcome);
@@ -368,6 +368,11 @@ export function offlineSyncNotice(state:OfflineSyncState):{message:string;detail
   else if(state.error)message='Sync needs attention';
   if(state.error&&/storage|notices could not be dismissed/i.test(state.error))return {message:'Sync status needs attention',detail:state.error,dismissible:false};
   return message?{message,detail:state.error??state.downloadError??(state.setupPending?'Waiting for database sync setup. Saved work has not been discarded.':null),dismissible:!!completed.length&&!blocked.length&&!review.length&&!pending.length&&!history.length&&!state.downloadError&&(!state.download||state.download.complete)}:null;
+}
+/** A change made online that applied as sent: the user already saw it save, so it needs no notice. */
+export function offlineSyncQuietSuccess(entry:OutboxEntry):boolean{
+  const delivery=entry.delivery as {notApplied?:unknown;keptCurrent?:unknown}|null;
+  return entry.status==='synced'&&entry.operation.provenance.connectivity!=='offline'&&!entry.reviewOutcome&&!entry.continuation&&delivery?.notApplied===undefined&&delivery?.keptCurrent!==true;
 }
 export function offlineSyncVisible(entry:OutboxEntry):boolean{
   return !!entry.historyBackupPending||!entry.noticeDismissed||['pending','syncing','awaiting_review'].includes(entry.status)||(entry.status==='blocked'&&!entry.reviewOutcome);

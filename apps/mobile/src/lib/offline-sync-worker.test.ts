@@ -80,6 +80,13 @@ describe('native durable sync worker (real SQLite, no native UI)',()=>{
     expect(offlineSyncNotice(f.worker.getSnapshot())?.message).toBe('Offline changes synced');
     await f.worker.dismiss();expect(offlineSyncNotice(f.worker.getSnapshot())).toBeNull();expect(await f.session.list()).toHaveLength(1);
   });
+  it('shows no notice for a change made online that synced as sent, but still reports refusals',async()=>{
+    const f=await setup();await f.worker.wake();const synced=await entry(f);expect(synced.status).toBe('synced');
+    const online={...synced,operation:{...synced.operation,provenance:{...synced.operation.provenance,connectivity:'online' as const}}};
+    expect(offlineSyncNotice({...f.worker.getSnapshot(),entries:[online]})).toBeNull();
+    const refused={...online,delivery:{...(online.delivery as object),notApplied:'record_deleted'}} as unknown as typeof online;
+    expect(offlineSyncNotice({...f.worker.getSnapshot(),entries:[refused]})?.message).toContain('deleted before your change arrived');
+  });
   it('coalesces wakeups instead of sending the same operation concurrently',async()=>{
     const f=await setup();const response=deferred<unknown>();f.transport.deliver.mockReturnValueOnce(response.promise);
     const first=f.worker.wake();const second=f.worker.wake();expect(second).toBe(first);
