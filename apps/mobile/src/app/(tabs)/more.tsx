@@ -2,10 +2,12 @@ import {isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
 import {Alert,Platform,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
+import {quickActionItems} from '@/components/quick-actions';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
 import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
+import {useDashboardPreferences} from '@/lib/use-dashboard-preferences';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -35,8 +37,13 @@ export default function More(){
   const pendingQualificationCards=usePendingQualificationCardCount(member&&(member.user.role==='owner'||member.user.role==='admin')?member.company.id:null);
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
-  const unreadBySection:Partial<Record<(typeof sections)[number]['label'],number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
-  const visible=sections.filter(section=>(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
+  const preferences=useDashboardPreferences(member?.user.id,demoMode);
+  // Quick actions hidden from the dashboard stay reachable here; Inventory and Failed Inspections are already listed.
+  const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&action.path!=='/inventory'&&action.path!=='/inspections'):[];
+  const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
+  const allowed=sections.filter(section=>(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
+  const comingSoonIndex=allowed.findIndex(section=>'comingSoon' in section);
+  const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="More" showTitle={false}>
@@ -46,7 +53,7 @@ export default function More(){
         accessibilityRole="button"
         accessibilityLabel={`${section.label}${unread>0?`, ${unread} ${indicatorLabel}`:''}`}
         key={section.label}
-        onPress={()=>{if('comingSoon' in section)Alert.alert('Coming Soon');else router.push(section.path as never)}}
+        onPress={()=>{if(section.comingSoon||!section.path)Alert.alert('Coming Soon');else router.push(section.path as never)}}
         style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
       >
         <View style={[styles.icon,{backgroundColor:section.color}]}>
