@@ -11,7 +11,7 @@ function setup({failure,busy=false,hasOwner=true}:{failure?:Error;busy?:boolean;
   const router={back:vi.fn()};
   const setBusy=vi.fn();
   const setError=vi.fn();
-  const remove=new Function('Alert','removeCrewMember','router','setBusy','setError','owner','member','busy',`${handlers}\nreturn remove;`)(
+  const remove=new Function('Alert','removeCrewMember','router','setBusyAction','setError','owner','member','busy',`${handlers}\nreturn remove;`)(
     {alert},removeCrewMember,router,setBusy,setError,hasOwner?{company:{id:'company-1'}}:null,{id:'crew-1',name:'Crew Member'},busy,
   );
   remove();
@@ -31,10 +31,10 @@ describe('mobile crew removal confirmation',()=>{
     const {buttons,removeCrewMember,router,setBusy,setError}=setup();
     buttons[1].onPress?.();
     expect(removeCrewMember).toHaveBeenCalledWith('company-1','crew-1');
-    expect(setBusy).toHaveBeenNthCalledWith(1,true);
+    expect(setBusy).toHaveBeenNthCalledWith(1,'remove');
     expect(setError).toHaveBeenCalledWith('');
     await vi.waitFor(()=>expect(router.back).toHaveBeenCalledOnce());
-    expect(setBusy).toHaveBeenLastCalledWith(false);
+    expect(setBusy).toHaveBeenLastCalledWith('');
   });
 
   it('shows removal errors and enables retry without navigating away',async()=>{
@@ -42,7 +42,7 @@ describe('mobile crew removal confirmation',()=>{
     buttons[1].onPress?.();
     await vi.waitFor(()=>expect(setError).toHaveBeenCalledWith('Removal failed'));
     expect(router.back).not.toHaveBeenCalled();
-    expect(setBusy).toHaveBeenLastCalledWith(false);
+    expect(setBusy).toHaveBeenLastCalledWith('');
   });
 
   it.each([{busy:true},{hasOwner:false}])('ignores unavailable removal actions: %j',async(options)=>{

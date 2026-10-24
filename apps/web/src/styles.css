@@ -208,3 +208,4 @@ main{overflow-x:clip}
 @media(max-width:700px){.invoice-heading-actions{width:100%}.invoice-heading-actions button{flex:1}.invoice-fields{grid-template-columns:1fr}.invoice-customer-add{grid-template-columns:1fr}.invoice-customer-add .primary{min-height:44px}}
 .update-hint{display:block;margin-top:8px;color:var(--muted);font-size:12px}
 .inspection-empty-template{margin:0;padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted)}
+.crew-seat-usage{margin:6px 0 0;color:var(--muted);font-size:13px}
