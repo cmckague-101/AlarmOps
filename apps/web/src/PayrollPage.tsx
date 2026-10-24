@@ -1,8 +1,10 @@
 import {FileInput} from './demo-uploads';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown, CircleDollarSign, CircleX, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
 import { createPayrollRows, formatCalendarRange, isCompanyManager, payrollCrewIds, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from './supabase';
+import { useDialogA11y } from './useDialogA11y';
 
 type PayrollRow = {id:string;company_id:string;created_by:string;created_by_name:string;engine_number:string;incidents:string;attachment:PayrollForm['attachment'];rows:PayrollDay[];status:PayrollForm['status'];submitted_at:string|null;approved_at:string|null;approved_by:string|null;rejection_notes:string|null;rejected_at:string|null;rejected_by:string|null;created_at:string;updated_at:string};
 const columns = 'id,company_id,created_by,created_by_name,engine_number,incidents,attachment,rows,status,submitted_at,approved_at,approved_by,rejection_notes,rejected_at,rejected_by,created_at,updated_at';
@@ -24,6 +26,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   const currentYear = new Date().getFullYear();
   const [year,setYear] = useState(currentYear);
   const [crewFilter,setCrewFilter] = useState('all');
+  const [rejecting,setRejecting] = useState<PayrollForm|null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const formCrew = useMemo(()=>crew.filter(person=>person.role!=='owner'),[crew]);
   const eligibleCrew = useMemo(()=>formCrew.filter(person=>person.status==='Active'),[formCrew]);
@@ -75,11 +78,10 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
     if(failure){setError(`Payroll could not submit. ${failure.message}`);return}const submitted=fromRow(data);setSelected(null);setDraft(null);setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
   }
   async function setManagerStatus(form:PayrollForm,status:'approved'|'rejected'|'paid',notes?:string){
-    if(demoForms){const timestamp=new Date().toISOString();const updated:PayrollForm={...form,status,updatedAt:timestamp,...(status==='approved'?{approvedAt:timestamp,approvedBy:user.id}:{}),...(status==='rejected'?{rejectionNotes:notes??'',rejectedAt:timestamp,rejectedBy:user.id}:{})};setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));return}
-    if(!supabase||!companyId)return;setSaving(true);setError('');const payload=status==='rejected'?{status,rejection_notes:notes}:{status};const {data,error:failure}=await supabase.from('payroll_forms').update(payload).eq('company_id',companyId).eq('id',form.id).select(columns).single<PayrollRow>();setSaving(false);
-    if(failure){setError(`Payroll could not be ${status}. ${failure.message}`);return}const updated=fromRow(data);setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));
+    if(demoForms){const timestamp=new Date().toISOString();const updated:PayrollForm={...form,status,updatedAt:timestamp,...(status==='approved'?{approvedAt:timestamp,approvedBy:user.id}:{}),...(status==='rejected'?{rejectionNotes:notes??'',rejectedAt:timestamp,rejectedBy:user.id}:{})};setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));return true}
+    if(!supabase||!companyId)return false;setSaving(true);setError('');const payload=status==='rejected'?{status,rejection_notes:notes}:{status};const {data,error:failure}=await supabase.from('payroll_forms').update(payload).eq('company_id',companyId).eq('id',form.id).select(columns).single<PayrollRow>();setSaving(false);
+    if(failure){setError(`Payroll could not be ${status}. ${failure.message}`);return false}const updated=fromRow(data);setSelected(status==='rejected'?null:updated);setForms(current=>current.map(item=>item.id===updated.id?updated:item));return true;
   }
-  function reject(form:PayrollForm){const notes=window.prompt('Add notes explaining what needs to change.');if(notes===null)return;if(!notes.trim()){setError('Rejection notes are required.');return}if(notes.trim().length>1000){setError('Rejection notes must be 1,000 characters or fewer.');return}void setManagerStatus(form,'rejected',notes.trim())}
   async function remove(){
     if(!selected||((selected.status!=='draft'&&selected.status!=='rejected')&&!manager)||!window.confirm('Delete this payroll form? This cannot be undone.'))return;
     if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);setError('');
@@ -88,7 +90,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   }
   const years=useMemo(()=>[...new Set([currentYear,...forms.map(form=>new Date(form.createdAt).getFullYear())])].sort((a,b)=>b-a),[forms,currentYear]);
   const visible=forms.filter(form=>form.status!=='draft'&&new Date(form.createdAt).getFullYear()===year&&(!manager||crewFilter==='all'||form.createdBy===crewFilter));
-  if(selected)return <PayrollEditor form={selected} crew={formCrew} saving={saving} error={error} onBack={()=>setSelected(null)} onChange={queueSave} onAttach={file=>void attach(file)} onRemoveAttachment={()=>void removeAttachment()} onOpenAttachment={()=>void openAttachment(selected)} onDelete={()=>void remove()} onSubmit={()=>void submit()} onApprove={()=>void setManagerStatus(selected,'approved')} onReject={()=>reject(selected)} onMarkPaid={()=>void setManagerStatus(selected,'paid')} canEdit={selected.createdBy===user.id} canManage={manager}/>;
+  if(selected)return <><PayrollEditor form={selected} crew={formCrew} saving={saving} error={error} onBack={()=>setSelected(null)} onChange={queueSave} onAttach={file=>void attach(file)} onRemoveAttachment={()=>void removeAttachment()} onOpenAttachment={()=>void openAttachment(selected)} onDelete={()=>void remove()} onSubmit={()=>void submit()} onApprove={()=>void setManagerStatus(selected,'approved')} onReject={()=>{setError('');setRejecting(selected)}} onMarkPaid={()=>void setManagerStatus(selected,'paid')} canEdit={selected.createdBy===user.id} canManage={manager}/>{rejecting&&<RejectPayrollDialog saving={saving} error={error} onCancel={()=>setRejecting(null)} onReject={async notes=>{if(await setManagerStatus(rejecting,'rejected',notes))setRejecting(null)}}/>}</>;
   return <div className="page payroll-page"><div className="page-heading"><div><h1>Payroll</h1></div><button className="primary" onClick={newForm}><Plus/>New Payroll Form</button></div>
     {draft&&<button className={`payroll-draft-card${draft.status==='rejected'?' rejected':''}`} onClick={()=>setSelected(draft)}><span><b>{draft.status==='rejected'?'Payroll returned for changes':'Payroll form in progress'}</b><small>{draft.status==='rejected'?draft.rejectionNotes:`Last saved ${new Date(draft.updatedAt).toLocaleString()}`}</small></span><strong>{draft.status==='rejected'?'Review':'Continue'}</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
@@ -114,4 +116,10 @@ function PayrollEditor({form,crew,saving,error,onBack,onChange,onAttach,onRemove
 
 function CrewSelect({crew,selected,disabled,onChange}:{crew:CrewMember[];selected:string[];disabled:boolean;onChange:(ids:string[])=>void}){
   return <details className="crew-multiselect"><summary><span>{selected.length?`${selected.length} selected`:'Select crew'}</span><ChevronDown/></summary><div>{crew.filter(person=>person.status==='Active').map(person=><label key={person.id}><input type="checkbox" checked={selected.includes(person.id)} disabled={disabled} onChange={()=>onChange(selected.includes(person.id)?selected.filter(id=>id!==person.id):[...selected,person.id])}/><span>{person.name}</span></label>)}</div></details>;
+}
+
+function RejectPayrollDialog({saving,error,onCancel,onReject}:{saving:boolean;error:string;onCancel:()=>void;onReject:(notes:string)=>Promise<void>}){
+  const [notes,setNotes]=useState('');const dialog=useDialogA11y<HTMLElement>(()=>{if(!saving)onCancel()});
+  const submit=(event:FormEvent)=>{event.preventDefault();if(notes.trim()&&!saving)void onReject(notes.trim())};
+  return createPortal(<div className="receipt-edit-overlay" onMouseDown={event=>{if(event.target===event.currentTarget&&!saving)onCancel()}}><section ref={dialog.ref} className="receipt-edit-dialog" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} aria-busy={saving} tabIndex={-1}><header><div><h2 id={dialog.titleId}>Reject payroll</h2><p>Notes are sent to the employee with the rejection.</p></div><button type="button" disabled={saving} onClick={onCancel} aria-label="Close reject payroll"><X/></button></header><form onSubmit={submit}><label><span>What needs to change</span><textarea autoFocus required maxLength={1000} rows={5} value={notes} onChange={event=>setNotes(event.target.value)}/></label>{error&&<p className="receipt-error" role="alert">{error}</p>}<footer><button className="secondary" type="button" disabled={saving} onClick={onCancel}>Cancel</button><button className="payroll-reject" type="submit" disabled={saving||!notes.trim()}><CircleX/>{saving?'Rejecting…':'Reject Payroll'}</button></footer></form></section></div>,document.body);
 }
