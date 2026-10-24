@@ -8,6 +8,8 @@ import {useFireOpsTheme} from '../theme';
 const nouns:Record<string,string>={vehicle:'vehicle',issue:'issue',training:'training',inventory_item:'inventory item',inventory_checkout:'gear checkout',inventory_return:'gear check-in',
   receipt:'receipt',vehicle_note:'vehicle note',payroll_form:'payroll form',payroll_review:'payroll decision',invoice_form:'invoice',training_signup:'training sign-up',availability:'availability',
   vehicle_inspection:'inspection',vehicle_document:'vehicle document',crew_credential:'credential',crew_experience:'experience record',annual_record:'annual record',communication_reply:'Crew Chat reply'};
+/** The record a saved change is about, e.g. "receipt". */
+export function offlineChangeNoun(entityType:string){return nouns[entityType]??'change'}
 /** What a decision is about, for the banner and Saved changes & sync. */
 export function offlineDecisionTitle(decision:OfflineSyncDecision){
   const noun=nouns[decision.entry.operation.entityType]??'change';
