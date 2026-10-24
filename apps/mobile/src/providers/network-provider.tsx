@@ -36,7 +36,7 @@ export async function offlineAwareFetch(input: RequestInfo | URL, init?: Request
   const requestKey = `${method} ${url}\n${responseHeaders}`;
 
   if (offline) {
-    if (!read) throw new Error('This action requires a connection. Offline editing is limited to the mobile saved-detail editor.');
+    if (!read) throw new Error('This action requires a connection.');
     const cached = await loadReadResponse(requestKey);
     if (cached) return cached;
     throw new Error('This data is not available offline yet. Reconnect to load it.');

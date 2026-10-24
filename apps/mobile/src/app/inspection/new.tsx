@@ -83,7 +83,7 @@ export default function NewInspectionScreen() {
     if (result.canceled) return;
     const asset = result.assets[0];
     if (offline) {
-      if (!offlineReady || !attachmentController) { setError(offlineReady ? "Device photo storage is not available for this account. Reconnect to attach photos." : "Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
+      if (!offlineReady || !attachmentController) { setError(offlineReady ? "Device photo storage is not available for this account. Reconnect to attach photos." : "Download this vehicle while online first to inspect it offline."); return; }
       setUploading(index);
       try {
         const attachmentId = createFleetId();
@@ -118,7 +118,7 @@ export default function NewInspectionScreen() {
     const missingPhoto = items.find((item) => item.kind === "photo" && !item.photo);
     if (missingPhoto) { setError(`${missingPhoto.label} photo is required.`); return; }
     if (offline) {
-      if (!offlineReady || !detailEditor) { setError("Download this vehicle online first (saved-detail editor) to inspect it offline."); return; }
+      if (!offlineReady || !detailEditor) { setError("Download this vehicle while online first to inspect it offline."); return; }
       if (items.some((item) => item.photo && !item.photo.path?.includes("/sync-"))) { setError("Some photos were uploaded online. Reconnect to submit, or attach them again offline."); return; }
       setSaving(true); setError("");
       try {
@@ -153,7 +153,7 @@ export default function NewInspectionScreen() {
     <Stack.Screen options={{ title: "Inspect vehicle" }} />
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} keyboardShouldPersistTaps="handled">
-        <View style={styles.heading}><Text style={styles.title}>{vehicle?.name ?? "Vehicle inspection"}</Text><Text style={styles.subtitle}>Complete readiness checklist. Pass selected by default.</Text>{offline ? <Text style={styles.help}>{offlineReady ? "Offline: this inspection and its photos are saved on this device and sync when connected. Photos are not encrypted by FireOps." : "Offline: download this vehicle online first (saved-detail editor) to inspect it offline."}</Text> : null}</View>
+        <View style={styles.heading}><Text style={styles.title}>{vehicle?.name ?? "Vehicle inspection"}</Text><Text style={styles.subtitle}>Complete readiness checklist. Pass selected by default.</Text>{offline ? <Text style={styles.help}>{offlineReady ? "Offline: this inspection and its photos are saved on this device and sync when connected. Photos are not encrypted by FireOps." : "Offline: download this vehicle while online first to inspect it offline."}</Text> : null}</View>
         {loading ? <Text style={styles.help}>Loading vehicle…</Text> : !vehicle ? <Text style={styles.error}>Vehicle not found.</Text> : <>
           <View style={styles.field}><Text style={styles.label}>Assignment / Incident</Text><TextInput accessibilityLabel="Assignment or incident" value={assignmentIncident} onChangeText={setAssignmentIncident} maxLength={200} placeholder="Assignment or incident name" placeholderTextColor={theme.secondary} style={styles.input}/></View>
           <View style={styles.field}><Text style={styles.label}>Inspector</Text><View style={styles.readonly}><Text style={styles.readonlyText}>{user?.name ?? "Current user"}</Text></View></View>

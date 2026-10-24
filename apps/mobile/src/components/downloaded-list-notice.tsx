@@ -7,5 +7,5 @@ export function DownloadedListNotice({ info }: { info: DownloadedListInfo | null
   const theme = useFireOpsTheme();
   if (!info) return null;
   const at = new Date(info.serverRequestAt).toLocaleString();
-  return <Text accessibilityRole="text" style={{ color: theme.secondary, fontSize: 12, lineHeight: 17 }}>Offline — showing the list downloaded {at}. Changes saved on this device are shown on top.</Text>;
+  return <Text accessibilityRole="text" style={{ color: theme.secondary, fontSize: 12, lineHeight: 17 }}>Offline — showing the list from {at}. Changes you make are saved on this device and sync when connected.</Text>;
 }
