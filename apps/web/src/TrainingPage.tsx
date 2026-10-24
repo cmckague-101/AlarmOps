@@ -63,10 +63,13 @@ function TrainingForm({training,onClose,onSave}:{training?:Training;onClose:()=>
     const next:Record<string,string>={};
     if(!form.courseCode.trim())next.courseCode='Course code is required';
     if(!form.courseTitle.trim())next.courseTitle='Course title is required';
-    if(!form.date||Date.parse(form.date)<=Date.now())next.date='Choose a future date and time';
+    // Editing a course that already started keeps its date valid; only a new or changed date must be in the future.
+    const dateChanged=!training||Math.floor(Date.parse(form.date)/60000)!==Math.floor(Date.parse(training.date)/60000);
+    if(!form.date||(dateChanged&&Date.parse(form.date)<=Date.now()))next.date='Choose a future date and time';
     if(!form.location.trim())next.location='Location is required';
     if(!form.instructor.trim())next.instructor='Instructor is required';
     if(!Number.isInteger(Number(form.capacity))||Number(form.capacity)<1||Number(form.capacity)>10000)next.capacity='Capacity must be between 1 and 10,000';
+    else if(training&&Number(form.capacity)<training.signups.length)next.capacity=`Capacity can't be lower than the ${training.signups.length} crew members already registered`;
     setErrors(next);setSubmitError('');
     if(Object.keys(next).length){formRef.current?.querySelector<HTMLElement>(`[name="${Object.keys(next)[0]}"]`)?.focus();return}
     setBusy(true);

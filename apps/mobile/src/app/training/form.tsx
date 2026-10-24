@@ -69,11 +69,14 @@ export default function TrainingFormScreen() {
     if (!values.courseCode.trim()) nextErrors.courseCode = 'Course code is required.';
     if (!values.courseTitle.trim()) nextErrors.courseTitle = 'Course title is required.';
     const startsAt = parseLocalDate(values.date.trim(), values.time.trim());
-    if (!startsAt || startsAt.valueOf() <= Date.now()) nextErrors.date = 'Choose a future date and time.';
+    // Editing a course that already started keeps its date valid; only a new or changed date must be in the future.
+    const dateChanged = !training || !startsAt || Math.floor(startsAt.valueOf() / 60000) !== Math.floor(Date.parse(training.date) / 60000);
+    if (!startsAt || (dateChanged && startsAt.valueOf() <= Date.now())) nextErrors.date = 'Choose a future date and time.';
     if (!values.location.trim()) nextErrors.location = 'Location is required.';
     if (!values.instructor.trim()) nextErrors.instructor = 'Instructor is required.';
     const capacity = Number(values.capacity);
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000) nextErrors.capacity = 'Capacity must be between 1 and 10,000.';
+    else if (training && capacity < training.signups.length) nextErrors.capacity = `Capacity can't be lower than the ${training.signups.length} crew members already registered.`;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length || !startsAt) return;
     const next = { courseCode: values.courseCode.trim(), courseTitle: values.courseTitle.trim(), date: startsAt.toISOString(), location: values.location.trim(), instructor: values.instructor.trim(), capacity, information: values.information.trim() };
