@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=fireops-web",
     "dev:web": "npm run dev --workspace=fireops-web",
-    "dev:mobile": "npm run start --workspace=@fireops/mobile",
+    "dev:mobile": "npm run start --workspace=@fireops/mobile --",
     "ios": "npm run ios --workspace=@fireops/mobile",
     "android": "npm run android --workspace=@fireops/mobile",
     "deploy:mobile:production": "bash apps/mobile/scripts/deploy-production.sh",
