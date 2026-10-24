@@ -3,6 +3,7 @@ import {useFocusEffect} from 'expo-router';
 import {Pressable,Text,TextInput,View} from 'react-native';
 import type {SyncRecord} from '@fireops/domain';
 import {createDetailChangeActions} from '../lib/offline-attachment-actions';
+import {offlineVehicleChange,offlineVehicleChangeKey,type OfflineVehicleChange} from '../lib/offline-vehicle-changes';
 import type {OfflineDetailEditor} from '../lib/offline-detail-editor';
 import {readFireList,type DownloadedFire,type DownloadedFireList} from '../lib/offline-fire-list';
 import {useFireOpsTheme} from '../theme';
@@ -27,12 +28,12 @@ export function OfflineVehicleStatus({editor,entityId,record,crew,self,onSaved}:
     catch(failure){if(isCurrent()){setFailed(!!actions.pendingKey);setError(failure instanceof Error?failure.message:'Change could not be saved. Retry keeps the same change.')}}
     finally{if(isCurrent())setBusy(false)}
   };
-  const clearing=(draft:SyncRecord)=>['assignedTo','assignedFire'].filter(field=>present(draft,field));
-  const setStatus=(status:'Ready'|'Out of service')=>run(`Status: ${status}`,()=>actions.start(status,draft=>({values:{status},extras:{remove:clearing(draft.record)}})));
-  const assign=(member:Member)=>run(`Assigned to ${member.name}`,()=>actions.start(`assign:${member.id}`,()=>({values:{status:'Assigned',assignedTo:member.id}})));
-  const unassign=()=>run('Assignment cleared',()=>actions.start('unassign',draft=>({values:{status:draft.record.status==='Assigned'?'Ready':draft.record.status as string},extras:{remove:clearing(draft.record)}})));
-  const assignFire=(fire:DownloadedFire)=>run(`Fire: ${fire.name}`,()=>actions.start(`fire:${fire.id}`,()=>({values:{assignedFire:{id:fire.id,name:fire.name,state:fire.state}}})));
-  const clearFire=()=>run('Fire assignment cleared',()=>actions.start('fire',()=>({values:{},extras:{remove:['assignedFire']}})));
+  const change=(label:string,next:OfflineVehicleChange)=>run(label,()=>actions.start(offlineVehicleChangeKey(next),draft=>offlineVehicleChange(next,draft.record)));
+  const setStatus=(status:'Ready'|'Out of service')=>change(`Status: ${status}`,{kind:'status',status});
+  const assign=(member:Member)=>change(`Assigned to ${member.name}`,{kind:'assign',memberId:member.id});
+  const unassign=()=>change('Assignment cleared',{kind:'unassign'});
+  const assignFire=(fire:DownloadedFire)=>change(`Fire: ${fire.name}`,{kind:'fire',fire});
+  const clearFire=()=>change('Fire assignment cleared',{kind:'clearFire'});
   const body={color:theme.ink,lineHeight:23};const meta={color:theme.secondary,lineHeight:21};
   const button=(label:string,action:()=>void,disabled=false)=><Pressable key={label} accessibilityRole="button" disabled={disabled||busy} onPress={action} style={{minHeight:44,paddingHorizontal:12,paddingVertical:10,borderWidth:1,borderColor:theme.divider,borderRadius:10,justifyContent:'center',opacity:disabled||busy?0.5:1}}><Text style={body}>{label}</Text></Pressable>;
   const assignee=crew.find(member=>member.id===record.assignedTo)?.name??(typeof record.assignedTo==='string'?'Company member':null);

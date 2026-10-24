@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCalendarDate, inspectionExpirationDate, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -30,7 +30,9 @@ import {
   type FleetVehicleFile,
 } from "@/lib/fleet-store";
 import { fetchNifcIncidents } from "@/lib/nifc";
-import { saveFireList } from "@/lib/offline-fire-list";
+import { readFireList, saveFireList } from "@/lib/offline-fire-list";
+import { createDetailChangeActions } from "@/lib/offline-attachment-actions";
+import { offlineVehicleChange, offlineVehicleChangeKey, type OfflineVehicleChange } from "@/lib/offline-vehicle-changes";
 import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
 import { useSession } from "@/providers/session-provider";
 import { useOfflineSync } from "@/providers/offline-sync-provider";
@@ -164,7 +166,7 @@ export default function VehicleDetailScreen() {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, access,demoMode } = useSession();
-  const {offline,state:syncState}=useOfflineSync();
+  const {offline,state:syncState,detailEditor}=useOfflineSync();
   const companyId =
     access.value?.kind === "member" ? access.value.company.id : null;
   const user = access.value?.kind === "member" ? access.value.user : null;
@@ -188,6 +190,12 @@ export default function VehicleDetailScreen() {
   const activeCrew = crew.filter((member) => member.status === "Active");
   const canManage = user?.role === "owner" || user?.role === "admin";
   const savedDetailBase=syncState.records.find(record=>record.entityType==='vehicle'&&record.entityId===id&&record.record!==null);
+  // Offline, or online while this device still has unsynced changes for the vehicle, status/assignment/fire
+  // changes save on the device through the verified detail editor and sync in order when connected.
+  const onDevice=Platform.OS!=='web'&&!demoMode&&Boolean(detailEditor)&&(offline||Boolean(pendingDetails?.[`vehicle:${id}`]));
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
+  const deviceActions=useMemo(()=>detailEditor&&id?createDetailChangeActions({isCurrent:()=>mounted.current,prepare:()=>detailEditor.prepare({entityType:'vehicle',entityId:id}),save:(draft,values,extras)=>detailEditor.save(draft,values,extras)}):null,[detailEditor,id]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -221,6 +229,16 @@ export default function VehicleDetailScreen() {
   useEffect(() => {
     if (!firePickerOpen) return;
     const controller = new AbortController();
+    if (offline) {
+      void readFireList()
+        .then((list) => {
+          if (controller.signal.aborted) return;
+          if (list?.fires.length) setIncidents(list.fires.map((fire) => ({ ...fire, acres: null, contained: null, personnel: null, discovered: null, updated: null, latitude: 0, longitude: 0 })));
+          else setIncidentError("No fire list on this device yet. Open Operations or a vehicle while online to download it.");
+        })
+        .finally(() => { if (!controller.signal.aborted) setIncidentLoading(false); });
+      return () => controller.abort();
+    }
     void fetchNifcIncidents(controller.signal)
       .then((next) => { saveFireList(next); setIncidents(next); }) // kept for assigning fires offline
       .catch((fetchError) => {
@@ -234,13 +252,22 @@ export default function VehicleDetailScreen() {
         if (!controller.signal.aborted) setIncidentLoading(false);
       });
     return () => controller.abort();
-  }, [firePickerOpen, incidentRequest]);
+  }, [firePickerOpen, incidentRequest, offline]);
 
   if (!session || access.status === "error") return <Redirect href="/" />;
+
+  const saveOnDevice = async (change: OfflineVehicleChange) => {
+    if (!deviceActions) throw new Error("Saving changes on this device is unavailable.");
+    if (!savedDetailBase) throw new Error("This vehicle is not downloaded on this device yet. Reconnect to change it.");
+    // A failed editor save never committed, so the next tap starts a fresh change.
+    try { await deviceActions.start(offlineVehicleChangeKey(change), (draft) => offlineVehicleChange(change, draft.record)); }
+    catch (failure) { deviceActions.cancel(); throw failure; }
+  };
 
   const changePhoto = async () => {
     if (!vehicle || !user || !companyId || !canManage || photoSaving) return;
     setFileError("");
+    if (onDevice) { setFileError(offline ? "Photo changes need a connection." : "Wait for saved changes on this device to sync before changing the photo."); return; }
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -281,7 +308,8 @@ export default function VehicleDetailScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      await updateFleetVehicle(
+      if (onDevice) await saveOnDevice({ kind: "status", status: status === "Out of service" ? "Out of service" : "Ready" });
+      else await updateFleetVehicle(
         vehicle,
         { status, clearAssignment: true },
         user,
@@ -383,7 +411,8 @@ export default function VehicleDetailScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      await updateFleetVehicle(
+      if (onDevice) await saveOnDevice(incident ? { kind: "fire", fire: { id: incident.id, name: incident.name, state: incident.state } } : { kind: "clearFire" });
+      else await updateFleetVehicle(
         vehicle,
         incident
           ? {
@@ -423,7 +452,8 @@ export default function VehicleDetailScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      await updateFleetVehicle(
+      if (onDevice) await saveOnDevice(memberId ? { kind: "assign", memberId } : { kind: "unassign" });
+      else await updateFleetVehicle(
         vehicle,
         memberId
           ? { status: "Assigned", assignedTo: memberId }
@@ -1031,12 +1061,7 @@ export default function VehicleDetailScreen() {
               </Text>
             ) : null}
 
-            {(canManage||user?.role==='fire_fighter'||user?.role==='shop_tech')&&Platform.OS!=='web'&&!demoMode?<View style={styles.section}>
-              <Text style={styles.sectionTitle}>Offline changes</Text>
-              <Text style={styles.offlineNote}>{savedDetailBase?`Available offline${syncState.download?.lastCompletedAt?` · updated ${new Date(syncState.download.lastCompletedAt).toLocaleString()}`:''}. `:'Not on this device yet. It downloads automatically while you are online. '}{canManage?'Edit details, status, assignment, fire, files and documents here without a connection; changes sync when you reconnect.':'Claim or release this vehicle and clear its fire without a connection; changes sync when you reconnect.'}</Text>
-              <Pressable accessibilityRole="button" onPress={()=>router.push(savedDetailHref({entityType:'vehicle',entityId:vehicle.id}))} style={styles.retryButton}><Text style={styles.retryLabel}>{canManage?'Edit offline':'Claim / release offline'}</Text></Pressable>
-              {canManage?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={styles.retryButton}><Text style={styles.retryLabel}>Device edit history</Text></Pressable>:null}
-            </View>:null}
+            {canManage&&Platform.OS!=='web'&&!demoMode?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={({pressed})=>[styles.historyLink,pressed&&styles.buttonPressed]}><Text style={styles.historyLinkLabel}>Device edit history</Text></Pressable>:null}
 
             {canManage ? (
               <View style={styles.dangerSection}>
@@ -1092,7 +1117,7 @@ export default function VehicleDetailScreen() {
           <View style={styles.modalHeader}>
             <View style={styles.modalHeadingCopy}>
               <Text style={styles.modalTitle}>Select active fire</Text>
-              <Text style={styles.modalSubtitle}>NIFC WFIGS incidents</Text>
+              <Text style={styles.modalSubtitle}>{offline ? "Fire list downloaded to this device" : "NIFC WFIGS incidents"}</Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -1521,7 +1546,8 @@ function createStyles(theme: FireOpsTheme) {
     locationCaptionLabel: { flex: 1, color: theme.ink, fontSize: 11, fontWeight: "700" },
     locationAttribution: { color: theme.secondary, fontSize: 9, textDecorationLine: "underline" },
     section: { gap: 13 },
-    offlineNote: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
+    historyLink: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 12 },
+    historyLinkLabel: { color: theme.commandForeground, fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
     sectionHeading: {
       minHeight: 40,
       flexDirection: "row",
