@@ -266,6 +266,7 @@ export default function IssueDetailScreen() {
                     <Text style={styles.statusButtonLabel}>{issue.status === 'Open' ? 'Mark resolved' : 'Reopen issue'}</Text>
                   </Pressable>
                 </View>
+                {!updateText.trim() ? <Text style={styles.sectionHelp}>Write an update to {issue.status === 'Open' ? 'mark this issue resolved' : 'reopen this issue'}.</Text> : null}
               </View> : null}
 
               {!editingDetails ? <View style={styles.section}>

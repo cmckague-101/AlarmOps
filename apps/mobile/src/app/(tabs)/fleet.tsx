@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { dotInspectionWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
+import { dotInspectionWarning, formatCalendarDate, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,7 +36,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pending
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${vehicle.name}, ${displayStatus(vehicle.status)}${dotWarning ? `, DOT inspection ${dotWarning.expired ? 'expired' : 'expiring'} ${dotWarning.expiration}` : ''}`}
+      accessibilityLabel={`${vehicle.name}, ${displayStatus(vehicle.status)}${dotWarning ? `, DOT inspection ${dotWarning.expired ? 'expired' : 'expiring'} ${formatCalendarDate(dotWarning.expiration)}` : ''}`}
       accessibilityHint="Opens vehicle details"
       onPress={onPress}
       style={({ pressed }) => [styles.vehicleRow, pressed && styles.vehicleRowPressed]}
@@ -68,7 +68,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pending
           </Text>
         ) : null}
         {pendingLabel?<Text style={styles.location}>{pendingLabel}</Text>:null}
-        {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {dotWarning.expiration}</Text> : null}
+        {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {formatCalendarDate(dotWarning.expiration)}</Text> : null}
       </View>
       <View style={styles.rowEnd}>
         <Text style={styles.status}>{displayStatus(vehicle.status)}</Text>
@@ -276,9 +276,9 @@ function createStyles(theme: FireOpsTheme) {
   status: { maxWidth: 90, color: theme.commandForeground, fontSize: 13, lineHeight: 18, fontWeight: '600', textAlign: 'right' },
   icon: { color: theme.secondary },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  dotReady: { backgroundColor: '#23825E' },
-  dotAssigned: { backgroundColor: '#B67822' },
-  dotAttention: { backgroundColor: '#B74A3E' },
+  dotReady: { backgroundColor: theme.green },
+  dotAssigned: { backgroundColor: theme.blue },
+  dotAttention: { backgroundColor: theme.danger },
   emptyState: { flex: 1, justifyContent: 'center', paddingVertical: 72, gap: 8 },
   filteredEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
   emptyTitle: { color: theme.commandForeground, fontSize: 21, lineHeight: 27, fontWeight: '700', textAlign: 'center' },

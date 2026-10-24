@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { inspectionExpirationDate, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
+import { formatCalendarDate, inspectionExpirationDate, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -943,7 +943,7 @@ export default function VehicleDetailScreen() {
                       <View style={styles.documentMain}>
                         <Text style={styles.documentLabel}>{label}</Text>
                         <Text style={styles.documentName} numberOfLines={1}>{file?.name ?? "No document attached"}</Text>
-                        {inspectionDate ? <Text style={styles.documentName}>Inspected {inspectionDate} · Expires {inspectionExpirationDate(inspectionDate) ?? '—'}</Text> : null}
+                        {inspectionDate ? <Text style={styles.documentName}>Inspected {formatCalendarDate(inspectionDate)} · Expires {formatCalendarDate(inspectionExpirationDate(inspectionDate) ?? '')}</Text> : null}
                       </View>
                       {file?.path ? <AppSymbol name={{ ios: "chevron.right", android: "chevron_right" } as never} color={theme.secondary} size={17} /> : null}
                     </Pressable>
@@ -1158,7 +1158,7 @@ export default function VehicleDetailScreen() {
               keyExtractor={(incident) => incident.id}
               ListEmptyComponent={
                 <Text style={styles.noCrewResults}>
-                  No active fires match “{fireQuery.trim()}”.
+                  {fireQuery.trim() ? `No active fires match “${fireQuery.trim()}”.` : 'NIFC is not reporting any active fires right now.'}
                 </Text>
               }
               renderItem={({ item: incident }) => {
@@ -1390,8 +1390,8 @@ function createStyles(theme: FireOpsTheme) {
     statusText: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
     readyBadge: { backgroundColor: theme.greenSurface },
     readyText: { color: theme.green },
-    assignedBadge: { backgroundColor: theme.warningSurface },
-    assignedText: { color: theme.warning },
+    assignedBadge: { backgroundColor: theme.blueSurface },
+    assignedText: { color: theme.blue },
     attentionBadge: { backgroundColor: theme.dangerSurface },
     attentionText: { color: theme.danger },
     vehicleSummary: { color: theme.secondary, fontSize: 16, lineHeight: 23 },
