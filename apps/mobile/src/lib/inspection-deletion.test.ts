@@ -16,7 +16,7 @@ function setup({busy=false,failure=false,offline=false}={}){
   const vehicle={id:'vehicle-1',name:'Engine 1',source:{inspections:[inspection]}};
   const deleteVehicleInspection=vi.fn().mockResolvedValue(undefined);
   const deviceSync={offline,userSync:{deleteVehicleInspection}};
-  const confirm=new Function('Alert','deleteFleetInspection','member','deleting','setDeleting','setDeleteError','deviceSync',`${javascript}\nreturn confirmDelete;`)(
+  const confirm=new Function('Alert','deleteFleetInspection','member','deleting','setDeletingId','setDeleteError','deviceSync',`${javascript}\nreturn confirmDelete;`)(
     {alert},deleteFleetInspection,{user},busy,setDeleting,setDeleteError,deviceSync,
   );
   confirm(vehicle,'inspection-1');
@@ -36,21 +36,21 @@ describe('failed inspection deletion confirmation',()=>{
     const {alert,deleteFleetInspection,setDeleting,user,vehicle}=setup();
     alert.mock.calls[0][2][1].onPress();
     expect(deleteFleetInspection).toHaveBeenCalledWith(vehicle,'inspection-1',user);
-    expect(setDeleting).toHaveBeenNthCalledWith(1,true);
-    await vi.waitFor(()=>expect(setDeleting).toHaveBeenLastCalledWith(false));
+    expect(setDeleting).toHaveBeenNthCalledWith(1,'inspection-1');
+    await vi.waitFor(()=>expect(setDeleting).toHaveBeenLastCalledWith(''));
   });
 
   it('shows save errors and permits retry',async()=>{
     const {alert,setDeleteError,setDeleting}=setup({failure:true});
     alert.mock.calls[0][2][1].onPress();
     await vi.waitFor(()=>expect(setDeleteError).toHaveBeenCalledWith('Save failed'));
-    expect(setDeleting).toHaveBeenLastCalledWith(false);
+    expect(setDeleting).toHaveBeenLastCalledWith('');
   });
 
   it('offline, saves the delete on the device against the inspection as downloaded',async()=>{
     const {alert,deleteFleetInspection,deleteVehicleInspection,setDeleting,inspection}=setup({offline:true});
     alert.mock.calls[0][2][1].onPress();
-    await vi.waitFor(()=>expect(setDeleting).toHaveBeenLastCalledWith(false));
+    await vi.waitFor(()=>expect(setDeleting).toHaveBeenLastCalledWith(''));
     expect(deleteVehicleInspection).toHaveBeenCalledWith('vehicle-1',inspection);expect(deleteFleetInspection).not.toHaveBeenCalled();
   });
 
