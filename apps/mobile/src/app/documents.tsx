@@ -209,7 +209,7 @@ function createStyles(theme: FireOpsTheme) {
     fileName: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
     updated: { color: theme.secondary, fontSize: 11, lineHeight: 16 },
     actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, paddingTop: 9 },
-    iconButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.surfaceAlt },
+    iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.surfaceAlt },
     empty: { alignItems: 'center', paddingHorizontal: 28, paddingVertical: 48, gap: 8 },
     emptyIcon: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center', borderRadius: 29, backgroundColor: theme.surfaceAlt, marginBottom: 5 },
     emptyTitle: { color: theme.ink, fontSize: 20, lineHeight: 26, fontWeight: '700' },
