@@ -133,12 +133,20 @@ def test_full_run_reports_actual_changes_and_cleans(monkeypatch, tmp_path, capsy
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("warnings,errors", [(["missing agreement"], []), ([], ["parse failed"])])
-def test_cleanup_skipped_on_incomplete_run(monkeypatch, tmp_path, capsys, warnings, errors):
-    setup_run(monkeypatch, tmp_path, warnings=warnings, errors=errors)
+def test_cleanup_skipped_on_errors(monkeypatch, tmp_path, capsys):
+    setup_run(monkeypatch, tmp_path, errors=["parse failed"])
     monkeypatch.setattr(sync, "cleanup_obsolete", lambda *a: pytest.fail("unsafe cleanup"))
-    assert sync.main() == (1 if errors else 0)
+    assert sync.main() == 1
     assert "Cleanup skipped" in capsys.readouterr().out
+
+
+def test_missing_agreement_warning_does_not_block_cleanup(monkeypatch, tmp_path, capsys):
+    setup_run(monkeypatch, tmp_path, warnings=["agreement PDF unavailable from USDA (404)"])
+    calls = []
+    monkeypatch.setattr(sync, "cleanup_obsolete", lambda *a: calls.append(a) or {})
+    assert sync.main() == 0
+    assert len(calls) == 1
+    assert "2 warnings" in capsys.readouterr().out
 
 
 def test_cap_reports_backlog(monkeypatch, tmp_path, capsys):

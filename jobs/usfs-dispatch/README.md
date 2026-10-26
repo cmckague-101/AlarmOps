@@ -4,7 +4,9 @@ Run `bash jobs/usfs-dispatch/viprRun.sh` and supply the database URL and monitor
 contact email. Restart an already-running loop after changing the script.
 
 The runner uses `--weekly --fresh-pdfs --cleanup --retention-days 30`. Web and
-mobile both read this same Supabase dataset; no UI changes or migration are needed.
+mobile both read this same Supabase dataset; no UI changes are needed. Apply
+`supabase/migrations/20261223000100_usfs_sync_warnings.sql` before running the
+updated importer (adds `last_warning` to priority lists).
 
 ## Daily work, rolling seven-day coverage
 
@@ -26,8 +28,11 @@ split into independent buckets:
 
 Selected DPLs and their agreements are fetched fresh, with each distinct PDF
 reused within the run. Pricing is checked even if its DPL content is unchanged.
-An agreement 404 remains a warning, but now marks its list partial rather than
-fully current. Prior successful data/rates remain available where possible.
+An agreement 404 is stored in `last_warning`, separately from `last_error`.
+Warning-only lists count as complete DPL refreshes and recheck missing agreements
+on the normal weekly rotation, not the failure queue. This does not mean missing
+pricing is current. Prior successful data/rates remain available where possible.
+Existing partial records are retried and reclassified only after a fresh parse.
 
 The baseline is **not a hard cap**: new lists, retries and deadline catch-up are
 extra. PDF count is selected DPLs plus their distinct referenced agreements, not
@@ -44,7 +49,8 @@ not a guarantee during upstream failures, missed runs or very long runtimes.
   catalog. `current_7_days`, `overdue`, and `never_successful` partition the total.
   `never_checked` and `failed_or_partial` are additional overlapping indicators.
   A recent failed attempt does not count as a successful refresh. Neither does a
-  missing agreement PDF or a list renamed since its last sync.
+  list renamed since its last sync. Warning-only 404s count as successful DPL
+  refreshes, not proof of current agreement pricing.
 - **DPL / Agreement PDFs:** unique successfully parsed PDFs new to the database,
   changed in content, or unchanged, compared with stored SHA-256 hashes.
   These are content checks, not counts of equipment changes or proof every write
@@ -54,7 +60,8 @@ not a guarantee during upstream failures, missed runs or very long runtimes.
   not the number of new PDFs or newly added equipment records.
 - **Errors / warnings:** current pricing may be unavailable on USDA agreement
   404s. Existing stored rates are retained when a download fails; partial lists
-  remain visible but must not be interpreted as fully current.
+  remain visible but must not be interpreted as fully current. Final error and
+  warning summaries repeat every message with its DPL ID for easier diagnosis.
 
 If coverage is incomplete, inspect the failure messages and next day's plan.
 To force an exceptional full catch-up, use `--force --fresh-pdfs` **instead of**
@@ -74,7 +81,7 @@ successful **full catalog discovery**, not a refresh of every PDF that day:
 
 1. Missing lists are marked inactive immediately, hiding them from the shared
    app-facing view. An empty catalog aborts without writes.
-2. After selected work finishes **with no errors or warnings**, inactive lists
+2. After selected work finishes **with no errors**, inactive lists
    unseen for 30 days are deleted, including their equipment rows.
 3. Agreement records/rates are deleted only when no retained equipment rows
    reference them and they have not been checked for 30 days. Unprocessed active
@@ -84,7 +91,8 @@ successful **full catalog discovery**, not a refresh of every PDF that day:
    files and symlinks are left alone. Old active PDFs can be downloaded again.
 
 Cleanup allows weekly batches and manual capped runs but rejects filtered,
-metadata-only, incremental-only and dry runs. Errors or warnings skip all cleanup.
+metadata-only, incremental-only and dry runs. Errors skip database cleanup;
+confirmed agreement 404 warnings do not. Referenced agreements remain protected.
 Inactive geographic-area and dispatch-center metadata is retained. Retention is
 configurable with `--retention-days`; keep database backups before deletion.
 

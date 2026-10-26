@@ -160,7 +160,8 @@ def test_weekly_runner_enables_fresh_downloads_and_allows_cleanup(monkeypatch, t
     assert cleaned == [True]
 
 
-def test_warning_write_preserves_last_success_and_marks_partial():
+@pytest.mark.parametrize("errors,status", [([], "complete"), (["parse failed"], "partial")])
+def test_warning_write_separates_warnings_from_errors(errors, status):
     statements = []
 
     class Cursor:
@@ -174,8 +175,21 @@ def test_warning_write_preserves_last_success_and_marks_partial():
             statements.append((sql, params))
 
     connection = SimpleNamespace(cursor=Cursor, commit=lambda: None)
-    sync.write_list(connection, {"id": 1}, {"rows": []}, "hash", {}, [], ["404"])
+    sync.write_list(connection, {"id": 1}, {"rows": []}, "hash", {}, errors, ["404"])
     update, params = statements[-1]
-    assert params[4] == "partial"
-    assert params[-2] == "partial"
+    assert params[4] == status
+    assert params[5] == ("parse failed" if errors else None)
+    assert params[6] == "404"
+    assert params[-2] == status
     assert "synced_at = case when %s = 'complete'" in update
+    assert "last_warning = %s" in update
+
+
+def test_warning_only_success_counts_as_current_and_rotates_normally():
+    lists, old = catalog(size=7)
+    old[6]["last_warning"] = "agreement PDF unavailable from USDA (404)"
+    assert sync.weekly_coverage(lists, old, NOW)["current_7_days"] == 7
+    _, plan = sync.weekly_plan(lists, old, NOW)
+    assert plan["retries"] == 0
+    selected, _ = sync.weekly_plan(lists, old, NOW + timedelta(days=6))
+    assert 6 in {item["id"] for item in selected}

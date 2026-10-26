@@ -137,7 +137,7 @@ def pdf_change(old_sha: str | None, new_sha: str) -> str:
 
 
 def cleanup_obsolete(connection, cache_dir: Path, retention_days: int) -> dict[str, int]:
-    """Only called after full catalog discovery and error/warning-free selected work.
+    """Only called after full catalog discovery and error-free selected work.
 
     PDF coverage is independent: inactive lists and unreferenced agreements only
     are retired; references from unprocessed lists remain protected.
@@ -269,8 +269,9 @@ def write_list(
     warnings: list[str],
 ) -> None:
     file_id = int(item["id"])
-    status = "partial" if errors or warnings else "complete"
-    messages = errors + warnings
+    # A confirmed upstream 404 is not a failed DPL refresh. Preserve rates,
+    # record warnings separately, and check missing PDFs again on the rotation.
+    status = "partial" if errors else "complete"
     with connection.cursor() as cursor:
         for piid, agreement in agreement_data.items():
             cursor.execute(
@@ -330,7 +331,7 @@ def write_list(
             """
             update public.usfs_priority_lists set
               dispatch_center_name = %s, resource_type = %s, published_at = %s,
-              pdf_sha256 = %s, sync_status = %s, last_error = %s,
+              pdf_sha256 = %s, sync_status = %s, last_error = %s, last_warning = %s,
               row_count = %s, last_checked_at = now(),
               synced_at = case when %s = 'complete' then now() else synced_at end
             where file_id = %s
@@ -341,7 +342,8 @@ def write_list(
                 parse_published_at(parsed.get("published_on")),
                 dpl_sha,
                 status,
-                "\n".join(messages) or None,
+                "\n".join(errors) or None,
+                "\n".join(warnings) or None,
                 len(parsed["rows"]),
                 status,
                 file_id,
@@ -608,8 +610,8 @@ def main() -> int:
             print("Weekly coverage incomplete: overdue/never-successful lists remain; inspect failures and the next plan.", flush=True)
 
     if args.cleanup and connection:
-        if all_errors or all_warnings:
-            print("Cleanup skipped: errors or unavailable agreement PDFs; retained existing data/files.", flush=True)
+        if all_errors:
+            print("Cleanup skipped: errors; retained existing data/files.", flush=True)
         else:
             try:
                 counts = cleanup_obsolete(connection, client.cache_dir, args.retention_days)
