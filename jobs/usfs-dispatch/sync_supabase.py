@@ -554,7 +554,7 @@ def main() -> int:
     total_entries = 0
     completed = 0
     all_errors: list[str] = []
-    warning_count = 0
+    all_warnings: list[str] = []
     dpl_changes: Counter = Counter()
     agreement_changes: Counter = Counter()
     seen_agreements: set[str] = set()
@@ -568,7 +568,7 @@ def main() -> int:
                 if piid not in seen_agreements:
                     agreement_changes[pdf_change(agreement_hashes.get(piid), agreement["sha256"])] += 1
                     seen_agreements.add(piid)
-            warning_count += len(warnings)
+            all_warnings.extend(f"DPL {file_id} {warning}" for warning in warnings)
             all_errors.extend(f"DPL {file_id} {error}" for error in errors)
             for warning in warnings:
                 print(f"  WARNING: {warning}", flush=True)
@@ -608,7 +608,7 @@ def main() -> int:
             print("Weekly coverage incomplete: overdue/never-successful lists remain; inspect failures and the next plan.", flush=True)
 
     if args.cleanup and connection:
-        if all_errors or warning_count:
+        if all_errors or all_warnings:
             print("Cleanup skipped: errors or unavailable agreement PDFs; retained existing data/files.", flush=True)
         else:
             try:
@@ -629,9 +629,14 @@ def main() -> int:
         print(f"{label} PDFs: {changes['new']} new, {changes['changed']} changed, "
               f"{changes['unchanged']} unchanged (compared with stored hashes)")
     print(f"PDF reads: {client.pdf_downloads} downloads, {client.pdf_cache_hits} cache reuses")
+    for label, messages in (("Error", all_errors), ("Warning", all_warnings)):
+        if messages:
+            print(f"{label} summary ({len(messages)}):", flush=True)
+            for message in messages:
+                print(f"  {label.upper()}: {message}", flush=True)
     row_action = "parsed" if args.dry_run else "written"
     print(f"Done: {completed} lists, {total_entries} equipment rows {row_action}, "
-          f"{len(all_errors)} errors, {warning_count} warnings")
+          f"{len(all_errors)} errors, {len(all_warnings)} warnings")
     return 0 if not all_errors else 1
 
 
