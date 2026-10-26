@@ -53,3 +53,6 @@ Thumbs.db
 
 #other
 supabase/.temp*
+
+# Local mobile build artifacts and release notes from deploy.sh
+/builds/
