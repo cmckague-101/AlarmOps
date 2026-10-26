@@ -86,15 +86,21 @@ successful **full catalog discovery**, not a refresh of every PDF that day:
 3. Agreement records/rates are deleted only when no retained equipment rows
    reference them and they have not been checked for 30 days. Unprocessed active
    lists and retained inactive lists still protect their referenced agreements.
-4. Only managed `dpl-*` / `agreement-*` PDF files and SHA-256 sidecars older than
-   30 days in `jobs/usfs-dispatch/data/cache/` are removed. Recent files, unrelated
-   files and symlinks are left alone. Old active PDFs can be downloaded again.
+4. In weekly mode, managed `dpl-*` / `agreement-*` PDFs and SHA-256 sidecars in
+   `jobs/usfs-dispatch/data/cache/` are disposable: prior-run files are removed
+   after acquiring the sync lock, and current-run files are removed at the end,
+   even when sync errors skip database cleanup. Same-run PDF reuse is preserved.
+   Interrupted-run leftovers are removed on the next weekly run. This also
+   reclaims the old accumulated cache on the first updated run.
+   Non-weekly cleanup retains the configured 30-day cache grace period. Unrelated
+   files and symlinks are always left alone; PDFs can be downloaded again.
 
 Cleanup allows weekly batches and manual capped runs but rejects filtered,
 metadata-only, incremental-only and dry runs. Errors skip database cleanup;
 confirmed agreement 404 warnings do not. Referenced agreements remain protected.
 Inactive geographic-area and dispatch-center metadata is retained. Retention is
-configurable with `--retention-days`; keep database backups before deletion.
+configurable with `--retention-days` (database data and non-weekly cache only);
+keep database backups before deletion. Weekly cache disposal needs no extra flag.
 
 ## Targeted tests
 

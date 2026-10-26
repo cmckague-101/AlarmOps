@@ -126,7 +126,8 @@ def test_weekly_rejects_ambiguous_or_incomplete_modes(monkeypatch, flag):
         sync.main()
 
 
-def test_weekly_runner_enables_fresh_downloads_and_allows_cleanup(monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize("errors", [[], ["parse failed"]])
+def test_weekly_runner_fresh_downloads_disposable_cache_and_safe_cleanup(monkeypatch, tmp_path, capsys, errors):
     lists, old = catalog(size=7)
     for row in old.values():
         row.update(synced_at=datetime.now(timezone.utc) - timedelta(days=1),
@@ -147,17 +148,29 @@ def test_weekly_runner_enables_fresh_downloads_and_allows_cleanup(monkeypatch, t
     monkeypatch.setattr(sync, "create_run", lambda *a: 1)
     for name in ("acquire_sync_lock", "upsert_catalog", "finish_run"):
         monkeypatch.setattr(sync, name, lambda *a, **kw: None)
-    monkeypatch.setattr(sync, "process_list", lambda *a: ({"rows": []}, "hash", {}, [], []))
+    (tmp_path / "agreement-prior.pdf").write_bytes(b"old cache")
+    (tmp_path / "notes.pdf").write_bytes(b"keep")
+
+    def process(*args):
+        assert not (tmp_path / "agreement-prior.pdf").exists()
+        (tmp_path / "dpl-1.pdf").write_bytes(b"current run")
+        (tmp_path / "dpl-1.sha256").write_text("hash")
+        return {"rows": []}, "hash", {}, errors, []
+
+    monkeypatch.setattr(sync, "process_list", process)
     monkeypatch.setattr(sync, "write_list", lambda c, item, *a: succeed(old, [item], datetime.now(timezone.utc)))
     cleaned = []
     monkeypatch.setattr(sync, "cleanup_obsolete", lambda *a: cleaned.append(True) or {})
-    assert sync.main() == 0
+    assert sync.main() == (1 if errors else 0)
+    assert {p.name for p in tmp_path.iterdir()} == {"notes.pdf"}
     output = capsys.readouterr().out
+    assert "Weekly cache: removed 1 prior-run files" in output
+    assert "Weekly cache: removed 2 run files" in output
     assert constructed == [{"fresh_pdfs": True}]
     assert "Weekly plan:" in output
     assert "Weekly coverage after:" in output
     assert "Selected: 1; deferred by weekly rotation: 6" in output
-    assert cleaned == [True]
+    assert cleaned == ([] if errors else [True])
 
 
 @pytest.mark.parametrize("errors,status", [([], "complete"), (["parse failed"], "partial")])

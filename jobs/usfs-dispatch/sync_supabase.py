@@ -48,7 +48,7 @@ def arguments() -> argparse.Namespace:
         default=7,
         help="Reprocess complete lists after this many days to detect replaced PDFs and award changes",
     )
-    parser.add_argument("--weekly", action="store_true", help="Spread fresh full-catalog checks across seven daily runs")
+    parser.add_argument("--weekly", action="store_true", help="Spread fresh full-catalog checks across seven daily runs; keep PDFs only during the run")
     parser.add_argument("--fresh-pdfs", action="store_true", help="Bypass disk cache once per PDF per run")
     parser.add_argument("--cleanup", action="store_true", help="After a successful full catalog discovery and selected sync, prune obsolete data and old cached PDFs")
     parser.add_argument("--retention-days", type=int, default=30, help="Cleanup grace period (default: 30 days)")
@@ -514,6 +514,11 @@ def main() -> int:
     run_id = None
     if connection:
         acquire_sync_lock(connection)
+        if args.weekly:
+            # Fresh mode cannot reuse prior-run PDFs. Also recover disk space
+            # left by older versions or an interrupted run, under the sync lock.
+            removed = prune_cache(client.cache_dir, 0)
+            print(f"Weekly cache: removed {removed} prior-run files", flush=True)
         previous = existing_lists(connection)
         agreement_hashes = existing_agreements(connection)
         upsert_catalog(connection, areas, centers, lists, deactivate_missing=full_catalog)
@@ -620,6 +625,15 @@ def main() -> int:
                 connection.rollback()
                 all_errors.append(f"Cleanup: {exc}")
                 print(f"  ERROR: cleanup: {exc}", file=sys.stderr, flush=True)
+
+    if args.weekly and connection:
+        # Cache is disposable, unlike stored rates. Do not let upstream errors
+        # prevent reclamation; same-run reuse has already finished.
+        try:
+            removed = prune_cache(client.cache_dir, 0)
+            print(f"Weekly cache: removed {removed} run files", flush=True)
+        except Exception as exc:
+            all_errors.append(f"Weekly cache cleanup: {exc}")
 
     if connection and run_id is not None:
         status = "completed" if not all_errors else "completed_with_errors"
