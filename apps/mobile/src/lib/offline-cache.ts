@@ -20,7 +20,8 @@ type CachedAccess = {
 function database() {
   if (Platform.OS === 'web') return null;
   databasePromise ??= SQLite.openDatabaseAsync(databaseName).then(async (db) => {
-    await db.execAsync(`
+    try {
+      await db.execAsync(`
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS response_cache (
         cache_key TEXT PRIMARY KEY NOT NULL,
@@ -36,8 +37,16 @@ function database() {
         value TEXT NOT NULL,
         verified_at TEXT NOT NULL
       );
-    `);
-    return db;
+      `);
+      return db;
+    } catch (error) {
+      await db.closeAsync().catch(() => undefined);
+      throw error;
+    }
+  }).catch((error) => {
+    // A failed cache open must not poison every later read in this process.
+    databasePromise = null;
+    throw error;
   });
   return databasePromise;
 }
@@ -61,8 +70,9 @@ export function setOfflineCacheUser(userId: string | null) {
 
 export async function storeReadResponse(requestKey: string, response: Response) {
   const userId = activeUserId;
+  if (!userId || !response.ok) return;
   const db = database();
-  if (!userId || !db || !response.ok) return;
+  if (!db) return;
   const copy = response.clone();
   const [databaseHandle, body] = await Promise.all([db, copy.text()]);
   const headers = JSON.stringify(Object.fromEntries(copy.headers.entries()));
@@ -76,36 +86,48 @@ export async function storeReadResponse(requestKey: string, response: Response) 
 
 export async function loadReadResponse(requestKey: string) {
   const userId = activeUserId;
-  const db = database();
-  if (!userId || !db) return null;
-  const row = await (await db).getFirstAsync<CachedResponse>(
-    'SELECT request_url, status, headers, body FROM response_cache WHERE cache_key = ? AND user_id = ?',
-    cacheKey(userId, requestKey), userId,
-  );
-  if (!row || row.request_url !== requestKey) return null;
-  const body = [204, 205, 304].includes(row.status) ? null : row.body;
-  return new Response(body, { status: row.status, headers: JSON.parse(row.headers) as Record<string, string> });
+  if (!userId) return null;
+  try {
+    const db = database();
+    if (!db) return null;
+    const row = await (await db).getFirstAsync<CachedResponse>(
+      'SELECT request_url, status, headers, body FROM response_cache WHERE cache_key = ? AND user_id = ?',
+      cacheKey(userId, requestKey), userId,
+    );
+    if (!row || row.request_url !== requestKey) return null;
+    const body = [204, 205, 304].includes(row.status) ? null : row.body;
+    return new Response(body, { status: row.status, headers: JSON.parse(row.headers) as Record<string, string> });
+  } catch (error) {
+    console.warn('Offline response cache unavailable', error);
+    return null;
+  }
 }
 
 export async function storeAccountAccess(userId: string, value: unknown) {
-  const db = database();
-  if (!db) return;
-  await (await db).runAsync(
-    'INSERT OR REPLACE INTO account_access_cache (user_id, value, verified_at) VALUES (?, ?, ?)',
-    userId, JSON.stringify(value), new Date().toISOString(),
-  );
+  try {
+    const db = database();
+    if (!db) return;
+    await (await db).runAsync(
+      'INSERT OR REPLACE INTO account_access_cache (user_id, value, verified_at) VALUES (?, ?, ?)',
+      userId, JSON.stringify(value), new Date().toISOString(),
+    );
+  } catch (error) {
+    // This is a read cache, not the durable outbox. Online access must still work.
+    console.warn('Account access cache write failed', error);
+  }
 }
 
 export async function loadAccountAccess<T>(userId: string): Promise<{ value: T; verifiedAt: string } | null> {
-  const db = database();
-  if (!db) return null;
-  const row = await (await db).getFirstAsync<CachedAccess>(
-    'SELECT value, verified_at FROM account_access_cache WHERE user_id = ?', userId,
-  );
-  if (!row) return null;
   try {
+    const db = database();
+    if (!db) return null;
+    const row = await (await db).getFirstAsync<CachedAccess>(
+      'SELECT value, verified_at FROM account_access_cache WHERE user_id = ?', userId,
+    );
+    if (!row) return null;
     return { value: JSON.parse(row.value) as T, verifiedAt: row.verified_at };
-  } catch {
+  } catch (error) {
+    console.warn('Account access cache unavailable', error);
     return null;
   }
 }

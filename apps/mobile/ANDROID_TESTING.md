@@ -138,6 +138,38 @@ Free credits and device availability are limited.
 
 Other limited-free/trial services include BrowserStack App Live and Appetize.io.
 
+## Crash immediately after opening
+
+First record the installed app version/build, device model, Android version, and
+whether the crash happens before sign-in, on the dashboard, or only after tapping
+a notification. In Google Play Console, check **Android vitals → Crashes & ANRs**
+and filter by the affected version code; copy the exception and stack trace.
+
+With an affected device connected over USB and Android platform tools installed:
+
+```bash
+adb shell dumpsys package com.tinykings.fireops | grep -E 'versionCode=|versionName='
+# Open the app manually and reproduce, then capture the crash buffer:
+adb logcat -b crash -d -v threadtime > fireops-android-crash.txt
+```
+
+If the crash buffer is empty, capture JavaScript/native error output while
+reproducing (Ctrl-C stops capture):
+
+```bash
+adb logcat -v threadtime 'AndroidRuntime:E' 'ReactNativeJS:E' 'libc:F' '*:S'
+```
+
+Review logs for personal data/tokens before sharing. A successful TypeScript check
+or Android JS export does not verify native APK startup. Test the newly built
+APK on the affected Android version before promoting it. Current release identity
+is `com.tinykings.fireops`, configured in `apps/mobile/app.json`; the repository-root
+Android project has a different identity and is not the mobile release project.
+
+Do not clear app data or uninstall as an initial troubleshooting step: unsent
+changes and attachment drafts may exist only on that device. Startup cache
+fallbacks do not delete or reset the durable sync database.
+
 ## Pre-test checks
 
 - APK contains `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.

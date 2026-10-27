@@ -120,7 +120,9 @@ function openNotification(response: Notifications.NotificationResponse) {
   // destination updates even when it was already mounted with cached data.
   if (path.startsWith('/communication/')) void refreshCommunications();
 
-  void Linking.openURL(Linking.createURL(path));
+  void Linking.openURL(Linking.createURL(path)).catch((error) => {
+    console.warn('Notification link could not be opened:', error);
+  });
 }
 
 function startNotifications() {
@@ -145,7 +147,11 @@ function startNotifications() {
   void Notifications.getLastNotificationResponseAsync().then((response) => {
     if (!response) return;
     openNotification(response);
-    void Notifications.clearLastNotificationResponseAsync();
+    void Notifications.clearLastNotificationResponseAsync().catch((error) => {
+      console.warn('Notification response cleanup failed:', error);
+    });
+  }).catch((error) => {
+    console.warn('Notification response restoration failed:', error);
   });
 
   void client.auth.getSession().then(({ data }) => {
@@ -153,6 +159,8 @@ function startNotifications() {
     void registerForPushNotifications(data.session.user.id).catch((error) => {
       console.warn('Push notification registration failed:', error);
     });
+  }).catch((error) => {
+    console.warn('Notification session restoration failed:', error);
   });
 
   client.auth.onAuthStateChange((event, session) => {

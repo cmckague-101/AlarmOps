@@ -115,7 +115,11 @@ export function SessionProvider({children}:PropsWithChildren){
       const value:CompanyAccess={kind:'member',user:{id:sessionUserId,name:userName,role:membership.role},company:{id:companyResult.data.id,name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logoPath:companyResult.data.logo_path,crewInviteLimit:companyResult.data.crew_invite_limit}};
       setAccess({status:'ready',value,error:''});
       void storeAccountAccess(sessionUserId,value);
-    })();
+    })().catch(error=>{
+      if(!active)return;
+      console.error('Account access initialization failed',error);
+      setAccess({status:'error',value:null,error:'Account access could not be loaded. Try again. Saved device work has not been discarded.'});
+    });
     return()=>{active=false};
   },[sessionUserId,sessionUserEmail,attempt]);
 
