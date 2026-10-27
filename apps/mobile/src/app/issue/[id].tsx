@@ -303,7 +303,6 @@ export default function IssueDetailScreen() {
                   </View>
                 ) : <Text style={styles.noUpdates}>No updates yet.</Text>}
               </View> : null}
-              {(user?.role==='owner'||user?.role==='admin')&&!editingDetails&&Platform.OS!=='web'&&!demoMode?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'issue',entityId:issue.id}} as never)} style={({pressed})=>[styles.historyLink,pressed&&styles.pressed]}><Text style={styles.historyLinkLabel}>Device edit history</Text></Pressable>:null}
             </>
           ) : null}
         </ScrollView>
@@ -318,8 +317,6 @@ function createStyles(theme: FireOpsTheme) {
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 48, gap: 28 },
     stateText: { color: theme.secondary, fontSize: 16, paddingVertical: 32 },
-    historyLink: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
-    historyLinkLabel: { color: theme.commandForeground, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
     vehicleContext: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.surfaceAlt, borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11 },
     vehicleCopy: { flex: 1, gap: 3 },
     vehicleName: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },

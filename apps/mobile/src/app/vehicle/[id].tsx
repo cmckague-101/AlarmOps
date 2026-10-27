@@ -1061,8 +1061,6 @@ export default function VehicleDetailScreen() {
               </Text>
             ) : null}
 
-            {canManage&&Platform.OS!=='web'&&!demoMode?<Pressable accessibilityRole="button" onPress={()=>router.push({pathname:'/sync-conflict',params:{entityType:'vehicle',entityId:vehicle.id}} as never)} style={({pressed})=>[styles.historyLink,pressed&&styles.buttonPressed]}><Text style={styles.historyLinkLabel}>Device edit history</Text></Pressable>:null}
-
             {canManage ? (
               <View style={styles.dangerSection}>
                 <Text style={styles.dangerTitle}>Delete vehicle</Text>
@@ -1546,8 +1544,6 @@ function createStyles(theme: FireOpsTheme) {
     locationCaptionLabel: { flex: 1, color: theme.ink, fontSize: 11, fontWeight: "700" },
     locationAttribution: { color: theme.secondary, fontSize: 9, textDecorationLine: "underline" },
     section: { gap: 13 },
-    historyLink: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 12 },
-    historyLinkLabel: { color: theme.commandForeground, fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
     sectionHeading: {
       minHeight: 40,
       flexDirection: "row",
