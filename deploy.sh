@@ -277,6 +277,9 @@ if ((DO_ANDROID)); then
       done
       [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not found; set ANDROID_HOME."
     fi
+    # EAS defaults to /tmp, which is RAM-backed tmpfs on many Linux systems; the
+    # multi-GB native build there competes with Gradle for memory and triggers OOM.
+    export EAS_LOCAL_BUILD_WORKINGDIR="${EAS_LOCAL_BUILD_WORKINGDIR:-$BUILD_DIR/eas-local}"
     info "Building Android $VERSION locally (this takes a while)"
     eas build --platform android --profile production --local --output "$AAB"
     if ask_yn "Submit $(basename "$AAB") to Google Play with eas submit? (No = upload manually in Play Console)" n; then
