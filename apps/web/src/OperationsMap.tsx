@@ -67,16 +67,9 @@ export default function OperationsMap(props: Props) {
     // Operational overlays must not wait for every remote basemap tile to load.
     map.once('style.load', () => {
       if (disposed) return;
-      map.addSource('fires', {type: 'geojson', data: incidentMapData(latest.current.incidents), cluster: true, clusterMaxZoom: 8, clusterRadius: 45});
+      map.addSource('fires', {type: 'geojson', data: incidentMapData(latest.current.incidents)});
       map.addSource('fleet', {type: 'geojson', data: vehicleMapData(latest.current.vehicles)});
-      map.addLayer({id: 'fire-clusters', type: 'circle', source: 'fires', filter: ['has', 'point_count'], paint: {
-        'circle-color': '#b94b16', 'circle-radius': ['step', ['get', 'point_count'], 18, 25, 23, 100, 28],
-        'circle-stroke-width': 2, 'circle-stroke-color': '#fff',
-      }});
-      map.addLayer({id: 'fire-cluster-count', type: 'symbol', source: 'fires', filter: ['has', 'point_count'], layout: {
-        'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 12,
-      }, paint: {'text-color': '#fff'}});
-      map.addLayer({id: 'fire-points', type: 'circle', source: 'fires', filter: ['!', ['has', 'point_count']], paint: {
+      map.addLayer({id: 'fire-points', type: 'circle', source: 'fires', paint: {
         'circle-color': '#e86722',
         'circle-radius': ['interpolate', ['linear'], ['get', 'acres'], 0, 6, 10000, 10, 100000, 14],
         'circle-stroke-width': 2, 'circle-stroke-color': '#fff',
@@ -91,14 +84,6 @@ export default function OperationsMap(props: Props) {
         'text-field': ['get', 'unit'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.5], 'text-anchor': 'top',
       }, paint: {'text-color': '#163d2b', 'text-halo-color': '#fff', 'text-halo-width': 2}});
 
-      map.on('click', 'fire-clusters', async event => {
-        const feature = event.features?.[0];
-        if (!feature || feature.geometry.type !== 'Point') return;
-        try {
-          const zoom = await (map.getSource('fires') as GeoJSONSource).getClusterExpansionZoom(Number(feature.properties.cluster_id));
-          if (!disposed) map.easeTo({center: feature.geometry.coordinates as [number, number], zoom});
-        } catch { /* Source can change while a cluster is expanding. */ }
-      });
       map.on('click', 'fire-points', event => {
         const incident = latest.current.incidents.find(item => item.id === event.features?.[0]?.properties.id);
         if (incident) latest.current.onSelect(incident);
@@ -115,7 +100,7 @@ export default function OperationsMap(props: Props) {
         const vehicle = feature.source === 'fleet' ? latest.current.vehicles.find(item => item.id === feature.properties.id) : undefined;
         if (incident || vehicle) setTip({x: event.point.x, y: event.point.y, name: incident?.name ?? vehicle!.unit, incident});
       };
-      for (const layer of ['fire-points', 'fleet-points', 'fire-clusters']) {
+      for (const layer of ['fire-points', 'fleet-points']) {
         map.on('mousemove', layer, hover);
         map.on('mouseleave', layer, () => {map.getCanvas().style.cursor = ''; setTip(null)});
       }
