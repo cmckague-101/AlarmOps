@@ -269,6 +269,14 @@ if ((DO_ANDROID)); then
   else
     AAB="$BUILD_DIR/fireops-$VERSION.aab"
     mkdir -p "$BUILD_DIR"
+    # EAS local builds run in a fresh temp dir without local.properties, so Gradle
+    # needs ANDROID_HOME to find the SDK.
+    if [[ -z "${ANDROID_HOME:-}" ]]; then
+      for sdk in "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" "$HOME/Library/Android/sdk"; do
+        [[ -n "$sdk" && -d "$sdk" ]] && { export ANDROID_HOME="$sdk"; break; }
+      done
+      [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not found; set ANDROID_HOME."
+    fi
     info "Building Android $VERSION locally (this takes a while)"
     eas build --platform android --profile production --local --output "$AAB"
     if ask_yn "Submit $(basename "$AAB") to Google Play with eas submit? (No = upload manually in Play Console)" n; then
