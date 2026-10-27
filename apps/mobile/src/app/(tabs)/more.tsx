@@ -46,7 +46,7 @@ export default function More(){
   const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;
 
-  return <SectionScreen title="More" showTitle={false}>
+  return <SectionScreen title="More" showTitle={false} showHeader={false}>
     <View style={styles.grid}>{visible.map(section=>{
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       return <Pressable

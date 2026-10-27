@@ -2,16 +2,16 @@ import {ScrollView,StyleSheet,Text,View} from 'react-native';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
-type Props={title:string;description?:string;showTitle?:boolean;children?:React.ReactNode};
-export function SectionScreen({title,description,showTitle=true,children}:Props){
+type Props={title:string;description?:string;showTitle?:boolean;showHeader?:boolean;children?:React.ReactNode};
+export function SectionScreen({title,description,showTitle=true,showHeader=true,children}:Props){
   const theme=useFireOpsTheme();
   const {access}=useSession();
   const company=access.value?.kind==='member'?access.value.company:null;
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
-    <Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>
+    {showHeader?<Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>:null}
     {showTitle?<Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>:null}
     {description?<Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>:null}
-    <View style={[styles.rule,{backgroundColor:theme.divider}]}/>
+    {showHeader?<View style={[styles.rule,{backgroundColor:theme.divider}]}/>:null}
     {children??<Text style={[styles.pending,{color:theme.secondary}]}>Backend data connection comes in next feature pass.</Text>}
   </ScrollView>;
 }
