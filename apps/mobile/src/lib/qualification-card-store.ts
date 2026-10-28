@@ -1,6 +1,7 @@
 import type {QualificationCardRequest,SavedSignature} from '@fireops/domain';
 import {useEffect,useState} from 'react';
 import {supabase} from '@/lib/supabase';
+import {onAppResume,refreshOnRejoin} from './app-resume';
 type Row={id:string;company_id:string;crew_user_id:string;crew_name:string;card_data:{companyPhone?:string;homeBase?:string;primaryQualificationId:string;cardPosition?:string};photo_path:string;owner_signature:SavedSignature|null;owner_name:string|null;status:QualificationCardRequest['status'];submitted_at:string;approved_at:string|null};
 const columns='id,company_id,crew_user_id,crew_name,card_data,photo_path,owner_signature,owner_name,status,submitted_at,approved_at';
 const fromRow=(row:Row):QualificationCardRequest=>({id:row.id,companyId:row.company_id,crewUserId:row.crew_user_id,crewName:row.crew_name,status:row.status,companyPhone:row.card_data.companyPhone??'',homeBase:row.card_data.homeBase??'',primaryQualificationId:row.card_data.primaryQualificationId,...(row.card_data.cardPosition?{cardPosition:row.card_data.cardPosition}:{}),photoPath:row.photo_path,...(row.owner_signature?{ownerSignature:row.owner_signature}:{}),...(row.owner_name?{ownerName:row.owner_name}:{}),submittedAt:row.submitted_at,...(row.approved_at?{approvedAt:row.approved_at}:{})});
@@ -15,8 +16,9 @@ export function usePendingQualificationCardCount(companyId:string|null){
     const client=supabase;
     const load=async()=>{const {count:pending,error}=await client.from('qualification_card_requests').select('id',{count:'exact',head:true}).eq('company_id',companyId).eq('status','pending');if(active&&!error)setCount(pending??0)};
     void load();
-    const channel=client.channel(`mobile-pending-qualification-cards:${companyId}:${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table:'qualification_card_requests',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();
-    return()=>{active=false;void client.removeChannel(channel)};
+    const channel=client.channel(`mobile-pending-qualification-cards:${companyId}:${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table:'qualification_card_requests',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe(refreshOnRejoin(load));
+    const resumed=onAppResume(load);
+    return()=>{active=false;resumed();void client.removeChannel(channel)};
   },[companyId]);
   return count;
 }

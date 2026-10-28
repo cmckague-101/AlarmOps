@@ -7,6 +7,7 @@ import { createFleetId } from '@/lib/fleet-store';
 import { supabase } from '@/lib/supabase';
 import { isOffline } from '@/providers/network-provider';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 const bucket = 'receipt-files';
 const maxFileSize = 10 * 1024 * 1024;
@@ -191,7 +192,7 @@ function selectCompany(companyId: string | null) {
   if (!companyId || !supabase) return;
   channel = supabase.channel(`mobile-receipts:${companyId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'company_receipts', filter: `company_id=eq.${companyId}` }, () => void refreshReceipts())
-    .subscribe();
+    .subscribe(refreshOnRejoin(refreshReceipts));
   void refreshReceipts();
 }
 
@@ -204,3 +205,5 @@ export function useReceipts(companyId: string | null) {
   useEffect(() => selectCompany(companyId), [companyId]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
+
+onAppResume(() => { if (activeCompanyId) void refreshReceipts(); });

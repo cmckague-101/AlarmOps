@@ -23,6 +23,7 @@ import { useSession } from "@/providers/session-provider";
 import { fleetDetailKey,getOfflineFleet,guardOfflineFleetWrite,projectOfflineFleet,refreshOfflineFleet,subscribeOfflineFleet,type FleetModelRecord } from './offline-fleet-model';
 import type {DetailTarget} from './offline-detail-editor';
 import type {SyncRecord} from '@fireops/domain';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 export type FleetVehicleFile = {
   name: string;
@@ -1076,7 +1077,7 @@ function selectCompany(companyId: string | null,userId:string|null,role:string|n
         ) ?? null;
     },
   );
-  channel?.subscribe();
+  channel?.subscribe(refreshOnRejoin(() => refreshFleet({ showIndicator: false })));
   void refreshFleet({ showIndicator: false });
 }
 
@@ -1096,3 +1097,5 @@ export function useFleetVehicles(companyId: string | null) {
   };
   return useSyncExternalStore(subscribe,getSnapshot,getSnapshot);
 }
+
+onAppResume(() => { if (activeCompanyId) void refreshFleet({ showIndicator: false }); });

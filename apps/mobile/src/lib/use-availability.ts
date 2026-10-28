@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState,useSyncExternalStore} from 'react';
 import {createAvailabilityController,createAvailabilityTransport,emptyAvailabilityState,onlineAvailabilityError,validAvailabilityScope,type AvailabilityController} from '@fireops/domain';
 import {supabase} from '@/lib/supabase';
+import {onAppResume,refreshOnRejoin} from './app-resume';
 import {createFleetId} from './fleet-store';
 import {latestUserSetting,pendingAvailability,scopedUserEntries} from './offline-user-sync';
 import {receiptsAfter} from './offline-user-snapshot';
@@ -59,8 +60,9 @@ export function useAvailability(companyId?:string|null,selfId?:string|null){
       else{void cached.catch(()=>{});if(await controller!.load(valid)&&valid()&&number===gate.read)patch({ack:ack?.id})}
     }
     void load();
-    const channel=supabase.channel(`availability:${key}:${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table:'crew_availability',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe();
-    return()=>{active=false;void supabase!.removeChannel(channel)};
+    const channel=supabase.channel(`availability:${key}:${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table:'crew_availability',filter:`company_id=eq.${companyId}`},()=>void load()).subscribe(refreshOnRejoin(load));
+    const resumed=onAppResume(load);
+    return()=>{active=false;resumed();void supabase!.removeChannel(channel)};
   },[token,controller,offline,ack?.id,state.writeVersion]);
   async function save(userId:string,available:boolean){
     if(!current()||gate.locked||!companyId||state.pending||busy)return false;

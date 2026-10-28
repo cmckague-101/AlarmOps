@@ -5,6 +5,7 @@ import type { Training, TrainingSignup } from '@fireops/domain';
 import { supabase } from '@/lib/supabase';
 import { isOffline } from '@/providers/network-provider';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 export type TrainingValues = Omit<Training, 'id' | 'createdAt' | 'updatedAt' | 'viewedAt' | 'signups'>;
 
@@ -239,7 +240,7 @@ function selectAccount(companyId: string | null, userId: string | null) {
   ['company_trainings', 'company_training_signups', 'company_training_reads'].forEach((table) => {
     channel = channel?.on('postgres_changes', { event: '*', schema: 'public', table, filter: `company_id=eq.${companyId}` }, () => void refreshTrainings()) ?? null;
   });
-  channel?.subscribe();
+  channel?.subscribe(refreshOnRejoin(refreshTrainings));
   void refreshTrainings();
 }
 
@@ -252,3 +253,5 @@ export function useTrainings(companyId: string | null, userId: string | null) {
   useEffect(() => selectAccount(companyId, userId), [companyId, userId]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
+
+onAppResume(() => { if (activeCompanyId && activeUserId) void refreshTrainings(); });

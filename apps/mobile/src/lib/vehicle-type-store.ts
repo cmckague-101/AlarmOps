@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 export type VehicleType = {
   id: string;
@@ -65,7 +66,7 @@ function selectCompany(companyId: string | null) {
       },
       () => void loadVehicleTypes(companyId, version),
     );
-  channel.subscribe();
+  channel.subscribe(refreshOnRejoin(() => loadVehicleTypes(companyId, version)));
   void loadVehicleTypes(companyId, version);
 }
 
@@ -110,3 +111,5 @@ export function useVehicleTypes(companyId: string | null) {
   useEffect(() => selectCompany(companyId), [companyId]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
+
+onAppResume(() => { if (activeCompanyId) void loadVehicleTypes(activeCompanyId, companyVersion); });

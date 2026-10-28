@@ -30,6 +30,7 @@ function setup(local?:OfflineFleetModel){
   const require=(name:string)=>{
     if(name==='react')return {useEffect:(effect:()=>void)=>effect(),useSyncExternalStore:(_subscribe:unknown,getSnapshot:()=>unknown)=>getSnapshot()};
     if(name==='@/lib/supabase')return {supabase:client,isDemoActive:()=>false};
+    if(name==='./app-resume')return {onAppResume:()=>()=>{},refreshOnRejoin:()=>()=>{}};
     if(name==='@/providers/session-provider')return {useSession:()=>({session:{user:{id:identity.userId}},access:{status:'ready',value:{kind:'member',company:{id:scope.companyId},user:{id:identity.userId,role:identity.role}}}})};
     if(name==='./offline-fleet-model')return {...bridge,subscribeOfflineFleet:(listener:()=>void)=>{const dispose=bridge.subscribeOfflineFleet(listener);cleanups.push(dispose);return dispose}};
     throw new Error(`Unexpected runtime dependency: ${name}`);

@@ -1,5 +1,8 @@
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { AppState } from 'react-native';
+
+import { noteAppState, notifyAppResume } from '@/lib/app-resume';
 
 import { loadReadResponse, storeReadResponse } from '@/lib/offline-cache';
 
@@ -12,7 +15,10 @@ function stateIsOffline(state: NetInfoState) {
 }
 
 function updateState(state: NetInfoState) {
+  const wasOffline = offline;
   offline = stateIsOffline(state);
+  // Reconnected: reload what realtime missed while offline.
+  if (wasOffline && !offline) notifyAppResume();
   return offline;
 }
 
@@ -58,6 +64,13 @@ export async function offlineAwareFetch(input: RequestInfo | URL, init?: Request
 export function NetworkProvider({ children }: PropsWithChildren) {
   const [isOfflineState, setIsOfflineState] = useState(offline);
   useEffect(() => NetInfo.addEventListener((state) => setIsOfflineState(updateState(state))), []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      // Offline resumes wait for the reconnect notification instead.
+      if (noteAppState(state) && !offline) notifyAppResume();
+    });
+    return () => subscription.remove();
+  }, []);
   const value = useMemo(() => ({ isOffline: isOfflineState }), [isOfflineState]);
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
 }

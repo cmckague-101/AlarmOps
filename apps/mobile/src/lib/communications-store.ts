@@ -7,6 +7,7 @@ import { offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox } fr
 import { laterTimestamp, type DeviceReply } from './offline-user-sync';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 import { isOffline } from '@/providers/network-provider';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 type CommunicationThreadRow = {
   id: string;
@@ -349,7 +350,7 @@ function selectAccount(companyId: string | null, userId: string | null) {
       () => void refreshCommunications(),
     ) ?? null;
   });
-  channel?.subscribe();
+  channel?.subscribe(refreshOnRejoin(refreshCommunications));
   void refreshCommunications();
 }
 
@@ -362,3 +363,5 @@ export function useCommunications(companyId: string | null, userId: string | nul
   useEffect(() => selectAccount(companyId, userId), [companyId, userId]);
   return useSyncExternalStore(subscribe, currentView, currentView);
 }
+
+onAppResume(() => { if (activeCompanyId && activeUserId) void refreshCommunications(); });

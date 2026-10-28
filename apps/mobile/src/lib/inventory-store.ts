@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { supabase } from '@/lib/supabase';
 import { isOffline } from '@/providers/network-provider';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 type InventoryRow = { id: string; name: string; quantity: number; created_at: string; updated_at: string };
 type CheckoutRow = { item_id: string; user_id: string; user_name: string; quantity: number; checked_out_at: string; updated_at: string };
@@ -156,7 +157,7 @@ function selectCompany(companyId: string | null) {
     .channel(`mobile-inventory:${companyId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'company_inventory_items', filter: `company_id=eq.${companyId}` }, () => void refreshInventory())
     .on('postgres_changes', { event: '*', schema: 'public', table: 'company_inventory_checkouts', filter: `company_id=eq.${companyId}` }, () => void refreshInventory());
-  channel.subscribe();
+  channel.subscribe(refreshOnRejoin(refreshInventory));
   void refreshInventory();
 }
 
@@ -169,3 +170,5 @@ export function useInventory(companyId: string | null) {
   useEffect(() => selectCompany(companyId), [companyId]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
+
+onAppResume(() => { if (activeCompanyId) void refreshInventory(); });

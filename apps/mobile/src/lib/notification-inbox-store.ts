@@ -7,6 +7,7 @@ import {supabase} from '@/lib/supabase';
 import {offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox} from './offline-chat-inbox';
 import {downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo} from './offline-company-lists';
 import {isOffline} from '@/providers/network-provider';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 export type NotificationEventType =
   | 'communication_reply'
@@ -372,7 +373,7 @@ function selectAccount(companyId: string | null, userId: string | null, role: Us
       event: '*', schema: 'public', table, filter: `user_id=eq.${userId}`,
     }, () => void refreshNotificationInbox()) ?? null;
   });
-  channel?.subscribe();
+  channel?.subscribe(refreshOnRejoin(refreshNotificationInbox));
   void refreshNotificationInbox();
 }
 
@@ -385,3 +386,5 @@ export function useNotificationInbox(companyId: string | null, userId: string | 
   useEffect(() => selectAccount(companyId, userId, role), [companyId, userId, role]);
   return useSyncExternalStore(subscribe, currentView, currentView);
 }
+
+onAppResume(() => { if (activeCompanyId && activeUserId) void refreshNotificationInbox(); });

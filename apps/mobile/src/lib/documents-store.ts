@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import type { FleetVehicleFile } from '@/lib/fleet-store';
 import { supabase } from '@/lib/supabase';
+import { onAppResume, refreshOnRejoin } from './app-resume';
 
 type CompanyDocumentRow = {
   id: string;
@@ -209,7 +210,7 @@ function selectAccount(companyId: string | null, userId: string | null) {
       () => void refreshDocuments(),
     ) ?? null;
   });
-  channel?.subscribe();
+  channel?.subscribe(refreshOnRejoin(refreshDocuments));
   void refreshDocuments();
 }
 
@@ -222,3 +223,5 @@ export function useCompanyDocuments(companyId: string | null, userId: string | n
   useEffect(() => selectAccount(companyId, userId), [companyId, userId]);
   return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 }
+
+onAppResume(() => { if (activeCompanyId && activeUserId) void refreshDocuments(); });
