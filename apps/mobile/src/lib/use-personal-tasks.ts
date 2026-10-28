@@ -7,7 +7,7 @@ import {receiptsAfter} from './offline-user-snapshot';
 import {useUserDataScope} from './user-data-scope';
 import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 
-type State={token:object;tasks:PersonalTask[];loading:boolean;busy:boolean;error:string;through:number};
+type State={token:object;tasks:PersonalTask[];loading:boolean;busy:boolean;error:string;through:number;edits?:{snapshot:unknown;task:PersonalTask}[]};
 export function usePersonalTasks(companyId?:string, userId?:string) {
   const {token,current}=useUserDataScope(`${companyId}:${userId}`);
   const empty=():State=>({token,tasks:[],loading:!!companyId&&!!userId,busy:false,error:'',through:0});
@@ -29,7 +29,7 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
   const verified=saved&&saved.companyId===companyId&&saved.userId===userId?saved:null;
   const offline=!!offlineSync?.offline;
   function patch(change:Partial<State>){if(current())setStored(before=>current()?{...(before.token===token?before:empty()),...change}:before)}
-  const shown=useMemo(()=>{
+  const baseTasks=useMemo(()=>{
     if(!companyId||!userId)return [];
     if(verified){
       if(!verified.tasks)return [];
@@ -77,13 +77,25 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
     catch(failure){patch({error:failure instanceof Error?failure.message:message});return false}
     finally{gate.locked=false;patch({busy:false})}
   }
-  async function save(draft:TaskDraft){
+  const shown=baseTasks.map(task=>state.edits?.find(edit=>edit.snapshot===verified&&edit.task.id===task.id)?.task??task).sort((a,b)=>a.due_date.localeCompare(b.due_date));
+  function canEdit(id:string){
+    return !offline&&!!supabase&&!entries.some(entry=>entry.operation.entityType==='personal_task'&&entry.operation.entityId===id&&entry.status!=='synced');
+  }
+  async function save(draft:TaskDraft,id?:string){
     if(!current())return false;
     const validation=taskDraftError(draft);if(validation){patch({error:validation});return false}
     const payload={subject:draft.subject.trim(),description:draft.description.trim(),dueDate:draft.dueDate};
     const key=JSON.stringify(payload);
     const saved=await mutate(async()=>{
-      if(queueRequired){
+      if(id){
+        if(!canEdit(id))throw new Error('Connect and sync this task before editing it.');
+        const {data,error}=await supabase!.from('personal_tasks').update({subject:payload.subject,description:payload.description,due_date:payload.dueDate}).eq('id',id).eq('company_id',companyId!).eq('user_id',userId!).select('*').single();
+        if(error)throw error;
+        if(!current())return;
+        patch({edits:[...(state.edits??[]).filter(edit=>edit.task.id!==id),{snapshot:verified,task:data as PersonalTask}],tasks:state.tasks.map(task=>task.id===id?data as PersonalTask:task)});
+        if(offlineSync?.userSnapshot)await offlineSync.refreshUserSnapshot();
+        if(current())setRevision(value=>value+1);
+      }else if(queueRequired){
         if(!userSync)throw new Error('Device saving is unavailable. Wait for account storage or retry.');
         let id=gate.creates.get(key);if(!id){id=createFleetId();gate.creates.set(key,id)}
         await userSync.createTask({id,...payload});
@@ -111,7 +123,7 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
     },'Task could not be completed. Please try again.');
   }
   const snapshotError=verified&&verified.tasks===null?'Tasks are not available for your current role.':verified?offlineSync?.userSnapshot?.error??'':'';
-  return {tasks:shown,pendingCount:pending.created.length+pending.completed.size,loading:state.loading,busy:state.busy,error:state.error||snapshotError,save,remove,
+  return {tasks:shown,pendingCount:pending.created.length+pending.completed.size,loading:state.loading,busy:state.busy,error:state.error||snapshotError,save,remove,canEdit,
     retry:()=>{if(!current())return;if(offlineSync?.userSnapshot)void offlineSync.refreshUserSnapshot();setRevision(value=>value+1)},
     /** Server time of the verified download shown, if any. */
     downloadedAt:verified?.serverRequestAt??null,connected:Boolean(companyId&&userId&&supabase)};

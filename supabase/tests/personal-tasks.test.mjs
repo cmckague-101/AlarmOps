@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 
+const editingSql=readFileSync(new URL('../migrations/20261228000100_personal_task_editing.sql',import.meta.url),'utf8');
+test('task editing grants content columns only and checks eligible ownership before and after update',()=>{
+  assert.match(editingSql,/grant update \(subject, description, due_date\) on public\.personal_tasks to authenticated/);
+  assert.doesNotMatch(editingSql,/grant update on/);
+  assert.match(editingSql,/for update to authenticated using/);
+  assert.match(editingSql,/with check/);
+  assert.equal([...editingSql.matchAll(/user_id = \(select auth\.uid\(\)\)/g)].length,4);
+  assert.equal([...editingSql.matchAll(/m\.company_id = personal_tasks\.company_id/g)].length,2);
+  assert.equal([...editingSql.matchAll(/m\.role in \('owner', 'admin', 'shop_tech'\)/g)].length,2);
+});
+
 // Static policy regression checks; these do not replace live PostgreSQL RLS tests.
 const sql=readFileSync(new URL('../migrations/20261107000100_personal_tasks.sql',import.meta.url),'utf8');
 test('tasks enable RLS and scope every operation to the current eligible member',()=>{

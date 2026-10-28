@@ -53,7 +53,7 @@ beforeEach(()=>{
   mocks.client.rpc.mockImplementation((name,args)=>({setHeader:mocks.headers.mockImplementation(()=>({abortSignal:()=>name==='get_dashboard_preferences'?mocks.onlineRead():name==='set_dashboard_preferences_once'?mocks.onlineWrite(args.request):name.includes('crew_availability')?mocks.availability(name,args):mocks.canonical(args)}))}));
   mocks.client.from.mockImplementation(table=>{
     const request={table,action:'read',data:undefined as unknown,filters:[] as unknown[]};
-    const query={select(){return query},eq(...values:unknown[]){request.filters.push(values);return query},order(){return query},maybeSingle(){return query},
+    const query={select(){return query},eq(...values:unknown[]){request.filters.push(values);return query},order(){return query},maybeSingle(){return query},single(){return query},update(data:unknown){request.action='update';request.data=data;return query},
       insert(data:unknown){request.action='insert';request.data=data;return query},delete(){request.action='delete';return query},upsert(data:unknown){request.action='upsert';request.data=data;return query},setHeader(...args:unknown[]){mocks.headers(...args);return query},
       then(yes:(result:unknown)=>unknown,no:(error:unknown)=>unknown){return Promise.resolve().then(()=>mocks.execute(request)).then(yes,no)}};
     return query;
@@ -78,6 +78,41 @@ describe('scoped personal-task hooks',()=>{
     mocks.context.offline=false;expect(await f.render().save({...draft,subject:' Order filters '})).toBe(true);
     const calls=mocks.context.userSync.createTask.mock.calls;expect(calls[1][0]).toEqual(calls[0][0]);
     await f.render().save(draft);expect(calls[2][0].id).not.toBe(calls[0][0].id);expect(mocks.client.from).not.toHaveBeenCalled();
+  });
+  it('edits synced tasks online with scoped filters and keeps the saved values visible',async()=>{
+    mocks.context.offline=false;
+    const original=task();const edited={...original,subject:draft.subject,description:draft.description,due_date:draft.dueDate};
+    mocks.execute.mockImplementation(async request=>({data:request.action==='update'?edited:[original],error:null}));
+    const f=hook(()=>usePersonalTasks(company,user));f.render();f.effects();await flush();
+    expect(f.render().canEdit('task')).toBe(true);
+    expect(await f.render().save(draft,'task')).toBe(true);
+    expect(f.render().tasks[0]).toEqual(edited);
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({table:'personal_tasks',action:'update',data:{subject:draft.subject,description:draft.description,due_date:draft.dueDate},filters:[['id','task'],['company_id',company],['user_id',user]]}));
+    expect(mocks.context.userSync.createTask).not.toHaveBeenCalled();
+  });
+  it('refreshes verified task downloads after edits and accepts later server changes',async()=>{
+    mocks.context.offline=false;
+    const context=mocks.context as typeof mocks.context&{userSnapshot?:unknown;refreshUserSnapshot?:()=>Promise<void>};
+    const snapshot=(subject:string)=>({snapshot:{schemaVersion:1,companyId:company,userId:user,serverRequestAt:'2026-01-02T00:00:00Z',receiptWatermark:'5',tasks:[{id:'task',subject,description:'',dueDate:draft.dueDate}],availability:null,dashboard:{}},error:''});
+    context.userSnapshot=snapshot('Original');context.refreshUserSnapshot=vi.fn(async()=>{});
+    try {
+      mocks.execute.mockResolvedValue({data:{...task(),subject:draft.subject,description:draft.description},error:null});
+      const f=hook(()=>usePersonalTasks(company,user));f.render();f.effects();await flush();
+      expect(await f.render().save(draft,'task')).toBe(true);
+      expect(context.refreshUserSnapshot).toHaveBeenCalled();
+      expect(f.render().tasks[0].subject).toBe(draft.subject);
+      context.userSnapshot=snapshot('Later server edit');
+      expect(f.render().tasks[0].subject).toBe('Later server edit');
+    } finally {delete context.userSnapshot;delete context.refreshUserSnapshot;}
+  });
+  it('refuses task edits offline or while task commands remain unsynced',async()=>{
+    const f=hook(()=>usePersonalTasks(company,user));
+    expect(f.render().canEdit('task')).toBe(false);
+    expect(await f.render().save(draft,'task')).toBe(false);
+    mocks.context.offline=false;mocks.context.state.entries=[entry('personal_task','task.create',draft)];
+    expect(f.render().canEdit('task')).toBe(false);
+    expect(await f.render().save(draft,'task')).toBe(false);
+    expect(mocks.client.from).not.toHaveBeenCalled();
   });
   it('queues completion after reconnect rather than deleting before a pending create',async()=>{
     mocks.context.state.entries=[entry('personal_task','task.create',draft)];mocks.context.offline=false;

@@ -39,10 +39,13 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
     } catch {if(currentScope.current===scope)setError(message);return false;}
     finally {locked.current=false;setBusy(false);}
   }
-  async function save(draft:TaskDraft) {
+  async function save(draft:TaskDraft, id?:string) {
     const validation = taskDraftError(draft);
     if (validation) {setError(validation);return false;}
-    return mutate(()=>supabase!.from('personal_tasks').insert({company_id:companyId,user_id:userId,subject:draft.subject.trim(),description:draft.description.trim(),due_date:draft.dueDate}), 'Task could not be saved. Please try again.');
+    const values={subject:draft.subject.trim(),description:draft.description.trim(),due_date:draft.dueDate};
+    return mutate(()=>id
+      ? supabase!.from('personal_tasks').update(values).eq('id',id).eq('company_id',companyId!).eq('user_id',userId!).select('id').single()
+      : supabase!.from('personal_tasks').insert({company_id:companyId,user_id:userId,...values}), 'Task could not be saved. Please try again.');
   }
   async function remove(id:string) {
     return mutate(()=>supabase!.from('personal_tasks').delete().eq('id',id).eq('company_id',companyId!).eq('user_id',userId!), 'Task could not be removed. Please try again.');
