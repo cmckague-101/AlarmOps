@@ -203,3 +203,9 @@ export async function loadCrewQualificationSchema(db) {
     await db.exec(migration(name));
   await db.exec(migration('20261221000100_user_sync_crew_qualifications'));
 }
+
+/** Manager-create schema plus private Crew Chat threads. */
+export async function loadPrivateCrewChatSchema(db) {
+  await loadManagerCreateSchema(db);
+  await db.exec(migration('20261224000100_private_crew_chat'));
+}

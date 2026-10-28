@@ -15,7 +15,7 @@ type Membership = { company_id: string; role: UserRole };
 type Profile = { full_name: string };
 type FleetRecordRow = { record_id: string; data: unknown; version: number; updated_by: string; updated_at: string };
 type VehicleNoteRow = {id:string;vehicle_id:string;subject:string;body:string;created_by:string;created_by_name:string;created_at:string;updated_at:string};
-type CommunicationThreadRow = {id:string;subject:string;description:string;created_by:string|null;created_by_name:string;created_by_role:UserRole;created_at:string};
+type CommunicationThreadRow = {id:string;subject:string;description:string;created_by:string|null;created_by_name:string;created_by_role:UserRole;is_private:boolean;created_at:string};
 type CommunicationReplyRow = {id:string;thread_id:string;body:string;created_by:string|null;created_by_name:string;created_at:string};
 type CommunicationReadRow = {thread_id:string;seen_at:string};
 type CompanyDocumentRow = {id:string;name:string;file_name:string;mime_type:string;storage_path:string;created_at:string;updated_at:string};
@@ -480,7 +480,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const client=supabase;
     if(!client)return;
     const [threadResult,replyResult,readResult]=await Promise.all([
-      client.from('communication_threads').select('id,subject,description,created_by,created_by_name,created_by_role,created_at').eq('company_id',companyId).order('created_at',{ascending:false}),
+      client.from('communication_threads').select('id,subject,description,created_by,created_by_name,created_by_role,is_private,created_at').eq('company_id',companyId).order('created_at',{ascending:false}),
       client.from('communication_replies').select('id,thread_id,body,created_by,created_by_name,created_at').eq('company_id',companyId).order('created_at',{ascending:true}),
       client.from('communication_reads').select('thread_id,seen_at').eq('company_id',companyId).eq('user_id',session.user.id)
     ]);
@@ -489,7 +489,7 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     for(const reply of (replyResult.data??[]) as CommunicationReplyRow[]){const replies=repliesByThread.get(reply.thread_id)??[];replies.push(reply);repliesByThread.set(reply.thread_id,replies)}
     const reads=new Map(((readResult.data??[]) as CommunicationReadRow[]).map(read=>[read.thread_id,read.seen_at]));
     setCommunicationThreads(((threadResult.data??[]) as CommunicationThreadRow[]).map(thread=>({
-      id:thread.id,subject:thread.subject,description:thread.description,createdBy:thread.created_by_name,createdById:thread.created_by??'',createdByRole:thread.created_by_role,createdAt:thread.created_at,seenAt:reads.get(thread.id),
+      id:thread.id,subject:thread.subject,description:thread.description,createdBy:thread.created_by_name,createdById:thread.created_by??'',createdByRole:thread.created_by_role,createdAt:thread.created_at,seenAt:reads.get(thread.id),isPrivate:thread.is_private,
       replies:(repliesByThread.get(thread.id)??[]).map(reply=>({id:reply.id,body:reply.body,createdBy:reply.created_by_name,createdById:reply.created_by??'',createdAt:reply.created_at}))
     })));
     setCommunicationError('');
@@ -790,12 +790,12 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const next=data??{connected:false};setMotiveConnection(next);return next;
   },[companyId]);
 
-  const createCommunicationThread=useCallback(async(subject:string,description:string)=>{
+  const createCommunicationThread=useCallback(async(subject:string,description:string,isPrivate=false)=>{
     const client=supabase;
     if(!client)throw new Error('Company is unavailable.');
-    const {data,error:createError}=await client.from('communication_threads').insert({company_id:companyId,subject,description}).select('id,subject,description,created_by,created_by_name,created_by_role,created_at').single<CommunicationThreadRow>();
+    const {data,error:createError}=await client.from('communication_threads').insert({company_id:companyId,subject,description,is_private:isPrivate}).select('id,subject,description,created_by,created_by_name,created_by_role,is_private,created_at').single<CommunicationThreadRow>();
     if(createError)throw new Error(createError.message);
-    const thread:CommunicationThread={id:data.id,subject:data.subject,description:data.description,createdBy:data.created_by_name,createdById:data.created_by??'',createdByRole:data.created_by_role,createdAt:data.created_at,seenAt:data.created_at,replies:[]};
+    const thread:CommunicationThread={id:data.id,subject:data.subject,description:data.description,createdBy:data.created_by_name,createdById:data.created_by??'',createdByRole:data.created_by_role,createdAt:data.created_at,seenAt:data.created_at,isPrivate:data.is_private,replies:[]};
     setCommunicationThreads(items=>[thread,...items.filter(item=>item.id!==thread.id)]);
     return thread;
   },[companyId]);

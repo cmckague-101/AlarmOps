@@ -149,7 +149,7 @@ export type CompanyDocument = {id:string;name:string;file:VehicleFile;createdAt:
 export type CommunicationReply = {id:string;body:string;createdBy:string;createdById:string;createdAt:string};
 export type CommunicationThread = {
   id:string;subject:string;description:string;createdBy:string;createdById:string;createdByRole:UserRole;createdAt:string;
-  replies:CommunicationReply[];seenAt?:string;
+  replies:CommunicationReply[];seenAt?:string;isPrivate?:boolean;
 };
 
 export type TrainingSignup = {userId:string;userName:string;signedUpAt:string};

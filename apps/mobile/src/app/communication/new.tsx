@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { isCompanyManager } from '@fireops/domain';
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createCommunicationThread } from '@/lib/communications-store';
@@ -19,6 +19,7 @@ export default function NewCommunicationThreadScreen() {
   const intent = useIntentId();
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -37,13 +38,13 @@ export default function NewCommunicationThreadScreen() {
     try {
       if (offline && Platform.OS !== 'web') {
         if (!userSync) throw new Error('Starting threads offline is unavailable on this device.');
-        const content = { subject: subject.trim(), description: description.trim() };
+        const content = { subject: subject.trim(), description: description.trim(), ...(isPrivate ? { isPrivate: true } : {}) };
         await userSync.createThread({ id: intent.for(content), ...content });
         intent.reset();
         router.replace('/(tabs)/communications' as never);
         return;
       }
-      const thread = await createCommunicationThread(subject.trim(), description.trim());
+      const thread = await createCommunicationThread(subject.trim(), description.trim(), isPrivate);
       router.replace(`/communication/${encodeURIComponent(thread.id)}` as never);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Thread could not be posted. Check your connection and try again.');
@@ -94,6 +95,14 @@ export default function NewCommunicationThreadScreen() {
             {attempted && !description.trim() ? <Text style={styles.fieldError}>Enter a description.</Text> : null}
           </View>
 
+          <Pressable accessibilityRole="switch" accessibilityState={{ checked: isPrivate }} accessibilityLabel="Private chat" onPress={() => setIsPrivate((value) => !value)} style={styles.privateToggle}>
+            <View style={styles.privateCopy}>
+              <Text style={styles.label}>Private chat</Text>
+              <Text style={styles.privateHelp}>Only owners and admins can see and reply to this chat. Crew members won't see it or be notified.</Text>
+            </View>
+            <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ true: theme.ember }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          </Pressable>
+
           {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
 
           <Pressable
@@ -124,6 +133,9 @@ function createStyles(theme: FireOpsTheme) {
     textarea: { minHeight: 160, paddingTop: 13, paddingBottom: 13, lineHeight: 23 },
     inputError: { borderColor: theme.danger },
     fieldError: { color: theme.danger, fontSize: 13, lineHeight: 18 },
+    privateToggle: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, padding: 14 },
+    privateCopy: { flex: 1, gap: 4 },
+    privateHelp: { color: theme.secondary, fontSize: 13, lineHeight: 19 },
     help: { alignSelf: 'flex-end', color: theme.secondary, fontSize: 12, lineHeight: 16 },
     saveError: { color: theme.danger, backgroundColor: theme.dangerSurface, borderRadius: 10, padding: 13, fontSize: 14, lineHeight: 20 },
     submitButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 18 },

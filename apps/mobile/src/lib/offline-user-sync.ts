@@ -94,9 +94,9 @@ export type DeviceDocument=DeviceCreate<DocumentDetails>;
 /** Company documents added on this device (owners/admins); the file is kept on the device until created. */
 export const deviceDocuments=(entries:readonly OutboxEntry[])=>deviceCreates<DocumentDetails>(entries,'company_document');
 export const documentMimeTypes=['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
-export type DeviceThread=DeviceCreate<{subject:string;description:string}>;
+export type DeviceThread=DeviceCreate<{subject:string;description:string;isPrivate?:boolean}>;
 /** Crew Chat threads started on this device (owners/admins). */
-export const deviceThreads=(entries:readonly OutboxEntry[])=>deviceCreates<{subject:string;description:string}>(entries,'communication_thread');
+export const deviceThreads=(entries:readonly OutboxEntry[])=>deviceCreates<{subject:string;description:string;isPrivate?:boolean}>(entries,'communication_thread');
 export type TrainingDetails={courseCode:string;courseTitle:string;startsAt:string;location:string;instructor:string;capacity:number;courseInformation:string};
 export type DeviceTraining=DeviceCreate<TrainingDetails>;
 /** Trainings created on this device (owners/admins). */
@@ -334,10 +334,10 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       return enqueue('feedback',feedback.id,'feedback.send',{category:feedback.category,message,source:feedback.source},null);
     },
     /** Owners/admins; `id` is chosen once per intended thread and reused for retries. */
-    createThread(thread:{id:string;subject:string;description:string}){
+    createThread(thread:{id:string;subject:string;description:string;isPrivate?:boolean}){
       const subject=thread.subject.trim();const description=thread.description.trim();
       if(!uuid.test(thread.id)||!subject||subject.length>160||!description||description.length>5000)return Promise.reject(new Error('Check the thread subject and message.'));
-      return enqueue('communication_thread',thread.id,'thread.create',{subject,description},null);
+      return enqueue('communication_thread',thread.id,'thread.create',thread.isPrivate?{subject,description,isPrivate:true}:{subject,description},null);
     },
     /** Owners/admins; `id` is chosen once per intended training and reused for retries. */
     createTraining(training:{id:string}&TrainingDetails){

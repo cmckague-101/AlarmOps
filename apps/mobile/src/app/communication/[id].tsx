@@ -157,6 +157,7 @@ export default function CommunicationThreadScreen() {
                   <View style={styles.authorCopy}>
                     <Text style={styles.authorName}>{thread.createdBy}</Text>
                     <Text style={styles.authorMeta}>{thread.createdByRole === 'owner' ? 'Company owner' : 'Crew'} · {formatDate(thread.createdAt)}</Text>
+                    {thread.isPrivate ? <Text style={styles.authorMeta}>Private · owners and admins only</Text> : null}
                   </View>
                 </View>
                 <Text accessibilityRole="header" style={styles.title}>{thread.subject}</Text>

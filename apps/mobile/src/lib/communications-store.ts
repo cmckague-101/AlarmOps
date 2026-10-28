@@ -15,6 +15,7 @@ type CommunicationThreadRow = {
   created_by: string | null;
   created_by_name: string;
   created_by_role: UserRole;
+  is_private: boolean;
   created_at: string;
 };
 
@@ -156,7 +157,7 @@ export function refreshCommunications() {
       const [threadResult, replyResult, readResult] = downloaded ? [{ data: downloaded.tables.communication_threads, error: null }, { data: downloaded.tables.communication_replies, error: null }, { data: downloaded.tables.communication_reads, error: null }] : await Promise.all([
         supabase
           .from('communication_threads')
-          .select('id,subject,description,created_by,created_by_name,created_by_role,created_at')
+          .select('id,subject,description,created_by,created_by_name,created_by_role,is_private,created_at')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false }),
         supabase
@@ -193,6 +194,7 @@ export function refreshCommunications() {
         createdByRole: thread.created_by_role,
         createdAt: thread.created_at,
         seenAt: reads.get(thread.id),
+        isPrivate: Boolean(thread.is_private),
         replies: (repliesByThread.get(thread.id) ?? []).map(replyFromRow),
       }));
       emit({ threads: orderThreads(threads), loading: false, refreshing: false, error: null, downloaded: downloaded?.info ?? null });
@@ -213,12 +215,12 @@ export function refreshCommunications() {
   return request;
 }
 
-export async function createCommunicationThread(subject: string, description: string) {
+export async function createCommunicationThread(subject: string, description: string, isPrivate = false) {
   if (!supabase || !activeCompanyId) throw new Error('Company communications are unavailable.');
   const { data, error } = await supabase
     .from('communication_threads')
-    .insert({ company_id: activeCompanyId, subject, description })
-    .select('id,subject,description,created_by,created_by_name,created_by_role,created_at')
+    .insert({ company_id: activeCompanyId, subject, description, is_private: isPrivate })
+    .select('id,subject,description,created_by,created_by_name,created_by_role,is_private,created_at')
     .single<CommunicationThreadRow>();
   if (error) throw new Error(error.message);
   const thread: CommunicationThread = {
@@ -230,6 +232,7 @@ export async function createCommunicationThread(subject: string, description: st
     createdByRole: data.created_by_role,
     createdAt: data.created_at,
     seenAt: data.created_at,
+    isPrivate: data.is_private,
     replies: [],
   };
   emit({ ...snapshot, threads: orderThreads([thread, ...snapshot.threads.filter((item) => item.id !== thread.id)]) });

@@ -96,7 +96,7 @@ export default function CommunicationsScreen() {
                 <Pressable
                   key={thread.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`${thread.subject}${unread ? ', unread' : ''}, ${thread.replies.length} ${thread.replies.length === 1 ? 'reply' : 'replies'}`}
+                  accessibilityLabel={`${thread.subject}${thread.isPrivate ? ', private' : ''}${unread ? ', unread' : ''}, ${thread.replies.length} ${thread.replies.length === 1 ? 'reply' : 'replies'}`}
                   onPress={() => router.push(`/communication/${encodeURIComponent(thread.id)}` as never)}
                   style={({ pressed }) => [styles.row, index > 0 && styles.rowBorder, unread && styles.unreadRow, pressed && styles.pressed]}
                 >
@@ -106,6 +106,7 @@ export default function CommunicationsScreen() {
                   <View style={styles.rowCopy}>
                     <View style={styles.rowTitleLine}>
                       <Text numberOfLines={1} style={[styles.rowTitle, unread && styles.rowTitleUnread]}>{thread.subject}</Text>
+                      {thread.isPrivate ? <AppSymbol name={{ ios: 'lock.fill', android: 'lock' } as never} color={theme.secondary} size={13} /> : null}
                       {unread ? <View style={styles.unreadDot} /> : null}
                     </View>
                     <Text numberOfLines={2} style={styles.preview}>{latest?.body ?? thread.description}</Text>
