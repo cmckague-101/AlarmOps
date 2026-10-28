@@ -23,7 +23,7 @@ export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:Fir
     if (window.confirm(`Mark "${task.subject}" completed? Completed tasks are removed permanently.`)) void remove(task.id);
   }
   if (!allowed) return <div className="page"><p>Task List is available to owners, admins, and techs.</p></div>;
-  return <div className="page task-page"><button className="secondary" onClick={onBack}>← Dashboard</button><div className="page-heading"><div><h1>Task List</h1><p>Your personal tasks. Completing a task removes it permanently.</p></div></div>
+  return <div className="page task-page"><button className="secondary" onClick={onBack}>← Dashboard</button><div className="page-heading"><div><h1>Task List</h1><p>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</p></div></div>
     {!connected&&<p>Connect a company account to save tasks.</p>}
     {error&&<p role="alert" className="receipt-error">{error} <button className="secondary" disabled={busy} onClick={retry}>Retry</button></p>}
     {!creating&&<p><button className="primary" disabled={!connected||busy} onClick={()=>{const today=new Date();setDueDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);setCreating(true);}}>New task</button></p>}

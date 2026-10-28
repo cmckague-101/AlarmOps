@@ -253,9 +253,11 @@ Deno.serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, {auth: {autoRefreshToken: false, persistSession: false}});
 
   try {
+    const {data: taskReminders, error: reminderError} = await admin.rpc('enqueue_due_task_reminders');
+    if (reminderError) throw new Error(`Task reminders could not be queued: ${reminderError.message}`);
     const receipts = await processReceipts(admin);
     const dispatch = await dispatchJobs(admin);
-    return json(200, {receipts, dispatch});
+    return json(200, {taskReminders, receipts, dispatch});
   } catch (dispatchError) {
     console.error('Push dispatch failed:', dispatchError);
     return json(500, {error: errorText(dispatchError)});

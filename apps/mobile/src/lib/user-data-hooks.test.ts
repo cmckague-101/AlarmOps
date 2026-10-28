@@ -63,6 +63,15 @@ beforeEach(()=>{
 afterEach(()=>{for(const dispose of disposals.splice(0))dispose()});
 
 describe('scoped personal-task hooks',()=>{
+  it('registers 9 AM reminders on reconnect with the current account timezone and retries failures',async()=>{
+    const f=hook(()=>usePersonalTasks(company,user));f.render();f.effects();await flush();
+    expect(mocks.client.rpc).not.toHaveBeenCalled();
+    mocks.context.offline=false;mocks.client.rpc.mockResolvedValueOnce({error:{message:'Setup unavailable'}});
+    f.render();f.effects();await flush();expect(f.render().error).toContain('reminders could not be configured');
+    mocks.client.rpc.mockResolvedValueOnce({error:null});f.render().retry();f.render();f.effects();await flush();
+    expect(mocks.client.rpc).toHaveBeenLastCalledWith('set_task_reminder_timezone',{target_company_id:company,target_user_id:user,timezone_name:Intl.DateTimeFormat().resolvedOptions().timeZone});
+    expect(f.render().error).toBe('');
+  });
   it('hides old account data before effect cleanup and refuses retained old handlers',async()=>{
     mocks.context.offline=false;mocks.execute.mockResolvedValue({data:[task('Private task')],error:null});let who=user;
     const f=hook(()=>usePersonalTasks(company,who));let result=f.render();f.effects();await flush();result=f.render();expect(result.tasks[0].subject).toBe('Private task');

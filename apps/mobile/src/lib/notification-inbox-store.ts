@@ -18,12 +18,13 @@ export type NotificationEventType =
   | 'vehicle_note_added'
   | 'failed_inspection'
   | 'payroll_rejected'
+  | 'task_due'
   | 'system';
 
 export type InboxNotification = {
   id: string;
   eventType: NotificationEventType;
-  entityType: 'communication' | 'document' | 'training' | 'vehicle' | 'issue' | 'system';
+  entityType: 'communication' | 'document' | 'training' | 'vehicle' | 'issue' | 'task' | 'system';
   entityId: string | null;
   title: string;
   body: string;
@@ -95,7 +96,7 @@ let activeCompanyId: string | null | undefined;
 let activeUserId: string | null | undefined;
 let activeRole: UserRole | null | undefined;
 let selectionVersion = 0;
-const crewDashboardEventTypes: NotificationEventType[] = ['communication_reply', 'training_created', 'qualification_approved', 'payroll_rejected'];
+const crewDashboardEventTypes: NotificationEventType[] = ['communication_reply', 'training_created', 'qualification_approved', 'payroll_rejected', 'task_due'];
 
 function isCrewRole(role: UserRole | null | undefined) {
   return role === 'fire_fighter' || role === 'shop_tech';

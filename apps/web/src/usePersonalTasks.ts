@@ -7,6 +7,7 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
   const [loading,setLoading] = useState(false);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
+  const [reminderError,setReminderError] = useState('');
   const [revision,setRevision] = useState(0);
   const scope = `${companyId}:${userId}`;
   const currentScope = useRef(scope);
@@ -26,6 +27,17 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
       finally {if(active)setLoading(false);}
     })();
     return ()=>{active=false;};
+  },[companyId,userId,revision]);
+  useEffect(()=>{
+    let active=true;setReminderError('');
+    if(!companyId||!userId||!supabase)return;
+    void (async()=>{
+      try {
+        const {error}=await supabase!.rpc('set_task_reminder_timezone',{target_company_id:companyId,target_user_id:userId,timezone_name:Intl.DateTimeFormat().resolvedOptions().timeZone});
+        if(error)throw error;
+      } catch {if(active)setReminderError('9 AM task reminders could not be configured. Connect and retry.');}
+    })();
+    return()=>{active=false};
   },[companyId,userId,revision]);
   async function mutate(action:()=>PromiseLike<{error:unknown}>, message:string) {
     if (locked.current || !companyId || !userId || !supabase) return false;
@@ -50,5 +62,5 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
   async function remove(id:string) {
     return mutate(()=>supabase!.from('personal_tasks').delete().eq('id',id).eq('company_id',companyId!).eq('user_id',userId!), 'Task could not be removed. Please try again.');
   }
-  return {tasks,loading,busy,error,save,remove,retry:()=>setRevision(value=>value+1),connected:Boolean(companyId&&userId&&supabase)};
+  return {tasks,loading,busy,error:error||reminderError,save,remove,retry:()=>setRevision(value=>value+1),connected:Boolean(companyId&&userId&&supabase)};
 }

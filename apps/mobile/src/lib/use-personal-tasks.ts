@@ -7,7 +7,7 @@ import {receiptsAfter} from './offline-user-snapshot';
 import {useUserDataScope} from './user-data-scope';
 import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 
-type State={token:object;tasks:PersonalTask[];loading:boolean;busy:boolean;error:string;through:number;edits?:{snapshot:unknown;task:PersonalTask}[]};
+type State={token:object;tasks:PersonalTask[];loading:boolean;busy:boolean;error:string;through:number;reminderError?:string;edits?:{snapshot:unknown;task:PersonalTask}[]};
 export function usePersonalTasks(companyId?:string, userId?:string) {
   const {token,current}=useUserDataScope(`${companyId}:${userId}`);
   const empty=():State=>({token,tasks:[],loading:!!companyId&&!!userId,busy:false,error:'',through:0});
@@ -70,6 +70,18 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
     })();
     return()=>{active=false};
   },[token,revision,settledKey,!!verified,offline]);
+  useEffect(()=>{
+    let active=true;
+    if(!companyId||!userId||!supabase||offline)return;
+    void (async()=>{
+      try {
+        const {error}=await supabase!.rpc('set_task_reminder_timezone',{target_company_id:companyId,target_user_id:userId,timezone_name:Intl.DateTimeFormat().resolvedOptions().timeZone});
+        if(error)throw error;
+        if(active)patch({reminderError:''});
+      } catch {if(active)patch({reminderError:'9 AM task reminders could not be configured. Connect and retry.'});}
+    })();
+    return()=>{active=false};
+  },[token,revision,offline]);
   async function mutate(action:()=>Promise<void>,message:string){
     if(!current()||gate.locked||!companyId||!userId)return false;
     gate.locked=true;patch({busy:true,error:''});
@@ -123,7 +135,7 @@ export function usePersonalTasks(companyId?:string, userId?:string) {
     },'Task could not be completed. Please try again.');
   }
   const snapshotError=verified&&verified.tasks===null?'Tasks are not available for your current role.':verified?offlineSync?.userSnapshot?.error??'':'';
-  return {tasks:shown,pendingCount:pending.created.length+pending.completed.size,loading:state.loading,busy:state.busy,error:state.error||snapshotError,save,remove,canEdit,
+  return {tasks:shown,pendingCount:pending.created.length+pending.completed.size,loading:state.loading,busy:state.busy,error:state.error||state.reminderError||snapshotError,save,remove,canEdit,
     retry:()=>{if(!current())return;if(offlineSync?.userSnapshot)void offlineSync.refreshUserSnapshot();setRevision(value=>value+1)},
     /** Server time of the verified download shown, if any. */
     downloadedAt:verified?.serverRequestAt??null,connected:Boolean(companyId&&userId&&supabase)};
