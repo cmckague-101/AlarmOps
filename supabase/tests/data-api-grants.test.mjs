@@ -48,7 +48,7 @@ function replay(files) {
 
 const required = {
   authenticated: {
-    profiles: ['select', 'update:full_name', 'update:signature_data'],
+    profiles: ['select', 'update:full_name', 'update:signature_data', 'update:avatar_path'],
     companies: ['select'], company_members: ['select'],
     push_tokens: ['select', 'delete'], communication_threads: ['select', 'insert', 'delete'],
   },

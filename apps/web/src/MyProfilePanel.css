@@ -1,0 +1,16 @@
+.my-profile-panel{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:16px;padding:22px 24px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.my-profile-avatar{width:72px;height:72px;display:grid;place-items:center;overflow:hidden;border-radius:50%;background:#1e2b24;color:white;font:800 24px Manrope,sans-serif}
+.my-profile-avatar img{width:100%;height:100%;object-fit:cover}
+.my-profile-copy h2{margin:0;font:700 19px Manrope,sans-serif;color:var(--ink);overflow-wrap:anywhere}
+.my-profile-copy p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.my-profile-copy .integration-error{margin-top:10px}
+.my-profile-actions{display:flex;align-items:center;gap:8px}
+.my-profile-upload{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-weight:700;cursor:pointer}
+.my-profile-upload svg{width:18px;height:18px}
+.my-profile-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.my-profile-upload:focus-within{outline:2px solid var(--focus);outline-offset:2px}
+.my-profile-upload.disabled{opacity:.5;cursor:not-allowed}
+.my-profile-upload.disabled input{cursor:not-allowed}
+.my-profile-remove{min-height:44px;padding:0 12px;border:0;background:none;color:var(--danger);font-weight:700}
+.my-profile-remove:disabled{opacity:.5}
+@media(max-width:800px){.my-profile-panel{grid-template-columns:auto minmax(0,1fr);padding:17px 16px}.my-profile-actions{grid-column:1/-1}.my-profile-upload{flex:1}}
