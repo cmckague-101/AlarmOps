@@ -42,11 +42,11 @@ Deno.serve(async (request) => {
   }
 
   const [{data: ownership, error: ownerError}, {data: scopedAdmin, error: adminError}] = await Promise.all([
-    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
+    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).in('role', ['owner', 'admin']).maybeSingle(),
     admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).gt('expires_at', new Date().toISOString()).maybeSingle(),
   ]);
   if (ownerError || adminError) return response(500, {error: 'File cleanup access could not be verified.'});
-  if (!ownership && !scopedAdmin) return response(403, {error: 'Company owner access required.'});
+  if (!ownership && !scopedAdmin) return response(403, {error: 'Company owner or admin access required.'});
 
   // Proven offline-sync copies are canonical files that records, reviews and
   // device history may reference; they are retained, never removed here.
