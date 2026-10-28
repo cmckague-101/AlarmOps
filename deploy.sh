@@ -6,8 +6,12 @@
 #   iOS:     EAS cloud build + App Store Connect submit, or local build on macOS.
 #   Android: EAS cloud build (optional Google Play submit), or local .aab build.
 #
-# Usage: ./deploy.sh [--dry-run]
+# Run anywhere other than the dev server (royal), it first syncs this clone's
+# main from royal over SSH, so local builds use the latest committed code.
+#
+# Usage: ./deploy.sh [--dry-run] [--no-sync]
 #   --dry-run  Print the commands that would run without executing them.
+#   --no-sync  Skip syncing from the dev server.
 
 set -euo pipefail
 
@@ -17,14 +21,23 @@ APP_CONFIG="$MOBILE_DIR/app.json"
 BUILD_DIR="$ROOT_DIR/builds"
 # Paths whose commits count as mobile app changes in the release notes.
 MOBILE_PATHS=(apps/mobile packages)
+# Dev server that holds the working repo; other machines sync from it.
+DEV_HOSTNAME=royal
+DEV_SSH=ryan@royal
+DEV_REPO=/home/ryan/fireco
+DEV_REMOTE=royal
+DEV_BUMP_BRANCH=deploy-version-bump
 DRY_RUN=0
+SYNC=1
 
-case "${1:-}" in
-  --dry-run) DRY_RUN=1 ;;
-  -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  "") ;;
-  *) echo "Unknown option: $1" >&2; exit 1 ;;
-esac
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --no-sync) SYNC=0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
 
 # ---------- helpers ----------
 
@@ -94,9 +107,55 @@ for cmd in git node npm npx; do
 done
 
 cd "$ROOT_DIR"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 IS_MAC=0
 [[ "$(uname -s)" == Darwin ]] && IS_MAC=1
+ON_DEV_SERVER=0
+[[ "$(hostname -s)" == "$DEV_HOSTNAME" ]] && ON_DEV_SERVER=1
+
+# ---------- sync from the dev server ----------
+
+if ((!ON_DEV_SERVER && SYNC)); then
+  bold "Syncing main from $DEV_SSH:$DEV_REPO"
+  # Adding the remote and fetching only touch refs, so they run even in dry runs.
+  if ! git remote get-url "$DEV_REMOTE" >/dev/null 2>&1; then
+    info "Adding git remote '$DEV_REMOTE'"
+    git remote add "$DEV_REMOTE" "ssh://$DEV_SSH$DEV_REPO"
+  fi
+  git fetch --quiet "$DEV_REMOTE" || die "Could not fetch from $DEV_SSH. Use --no-sync to deploy this clone as is."
+  [[ "$(git rev-parse --abbrev-ref HEAD)" == main ]] ||
+    die "Check out main before syncing (or use --no-sync)."
+  [[ -z "$(git status --porcelain)" ]] ||
+    die "Working tree has uncommitted changes; commit or discard them before syncing (or use --no-sync)."
+
+  SYNC_TARGET="$DEV_REMOTE/main"
+  OLD_HEAD="$(git rev-parse HEAD)"
+  if [[ "$OLD_HEAD" == "$(git rev-parse "$SYNC_TARGET")" ]]; then
+    echo "Already up to date with $SYNC_TARGET."
+  elif git merge-base --is-ancestor HEAD "$SYNC_TARGET"; then
+    git log --oneline "HEAD..$SYNC_TARGET" | head -20
+    run git merge --quiet --ff-only "$SYNC_TARGET"
+  else
+    warn "Local main has commits that are not on $DEV_HOSTNAME:"
+    git log --oneline "$SYNC_TARGET..HEAD"
+    ask_yn "Discard them and reset to $SYNC_TARGET?" n || die "Sync aborted."
+    run git reset --hard "$SYNC_TARGET"
+  fi
+  NEW_HEAD="$(git rev-parse HEAD)"
+
+  if [[ ! -d node_modules ]] || ! git diff --quiet "$OLD_HEAD" "$NEW_HEAD" -- package-lock.json patches; then
+    info "Dependencies changed; installing"
+    run npm ci
+  fi
+  if ! git diff --quiet "$OLD_HEAD" "$NEW_HEAD" -- deploy.sh; then
+    info "deploy.sh changed; restarting with the new version"
+    RESTART_ARGS=(--no-sync)
+    ((DRY_RUN)) && RESTART_ARGS+=(--dry-run)
+    exec "$ROOT_DIR/deploy.sh" "${RESTART_ARGS[@]}"
+  fi
+  echo
+fi
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 bold "FireOps production deploy"
 ((DRY_RUN)) && warn "Dry run: commands are printed, not executed."
@@ -191,6 +250,18 @@ if ((DO_IOS || DO_ANDROID)); then
       ' "$APP_CONFIG" "$NEW_VERSION"
     fi
     run git commit -m "chore(mobile): bump version to $NEW_VERSION" -- apps/mobile/app.json
+    # royal has main checked out, so it can't be pushed to directly: push a
+    # side branch and fast-forward main there.
+    if ((!ON_DEV_SERVER && SYNC)); then
+      info "Sending the version bump back to $DEV_HOSTNAME"
+      if run git push --quiet --force "$DEV_REMOTE" "HEAD:refs/heads/$DEV_BUMP_BRANCH" &&
+        run ssh "$DEV_SSH" "cd '$DEV_REPO' && [ \"\$(git rev-parse --abbrev-ref HEAD)\" = main ] &&
+          git merge --quiet --ff-only $DEV_BUMP_BRANCH && git branch -D $DEV_BUMP_BRANCH"; then
+        :
+      else
+        warn "Could not fast-forward main on $DEV_HOSTNAME; merge branch $DEV_BUMP_BRANCH there by hand."
+      fi
+    fi
   fi
   VERSION="$(app_version)"
   ((DRY_RUN)) && VERSION="${NEW_VERSION:-$VERSION}"
@@ -204,9 +275,9 @@ if ((DO_IOS || DO_ANDROID)); then
   echo
 fi
 
-# ---------- push (web, and needed for building iOS on the Mac) ----------
+# ---------- push (web) ----------
 
-if ((DO_WEB || IOS_LOCAL_ELSEWHERE)); then
+if ((DO_WEB)); then
   AHEAD="$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo '?')"
   info "Pushing $BRANCH ($AHEAD commit(s) ahead of upstream)"
   ((DO_WEB)) && [[ "$BRANCH" == main ]] && echo "Vercel will deploy the web app from this push."
@@ -235,12 +306,11 @@ if ((DO_IOS)); then
     info "Queuing iOS $VERSION EAS production build with App Store Connect submission"
     eas build --platform ios --profile production --auto-submit --no-wait
   elif ((IOS_LOCAL_ELSEWHERE)); then
-    bold "iOS local build must run on your MacBook:"
+    bold "iOS local build must run on your Mac, from a clone on its local disk (not the network share):"
     cat <<EOF
-  cd <fireco repo>
-  git pull
-  npm ci
-  ./deploy.sh        # answer: web=n, iOS=y (local), Android=n, skip version update
+  git clone git@github.com:tinykings/fireco.git ~/dev/fireco   # first time only
+  cd ~/dev/fireco
+  ./deploy.sh        # syncs from $DEV_HOSTNAME; answer: web=n, iOS=y (local), Android=n, skip version update
 EOF
   else
     IPA="$BUILD_DIR/fireops-$VERSION.ipa"
