@@ -66,12 +66,12 @@ Deno.serve(async (request) => {
   if (suppliedName.length > 120 || phone.length > 30) return response(400, {error: 'Crew details are too long.'});
 
   const [{data: ownership}, {data: systemAdmin}, {data: company, error: companyError}] = await Promise.all([
-    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).eq('role', 'owner').maybeSingle(),
+    admin.from('company_members').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).in('role', ['owner', 'admin']).maybeSingle(),
     admin.from('system_admin_company_access').select('user_id').eq('company_id', companyId).eq('user_id', actor.id).gt('expires_at', new Date().toISOString()).maybeSingle(),
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
   ]);
   if (companyError || !company) return response(404, {error: 'Company not found.'});
-  if (!ownership && !systemAdmin) return response(403, {error: 'Company owner access required.'});
+  if (!ownership && !systemAdmin) return response(403, {error: 'Company owner or admin access required.'});
 
   const redirectTo = `${appUrl.replace(/\/$/, '')}/accept-invite`;
   if (action === 'resend') {
