@@ -644,7 +644,7 @@ export default function VehicleDetailScreen() {
                     <Text style={styles.openIssueLabel}>Open issue</Text>
                   </Pressable>
                 ) : null}
-                {user?.role !== "fire_fighter" ? (
+                {user?.role !== "fire_fighter" && user?.role !== "accounting" ? (
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => router.push(`/vehicle-notes/${encodeURIComponent(vehicle.id)}` as never)}

@@ -8,7 +8,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { type Activity, type FleetIssue } from '@fireops/domain';
+import { canProcessFinance, type Activity, type FleetIssue } from '@fireops/domain';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
@@ -73,7 +73,7 @@ export default function DashboardScreen() {
     void refreshNotificationInbox();
   };
 
-  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} payrolls={payrolls} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || payrollRefreshing || notificationsRefreshing} error={error}/>;
+  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} payrolls={canProcessFinance(user.role)?payrolls:[]} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || payrollRefreshing || notificationsRefreshing} error={error}/>;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>

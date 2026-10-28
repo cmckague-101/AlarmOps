@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatCalendarRange, payrollCrewIds, payrollTotals } from '@fireops/domain';
+import { canProcessFinance, formatCalendarRange, payrollCrewIds, payrollTotals } from '@fireops/domain';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import { AppSymbol } from '@/components/app-symbol';
@@ -13,7 +13,7 @@ import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 
 export function PayrollScreen(){
- const router=useRouter(),theme=useFireOpsTheme(),styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const member=access.value?.kind==='member'?access.value:null;const manager=member?.user.role==='owner'||member?.user.role==='admin';const payroll=usePayroll(member?.company.id??null);const {loading,refreshing,error}=payroll;const {forms,device}=useDevicePayroll(payroll.forms,member,payroll.downloaded?.receiptWatermark);const {crew}=useFleetVehicles(member?.company.id??null);const currentYear=new Date().getFullYear();const [year,setYear]=useState(String(currentYear));const [crewId,setCrewId]=useState('all');
+ const router=useRouter(),theme=useFireOpsTheme(),styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const member=access.value?.kind==='member'?access.value:null;const manager=Boolean(member&&canProcessFinance(member.user.role));const payroll=usePayroll(member?.company.id??null);const {loading,refreshing,error}=payroll;const {forms,device}=useDevicePayroll(payroll.forms,member,payroll.downloaded?.receiptWatermark);const {crew}=useFleetVehicles(member?.company.id??null);const currentYear=new Date().getFullYear();const [year,setYear]=useState(String(currentYear));const [crewId,setCrewId]=useState('all');
  const crewNames=useMemo(()=>new Map(crew.filter(person=>person.role!=='owner').map(person=>[person.id,person.name])),[crew]);const draft=forms.find(form=>(form.status==='draft'||form.status==='rejected')&&form.createdBy===member?.user.id);const years=useMemo(()=>[...new Set([currentYear,...forms.map(form=>new Date(form.createdAt).getFullYear())])].sort((a,b)=>b-a).map(value=>({value:String(value),label:String(value)})),[forms,currentYear]);const crewOptions=useMemo<FilterSelectOption<string>[]>(()=>[{value:'all',label:'All Crew'},...crew.filter(person=>person.role!=='owner').map(person=>({value:person.id,label:person.name}))],[crew]);const visible=forms.filter(form=>form.status!=='draft'&&String(new Date(form.createdAt).getFullYear())===year&&(!manager||crewId==='all'||form.createdBy===crewId));
  if(!session||access.status==='error')return <Redirect href="/"/>;
  const open=(id?:string)=>router.push({pathname:'/payroll/form',params:id?{payrollId:id}:{}} as never);

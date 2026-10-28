@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import {canProcessFinance} from '@fireops/domain';
 import {Redirect, Stack, useRouter} from 'expo-router';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {InvoiceGeneratorScreen} from '@/components/invoice-generator-screen';
@@ -22,7 +23,7 @@ export default function Screen() {
     return () => {active = false;};
   }, [logoPath]);
   if (!session || access.status === 'error') return <Redirect href="/"/>;
-  if (member?.user.role !== 'owner') return <Redirect href="/invoices"/>;
+  if (!member || !canProcessFinance(member.user.role)) return <Redirect href="/invoices"/>;
   return <SafeAreaView style={{flex: 1, backgroundColor: theme.canvas}} edges={['bottom']}>
     <Stack.Screen options={{title: 'Invoice Generator'}}/>
     <InvoiceGeneratorScreen companyLogoUri={logoUri} onBack={() => router.back()}/>

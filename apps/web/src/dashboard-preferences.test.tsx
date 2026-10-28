@@ -65,7 +65,7 @@ describe('dashboard customization',()=>{
     renderToStaticMarkup(<Probe/>);
     for(const id of ['incidents','personnel','resources','attention','availability','tasks','inventory','payroll','receipts','invoices'] as const)await preferences!.save(id,false);
     renderToStaticMarkup(<Probe/>);
-    const dashboard=renderToStaticMarkup(<OwnerDashboard preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} onSelect={()=>{}}/>);
+    const dashboard=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} onSelect={()=>{}}/>);
     expect(dashboard).not.toContain('Active Incidents');
     expect(dashboard).not.toContain('Assigned Personnel');
     expect(dashboard).not.toContain('Assigned Resources');

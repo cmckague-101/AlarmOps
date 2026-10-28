@@ -19,10 +19,10 @@ function usePayrollAlerts(companyId?:string) {
   return payrolls;
 }
 
-export function OwnerDashboard({preferences,onCustomize,demoMode=false,quickActions,nationalFireActivity,companyId,name,vehicles,crew,issues,onSelect}:{preferences:ReturnType<typeof useDashboardPreferences>;onCustomize:()=>void;demoMode?:boolean;quickActions?:React.ReactNode;nationalFireActivity?:React.ReactNode;companyId?:string;name:string;vehicles:Vehicle[];crew:CrewMember[];issues:FleetIssue[];onSelect:(target:NonNullable<CommandRow['target']>)=>void}) {
+export function OwnerDashboard({canProcessPayroll,preferences,onCustomize,demoMode=false,quickActions,nationalFireActivity,companyId,name,vehicles,crew,issues,onSelect}:{canProcessPayroll:boolean;preferences:ReturnType<typeof useDashboardPreferences>;onCustomize:()=>void;demoMode?:boolean;quickActions?:React.ReactNode;nationalFireActivity?:React.ReactNode;companyId?:string;name:string;vehicles:Vehicle[];crew:CrewMember[];issues:FleetIssue[];onSelect:(target:NonNullable<CommandRow['target']>)=>void}) {
   const [selected,setSelected]=useState<string|null>(null);
   const heading=useRef<HTMLHeadingElement>(null);
-  const payrolls=usePayrollAlerts(companyId);
+  const payrolls=usePayrollAlerts(canProcessPayroll?companyId:undefined);
   const cards=commandCenter(vehicles,crew,issues);
   const alerts=commandAlerts(vehicles,issues,payrolls,new Date(),crew);
   const detail=cards.find(card=>card.id===selected);

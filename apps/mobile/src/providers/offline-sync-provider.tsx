@@ -51,7 +51,7 @@ export function OfflineSyncProvider({children}:PropsWithChildren){
   const [foreground,setForeground]=useState(AppState.currentState==='active');
   const manager=member?.user.role==='owner'||member?.user.role==='admin';
   // Crew may sync vehicle claims/release and notes on their own issues; attachments stay owner/admin.
-  const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech';const syncRole=manager||crew;
+  const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech'||member?.user.role==='accounting';const syncRole=manager||crew;
   const shopTech=member?.user.role==='shop_tech';
   const runtime=useRef({key,foreground,manager,syncRole,shopTech});runtime.current={key,foreground,manager,syncRole,shopTech};
   const [binding,setBinding]=useState<{key:string;worker:OfflineSyncWorker;editor:OfflineDetailEditor;attachments:OfflineAttachmentController;syncAttachments:()=>void;userSync:OfflineUserSync;userSnapshots:UserSnapshotSync;receiptFiles:OfflineReceiptFiles;companySnapshots:CompanySnapshotSync}|null>(null);

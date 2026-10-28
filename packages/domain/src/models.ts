@@ -1,22 +1,28 @@
-export type UserRole = 'owner' | 'admin' | 'shop_tech' | 'fire_fighter';
+export type UserRole = 'owner' | 'admin' | 'shop_tech' | 'fire_fighter' | 'accounting';
 export type AssignableUserRole = Exclude<UserRole, 'owner'>;
 
 export const assignableUserRoles:ReadonlyArray<{value:AssignableUserRole;label:string}> = [
   {value:'admin',label:'Admin'},
   {value:'shop_tech',label:'Shop Tech'},
   {value:'fire_fighter',label:'Fire Fighter'},
+  {value:'accounting',label:'Accounting'},
 ];
 
 export function isCompanyManager(role:UserRole):boolean {
   return role==='owner'||role==='admin';
 }
 
+/** Payroll and invoice processing (review, approval, payment, customers) is owner/accounting only. */
+export function canProcessFinance(role:UserRole):boolean {
+  return role==='owner'||role==='accounting';
+}
+
 export function canOpenVehicleIssue(role:UserRole):boolean {
-  return role!=='fire_fighter';
+  return role!=='fire_fighter'&&role!=='accounting';
 }
 
 export function canInspectVehicle(role:UserRole):boolean {
-  return role!=='fire_fighter';
+  return role!=='fire_fighter'&&role!=='accounting';
 }
 
 export function userRoleLabel(role:UserRole):string {
@@ -169,5 +175,5 @@ export type FireResourceVehicle = {
 };
 
 export type DashboardNotification = {
-  id:string;source:'communications'|'documents'|'training'|'qualifications';title:string;detail:string;createdAt:string;unread:boolean;
+  id:string;source:'communications'|'documents'|'training'|'qualifications'|'payroll'|'invoices';title:string;detail:string;createdAt:string;unread:boolean;
 };

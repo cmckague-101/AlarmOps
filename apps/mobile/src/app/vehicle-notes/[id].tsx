@@ -52,7 +52,7 @@ export default function VehicleNotesScreen() {
   const offlineIds = useRef(new Map<string, string>());
 
   const load = useCallback(async () => {
-    if (!companyId || !id || user?.role === "fire_fighter") return;
+    if (!companyId || !id || (user?.role === "fire_fighter" || user?.role === "accounting")) return;
     setLoading(true);
     setError("");
     try { setNotes(await listVehicleNotes(companyId, id)); }
@@ -63,7 +63,7 @@ export default function VehicleNotesScreen() {
   useEffect(() => { void load(); }, [load]);
 
   if (!session || access.status === "error") return <Redirect href="/" />;
-  if (user?.role === "fire_fighter") return <Redirect href={`/vehicle/${encodeURIComponent(id)}` as never} />;
+  if ((user?.role === "fire_fighter" || user?.role === "accounting")) return <Redirect href={`/vehicle/${encodeURIComponent(id)}` as never} />;
 
   const begin = (note?: VehicleNote) => {
     setEditing(note ?? null);

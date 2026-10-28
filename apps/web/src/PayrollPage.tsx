@@ -2,7 +2,7 @@ import {FileInput} from './demo-uploads';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, CircleDollarSign, CircleX, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
-import { createPayrollRows, formatCalendarRange, isCompanyManager, payrollCrewIds, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollDay, type PayrollForm } from '@fireops/domain';
+import { createPayrollRows, formatCalendarRange, canProcessFinance, payrollCrewIds, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from './supabase';
 import { useDialogA11y } from './useDialogA11y';
 import { createId } from './create-id';
@@ -17,7 +17,7 @@ function payrollFileType(file:File){return file.type||(/\.pdf$/i.test(file.name)
 function safePayrollFileName(name:string){return name.trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'attachment'}
 
 export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened,demoForms,onDemoChange}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void;demoForms?:PayrollForm[];onDemoChange?:(forms:PayrollForm[])=>void}) {
-  const manager = isCompanyManager(user.role);
+  const manager = canProcessFinance(user.role);
   const [forms,setForms] = useState<PayrollForm[]>(demoForms??[]);
   const [selected,setSelected] = useState<PayrollForm|null>(null);
   const [draft,setDraft] = useState<PayrollForm|null>(()=>demoForms?.find(form=>(form.status==='draft'||form.status==='rejected')&&form.createdBy===user.id)??null);
