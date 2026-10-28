@@ -5,7 +5,7 @@ import {supabase} from './supabase';
 
 type NotificationRow = {
   id:string;
-  event_type:'communication_reply'|'training_created'|'qualification_approved'|'system';
+  event_type:'communication_reply'|'training_created'|'qualification_approved'|'payroll_rejected'|'system';
   path:string|null;
   title:string;
   body:string;
@@ -13,11 +13,12 @@ type NotificationRow = {
   created_at:string;
 };
 
-const visibleEvents:NotificationRow['event_type'][]=['communication_reply','training_created','qualification_approved'];
+const visibleEvents:NotificationRow['event_type'][]=['communication_reply','training_created','qualification_approved','payroll_rejected'];
 // Accounting also receives payroll and invoice submissions as system notifications.
 const financeEvents:NotificationRow['event_type'][]=[...visibleEvents,'system'];
 
 function source(event:NotificationRow['event_type'],path:string|null):DashboardNotification['source'] {
+  if(event==='payroll_rejected')return 'payroll';
   if(event==='system')return path==='/invoices'?'invoices':'payroll';
   if(event==='communication_reply')return 'communications';
   if(event==='training_created')return 'training';
