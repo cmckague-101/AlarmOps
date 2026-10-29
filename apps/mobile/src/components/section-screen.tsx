@@ -1,13 +1,14 @@
-import {ScrollView,StyleSheet,Text,View} from 'react-native';
+import type {RefObject} from 'react';
+import {ScrollView,StyleSheet,Text,View,type ScrollViewInstance} from 'react-native';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
-type Props={title:string;description?:string;showTitle?:boolean;showHeader?:boolean;children?:React.ReactNode};
-export function SectionScreen({title,description,showTitle=true,showHeader=true,children}:Props){
+type Props={title:string;description?:string;showTitle?:boolean;showHeader?:boolean;children?:React.ReactNode;scrollRef?:RefObject<ScrollViewInstance|null>};
+export function SectionScreen({title,description,showTitle=true,showHeader=true,children,scrollRef}:Props){
   const theme=useFireOpsTheme();
   const {access}=useSession();
   const company=access.value?.kind==='member'?access.value.company:null;
-  return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
+  return <ScrollView ref={scrollRef} contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
     {showHeader?<Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>:null}
     {showTitle?<Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>:null}
     {description?<Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>:null}

@@ -33,6 +33,10 @@ export const fedRoomsMapsUrl=(hotel:FedRoomsHotel,provider:'google'|'apple'='goo
   const q=query(hotel,[hotel.address,hotel.city,hotel.state,hotel.postal_code,hotel.country]);
   return provider==='apple'?`https://maps.apple.com/?q=${q}`:`https://www.google.com/maps/search/?api=1&query=${q}`;
 };
+export const fedRoomsRestaurantsUrl=(hotel:FedRoomsHotel,provider:'google'|'apple'='google')=>{
+  const q=encodeURIComponent(`restaurants near ${[hotel.address,hotel.city,hotel.state,hotel.postal_code,hotel.country].filter(Boolean).join(', ')}`);
+  return provider==='apple'?`https://maps.apple.com/?q=${q}`:`https://www.google.com/maps/search/?api=1&query=${q}`;
+};
 export const fedRoomsWebSearchUrl=(hotel:FedRoomsHotel)=>`https://www.google.com/search?q=${query(hotel,[hotel.city,hotel.state??hotel.country])}`;
 
 export function createDemoFedRoomsData(){

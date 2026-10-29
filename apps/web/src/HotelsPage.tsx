@@ -1,7 +1,7 @@
-import {useEffect,useMemo,useState} from 'react';
-import {BedDouble,ExternalLink,LocateFixed,MapPin,RefreshCw,Search} from 'lucide-react';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {BedDouble,ExternalLink,LocateFixed,MapPin,Plane,RefreshCw,Search,UtensilsCrossed} from 'lucide-react';
 import {supabase} from './supabase';
-import {createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
+import {airportLabel,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 
 const message=(error:unknown)=>error instanceof Error?error.message:'Hotel data could not be loaded.';
 const {hotels:demoHotels,regions:demoRegions}=createDemoFedRoomsData();
@@ -19,6 +19,57 @@ async function currentPlace():Promise<FedRoomsPlace>{
   return fedRoomsPlaceFromReverseGeocode(await response.json());
 }
 
+function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}){
+  const [from,setFrom]=useState('');
+  const [to,setTo]=useState('');
+  const [depart,setDepart]=useState('');
+  const [returnDate,setReturnDate]=useState('');
+  const [note,setNote]=useState('');
+  const [locating,setLocating]=useState(false);
+  const card=useRef<HTMLElement>(null);
+  const departInput=useRef<HTMLInputElement>(null);
+  const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+
+  useEffect(()=>{
+    if(!prefillTo)return;
+    setTo(prefillTo.value);setNote('');
+    card.current?.scrollIntoView({behavior:'smooth',block:'start'});
+    departInput.current?.focus({preventScroll:true});
+  },[prefillTo]);
+
+  async function fillNearestAirport(){
+    setLocating(true);setNote('');
+    try{
+      const [{coords},{airportRows}]=await Promise.all([currentPosition(),import('@fireops/domain/airports-data')]);
+      const airport=nearestAirport(airportRows,coords);
+      if(!airport){setNote('No nearby airport was found.');return}
+      setFrom(airport.code);setNote(`Nearest airport: ${airportLabel(airport)} (${Math.round(airport.distanceKm*0.621371)} mi). Check that it has the flights you need.`);
+    }catch(failure){setNote(failure instanceof Error?failure.message:'Your location could not be determined.')}
+    finally{setLocating(false)}
+  }
+
+  function search(event:React.FormEvent){
+    event.preventDefault();
+    const flight={from,to,depart,returnDate:returnDate||null};
+    const problem=flightSearchProblem(flight);
+    if(problem){setNote(problem);return}
+    setNote('');
+    window.open(googleFlightsUrl(flight),'_blank','noopener,noreferrer');
+  }
+
+  return <section ref={card} className="travel-flights" aria-labelledby="travel-flights-title">
+    <header><h2 id="travel-flights-title"><Plane/>Flights</h2><p>Search Google Flights. Leave Return empty for one way.</p></header>
+    <form onSubmit={search}>
+      <label><span>From</span><div className="travel-from"><input value={from} onChange={event=>setFrom(event.target.value)} placeholder="Airport or city, e.g. SMF"/><button type="button" className="secondary compact" onClick={()=>void fillNearestAirport()} disabled={locating}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Nearest'}</button></div></label>
+      <label><span>To</span><input value={to} onChange={event=>setTo(event.target.value)} placeholder="Airport or city, e.g. Boise, Idaho"/></label>
+      <label><span>Depart</span><input ref={departInput} type="date" min={today} value={depart} onChange={event=>setDepart(event.target.value)}/></label>
+      <label><span>Return (optional)</span><input type="date" min={depart||today} value={returnDate} onChange={event=>setReturnDate(event.target.value)}/></label>
+      <button type="submit" className="primary"><Search/>Search Google Flights</button>
+    </form>
+    {note?<p className="hotels-near-note" role="status">{note}</p>:null}
+  </section>;
+}
+
 export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const [regions,setRegions]=useState<FedRoomsRegion[]>(demoMode?sortFedRoomsRegions(demoRegions):[]);
   const [cities,setCities]=useState<FedRoomsCity[]>([]);
@@ -34,6 +85,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const [locating,setLocating]=useState(false);
   const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
   const [nearNote,setNearNote]=useState('');
+  const [flightsTo,setFlightsTo]=useState<{value:string;key:number}|null>(null);
   const region=regionValue?fedRoomsRegionFromValue(regionValue):null;
   const ready=Boolean(region||term.length>=2);
 
@@ -111,7 +163,9 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
   return <div className="page dispatch-page hotels-page">
-    <div className="page-heading"><div><h1>Travel</h1><p>GSA FedRooms hotels. Book through your travel system or the hotel directly.</p></div><div className="hotels-heading-actions"><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
+    <div className="page-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
+    <FlightSearchCard prefillTo={flightsTo}/>
+    <h2 className="travel-section-title"><BedDouble/>Hotels</h2>
     <section className="dispatch-filters" aria-label="Hotel filters">
       <label><span>Search</span><div className="hotels-search"><Search/><input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Hotel, city, or address"/></div></label>
       <label><span>State or country</span><select value={regionValue} onChange={event=>{setNearNote('');setRegionValue(event.target.value)}} disabled={!regions.length}><option value="">All</option>{regions.map(item=><option key={fedRoomsRegionValue(item)} value={fedRoomsRegionValue(item)}>{fedRoomsRegionLabel(item)} ({item.hotel_count})</option>)}</select></label>
@@ -125,7 +179,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
       <header><div><h2>{city||(region?fedRoomsRegionLabel({...region,hotel_count:0}):'Search results')}</h2><p>{hotels.length>fedRoomsResultLimit?`First ${fedRoomsResultLimit} matches. Narrow your search to see more.`:`${hotels.length} ${hotels.length===1?'property':'properties'}`}</p></div>{demoMode?<span className="dispatch-warning">Demo data</span>:null}</header>
       <ul className="hotels-list">{shown.map(hotel=><li key={hotel.property_key}>
         <div><b>{hotel.name}</b>{fedRoomsAddressLines(hotel).map(line=><span key={line}>{line}</span>)}</div>
-        <div className="hotels-actions"><a className="secondary compact" href={fedRoomsMapsUrl(hotel)} target="_blank" rel="noreferrer"><MapPin/>Map</a><a className="secondary compact" href={fedRoomsWebSearchUrl(hotel)} target="_blank" rel="noreferrer"><ExternalLink/>Search web</a></div>
+        <div className="hotels-actions"><a className="secondary compact" href={fedRoomsMapsUrl(hotel)} target="_blank" rel="noreferrer"><MapPin/>Map</a><a className="secondary compact" href={fedRoomsRestaurantsUrl(hotel)} target="_blank" rel="noreferrer"><UtensilsCrossed/>Restaurants</a><button type="button" className="secondary compact" onClick={()=>setFlightsTo(current=>({value:fedRoomsHotelDestination(hotel),key:(current?.key??0)+1}))}><Plane/>Flights here</button><a className="secondary compact" href={fedRoomsWebSearchUrl(hotel)} target="_blank" rel="noreferrer"><ExternalLink/>Search web</a></div>
       </li>)}</ul>
       {!hotels.length&&!loading?<div className="dispatch-empty"><BedDouble/><b>No hotels match</b></div>:null}
       <footer>{demoMode?'Fictional sample records for product demonstration. ':<>Source: GSA FedRooms accepted properties{updated?`, updated ${new Date(updated).toLocaleDateString()}`:''}. </>}<a href={fedRoomsSourceUrl} target="_blank" rel="noreferrer">Verify official source</a>. Rates and availability are not shown. FireOps is not affiliated with or endorsed by GSA.</footer>
