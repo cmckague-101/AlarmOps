@@ -71,7 +71,7 @@ export default function HotelsScreen(){
 
   const total=regions.reduce((sum,item)=>sum+item.hotel_count,0);
   const shown=hotels.slice(0,fedRoomsResultLimit);
-  return <SectionScreen title="Hotels" description="GSA FedRooms properties. Book through your travel system or the hotel directly.">
+  return <SectionScreen title="Travel" description="GSA FedRooms hotels. Book through your travel system or the hotel directly.">
     <View style={styles.filters}>
       <View style={styles.field}><Text style={styles.fieldLabel}>Search</Text><TextInput accessibilityLabel="Search hotels" value={query} onChangeText={setQuery} placeholder="Hotel, city, or address" placeholderTextColor={theme.secondary} selectionColor={theme.ember} autoCorrect={false} clearButtonMode="while-editing" returnKeyType="search" style={styles.input}/></View>
       <View style={styles.field}><Text style={styles.fieldLabel}>State or country</Text><FilterSelect accessibilityLabel="State or country" value={regionValue} onChange={setRegionValue} options={[{value:'',label:'All'},...regions.map(item=>({value:fedRoomsRegionValue(item),label:`${fedRoomsRegionLabel(item)} (${item.hotel_count})`}))]}/></View>

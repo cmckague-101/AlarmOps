@@ -73,7 +73,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
   return <div className="page dispatch-page hotels-page">
-    <div className="page-heading"><div><h1>Hotels</h1><p>GSA FedRooms properties. Book through your travel system or the hotel directly.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
+    <div className="page-heading"><div><h1>Travel</h1><p>GSA FedRooms hotels. Book through your travel system or the hotel directly.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
     <section className="dispatch-filters" aria-label="Hotel filters">
       <label><span>Search</span><div className="hotels-search"><Search/><input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Hotel, city, or address"/></div></label>
       <label><span>State or country</span><select value={regionValue} onChange={event=>setRegionValue(event.target.value)} disabled={!regions.length}><option value="">All</option>{regions.map(item=><option key={fedRoomsRegionValue(item)} value={fedRoomsRegionValue(item)}>{fedRoomsRegionLabel(item)} ({item.hotel_count})</option>)}</select></label>

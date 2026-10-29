@@ -57,7 +57,7 @@ const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
   operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
-  hotels:{label:'Hotels',description:'GSA FedRooms properties',Icon:BedDouble},
+  hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
