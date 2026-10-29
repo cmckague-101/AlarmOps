@@ -38,3 +38,23 @@ for select to authenticated using (true);
 
 revoke all on public.fedrooms_hotels, public.fedrooms_sync_runs from anon, authenticated;
 grant select on public.fedrooms_hotels to authenticated;
+
+-- Filter options without downloading every hotel: states (or countries, outside
+-- the US) and the cities within each.
+create view public.fedrooms_hotel_regions
+with (security_invoker = true)
+as
+select country, state, count(*)::integer as hotel_count, max(last_seen_at) as last_seen_at
+from public.fedrooms_hotels
+group by country, state;
+
+create view public.fedrooms_hotel_cities
+with (security_invoker = true)
+as
+select country, state, city, count(*)::integer as hotel_count
+from public.fedrooms_hotels
+where city is not null
+group by country, state, city;
+
+revoke all on public.fedrooms_hotel_regions, public.fedrooms_hotel_cities from anon;
+grant select on public.fedrooms_hotel_regions, public.fedrooms_hotel_cities to authenticated;

@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {fetchIncidents} from './OperationsPage';
 import DispatchListsPage from './DispatchListsPage';
+import HotelsPage from './HotelsPage';
 import TrainingPage from './TrainingPage';
 import InventoryPage from './InventoryPage';
 import {useInspectionTemplate} from './inspectionTemplate';
@@ -43,19 +44,20 @@ export type {
 } from '@fireops/domain';
 export type VehicleTypeOption = {id:string;name:string};
 import {
-  AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
+  AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
   BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
   operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
+  hotels:{label:'Hotels',description:'GSA FedRooms properties',Icon:BedDouble},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
@@ -72,7 +74,7 @@ const navigationMeta = {
   'audit-log':{label:'Audit log',description:'Company activity from the last 30 days',Icon:Clock3},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','dispatch','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
@@ -674,6 +676,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'qualification-annual-records' && <AnnualRecordsPage record={crew.find(member=>member.id===currentUser.id)?.annualRecord} onCancel={()=>setPage('qualifications')} onSave={async annualRecord=>{const current=crew.find(member=>member.id===currentUser.id);if(!current)throw new Error('Crew record not found.');const next=onUpdateAnnualRecord?await onUpdateAnnualRecord(annualRecord):{...current,annualRecord};setCrew(items=>items.map(item=>item.id===next.id?next:item));if(!onUpdateAnnualRecord)saveLocal('fireops-crew',crew.map(item=>item.id===next.id?next:item));setPage('qualifications');showNotice('Annual record updated')}}/>}
 
         {page === 'dispatch' && <DispatchListsPage demoMode={demoMode}/>}
+        {page === 'hotels' && <HotelsPage demoMode={demoMode}/>}
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} requestedVehicleId={requestedVehicleId} onVehicleOpened={()=>setRequestedVehicleId(null)} assignedIncidentIds={[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))]} resources={operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined}))} motiveEnabled={activeMotiveConnection.connected} assignableVehicles={vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined}))} onAssignVehicle={(vehicleId,fire)=>updateFireAssignment(vehicleId,fire)} onVehicleSelect={vehicleId=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}}/>}
         {page === 'more' && <MorePage demoMode={demoMode} onInspect={()=>setInspectionPickerOpen(true)} user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
 

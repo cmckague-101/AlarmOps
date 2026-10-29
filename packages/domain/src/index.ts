@@ -7,6 +7,7 @@ export * from './dates';
 export * from './payroll';
 export * from './invoices';
 export * from './tasks';
+export * from './hotels';
 export * from './dashboard-preferences';
 export * from './online-dashboard-preferences';
 export * from './online-availability';
