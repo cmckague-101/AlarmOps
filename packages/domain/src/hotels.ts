@@ -45,3 +45,22 @@ export function createDemoFedRoomsData(){
   const regions:FedRoomsRegion[]=[...new Set(hotels.map(hotel=>hotel.state))].map(state=>({country:fedRoomsUnitedStates,state,hotel_count:hotels.filter(hotel=>hotel.state===state).length}));
   return {hotels,regions};
 }
+
+// "Near me": reverse-geocoded place -> the same city/state filters a user would pick.
+export type FedRoomsPlace={city:string|null;state:string|null;country:string|null;countryCode?:string|null};
+const usStates:Record<string,string>={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',PR:'Puerto Rico',GU:'Guam',VI:'U.S. Virgin Islands'};
+const same=(a:string|null|undefined,b:string|null|undefined)=>Boolean(a&&b&&a.trim().localeCompare(b.trim(),undefined,{sensitivity:'base'})===0);
+// iOS geocoding returns state abbreviations ("CA"); GSA and Android use full names.
+export const fedRoomsStateName=(value:string|null|undefined)=>value?usStates[value.trim().toUpperCase()]??value.trim():null;
+const isUnitedStates=(place:FedRoomsPlace)=>place.countryCode?.toUpperCase()==='US'||/^(united states( of america)?|usa?)$/i.test(place.country?.trim()??'');
+
+export function matchFedRoomsRegion(regions:FedRoomsRegion[],place:FedRoomsPlace){
+  if(isUnitedStates(place)){const state=fedRoomsStateName(place.state);return regions.find(region=>region.country===fedRoomsUnitedStates&&same(region.state,state))??null}
+  return regions.find(region=>same(region.country,place.country))??null;
+}
+export const matchFedRoomsCity=(cities:FedRoomsCity[],city:string|null|undefined)=>cities.find(item=>same(item.city,city))?.city??null;
+export const fedRoomsPlaceLabel=(place:FedRoomsPlace)=>[place.city,isUnitedStates(place)?fedRoomsStateName(place.state):place.country].filter(Boolean).join(', ')||'your location';
+
+// Browser reverse geocoding (no API key; CORS-enabled client endpoint).
+export const fedRoomsReverseGeocodeUrl=(latitude:number,longitude:number)=>`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`;
+export const fedRoomsPlaceFromReverseGeocode=(data:{city?:string;locality?:string;principalSubdivision?:string;countryName?:string;countryCode?:string}):FedRoomsPlace=>({city:data.city||data.locality||null,state:data.principalSubdivision||null,country:data.countryName||null,countryCode:data.countryCode||null});

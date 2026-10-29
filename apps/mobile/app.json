@@ -45,6 +45,12 @@
       ],
       "expo-secure-store",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow FireOps to use your location to find nearby FedRooms hotels."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Allow FireOps to select photos for your company fleet and qualification records.",

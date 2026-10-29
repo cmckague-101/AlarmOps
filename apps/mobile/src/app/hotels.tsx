@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {ActivityIndicator,Linking,Platform,Pressable,StyleSheet,Text,TextInput,View} from 'react-native';
-import {fedRoomsAddressLines,fedRoomsMapsUrl,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
+import * as Location from 'expo-location';
+import {fedRoomsAddressLines,fedRoomsMapsUrl,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 import {AppSymbol} from '@/components/app-symbol';
 import {FilterSelect} from '@/components/filter-select';
 import {SectionScreen} from '@/components/section-screen';
@@ -10,6 +11,15 @@ import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
 const failureMessage=(error:unknown)=>error instanceof Error?error.message:'Hotel data could not be loaded.';
 const mapsProvider=Platform.OS==='ios'?'apple':'google';
+
+async function currentPlace():Promise<FedRoomsPlace>{
+  const {status}=await Location.requestForegroundPermissionsAsync();
+  if(status!=='granted')throw new Error('Location permission was denied. Allow location for FireOps in Settings and try again.');
+  const {coords}=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});
+  const [address]=await Location.reverseGeocodeAsync({latitude:coords.latitude,longitude:coords.longitude});
+  if(!address)throw new Error('Your city could not be looked up. Try again or choose it from the list.');
+  return {city:address.city??address.subregion??null,state:address.region??null,country:address.country??null,countryCode:address.isoCountryCode??null};
+}
 
 export default function HotelsScreen(){
   const theme=useFireOpsTheme();
@@ -25,6 +35,10 @@ export default function HotelsScreen(){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [refresh,setRefresh]=useState(0);
+  const [citiesRegion,setCitiesRegion]=useState('');
+  const [locating,setLocating]=useState(false);
+  const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
+  const [nearNote,setNearNote]=useState('');
   const region=regionValue?fedRoomsRegionFromValue(regionValue):null;
   const ready=Boolean(region||term.length>=2);
 
@@ -41,17 +55,38 @@ export default function HotelsScreen(){
   },[demoMode,refresh]);
 
   useEffect(()=>{
-    let active=true;setCities([]);setCity('');
+    let active=true;setCities([]);setCity('');setCitiesRegion('');
     const selected=regionValue?fedRoomsRegionFromValue(regionValue):null;
     if(!supabase||!selected)return()=>{active=false};
     void (async()=>{try{
       let request=supabase.from('fedrooms_hotel_cities').select('city,hotel_count').eq('country',selected.country);
       request=selected.state?request.eq('state',selected.state):request.is('state',null);
       const {data,error:failure}=await request.order('city');
-      if(!active)return;if(failure)throw failure;setCities((data??[]) as FedRoomsCity[]);
+      if(!active)return;if(failure)throw failure;setCities((data??[]) as FedRoomsCity[]);setCitiesRegion(regionValue);
     }catch(failure){if(active)setError(failureMessage(failure))}})();
     return()=>{active=false};
   },[regionValue,refresh]);
+
+  // Near me: once the located state's cities load, pick the same city or fall back to the whole state.
+  useEffect(()=>{
+    if(!nearMe||citiesRegion!==nearMe.regionValue)return;
+    const match=matchFedRoomsCity(cities,nearMe.place.city);
+    setCity(match??'');
+    setNearNote(match?`Showing FedRooms hotels in ${fedRoomsPlaceLabel(nearMe.place)}.`:`No FedRooms hotels listed in ${nearMe.place.city??'your city'}. Showing all of ${fedRoomsRegionLabel({...fedRoomsRegionFromValue(nearMe.regionValue)!,hotel_count:0})}.`);
+    setNearMe(null);
+  },[cities,citiesRegion,nearMe]);
+
+  async function findNearMe(){
+    setLocating(true);setNearNote('');setError('');
+    try{
+      const place=await currentPlace();
+      const match=matchFedRoomsRegion(regions,place);
+      if(!match){setNearNote(`No FedRooms hotels listed near ${fedRoomsPlaceLabel(place)}.`);return}
+      const value=fedRoomsRegionValue(match);
+      setQuery('');setTerm('');setNearMe({regionValue:value,place});setRegionValue(value);
+    }catch(failure){setNearNote(failure instanceof Error?failure.message:'Your location could not be determined.')}
+    finally{setLocating(false)}
+  }
 
   useEffect(()=>{
     let active=true;setHotels([]);
@@ -72,10 +107,12 @@ export default function HotelsScreen(){
   const total=regions.reduce((sum,item)=>sum+item.hotel_count,0);
   const shown=hotels.slice(0,fedRoomsResultLimit);
   return <SectionScreen title="Travel" description="GSA FedRooms hotels. Book through your travel system or the hotel directly.">
+    <Pressable accessibilityRole="button" accessibilityLabel="Find hotels near me" disabled={locating||!regions.length} onPress={()=>void findNearMe()} style={({pressed})=>[styles.nearMe,pressed&&styles.pressed,(locating||!regions.length)&&styles.disabled]}>{locating?<ActivityIndicator size="small" color="#fff"/>:<AppSymbol name={{ios:'location.fill',android:'my_location'}} size={17} color="#fff"/>}<Text style={styles.nearMeText}>{locating?'Locating…':'Hotels near me'}</Text></Pressable>
+    {nearNote?<Text accessibilityRole="text" style={styles.nearNote}>{nearNote}</Text>:null}
     <View style={styles.filters}>
       <View style={styles.field}><Text style={styles.fieldLabel}>Search</Text><TextInput accessibilityLabel="Search hotels" value={query} onChangeText={setQuery} placeholder="Hotel, city, or address" placeholderTextColor={theme.secondary} selectionColor={theme.ember} autoCorrect={false} clearButtonMode="while-editing" returnKeyType="search" style={styles.input}/></View>
-      <View style={styles.field}><Text style={styles.fieldLabel}>State or country</Text><FilterSelect accessibilityLabel="State or country" value={regionValue} onChange={setRegionValue} options={[{value:'',label:'All'},...regions.map(item=>({value:fedRoomsRegionValue(item),label:`${fedRoomsRegionLabel(item)} (${item.hotel_count})`}))]}/></View>
-      {cities.length?<View style={styles.field}><Text style={styles.fieldLabel}>City</Text><FilterSelect accessibilityLabel="City" value={city} onChange={setCity} options={[{value:'',label:'All'},...cities.map(item=>({value:item.city,label:`${item.city} (${item.hotel_count})`}))]}/></View>:null}
+      <View style={styles.field}><Text style={styles.fieldLabel}>State or country</Text><FilterSelect accessibilityLabel="State or country" value={regionValue} onChange={value=>{setNearNote('');setRegionValue(value)}} options={[{value:'',label:'All'},...regions.map(item=>({value:fedRoomsRegionValue(item),label:`${fedRoomsRegionLabel(item)} (${item.hotel_count})`}))]}/></View>
+      {cities.length?<View style={styles.field}><Text style={styles.fieldLabel}>City</Text><FilterSelect accessibilityLabel="City" value={city} onChange={value=>{setNearNote('');setCity(value)}} options={[{value:'',label:'All'},...cities.map(item=>({value:item.city,label:`${item.city} (${item.hotel_count})`}))]}/></View>:null}
     </View>
     <Pressable accessibilityRole="button" disabled={loading} onPress={()=>setRefresh(value=>value+1)} style={({pressed})=>[styles.refresh,pressed&&styles.pressed,loading&&styles.disabled]}><AppSymbol name={{ios:'arrow.clockwise',android:'refresh'}} size={17} color={theme.green}/><Text style={styles.refreshText}>Refresh hotels</Text>{loading?<ActivityIndicator size="small" color={theme.green}/>:null}</Pressable>
     {error?<View accessibilityRole="alert" style={[styles.state,styles.errorState]}><Text style={styles.stateTitle}>Hotel data unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
@@ -99,6 +136,8 @@ export default function HotelsScreen(){
 
 function createStyles(theme:FireOpsTheme){return StyleSheet.create({
   filters:{gap:14},field:{gap:6},fieldLabel:{color:theme.secondary,fontSize:11,fontWeight:'800',textTransform:'uppercase',letterSpacing:.6},
+  nearMe:{minHeight:48,marginBottom:12,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,borderRadius:12,backgroundColor:theme.ember},nearMeText:{color:'#fff',fontSize:15,fontWeight:'800'},
+  nearNote:{marginBottom:12,padding:12,borderRadius:10,backgroundColor:theme.surfaceAlt,color:theme.ink,fontSize:13,lineHeight:18},
   input:{minHeight:48,paddingHorizontal:14,borderWidth:1,borderColor:theme.divider,borderRadius:12,backgroundColor:theme.surfaceAlt,color:theme.ink,fontSize:16},
   refresh:{minHeight:48,marginVertical:16,paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,borderWidth:1,borderColor:theme.divider,borderRadius:12,backgroundColor:theme.paper},refreshText:{color:theme.green,fontSize:14,fontWeight:'800'},pressed:{opacity:.68},disabled:{opacity:.55},
   state:{padding:24,alignItems:'center',gap:6,borderWidth:1,borderColor:theme.divider,borderRadius:14,backgroundColor:theme.paper},errorState:{borderColor:theme.danger},stateTitle:{color:theme.ink,fontSize:16,fontWeight:'800'},stateCopy:{color:theme.secondary,fontSize:13,lineHeight:19,textAlign:'center'},errorText:{color:theme.danger,fontSize:13,lineHeight:19,textAlign:'center'},
