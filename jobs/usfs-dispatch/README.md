@@ -1,12 +1,71 @@
 # VIPR weekly refresh, daily discovery
 
-Run `bash jobs/usfs-dispatch/viprRun.sh` and supply the database URL and monitored
-contact email. Restart an already-running loop after changing the script.
+Use the systemd service below for unattended runs, including after reboot.
+For manual use, run `bash jobs/usfs-dispatch/viprRun.sh` and supply the database
+URL and monitored contact email (or set `SUPABASE_DB_URL` and `FS_USER_AGENT`).
+Restart an already-running loop after changing the script. Dependencies are
+installed during setup, not on every service restart.
 
 The runner uses `--weekly --fresh-pdfs --cleanup --retention-days 30`. Web and
 mobile both read this same Supabase dataset; no UI changes are needed. Apply
 `supabase/migrations/20261223000100_usfs_sync_warnings.sql` before running the
 updated importer (adds `last_warning` to priority lists).
+
+## System service setup (Linux/systemd)
+
+The supplied unit targets user `ryan` and checkout `/home/ryan/fireco`. Adjust
+`User`, `WorkingDirectory`, `ExecStart`, and the virtualenv path in the config
+if installing elsewhere. Run dependency setup as the service user, not root:
+
+```bash
+cd /home/ryan/fireco
+python3 -m venv "$HOME/.local/share/fireops/usfs-venv"
+"$HOME/.local/share/fireops/usfs-venv/bin/pip" install -r jobs/usfs-dispatch/requirements.txt
+sudo install -d -m 700 /etc/fireco
+sudo install -m 600 jobs/usfs-dispatch/systemd/vipr.env.example /etc/fireco/vipr.env
+sudoedit /etc/fireco/vipr.env
+```
+
+Replace the database URL and monitored email placeholders before starting.
+Use the Supabase **Postgres session connection URL**, with URL-encoded password
+characters where needed. Config uses systemd environment-file syntax, not shell
+syntax: no `export`, variable expansion, or command substitution. Keep real
+credentials out of git and command-line arguments. The root-owned config is read
+by systemd before dropping privileges to `ryan`.
+
+Stop any existing manual runner **and its current sync child** first; otherwise
+both loops will keep scheduling work. The importer also uses a database lock to
+prevent concurrent writes. Enabling the service starts a real sync immediately,
+including the cleanup described below:
+
+```bash
+sudo install -m 644 jobs/usfs-dispatch/systemd/fireco-vipr.service /etc/systemd/system/fireco-vipr.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now fireco-vipr.service
+sudo systemctl status fireco-vipr.service
+sudo journalctl -u fireco-vipr.service -f
+```
+
+The service runs without a login session, starts on boot, and restarts after a
+runner crash (60-second delay). Sync failures are logged and retried on the next
+daily run; they do not trigger rapid repeated USDA requests. Each service start
+runs immediately, then follows the existing 24-hour loop. No missed-day backlog
+is replayed after downtime; normal weekly catch-up handles overdue lists.
+
+Operations:
+
+```bash
+# After code, dependency, or config changes (update dependencies separately):
+sudo systemctl restart fireco-vipr.service
+# Stop now and disable automatic startup:
+sudo systemctl disable --now fireco-vipr.service
+# Recent output, including sync failures:
+sudo journalctl -u fireco-vipr.service -n 100 --no-pager
+```
+
+Reinstall the unit and run `daemon-reload` before restarting if the unit itself
+changes. `systemctl status` reports runner health, not whether the latest sync
+succeeded; check journal output for exit codes and coverage.
 
 ## Daily work, rolling seven-day coverage
 
