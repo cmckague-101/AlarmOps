@@ -1,4 +1,4 @@
-import {createDemoDispatchData,createDemoNationalFireActivity,createPayrollRows} from '@fireops/domain';
+import {createDemoDispatchData,createDemoFedRoomsData,createDemoNationalFireActivity,createPayrollRows} from '@fireops/domain';
 
 // Session-only PostgREST adapter. Never delegates to fetch or writes to device storage.
 export const demoUser={id:'demo-owner',name:'Jordan Mitchell',role:'owner' as const};
@@ -14,12 +14,16 @@ function seed():Record<string,Row[]>{
   const record=(id:string,data:Row)=>({record_id:id,data:{id,...data},version:1,updated_at:now});
   const crew=[{...demoUser,email:'jordan@example.com',phone:'(530) 555-0100'},{id:'demo-crew-2',name:'Maya Torres',role:'fire_fighter',email:'maya@example.com',phone:'(530) 555-0102'},{id:'demo-crew-3',name:'Cole Bennett',role:'fire_fighter',email:'cole@example.com',phone:'(530) 555-0103'}];
   const dispatch=createDemoDispatchData();
+  const fedRooms=createDemoFedRoomsData();
   const photo=(name:string)=>({name,type:'image/webp',path:`demo-fleet/${name}`});
   const rows:Record<string,Row[]>={
     usfs_geographic_areas:dispatch.areas.map(row=>({...row,is_active:true})),
     usfs_dispatch_centers:dispatch.centers.map(row=>({...row,geographic_area_id:1,is_active:true})),
     usfs_priority_lists:dispatch.lists.map(row=>({...row,dispatch_center_id:101,is_active:true})),
     usfs_dispatch_entries:Object.entries(dispatch.entries).flatMap(([listId,entries])=>entries.map(row=>({...row,priority_list_file_id:Number(listId)}))),
+    fedrooms_hotels:fedRooms.hotels.map(row=>({...row})),
+    fedrooms_hotel_regions:fedRooms.regions.map(row=>({...row})),
+    fedrooms_hotel_cities:[...new Set(fedRooms.hotels.map(hotel=>`${hotel.state}|${hotel.city}`))].map(key=>{const [state,city]=key.split('|');return {country:'United States',state,city,hotel_count:fedRooms.hotels.filter(hotel=>hotel.state===state&&hotel.city===city).length}}),
     fleet_vehicles:[record('demo-engine',{unit:'Engine 701',type:'Type 3 Engine',status:'Ready',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',photo:photo('engine-701.webp'),plate:'DEMO 701',location:'Redding, CA',inspections:[],documents:[],notes:'Sample engine — explore and edit freely.'}),record('demo-tender',{unit:'Tender 12',type:'Water Tender',status:'Assigned',year:2017,make:'Peterbilt',model:'367',vin:'1XPTD4EX8HD397122',photo:photo('tender-12.webp'),assignedTo:'Maya Torres',inspections:[],documents:[]}),record('demo-dozer',{unit:'Dozer 4',type:'Dozer',status:'Out of service',year:2014,make:'Caterpillar',model:'D7R',vin:'CAT00D7RJLGP01234',photo:photo('dozer-4.webp'),inspections:[],documents:[]})],
     fleet_crew:crew.map(member=>record(member.id,{...member,status:'Active',credentials:[{id:`${member.id}-fft2`,name:'Firefighter Type 2',recordType:'Qualification',courseCode:'FFT2',completionDate,provider:'North Ridge Training Center'}],experiences:[{id:`${member.id}-experience`,incident:'Pine Valley Fire (Demo)',position:'FFT2',days:'14'}],annualRecord:{rt130CompletionDate:completionDate,rt130CurrencyDate:currencyDate,wctCompletionDate:completionDate,wctCurrencyDate:currencyDate}})),
     fleet_issues:[record('demo-issue',{vehicleId:'demo-dozer',vehicleName:'Dozer 4',title:'Replace hydraulic hose',description:'Sample maintenance issue. Inspect the hose before returning to service.',priority:'High',status:'Open',updates:[],createdBy:demoUser.name,createdById:demoUser.id,createdAt:now})],
@@ -129,10 +133,13 @@ export function createDemoBackend(companyId=demoCompany.id){
     }
     if(name==='app_feedback')return error('Feedback is disabled in demo mode. Nothing was sent.');
     const rows=tables[name]??=[];
+    const ilike=(cell:unknown,pattern:string)=>new RegExp(`^${pattern.split('*').map(part=>part.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')}$`,'i').test(String(cell??''));
     const matches=(row:Row)=>[...url.searchParams].every(([key,filter])=>{
       if(['select','order','limit','offset','on_conflict'].includes(key))return true;
+      if(key==='or')return filter.slice(1,-1).split(',').some(clause=>{const [column,op,...rest]=clause.split('.');return op==='ilike'&&ilike(row[column],rest.join('.'))});
       const dot=filter.indexOf('.');const op=filter.slice(0,dot);const value=filter.slice(dot+1);
       if(op==='eq')return String(row[key])===value;
+      if(op==='ilike')return ilike(row[key],value);
       if(op==='is')return value==='null'?row[key]==null:String(row[key])===value;
       if(op==='in')return value.slice(1,-1).split(',').includes(String(row[key]));
       if(op==='gte')return String(row[key])>=value;

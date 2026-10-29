@@ -14,6 +14,13 @@ function demo(id='demo-company-test'){
 afterEach(()=>{sessions.splice(0).forEach(session=>session.dispose());vi.unstubAllGlobals()});
 
 describe('native demo client',()=>{
+  it('searches demo FedRooms hotels with region filters and or/ilike',async()=>{
+    const {client}=demo();
+    const search=await client.from('fedrooms_hotels').select('name').or('name.ilike.*redding*,city.ilike.*redding*').order('name');
+    expect(search.data?.map(row=>row.name)).toEqual(['Courtyard Redding','Hampton Inn & Suites Redding']);
+    const cities=await client.from('fedrooms_hotel_cities').select('city').eq('country','United States').eq('state','Oregon');
+    expect(cities.data?.map(row=>row.city)).toEqual(['Medford']);
+  });
   it('loads seeded native records without network or an authenticated account',async()=>{
     const network=vi.fn(()=>{throw new Error('Demo must not access the network')});
     vi.stubGlobal('fetch',network);
