@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {BedDouble,ExternalLink,LocateFixed,MapPin,Plane,RefreshCw,Search,UtensilsCrossed} from 'lucide-react';
+import {BedDouble,ExternalLink,LocateFixed,MapPin,Plane,Search,UtensilsCrossed} from 'lucide-react';
 import {supabase} from './supabase';
-import {airportLabel,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
+import {airportLabel,searchAirports,type Airport,type AirportRow,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 
 const message=(error:unknown)=>error instanceof Error?error.message:'Hotel data could not be loaded.';
 const {hotels:demoHotels,regions:demoRegions}=createDemoFedRoomsData();
@@ -17,6 +17,33 @@ async function currentPlace():Promise<FedRoomsPlace>{
   const response=await fetch(fedRoomsReverseGeocodeUrl(coords.latitude,coords.longitude));
   if(!response.ok)throw new Error('Your city could not be looked up. Try again or choose it from the list.');
   return fedRoomsPlaceFromReverseGeocode(await response.json());
+}
+
+// Loaded on first focus/use; about 250 KB, so kept out of the main bundle.
+let airportRowsPromise:Promise<AirportRow[]>|null=null;
+const loadAirportRows=()=>airportRowsPromise??=import('@fireops/domain/airports-data').then(module=>module.airportRows).catch(failure=>{airportRowsPromise=null;throw failure});
+
+function AirportInput({id,label,value,onChange,placeholder,children}:{id:string;label:string;value:string;onChange:(value:string)=>void;placeholder:string;children?:React.ReactNode}){
+  const [rows,setRows]=useState<AirportRow[]>([]);
+  const [open,setOpen]=useState(false);
+  const [active,setActive]=useState(0);
+  const suggestions=useMemo(()=>open?searchAirports(rows,value):[],[open,rows,value]);
+  const selected=useMemo(()=>rows.find(row=>row[0]===value.trim().toUpperCase()),[rows,value]);
+  const listId=`${id}-suggestions`;
+  const load=()=>{void loadAirportRows().then(setRows).catch(()=>undefined)};
+  const choose=(airport:Airport)=>{onChange(airport.code);setOpen(false)};
+  function keyDown(event:React.KeyboardEvent<HTMLInputElement>){
+    if(!suggestions.length)return;
+    if(event.key==='ArrowDown'){event.preventDefault();setActive(index=>(index+1)%suggestions.length)}
+    else if(event.key==='ArrowUp'){event.preventDefault();setActive(index=>(index-1+suggestions.length)%suggestions.length)}
+    else if(event.key==='Enter'){event.preventDefault();choose(suggestions[active])}
+    else if(event.key==='Escape')setOpen(false);
+  }
+  return <div className="travel-airport"><label htmlFor={id}>{label}</label>
+    <div className="travel-from"><input id={id} role="combobox" aria-expanded={suggestions.length>0} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={suggestions.length?`${listId}-${active}`:undefined} autoComplete="off" value={value} onFocus={()=>{load();setOpen(true)}} onBlur={()=>setOpen(false)} onKeyDown={keyDown} onChange={event=>{onChange(event.target.value);setActive(0);setOpen(true)}} placeholder={placeholder}/>{children}</div>
+    {suggestions.length?<ul id={listId} role="listbox" className="travel-suggestions">{suggestions.map((airport,index)=><li key={airport.code} id={`${listId}-${index}`} role="option" aria-selected={index===active} className={index===active?'active':''} onMouseDown={event=>{event.preventDefault();choose(airport)}} onMouseEnter={()=>setActive(index)}><b>{airport.code}</b><span>{airport.city||airport.name}{airport.country==='US'?`, ${airport.region}`:`, ${airport.country}`}</span><small>{airport.name}</small></li>)}</ul>:null}
+    {selected&&!suggestions.length?<small className="travel-airport-name">{selected[1]}</small>:null}
+  </div>;
 }
 
 function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}){
@@ -40,7 +67,7 @@ function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}
   async function fillNearestAirport(){
     setLocating(true);setNote('');
     try{
-      const [{coords},{airportRows}]=await Promise.all([currentPosition(),import('@fireops/domain/airports-data')]);
+      const [{coords},airportRows]=await Promise.all([currentPosition(),loadAirportRows()]);
       const airport=nearestAirport(airportRows,coords);
       if(!airport){setNote('No nearby airport was found.');return}
       setFrom(airport.code);setNote(`Nearest airport: ${airportLabel(airport)} (${Math.round(airport.distanceKm*0.621371)} mi). Check that it has the flights you need.`);
@@ -58,10 +85,10 @@ function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}
   }
 
   return <section ref={card} className="travel-flights" aria-labelledby="travel-flights-title">
-    <header><h2 id="travel-flights-title"><Plane/>Flights</h2><p>Search Google Flights. Leave Return empty for one way.</p></header>
+    <header><h2 id="travel-flights-title"><Plane/>Flights</h2><p>Start typing a city or airport and pick from the list. Leave Return empty for one way.</p></header>
     <form onSubmit={search}>
-      <label><span>From</span><div className="travel-from"><input value={from} onChange={event=>setFrom(event.target.value)} placeholder="Airport or city, e.g. SMF"/><button type="button" className="secondary compact" onClick={()=>void fillNearestAirport()} disabled={locating}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Nearest'}</button></div></label>
-      <label><span>To</span><input value={to} onChange={event=>setTo(event.target.value)} placeholder="Airport or city, e.g. Boise, Idaho"/></label>
+      <AirportInput id="flight-from" label="From" value={from} onChange={setFrom} placeholder="City or airport, e.g. Sacramento"><button type="button" className="secondary compact" onClick={()=>void fillNearestAirport()} disabled={locating}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Nearest'}</button></AirportInput>
+      <AirportInput id="flight-to" label="To" value={to} onChange={setTo} placeholder="City or airport, e.g. Boise"/>
       <label><span>Depart</span><input ref={departInput} type="date" min={today} value={depart} onChange={event=>setDepart(event.target.value)}/></label>
       <label><span>Return (optional)</span><input type="date" min={depart||today} value={returnDate} onChange={event=>setReturnDate(event.target.value)}/></label>
       <button type="submit" className="primary"><Search/>Search Google Flights</button>
@@ -80,7 +107,6 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const [term,setTerm]=useState('');
   const [loading,setLoading]=useState(!demoMode);
   const [error,setError]=useState('');
-  const [refresh,setRefresh]=useState(0);
   const [citiesRegion,setCitiesRegion]=useState('');
   const [locating,setLocating]=useState(false);
   const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
@@ -100,7 +126,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
       if(!active)return;if(failure)throw failure;setRegions(sortFedRoomsRegions((data??[]) as FedRoomsRegion[]));
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[demoMode,refresh]);
+  },[demoMode]);
 
   useEffect(()=>{
     let active=true;setCities([]);setCity('');setCitiesRegion('');
@@ -114,7 +140,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
       if(!active)return;if(failure)throw failure;setCities((data??[]) as FedRoomsCity[]);setCitiesRegion(regionValue);
     }catch(failure){if(active)setError(message(failure))}})();
     return()=>{active=false};
-  },[regionValue,demoMode,refresh]);
+  },[regionValue,demoMode]);
 
   // Near me: once the located state's cities load, pick the same city or fall back to the whole state.
   useEffect(()=>{
@@ -156,14 +182,14 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
       if(!active)return;if(failure)throw failure;setHotels((data??[]) as FedRoomsHotel[]);
     }catch(failure){if(active)setError(message(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[regionValue,city,term,demoMode,refresh]);
+  },[regionValue,city,term,demoMode]);
 
   const total=useMemo(()=>regions.reduce((sum,item)=>sum+item.hotel_count,0),[regions]);
   const updated=useMemo(()=>regions.reduce<string|null>((latest,item)=>item.last_seen_at&&(!latest||item.last_seen_at>latest)?item.last_seen_at:latest,null),[regions]);
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
   return <div className="page dispatch-page hotels-page">
-    <div className="page-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
+    <div className="page-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
     <FlightSearchCard prefillTo={flightsTo}/>
     <h2 className="travel-section-title"><BedDouble/>Hotels</h2>
     <section className="dispatch-filters" aria-label="Hotel filters">

@@ -8,7 +8,7 @@ export function SectionScreen({title,description,showTitle=true,showHeader=true,
   const theme=useFireOpsTheme();
   const {access}=useSession();
   const company=access.value?.kind==='member'?access.value.company:null;
-  return <ScrollView ref={scrollRef} contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
+  return <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:theme.canvas}} contentContainerStyle={styles.content}>
     {showHeader?<Text style={[styles.company,{color:theme.secondary}]}>{company?.name}</Text>:null}
     {showTitle?<Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>{title}</Text>:null}
     {description?<Text style={[styles.description,{color:theme.secondary},!showTitle&&styles.descriptionWithoutTitle]}>{description}</Text>:null}

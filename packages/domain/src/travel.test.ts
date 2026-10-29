@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {airportRows} from './airports-data';
 import {fedRoomsRestaurantsUrl,type FedRoomsHotel} from './hotels';
-import {airportLabel,fedRoomsHotelDestination,flightSearchProblem,googleFlightsUrl,nearestAirport} from './travel';
+import {airportLabel,searchAirports,fedRoomsHotelDestination,flightSearchProblem,googleFlightsUrl,nearestAirport} from './travel';
 
 const hotel:FedRoomsHotel={property_key:'k',name:'Marriott Dallas Allen',address:'777 Watters Creek Blvd',city:'Allen',state:'Texas',postal_code:'75013',country:'United States'};
 
@@ -26,5 +26,16 @@ describe('travel lookups',()=>{
     expect(fedRoomsHotelDestination(hotel)).toBe('Allen, Texas');
     expect(fedRoomsRestaurantsUrl(hotel)).toBe('https://www.google.com/maps/search/?api=1&query=restaurants%20near%20777%20Watters%20Creek%20Blvd%2C%20Allen%2C%20Texas%2C%2075013%2C%20United%20States');
     expect(fedRoomsRestaurantsUrl(hotel,'apple')).toMatch(/^https:\/\/maps\.apple\.com\/\?q=restaurants%20near/);
+  });
+  it('suggests airports by code, city, state and near-miss spelling',()=>{
+    const codes=(query:string)=>searchAirports(airportRows,query).map(airport=>airport.code);
+    expect(codes('smf')[0]).toBe('SMF');
+    expect(codes('sacra')).toContain('SMF');
+    expect(codes('boise')[0]).toBe('BOI');
+    expect(codes('idaho')).toContain('BOI');
+    expect(codes('albequerque')[0]).toBe('ABQ');
+    expect(codes('redding')[0]).toBe('RDD');
+    expect(codes('s')).toEqual([]);
+    expect(searchAirports(airportRows,'new',3)).toHaveLength(3);
   });
 });

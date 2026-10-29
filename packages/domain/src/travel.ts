@@ -42,3 +42,54 @@ export function googleFlightsUrl(search:FlightSearch){
   const q=search.returnDate?`Flights to ${to} from ${from} on ${search.depart} through ${search.returnDate}`:`One way flights to ${to} from ${from} on ${search.depart}`;
   return `https://www.google.com/travel/flights?q=${encodeURIComponent(q)}`;
 }
+
+// Type-ahead for the From/To fields. Matches code, city, airport name and US state
+// ("idaho" -> BOI), and tolerates small misspellings ("albequerque" -> ABQ).
+const fold=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function withinOneEdit(a:string,b:string){
+  if(Math.abs(a.length-b.length)>1)return false;
+  let i=0,j=0,edits=0;
+  while(i<a.length&&j<b.length){
+    if(a[i]===b[j]){i++;j++;continue}
+    if(++edits>1)return false;
+    if(a.length>b.length)i++;else if(b.length>a.length)j++;else{i++;j++}
+  }
+  return edits+(a.length-i)+(b.length-j)<=1;
+}
+function editDistance(a:string,b:string){
+  const row=Array.from({length:b.length+1},(_,index)=>index);
+  for(let i=1;i<=a.length;i++){
+    let previous=row[0];row[0]=i;
+    for(let j=1;j<=b.length;j++){const current=row[j];row[j]=Math.min(row[j]+1,row[j-1]+1,previous+(a[i-1]===b[j-1]?0:1));previous=current}
+  }
+  return row[b.length];
+}
+function airportScore(row:AirportRow,query:string){
+  const [code,name,city,region,country]=row;
+  const lowerCode=code.toLowerCase(),lowerCity=fold(city),lowerName=fold(name);
+  const state=country==='US'?fold(fedRoomsStateName(region)??''):'';
+  if(lowerCode===query)return 100;
+  if(query.length<=3&&lowerCode.startsWith(query))return 80;
+  if(lowerCity===query)return 90;
+  if(lowerCity.startsWith(query))return 75;
+  const words=`${lowerCity} ${lowerName}`.split(/[^a-z0-9]+/).filter(Boolean);
+  if(words.some(word=>word.startsWith(query)))return 60;
+  if(state&&(state===query||(query.length>=4&&state.startsWith(query))))return 50;
+  if(query.length>=3&&(lowerCity.includes(query)||lowerName.includes(query)))return 40;
+  if(query.length>=4){
+    const prefix=(word:string)=>word.slice(0,query.length);
+    if([lowerCity,...words].some(word=>withinOneEdit(prefix(word),query)))return 30;
+    if(query.length>=6&&[lowerCity,...words].some(word=>editDistance(word,query)<=2))return 20;
+  }
+  return 0;
+}
+export function searchAirports(rows:AirportRow[],input:string,limit=8):Airport[]{
+  const query=fold(input.trim()).replace(/\s+/g,' ');
+  if(query.length<2)return [];
+  return rows
+    .map(row=>({row,score:airportScore(row,query)}))
+    .filter(match=>match.score>0)
+    .sort((a,b)=>b.score-a.score||b.row[7]-a.row[7]||a.row[0].localeCompare(b.row[0]))
+    .slice(0,limit)
+    .map(({row:[code,name,city,region,country,latitude,longitude,large]})=>({code,name,city,region,country,latitude,longitude,large:large===1}));
+}

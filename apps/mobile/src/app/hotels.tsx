@@ -35,7 +35,6 @@ export default function HotelsScreen(){
   const [term,setTerm]=useState('');
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [refresh,setRefresh]=useState(0);
   const [citiesRegion,setCitiesRegion]=useState('');
   const [locating,setLocating]=useState(false);
   const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
@@ -55,7 +54,7 @@ export default function HotelsScreen(){
       if(!active)return;if(failure)throw failure;setRegions(sortFedRoomsRegions((data??[]) as FedRoomsRegion[]));
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[demoMode,refresh]);
+  },[demoMode]);
 
   useEffect(()=>{
     let active=true;setCities([]);setCity('');setCitiesRegion('');
@@ -68,7 +67,7 @@ export default function HotelsScreen(){
       if(!active)return;if(failure)throw failure;setCities((data??[]) as FedRoomsCity[]);setCitiesRegion(regionValue);
     }catch(failure){if(active)setError(failureMessage(failure))}})();
     return()=>{active=false};
-  },[regionValue,refresh]);
+  },[regionValue]);
 
   // Near me: once the located state's cities load, pick the same city or fall back to the whole state.
   useEffect(()=>{
@@ -105,7 +104,7 @@ export default function HotelsScreen(){
       if(!active)return;if(failure)throw failure;setHotels((data??[]) as FedRoomsHotel[]);
     }catch(failure){if(active)setError(failureMessage(failure))}finally{if(active)setLoading(false)}})();
     return()=>{active=false};
-  },[regionValue,city,term,refresh]);
+  },[regionValue,city,term]);
 
   const total=regions.reduce((sum,item)=>sum+item.hotel_count,0);
   const shown=hotels.slice(0,fedRoomsResultLimit);
@@ -119,7 +118,7 @@ export default function HotelsScreen(){
       <View style={styles.field}><Text style={styles.fieldLabel}>State or country</Text><FilterSelect accessibilityLabel="State or country" value={regionValue} onChange={value=>{setNearNote('');setRegionValue(value)}} options={[{value:'',label:'All'},...regions.map(item=>({value:fedRoomsRegionValue(item),label:`${fedRoomsRegionLabel(item)} (${item.hotel_count})`}))]}/></View>
       {cities.length?<View style={styles.field}><Text style={styles.fieldLabel}>City</Text><FilterSelect accessibilityLabel="City" value={city} onChange={value=>{setNearNote('');setCity(value)}} options={[{value:'',label:'All'},...cities.map(item=>({value:item.city,label:`${item.city} (${item.hotel_count})`}))]}/></View>:null}
     </View>
-    <Pressable accessibilityRole="button" disabled={loading} onPress={()=>setRefresh(value=>value+1)} style={({pressed})=>[styles.refresh,pressed&&styles.pressed,loading&&styles.disabled]}><AppSymbol name={{ios:'arrow.clockwise',android:'refresh'}} size={17} color={theme.green}/><Text style={styles.refreshText}>Refresh hotels</Text>{loading?<ActivityIndicator size="small" color={theme.green}/>:null}</Pressable>
+    {loading?<ActivityIndicator accessibilityLabel="Loading hotels" style={styles.loading} color={theme.green}/>:null}
     {error?<View accessibilityRole="alert" style={[styles.state,styles.errorState]}><Text style={styles.stateTitle}>Hotel data unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
     {!error&&!supabase?<View style={styles.state}><Text style={styles.stateTitle}>Supabase connection required</Text></View>:null}
     {!error&&supabase&&!ready?<View style={styles.state}><Text style={styles.stateTitle}>{regions.length||loading?'Find a FedRooms hotel':'No hotels imported yet'}</Text><Text style={styles.stateCopy}>{regions.length||loading?`Choose a state or country, or search by name.${total?` ${total.toLocaleString()} properties available.`:''}`:'Check again after the scheduled GSA import.'}</Text></View>:null}
@@ -143,11 +142,11 @@ export default function HotelsScreen(){
 
 function createStyles(theme:FireOpsTheme){return StyleSheet.create({
   sectionTitle:{marginBottom:12,flexDirection:'row',alignItems:'center',gap:8},sectionTitleText:{color:theme.ink,fontSize:18,fontWeight:'800'},
-  filters:{gap:14},field:{gap:6},fieldLabel:{color:theme.secondary,fontSize:11,fontWeight:'800',textTransform:'uppercase',letterSpacing:.6},
+  filters:{gap:14,marginBottom:16},field:{gap:6},fieldLabel:{color:theme.secondary,fontSize:11,fontWeight:'800',textTransform:'uppercase',letterSpacing:.6},
   nearMe:{minHeight:48,marginBottom:12,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,borderRadius:12,backgroundColor:theme.ember},nearMeText:{color:'#fff',fontSize:15,fontWeight:'800'},
   nearNote:{marginBottom:12,padding:12,borderRadius:10,backgroundColor:theme.surfaceAlt,color:theme.ink,fontSize:13,lineHeight:18},
   input:{minHeight:48,paddingHorizontal:14,borderWidth:1,borderColor:theme.divider,borderRadius:12,backgroundColor:theme.surfaceAlt,color:theme.ink,fontSize:16},
-  refresh:{minHeight:48,marginVertical:16,paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,borderWidth:1,borderColor:theme.divider,borderRadius:12,backgroundColor:theme.paper},refreshText:{color:theme.green,fontSize:14,fontWeight:'800'},pressed:{opacity:.68},disabled:{opacity:.55},
+  loading:{marginBottom:16},pressed:{opacity:.68},disabled:{opacity:.55},
   state:{padding:24,alignItems:'center',gap:6,borderWidth:1,borderColor:theme.divider,borderRadius:14,backgroundColor:theme.paper},errorState:{borderColor:theme.danger},stateTitle:{color:theme.ink,fontSize:16,fontWeight:'800'},stateCopy:{color:theme.secondary,fontSize:13,lineHeight:19,textAlign:'center'},errorText:{color:theme.danger,fontSize:13,lineHeight:19,textAlign:'center'},
   results:{overflow:'hidden',borderWidth:1,borderColor:theme.divider,borderRadius:14,backgroundColor:theme.paper},resultsHeader:{padding:16,flexDirection:'row',alignItems:'flex-start',gap:10,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.divider},headerCopy:{flex:1},resultsTitle:{color:theme.ink,fontSize:17,lineHeight:22,fontWeight:'800'},resultsMeta:{marginTop:5,color:theme.secondary,fontSize:11,lineHeight:16},warning:{overflow:'hidden',paddingHorizontal:8,paddingVertical:5,borderRadius:999,backgroundColor:theme.warningSurface,color:theme.warning,fontSize:10,fontWeight:'800'},
   hotel:{padding:14,gap:3,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.divider},hotelName:{color:theme.ink,fontSize:15,lineHeight:20,fontWeight:'800'},detail:{color:theme.secondary,fontSize:12,lineHeight:17},
