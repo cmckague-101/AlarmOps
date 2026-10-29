@@ -1,0 +1,26 @@
+[Unit]
+Description=Fireco FedRooms hotel list daily check
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ryan
+WorkingDirectory=/home/ryan/fireco
+# Reuses the VIPR database URL and contact; hotels.env is optional overrides.
+EnvironmentFile=/etc/fireco/vipr.env
+EnvironmentFile=-/etc/fireco/hotels.env
+ExecStart=/bin/bash /home/ryan/fireco/jobs/fedrooms-hotels/hotelsRun.sh
+Restart=always
+RestartSec=60
+TimeoutStopSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fireco-hotels
+
+[Install]
+WantedBy=multi-user.target
