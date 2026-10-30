@@ -2,6 +2,7 @@ import type { CredentialRecordType, CrewMember, QualificationCardRequest } from 
 import { crewCredentials } from '@fireops/domain';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppSymbol } from '@/components/app-symbol';
 import { loadCompanyCardRequests } from '@/lib/qualification-card-store';
 import { useFireOpsTheme } from '@/theme';
 
@@ -32,7 +33,7 @@ export function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId:
   return <View style={styles.container}>
     <View style={styles.selectRow}>
       <Pressable accessibilityRole="button" accessibilityLabel="Crew Review, select crew member" onPress={() => setOpen((value) => !value)} style={({ pressed }) => [styles.select, pressed && styles.pressed]}>
-        <View><Text style={styles.title}>Crew Review</Text><Text style={styles.subtitle}>{member?.name ?? 'Select crew member'}</Text></View><Text style={styles.chevron}>{open ? '▲' : '▼'}</Text>
+        <View><Text style={styles.title}>Crew Review</Text><Text style={styles.subtitle}>{member?.name ?? 'Select crew member'}</Text></View><AppSymbol name={open ? 'chevron.up' : 'chevron.down'} color={theme.secondary} size={15} />
       </Pressable>
       {selectedId ? <Pressable accessibilityRole="button" accessibilityLabel="Clear crew selection" onPress={() => { setSelectedId(''); setOpen(false); }} style={({ pressed }) => [styles.clear, pressed && styles.pressed]}><Text style={styles.clearText}>×</Text></Pressable> : null}
     </View>
