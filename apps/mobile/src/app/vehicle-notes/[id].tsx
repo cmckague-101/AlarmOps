@@ -118,7 +118,7 @@ export default function VehicleNotesScreen() {
 
   return <SafeAreaView style={styles.safe} edges={["bottom"]}>
     <Stack.Screen options={{ title: vehicle ? `${vehicle.name} Notes` : "Vehicle Notes" }} />
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <View style={styles.heading}>
         <View><Text accessibilityRole="header" style={styles.title}>Vehicle Notes</Text><Text style={styles.subtitle}>{vehicle?.name ?? "Vehicle"} · {visible.length} {visible.length === 1 ? "note" : "notes"}</Text></View>
         {editing === undefined ? <Pressable accessibilityRole="button" onPress={() => begin()} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><AppSymbol name={{ ios: "plus", android: "add" }} size={18} color="#fff" /><Text style={styles.addLabel}>New note</Text></Pressable> : null}

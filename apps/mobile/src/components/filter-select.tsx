@@ -13,14 +13,16 @@ type Props<T extends string> = {
   accessibilityLabel: string;
   onChange: (value: T) => void;
   options: readonly FilterSelectOption<T>[];
+  placeholder?: string;
   value: T;
 };
 
-export function FilterSelect<T extends string>({ accessibilityLabel, onChange, options, value }: Props<T>) {
+export function FilterSelect<T extends string>({ accessibilityLabel, onChange, options, placeholder = 'Select…', value }: Props<T>) {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find((option) => option.value === value)?.label ?? value;
+  const showPlaceholder = !selectedLabel;
 
   return (
     <View style={styles.container}>
@@ -32,7 +34,7 @@ export function FilterSelect<T extends string>({ accessibilityLabel, onChange, o
         onPress={() => setOpen((current) => !current)}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
       >
-        <Text style={styles.triggerLabel}>{selectedLabel}</Text>
+        <Text style={[styles.triggerLabel, showPlaceholder && styles.placeholder]}>{showPlaceholder ? placeholder : selectedLabel}</Text>
         <AppSymbol name={open ? 'chevron.up' : 'chevron.down'} color={theme.secondary} size={15} />
       </Pressable>
 
@@ -83,6 +85,7 @@ function createStyles(theme: FireOpsTheme) {
       gap: 12,
     },
     triggerLabel: { flex: 1, color: theme.ink, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+    placeholder: { color: theme.secondary, fontWeight: '500' },
     menu: {
       overflow: 'hidden',
       borderWidth: 1,

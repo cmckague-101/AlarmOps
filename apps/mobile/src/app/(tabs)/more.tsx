@@ -53,15 +53,16 @@ export default function More(){
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       return <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${section.label}${unread>0?`, ${unread} ${indicatorLabel}`:''}`}
+        accessibilityLabel={`${section.label}${section.comingSoon?', coming soon':''}${unread>0?`, ${unread} ${indicatorLabel}`:''}`}
         key={section.label}
         onPress={()=>{if(section.comingSoon||!section.path)Alert.alert('Coming Soon');else router.push(section.path as never)}}
-        style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,pressed&&styles.pressed]}
+        style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,section.comingSoon&&styles.comingSoon,pressed&&styles.pressed]}
       >
         <View style={[styles.icon,{backgroundColor:section.color}]}>
           <AppSymbol name={{ios:section.ios,android:section.android} as never} size={27} color="#FFFFFF"/>
         </View>
         <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
+        {section.comingSoon&&<Text style={[styles.soon,{color:theme.secondary}]}>Coming soon</Text>}
         {unread>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unread} {indicatorLabel}</Text>}
       </Pressable>;
     })}</View>
@@ -74,7 +75,7 @@ const styles=StyleSheet.create({
   card:{width:'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:10,padding:18,minHeight:150,borderRadius:16,borderWidth:1},
   fullCard:{width:'100%'},
   icon:{width:52,height:52,alignItems:'center',justifyContent:'center',borderRadius:14},
-  label:{fontSize:16,fontWeight:'800',textAlign:'center'},
+  label:{fontSize:16,fontWeight:'800',textAlign:'center'},soon:{fontSize:13,fontWeight:'600'},comingSoon:{opacity:.6},
   badge:{overflow:'hidden',borderRadius:999,paddingHorizontal:8,paddingVertical:4,fontSize:11,fontWeight:'800'},
   signOut:{minHeight:50,borderWidth:1,borderRadius:9,alignItems:'center',justifyContent:'center',marginTop:24},
   signOutLabel:{fontSize:16,fontWeight:'700'},

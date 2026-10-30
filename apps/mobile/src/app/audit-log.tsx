@@ -1,7 +1,7 @@
-import {isCompanyManager} from '@fireops/domain';
+import {formatAuditDescription,formatAuditTimestamp,isCompanyManager} from '@fireops/domain';
 import {Stack} from 'expo-router';
 import {useEffect,useRef,useState} from 'react';
-import {Pressable,StyleSheet,Text,View} from 'react-native';
+import {Pressable,RefreshControl,StyleSheet,Text,View} from 'react-native';
 import {SectionScreen} from '@/components/section-screen';
 import {supabase} from '@/lib/supabase';
 import {useSession} from '@/providers/session-provider';
@@ -45,15 +45,14 @@ export default function AuditLogScreen(){
     return()=>{active=false;};
   },[companyId,page,reload]);
   const button=(label:string,onPress:()=>void)=><Pressable accessibilityRole="button" disabled={loading} onPress={onPress} style={[styles.button,{borderColor:theme.divider},loading&&{opacity:0.5}]}><Text style={{color:theme.ink,fontWeight:'700'}}>{label}</Text></Pressable>;
-  return <SectionScreen title="Audit log" description="Company activity from the last 30 days. Latest first.">
+  return <SectionScreen title="Audit log" description="Company activity from the last 30 days. Latest first." refreshControl={allowed?<RefreshControl refreshing={loading&&page===0&&entries.length>0} onRefresh={()=>{setPage(0);setReload(value=>value+1);}} tintColor={theme.commandForeground}/>:undefined}>
     <Stack.Screen options={{title:'Audit log'}}/>
     {!allowed?<Text style={{color:theme.secondary}}>Only owners and admins can view the audit log.</Text>:<>
-      {button('Refresh',()=>{setPage(0);setReload(value=>value+1);})}
       {error?<View accessibilityRole="alert"><Text style={{color:theme.danger}}>{error}</Text>{button('Retry',()=>setReload(value=>value+1))}</View>:null}
       {entries.map(entry=><View key={entry.id} style={[styles.entry,{borderBottomColor:theme.divider}]}>
-        <Text style={[styles.date,{color:theme.secondary}]}>{new Date(entry.created_at).toLocaleString()}</Text>
+        <Text style={[styles.date,{color:theme.secondary}]}>{formatAuditTimestamp(entry.created_at)}</Text>
         <Text style={[styles.name,{color:theme.ink}]}>{entry.actor_name}</Text>
-        <Text style={[styles.description,{color:theme.ink}]}>{entry.description}</Text>
+        <Text style={[styles.description,{color:theme.ink}]}>{formatAuditDescription(entry.description)}</Text>
       </View>)}
       {loading?<Text style={{color:theme.secondary}}>Loading audit log…</Text>:null}
       {!loading&&!error&&entries.length===0?<Text style={{color:theme.secondary}}>No activity in the last 30 days.</Text>:null}

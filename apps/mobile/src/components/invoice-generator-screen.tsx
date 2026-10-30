@@ -35,7 +35,7 @@ export function InvoiceGeneratorScreen({ companyLogoUri, onBack }: Props) {
     }
   };
 
-  return <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView style={styles.screen} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
     <Pressable onPress={onBack} style={styles.back}><Text style={styles.backText}>‹ Back to invoices</Text></Pressable>
     <Text style={styles.title}>Invoice Generator</Text><Text style={styles.subtitle}>Create invoice and save it as PDF.</Text>
     <View style={styles.card}>
