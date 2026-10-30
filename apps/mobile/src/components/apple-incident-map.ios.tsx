@@ -4,6 +4,7 @@ import MapView, { Marker, type Region } from 'react-native-maps';
 
 import { AppSymbol } from '@/components/app-symbol';
 import type { FleetVehicle } from '@/lib/fleet-store';
+import { telemetryFreshness } from '@/lib/telemetry-freshness';
 import type { AppleIncidentMapProps } from './apple-incident-map';
 
 const US_REGION: Region = {
@@ -81,18 +82,19 @@ export function AppleIncidentMap({
       {vehicles.map((vehicle, index) => {
         const coordinate = vehicleCoordinates(vehicle);
         if (!coordinate) return null;
+        const stale = telemetryFreshness(vehicle.motive?.updatedAt) === 'stale';
         return (
           <Marker
             anchor={{ x: 0.5, y: 0.5 }}
             coordinate={coordinate}
-            description={`${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
+            description={`${stale ? 'Stale · ' : ''}${vehicle.motive?.location ?? 'Location unavailable'} · ${vehicle.motive?.speed ?? 'Speed unavailable'}`}
             key={`${vehicle.id}-${index}-vehicle`}
             onCalloutPress={() => onVehicleDetails(vehicle.id)}
             onPress={() => onVehicleDetails(vehicle.id)}
             title={vehicle.name}
             tracksViewChanges={false}
           >
-            <View style={styles.vehicleMarker}>
+            <View style={[styles.vehicleMarker, stale && styles.vehicleMarkerStale]}>
               <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={14} color="#FFFFFF" />
             </View>
           </Marker>
@@ -120,5 +122,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
     backgroundColor: '#18864B',
+  },
+  vehicleMarkerStale: {
+    backgroundColor: '#B86E0B',
   },
 });

@@ -211,14 +211,15 @@ function IncidentMap({
             const point = coords ? projection([coords.longitude, coords.latitude]) : null;
             if (!point) return null;
             const iconScale = markerScale * 0.72;
+            const markerColor = telemetryFreshness(vehicle.motive?.updatedAt) === 'stale' ? theme.warning : theme.green;
             return (
               <G key={`${vehicle.id}-${index}`} onPress={() => onVehicleDetails(vehicle.id)}>
                 <Circle cx={point[0]} cy={point[1]} fill="transparent" r={25 * markerScale} />
-                <Circle cx={point[0]} cy={point[1]} fill={theme.green} r={11 * markerScale} stroke={theme.paper} strokeWidth={2.5 * markerScale} />
+                <Circle cx={point[0]} cy={point[1]} fill={markerColor} r={11 * markerScale} stroke={theme.paper} strokeWidth={2.5 * markerScale} />
                 <G transform={`translate(${point[0]} ${point[1]}) scale(${iconScale}) translate(-12 -12)`}>
                   <Path d="M10 17h4V5H2v12h3M14 9h4l4 4v4h-2M14 17h1" fill="none" stroke={theme.paper} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                  <Circle cx={7.5} cy={17.5} fill={theme.green} r={2.5} stroke={theme.paper} strokeWidth={2} />
-                  <Circle cx={17.5} cy={17.5} fill={theme.green} r={2.5} stroke={theme.paper} strokeWidth={2} />
+                  <Circle cx={7.5} cy={17.5} fill={markerColor} r={2.5} stroke={theme.paper} strokeWidth={2} />
+                  <Circle cx={17.5} cy={17.5} fill={markerColor} r={2.5} stroke={theme.paper} strokeWidth={2} />
                 </G>
               </G>
             );

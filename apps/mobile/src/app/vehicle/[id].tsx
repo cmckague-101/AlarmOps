@@ -75,8 +75,9 @@ function formatSpeed(value: string) {
   return Number.isFinite(speed) ? `${Math.round(speed)} mph` : value || "Unavailable";
 }
 
-function VehicleLocationMap({ latitude, longitude, location, onOpen, styles, theme }: {
+function VehicleLocationMap({ latitude, longitude, location, stale, onOpen, styles, theme }: {
   latitude: number;
+  stale: boolean;
   longitude: number;
   location: string;
   onOpen: () => void;
@@ -118,7 +119,7 @@ function VehicleLocationMap({ latitude, longitude, location, onOpen, styles, the
       style={({ pressed }) => [styles.locationMap, pressed && styles.buttonPressed]}
     >
       <View style={[styles.locationTiles, { left: width / 2 - (x - (centerX - 1)) * tileSize, top: 105 - (y - (centerY - 1)) * tileSize }]}>{tiles}</View>
-      <View style={styles.locationMarker}>
+      <View style={[styles.locationMarker, stale && styles.locationMarkerStale]}>
         <AppSymbol name={{ ios: "truck.box.fill", android: "local_shipping" } as never} color="#FFFFFF" size={16} />
       </View>
       <View style={styles.locationCaption}>
@@ -700,7 +701,7 @@ export default function VehicleDetailScreen() {
                 ) : null}
                 </View>
                 {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
-                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
+                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} stale={telemetryFreshness(vehicle.motive.updatedAt) === "stale"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
                 ) : null}
               </View>
             ) : null}
@@ -1510,6 +1511,7 @@ function createStyles(theme: FireOpsTheme) {
       backgroundColor: theme.surfaceAlt,
     },
     locationTiles: { position: "absolute", width: 768, height: 768 },
+    locationMarkerStale: { backgroundColor: "#B86E0B" },
     locationMarker: {
       position: "absolute",
       left: "50%",
