@@ -42,7 +42,10 @@ export default function CommunicationsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshCommunications} tintColor={theme.commandForeground} />}
       >
         <View style={styles.headingRow}>
-          <View style={styles.headingCopy} />
+          <View style={styles.headingCopy}>
+            <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
+            {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}
+          </View>
           {member && isCompanyManager(member.user.role) ? (
             <Pressable
               accessibilityRole="button"
@@ -54,14 +57,6 @@ export default function CommunicationsScreen() {
               <Text style={styles.addButtonLabel}>New</Text>
             </Pressable>
           ) : null}
-        </View>
-
-        <View style={styles.sectionHeading}>
-          <View>
-            <Text style={styles.sectionTitle}>Communications</Text>
-            <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
-          </View>
-          {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}
         </View>
 
         {loading ? <Text style={styles.stateText}>Loading company threads…</Text> : null}
@@ -131,14 +126,12 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 42, gap: 22 },
-    headingRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 16 },
-    headingCopy: { flex: 1, gap: 5 },
+    headingRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+    headingCopy: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
     company: { color: theme.secondary, fontSize: 13, lineHeight: 18, fontWeight: '700' },
     subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21 },
     addButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 11, backgroundColor: theme.ember, paddingHorizontal: 14 },
     addButtonLabel: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '800' },
-    sectionHeading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, paddingTop: 20 },
-    sectionTitle: { color: theme.ink, fontSize: 18, lineHeight: 23, fontWeight: '700' },
     sectionMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18, marginTop: 2 },
     unreadCount: { overflow: 'hidden', color: theme.ember, backgroundColor: theme.dangerSurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 12, fontWeight: '800' },
     stateText: { color: theme.secondary, fontSize: 15, lineHeight: 21, paddingVertical: 24 },

@@ -57,7 +57,6 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pending
       <View style={styles.vehicleMain}>
         <View style={styles.vehicleHeading}>
           <Text style={styles.vehicleName} numberOfLines={1}>{vehicle.name}</Text>
-          <View style={[styles.statusDot, styles[statusTone(vehicle.status)]]} />
         </View>
         <Text style={styles.vehicleMeta} numberOfLines={1}>
           {[vehicle.type, vehicle.detail].filter(Boolean).join(' · ')}
@@ -71,7 +70,7 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pending
         {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {formatCalendarDate(dotWarning.expiration)}</Text> : null}
       </View>
       <View style={styles.rowEnd}>
-        <Text style={styles.status}>{displayStatus(vehicle.status)}</Text>
+        <Text style={[styles.status, { color: styles[statusTone(vehicle.status)].backgroundColor }]}>{displayStatus(vehicle.status)}</Text>
         <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' } as never} color={styles.icon.color} size={17} />
       </View>
     </Pressable>
@@ -275,7 +274,6 @@ function createStyles(theme: FireOpsTheme) {
   rowEnd: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   status: { maxWidth: 90, color: theme.commandForeground, fontSize: 13, lineHeight: 18, fontWeight: '600', textAlign: 'right' },
   icon: { color: theme.secondary },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
   dotReady: { backgroundColor: theme.green },
   dotAssigned: { backgroundColor: theme.blue },
   dotAttention: { backgroundColor: theme.danger },

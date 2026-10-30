@@ -33,6 +33,7 @@ export default function More(){
   const {width,fontScale}=useWindowDimensions();
   const {access,signOut,demoMode}=useSession();
   const member=access.value?.kind==='member'?access.value:null;
+  const confirmSignOut=()=>{if(Platform.OS==='web'){void signOut();return}Alert.alert('Sign out?',demoMode?'You will leave the demo.':'You will need to sign in again to use FireOps.',[{text:'Cancel',style:'cancel'},{text:'Sign out',style:'destructive',onPress:()=>void signOut()}])};
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
   const pendingQualificationCards=usePendingQualificationCardCount(member&&(member.user.role==='owner'||member.user.role==='admin')?member.company.id:null);
@@ -64,7 +65,7 @@ export default function More(){
         {unread>0&&<Text style={[styles.badge,{color:theme.ember,backgroundColor:theme.dangerSurface}]}>{unread} {indicatorLabel}</Text>}
       </Pressable>;
     })}</View>
-    <Pressable accessibilityRole="button" onPress={()=>void signOut()} style={[styles.signOut,{borderColor:theme.divider}]}><Text style={[styles.signOutLabel,{color:theme.danger}]}>Sign out</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={confirmSignOut} style={[styles.signOut,{borderColor:theme.divider}]}><Text style={[styles.signOutLabel,{color:theme.danger}]}>Sign out</Text></Pressable>
   </SectionScreen>;
 }
 

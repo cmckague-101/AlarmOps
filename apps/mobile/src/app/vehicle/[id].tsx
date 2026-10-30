@@ -70,6 +70,13 @@ function formattedDate(value: string | null) {
   }).format(date);
 }
 
+function statusChoiceStyle(status: string, theme: FireOpsTheme) {
+  const normalized = status.toLowerCase();
+  if (normalized === "ready") return { backgroundColor: theme.greenSurface, borderColor: theme.green };
+  if (normalized === "out of service") return { backgroundColor: theme.dangerSurface, borderColor: theme.danger };
+  return { backgroundColor: theme.blueSurface, borderColor: theme.blue };
+}
+
 function formatSpeed(value: string) {
   const speed = Number(value);
   return Number.isFinite(speed) ? `${Math.round(speed)} mph` : value || "Unavailable";
@@ -723,6 +730,7 @@ export default function VehicleDetailScreen() {
                         style={({ pressed }) => [
                           styles.choice,
                           selected && styles.choiceSelected,
+                          selected && statusChoiceStyle(status, theme),
                           disabled && styles.disabled,
                           pressed && styles.buttonPressed,
                         ]}
@@ -731,6 +739,7 @@ export default function VehicleDetailScreen() {
                           style={[
                             styles.choiceLabel,
                             selected && styles.choiceLabelSelected,
+                            selected && { color: statusChoiceStyle(status, theme).borderColor },
                           ]}
                         >
                           {displayStatus(status)}
