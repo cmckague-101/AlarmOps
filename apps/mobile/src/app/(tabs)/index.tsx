@@ -133,7 +133,7 @@ export default function DashboardScreen() {
             ) : null}
 
             {notifications.length > 0 ? (
-              <DashboardSection title="Notifications" count={unreadNotifications} styles={styles}>
+              <DashboardSection title="Notifications" count={unreadNotifications ? `${unreadNotifications} unread` : ''} styles={styles}>
                 <>
                   {notifications.map((notification) => (
                     <Pressable
@@ -209,12 +209,12 @@ export default function DashboardScreen() {
   );
 }
 
-function DashboardSection({ title, count, children, styles }: { title: string; count: number; children: React.ReactNode; styles: ReturnType<typeof createStyles> }) {
+function DashboardSection({ title, count, children, styles }: { title: string; count: number | string; children: React.ReactNode; styles: ReturnType<typeof createStyles> }) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeading}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.count}>{count}</Text>
+        {count !== '' && <Text style={styles.count}>{count}</Text>}
       </View>
       <View style={styles.sectionBody}>{children}</View>
     </View>

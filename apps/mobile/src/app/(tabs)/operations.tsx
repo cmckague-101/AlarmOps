@@ -66,6 +66,13 @@ function formatAcres(value: number | null) {
   return value === null ? 'Acres unavailable' : `${Math.round(value).toLocaleString()} acres`;
 }
 
+function formatUpdatedAt(value: string | null | undefined) {
+  if (!value) return 'Update unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
 function vehicleCoordinates(vehicle: FleetVehicle) {
   const latitude = vehicle.motive?.latitude;
   const longitude = vehicle.motive?.longitude;
@@ -475,7 +482,7 @@ export default function OperationsScreen() {
                   <View style={styles.rowCopy}>
                     <Text style={styles.rowTitle}>{vehicle.name}</Text>
                     <Text style={styles.rowMeta}>{vehicle.motive?.location ?? 'Location unavailable'}</Text>
-                    <Text style={styles.rowMeta}>{vehicle.motive?.speed ?? 'Speed unavailable'} · {vehicle.motive?.updatedAt ?? 'Update unavailable'}</Text>
+                    <Text style={styles.rowMeta}>{vehicle.motive?.speed ?? 'Speed unavailable'} · {formatUpdatedAt(vehicle.motive?.updatedAt)}</Text>
                   </View>
                   <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
                 </Pressable>

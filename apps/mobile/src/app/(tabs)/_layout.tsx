@@ -26,11 +26,11 @@ export default function TabLayout(){
   if(access.status!=='ready'||access.value?.kind!=='member')return <Redirect href="/"/>;
   const icon=(ios:string,android:string)=>function TabIcon(props:{color:ColorValue}){return <AppSymbol name={{ios:ios as never,android:android as never}} color={props.color}/>};
   const sectionTitles:Record<string,string>={index:'Dashboard',operations:'Operations',fleet:'Fleet',communications:'Communications'};
-  return <Tabs screenOptions={({route})=>({headerShown:!isOperationsLandscape,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerRight:sectionTitles[route.name]?()=> <AppHeaderSectionTitle title={sectionTitles[route.name]}/>:undefined,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:isOperationsLandscape?{display:'none'}:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}})}>
+  return <Tabs screenOptions={({route})=>({headerShown:!isOperationsLandscape,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerRight:sectionTitles[route.name]?()=> <AppHeaderSectionTitle title={sectionTitles[route.name]}/>:undefined,headerStyle:{backgroundColor:theme.paper},headerRightContainerStyle:{paddingRight:16},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:isOperationsLandscape?{display:'none'}:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}})}>
     <Tabs.Screen name="index" options={{title:'Dashboard',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('rectangle.grid.1x2.fill','dashboard')}}/>
     <Tabs.Screen name="operations" options={{title:'Operations',tabBarIcon:icon('flame.fill','local_fire_department')}}/>
     <Tabs.Screen name="fleet" options={{title:'Fleet',tabBarIcon:icon('truck.box.fill','local_shipping')}}/>
-    <Tabs.Screen name="communications" options={{title:'Communications',tabBarBadge:unreadCommunications||undefined,tabBarIcon:icon('bubble.left.and.bubble.right.fill','forum')}}/>
+    <Tabs.Screen name="communications" options={{title:'Communications',tabBarLabel:'Messages',tabBarBadge:unreadCommunications||undefined,tabBarIcon:icon('bubble.left.and.bubble.right.fill','forum')}}/>
     <Tabs.Screen name="more" options={{title:'More',tabBarBadge:unreadDocuments+unreadTrainings||undefined,tabBarIcon:icon('ellipsis','more_horiz')}}/>
   </Tabs>;
 }
