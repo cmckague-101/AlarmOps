@@ -28,6 +28,7 @@ import { AppleIncidentMap } from '@/components/apple-incident-map';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
 import { saveFireList } from '@/lib/offline-fire-list';
+import { telemetryAge, telemetryFreshness } from '@/lib/telemetry-freshness';
 import { updateFleetVehicle, useFleetVehicles, type FleetVehicle } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
@@ -476,13 +477,16 @@ export default function OperationsScreen() {
                   onPress={() => openVehicleDetails(vehicle.id)}
                   style={({ pressed }) => [styles.vehicleRow, pressed && styles.pressed]}
                 >
-                  <View style={styles.vehicleIcon}>
-                    <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={18} color={theme.green} />
+                  <View style={[styles.vehicleIcon, telemetryFreshness(vehicle.motive?.updatedAt) === 'stale' && styles.vehicleIconStale]}>
+                    <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={18} color={telemetryFreshness(vehicle.motive?.updatedAt) === 'stale' ? theme.warning : theme.green} />
                   </View>
                   <View style={styles.rowCopy}>
                     <Text style={styles.rowTitle}>{vehicle.name}</Text>
                     <Text style={styles.rowMeta}>{vehicle.motive?.location ?? 'Location unavailable'}</Text>
                     <Text style={styles.rowMeta}>{vehicle.motive?.speed ?? 'Speed unavailable'} · {formatUpdatedAt(vehicle.motive?.updatedAt)}</Text>
+                    {telemetryFreshness(vehicle.motive?.updatedAt) === 'stale' && (
+                      <Text style={styles.staleMeta}>Stale · no update in {telemetryAge(vehicle.motive?.updatedAt)}</Text>
+                    )}
                   </View>
                   <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
                 </Pressable>
@@ -618,6 +622,7 @@ function createStyles(theme: FireOpsTheme) {
     rowCopy: { flex: 1, gap: 4 },
     rowTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     rowMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
+    staleMeta: { color: theme.warning, fontSize: 13, lineHeight: 18, fontWeight: '600' },
     fireHeading: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 },
     fireHeadingCopy: { flex: 1, gap: 4 },
     sectionCopy: { color: theme.secondary, fontSize: 14, lineHeight: 20 },
@@ -643,6 +648,7 @@ function createStyles(theme: FireOpsTheme) {
     vehicleRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
     fireIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.dangerSurface },
     vehicleIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.greenSurface },
+    vehicleIconStale: { backgroundColor: theme.warningSurface },
     modalSafeArea: { flex: 1, backgroundColor: theme.canvas },
     modalContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40, gap: 28 },
     modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },

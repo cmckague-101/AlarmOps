@@ -37,6 +37,7 @@ import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
 import { useSession } from "@/providers/session-provider";
 import { useOfflineSync } from "@/providers/offline-sync-provider";
 import {savedDetailHref} from '@/lib/offline-detail-form';
+import { telemetryAge, telemetryFreshness } from "@/lib/telemetry-freshness";
 import { FireOpsTheme, useFireOpsTheme } from "@/theme";
 
 function displayStatus(status: string) {
@@ -67,11 +68,6 @@ function formattedDate(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-function telemetryIsCurrent(value: string) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && Date.now() - timestamp < 15 * 60 * 1000;
 }
 
 function formatSpeed(value: string) {
@@ -661,11 +657,17 @@ export default function VehicleDetailScreen() {
                 <View accessibilityLabel="Motive vehicle status" style={styles.motiveCard}>
                 <View style={styles.motiveHeading}>
                   <View style={styles.motiveLive}>
-                    <View style={[styles.connectionDot, telemetryIsCurrent(vehicle.motive.updatedAt) && styles.connectionDotLive]} />
-                    <Text style={styles.motiveTitle}>Motive {telemetryIsCurrent(vehicle.motive.updatedAt) ? "live" : "last known"}</Text>
+                    <View style={[styles.connectionDot, telemetryFreshness(vehicle.motive.updatedAt) === "live" && styles.connectionDotLive, telemetryFreshness(vehicle.motive.updatedAt) === "stale" && styles.connectionDotStale]} />
+                    <Text style={styles.motiveTitle}>Motive {telemetryFreshness(vehicle.motive.updatedAt) === "live" ? "live" : telemetryFreshness(vehicle.motive.updatedAt) === "stale" ? "stale" : "last known"}</Text>
                   </View>
                   <Text style={styles.motiveUpdated}>Updated {formattedDate(vehicle.motive.updatedAt) ?? vehicle.motive.updatedAt}</Text>
                 </View>
+                {telemetryFreshness(vehicle.motive.updatedAt) === "stale" ? (
+                  <View accessibilityRole="alert" style={styles.staleNotice}>
+                    <AppSymbol name={{ ios: "exclamationmark.triangle.fill", android: "warning" } as never} color="#F0A93B" size={16} />
+                    <Text style={styles.staleNoticeText}>No update in {telemetryAge(vehicle.motive.updatedAt)}. Location may be outdated.</Text>
+                  </View>
+                ) : null}
                 <View style={styles.motiveReading}>
                   <AppSymbol name={{ ios: "location.fill", android: "location_on" } as never} color={theme.ember} size={18} />
                   <View style={styles.motiveReadingCopy}>
@@ -1481,6 +1483,9 @@ function createStyles(theme: FireOpsTheme) {
     motiveLive: { flexDirection: "row", alignItems: "center", gap: 7 },
     connectionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.secondary },
     connectionDotLive: { backgroundColor: "#52D394" },
+    connectionDotStale: { backgroundColor: "#F0A93B" },
+    staleNotice: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, backgroundColor: "#3A2D1A", paddingHorizontal: 12, paddingVertical: 10 },
+    staleNoticeText: { flex: 1, color: "#F0A93B", fontSize: 13, lineHeight: 18, fontWeight: "700" },
     motiveTitle: { color: theme.commandText, fontSize: 15, fontWeight: "800" },
     motiveUpdated: { flex: 1, color: "#BFC9C2", fontSize: 11, textAlign: "right" },
     motiveReading: { flexDirection: "row", alignItems: "center", gap: 11 },
