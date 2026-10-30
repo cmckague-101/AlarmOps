@@ -31,7 +31,7 @@ function RootNavigator(){
         <Pressable accessibilityRole="button" accessibilityLabel="Exit demo and discard changes" onPress={()=>void signOut().then(()=>{router.dismissAll();router.replace('/sign-in')})} style={styles.exitDemo}><Text style={{color:theme.ember,fontWeight:'700'}}>Exit demo</Text></Pressable>
       </View>:null}
       <OfflineSyncNotice topInset={!demoMode?insets.top:0}/>
-      <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'left',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
+      <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
         <Stack.Screen name="index"/>
         <Stack.Screen name="sign-in"/>
         <Stack.Screen name="forgot-password" options={{title:'Reset password'}}/>

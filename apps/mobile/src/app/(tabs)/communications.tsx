@@ -43,8 +43,11 @@ export default function CommunicationsScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
-            {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}
+            <Text accessibilityRole="header" style={styles.pageTitle}>Communications</Text>
+            <View style={styles.headingMeta}>
+              <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
+              {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}
+            </View>
           </View>
           {member && isCompanyManager(member.user.role) ? (
             <Pressable
@@ -126,8 +129,10 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 42, gap: 22 },
+    pageTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: '800', letterSpacing: -0.7 },
     headingRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-    headingCopy: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+    headingCopy: { flex: 1, gap: 4 },
+    headingMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
     company: { color: theme.secondary, fontSize: 13, lineHeight: 18, fontWeight: '700' },
     subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21 },
     addButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 11, backgroundColor: theme.ember, paddingHorizontal: 14 },

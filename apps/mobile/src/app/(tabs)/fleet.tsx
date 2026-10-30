@@ -135,6 +135,7 @@ export default function FleetScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingGroup}>
+            <Text accessibilityRole="header" style={styles.pageTitle}>Fleet</Text>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
           {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (
@@ -250,6 +251,7 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.canvas },
   content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 26 },
+  pageTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: '800', letterSpacing: -0.7 },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   headingGroup: { flex: 1, gap: 5 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },
