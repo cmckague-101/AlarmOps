@@ -108,6 +108,7 @@ function IncidentMap({
   const zoomRef = useRef(zoom);
   const layoutRef = useRef({ width: 0, height: 0 });
   const dragStartRef = useRef(viewport);
+  const focusedVehicleRef = useRef<string | null>(null);
 
   useEffect(() => {
     viewportRef.current = viewport;
@@ -115,11 +116,12 @@ function IncidentMap({
   }, [viewport, zoom]);
 
   useEffect(() => {
-    if (!focusedVehicleId) return;
+    if (!focusedVehicleId || focusedVehicleRef.current === focusedVehicleId) return;
     const vehicle = vehicles.find((item) => item.id === focusedVehicleId);
     const coordinates = vehicle ? vehicleCoordinates(vehicle) : null;
     const point = coordinates ? projection([coordinates.longitude, coordinates.latitude]) : null;
     if (point) {
+      focusedVehicleRef.current = focusedVehicleId;
       setFocusedIncident(null);
       setCenter(point);
       setZoom(4);

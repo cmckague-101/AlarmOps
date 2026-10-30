@@ -35,15 +35,20 @@ export function AppleIncidentMap({
   style,
 }: AppleIncidentMapProps) {
   const [longitudeDelta, setLongitudeDelta] = useState(US_REGION.longitudeDelta);
+  const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapView>(null);
+  const focusedRef = useRef<string | null>(null);
   const showPins = longitudeDelta < 12;
 
+  // Zoom once per requested vehicle, after the map can animate, so fleet refreshes don't re-center it.
   useEffect(() => {
-    if (!focusedVehicleId) return;
+    if (!mapReady || !focusedVehicleId || focusedRef.current === focusedVehicleId) return;
     const vehicle = vehicles.find((item) => item.id === focusedVehicleId);
     const coordinate = vehicle ? vehicleCoordinates(vehicle) : null;
-    if (coordinate) mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 350);
-  }, [focusedVehicleId, vehicles]);
+    if (!coordinate) return;
+    focusedRef.current = focusedVehicleId;
+    mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 350);
+  }, [focusedVehicleId, mapReady, vehicles]);
 
   return (
     <MapView
@@ -51,6 +56,7 @@ export function AppleIncidentMap({
       accessibilityLabel={`Apple Map showing ${incidents.length} active wildfire incidents`}
       initialRegion={US_REGION}
       mapType="standard"
+      onMapReady={() => setMapReady(true)}
       onRegionChangeComplete={(region) => setLongitudeDelta(region.longitudeDelta)}
       pitchEnabled={false}
       rotateEnabled={false}
@@ -93,6 +99,7 @@ export function AppleIncidentMap({
             onPress={() => onVehicleDetails(vehicle.id)}
             title={vehicle.name}
             tracksViewChanges={false}
+            zIndex={10}
           >
             <View style={[styles.vehicleMarker, stale && styles.vehicleMarkerStale]}>
               <AppSymbol name={{ ios: 'truck.box.fill', android: 'local_shipping' } as never} size={14} color="#FFFFFF" />
