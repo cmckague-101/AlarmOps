@@ -1,4 +1,4 @@
-import {crewCredentials,isCompanyManager,userRoleLabel,type UserRole} from '@fireops/domain';
+import {crewCredentials,filterAndSortCrew,isCompanyManager,rosterSortOptions as sortOptions,userRoleLabel,type RosterSort} from '@fireops/domain';
 import {Redirect,Stack,useRouter} from 'expo-router';
 import {useEffect,useMemo,useState} from 'react';
 import {Pressable,RefreshControl,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
@@ -8,10 +8,6 @@ import {loadCrewSeatsUsed,refreshFleet,useFleetVehicles} from '@/lib/fleet-store
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
 
-type RosterSort='name'|'status'|'role';
-const sortOptions:{value:RosterSort;label:string}[]=[{value:'name',label:'Name'},{value:'status',label:'Status'},{value:'role',label:'Role'}];
-const roleOrder:UserRole[]=['owner','admin','accounting','shop_tech','fire_fighter'];
-
 export default function CrewScreen(){
   const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
   const {session,access}=useSession();const member=access.value?.kind==='member'?access.value:null;
@@ -19,7 +15,7 @@ export default function CrewScreen(){
   const canManage=Boolean(member&&isCompanyManager(member.user.role));
   const [seatsUsed,setSeatsUsed]=useState<number|null>(null);
   const [query,setQuery]=useState('');const [sort,setSort]=useState<RosterSort>('name');
-  const shown=useMemo(()=>{const term=query.trim().toLowerCase();const byName=(a:typeof crew[number],b:typeof crew[number])=>a.name.localeCompare(b.name);return crew.filter(person=>!term||[person.name,person.email,userRoleLabel(person.role)].some(value=>value?.toLowerCase().includes(term))).sort((a,b)=>sort==='status'?(a.status==='Active'?1:0)-(b.status==='Active'?1:0)||byName(a,b):sort==='role'?(roleOrder.indexOf(a.role)+1||9)-(roleOrder.indexOf(b.role)+1||9)||byName(a,b):byName(a,b))},[crew,query,sort]);
+  const shown=useMemo(()=>filterAndSortCrew(crew,query,sort),[crew,query,sort]);
   useEffect(()=>{if(canManage&&member?.company.id)void loadCrewSeatsUsed(member.company.id).then(setSeatsUsed).catch(()=>setSeatsUsed(null))},[canManage,member?.company.id,crew.length]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   const limit=member?.company.crewInviteLimit??0;const used=seatsUsed??crew.filter(item=>item.role!=='owner').length;const available=Math.max(0,limit-used);

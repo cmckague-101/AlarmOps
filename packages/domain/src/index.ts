@@ -5,6 +5,7 @@ export * from './qualification-positions';
 export * from './phone-number';
 export * from './dates';
 export * from './audit-log';
+export * from './crew-roster';
 export * from './payroll';
 export * from './invoices';
 export * from './tasks';
