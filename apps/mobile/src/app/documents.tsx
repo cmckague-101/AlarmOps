@@ -147,7 +147,7 @@ export default function CompanyDocumentsScreen() {
                       <Text numberOfLines={1} style={styles.fileName}>{document.file.name}</Text>
                       <Text style={styles.updated}>{busy ? 'Opening…' : `Updated ${formatDate(document.updatedAt)}`}</Text>
                     </View>
-                    <AppSymbol name={{ ios: 'arrow.up.right.square', android: 'open_in_new' } as never} color={theme.secondary} size={18} />
+                    {canManage ? null : <AppSymbol name={{ ios: 'arrow.up.right.square', android: 'open_in_new' } as never} color={theme.secondary} size={18} />}
                   </Pressable>
                   {canManage ? (
                     <View style={styles.actions}>
@@ -196,10 +196,10 @@ function createStyles(theme: FireOpsTheme) {
     count: { color: theme.secondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
     stateText: { color: theme.secondary, fontSize: 15, paddingVertical: 24 },
     list: { overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, borderRadius: 14, backgroundColor: theme.paper },
-    row: { paddingHorizontal: 13, paddingVertical: 9 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 9 },
     rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
     unreadRow: { backgroundColor: theme.dangerSurface },
-    openArea: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12 },
+    openArea: { flex: 1, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12 },
     fileIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: theme.surfaceAlt },
     fileIconUnread: { backgroundColor: theme.paper },
     fileCopy: { flex: 1, gap: 3 },
@@ -208,8 +208,8 @@ function createStyles(theme: FireOpsTheme) {
     newBadge: { overflow: 'hidden', color: theme.ember, backgroundColor: theme.paper, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
     fileName: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
     updated: { color: theme.secondary, fontSize: 11, lineHeight: 16 },
-    actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, paddingTop: 9 },
-    iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.surfaceAlt },
+    actions: { flexDirection: 'row', gap: 4 },
+    iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
     empty: { alignItems: 'center', paddingHorizontal: 28, paddingVertical: 48, gap: 8 },
     emptyIcon: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center', borderRadius: 29, backgroundColor: theme.surfaceAlt, marginBottom: 5 },
     emptyTitle: { color: theme.ink, fontSize: 20, lineHeight: 26, fontWeight: '700' },
