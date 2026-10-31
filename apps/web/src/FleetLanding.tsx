@@ -158,7 +158,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             <li><Check aria-hidden="true"/> Open company documents and training</li>
             <li><BellRing aria-hidden="true"/> Get notified when your crew has an update</li>
           </ul>
-          <a href="https://apps.apple.com/app/id6808795667" target="_blank" rel="noreferrer" aria-label="Download FireOps Fleet on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
+          <a href="https://apps.apple.com/app/id6808795667" target="_blank" rel="noreferrer" aria-label="Download FireOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
         </div>
         <div className="login-mobile-device" aria-hidden="true">
           <div className="login-mobile-phone">
@@ -183,16 +183,16 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
           <p>Choose individual career tools or a shared operating workspace for your company.</p>
         </div>
         <div className="pricing-grid">
-          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
-          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
-          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
-          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
+          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p><a className="pricing-cta" href="#contact">Talk to us</a></article>
           <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p><a className="pricing-cta" href="#contact">Contact sales</a></article>
         </div>
       </section>
 
       <section className="login-contact" id="contact" aria-labelledby="contact-title">
-        <p className="login-section-kicker">Talk with Fireco</p>
+        <p className="login-section-kicker">Talk with the FireOps team</p>
         <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
         <div className="contact-card">
           <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>

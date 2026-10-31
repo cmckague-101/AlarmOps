@@ -8,8 +8,8 @@ export default function PrivacyPolicy() {
     const previousTitle = document.title;
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     const previousDescription = description?.content;
-    document.title = 'Privacy Policy | FireOps Fleet';
-    if (description) description.content = 'Privacy Policy for FireOps Fleet.';
+    document.title = 'Privacy Policy | FireOps';
+    if (description) description.content = 'Privacy Policy for FireOps.';
     return () => {
       document.title = previousTitle;
       if (description && previousDescription) description.content = previousDescription;
@@ -26,10 +26,10 @@ export default function PrivacyPolicy() {
 
     <main className="privacy-main">
       <div className="privacy-intro">
-        <p className="privacy-eyebrow">FireOps Fleet</p>
+        <p className="privacy-eyebrow">FireOps</p>
         <h1>Privacy Policy</h1>
         <p className="privacy-effective">Effective September 4, 2026</p>
-        <p>This Privacy Policy explains how FireOps Fleet (“FireOps,” “we,” “us,” or “our”) collects, uses, stores, and shares information when you use our website, iOS application, and related services (collectively, the “Service”).</p>
+        <p>This Privacy Policy explains how FireOps (“FireOps,” “we,” “us,” or “our”) collects, uses, stores, and shares information when you use our website, iOS application, and related services (collectively, the “Service”).</p>
       </div>
 
       <nav className="privacy-summary" aria-label="Privacy summary">
@@ -132,7 +132,7 @@ export default function PrivacyPolicy() {
     </main>
 
     <footer className="privacy-footer">
-      <span>© {new Date().getFullYear()} FireOps Fleet</span>
+      <span>© {new Date().getFullYear()} FireOps</span>
       <a href={`mailto:${contactEmail}`}>Privacy contact</a>
     </footer>
   </div>;

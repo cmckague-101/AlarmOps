@@ -76,7 +76,7 @@ export function SignInLanding({children}:PropsWithChildren){
           </View>)}
         </View>
         <View style={styles.section}>
-          <Text style={[styles.kicker,{color:theme.green}]}>Talk with Fireco</Text>
+          <Text style={[styles.kicker,{color:theme.green}]}>Talk with the FireOps team</Text>
           <Text accessibilityRole="header" style={[styles.title,heading]}>Want to learn how FireOps can support your operation?</Text>
           <View style={[styles.card,card]}>
             <Pressable accessibilityRole="link" onPress={()=>void open('tel:+12088617464')} style={styles.contact}><Text style={[styles.contactLabel,{color:theme.ember}]}>208-861-7464</Text></Pressable>
