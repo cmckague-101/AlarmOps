@@ -4,6 +4,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FilterSelect } from '@/components/filter-select';
 import { createFleetId, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
 import { useSession } from '@/providers/session-provider';
 import { useOfflineSync } from '@/providers/offline-sync-provider';
@@ -20,7 +21,9 @@ export default function NewIssueScreen() {
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
   const { vehicles, loading } = useFleetVehicles(companyId);
-  const vehicleId = initialVehicleId ?? '';
+  const [pickedVehicleId, setPickedVehicleId] = useState('');
+  const vehicleId = initialVehicleId ?? pickedVehicleId;
+  const vehicleOptions = useMemo(() => [...vehicles].sort((a, b) => a.name.localeCompare(b.name)).map((vehicle) => ({ value: vehicle.id, label: vehicle.name })), [vehicles]);
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -89,7 +92,12 @@ export default function NewIssueScreen() {
             <Text style={styles.subtitle}>Give your company enough detail to triage and repair it.{offline ? ' Offline: the report is saved on this device and syncs when connected.' : ''}</Text>
           </View>
 
-          {loading ? <Text style={styles.help}>Loading vehicle…</Text> : selectedVehicle ? (
+          {loading ? <Text style={styles.help}>Loading vehicle…</Text> : !initialVehicleId && vehicles.length ? (
+            <View style={styles.vehiclePicker}>
+              <Text style={styles.vehiclePickerLabel}>Vehicle</Text>
+              <FilterSelect accessibilityLabel="Vehicle" placeholder="Select vehicle" value={pickedVehicleId} onChange={setPickedVehicleId} options={vehicleOptions} />
+            </View>
+          ) : selectedVehicle ? (
             <View style={styles.selectedVehicle}>
               <Text style={styles.selectedVehicleLabel}>Vehicle</Text>
               <Text style={styles.vehicleName}>{selectedVehicle.name}</Text>
@@ -98,7 +106,7 @@ export default function NewIssueScreen() {
           ) : (
             <View style={styles.missingVehicle}>
               <Text style={styles.missingVehicleTitle}>Select vehicle first</Text>
-              <Text style={styles.missingVehicleText}>Open vehicle from Fleet, then choose Open issue.</Text>
+              <Text style={styles.missingVehicleText}>{initialVehicleId ? 'This vehicle is no longer available. Choose one from Fleet.' : 'No vehicles yet. Add one in Fleet first.'}</Text>
               <Pressable accessibilityRole="button" onPress={() => router.replace('/(tabs)/fleet' as never)} style={styles.fleetButton}>
                 <Text style={styles.fleetButtonLabel}>Go to Fleet</Text>
               </Pressable>
@@ -192,6 +200,8 @@ function createStyles(theme: FireOpsTheme) {
     selectedVehicleLabel: { color: theme.green, fontSize: 12, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase' },
     vehicleName: { color: theme.ink, fontSize: 17, lineHeight: 22, fontWeight: '700' },
     vehicleMeta: { color: theme.secondary, fontSize: 13, lineHeight: 18 },
+    vehiclePicker: { gap: 8 },
+    vehiclePickerLabel: { color: theme.ink, fontSize: 15, fontWeight: '700' },
     missingVehicle: { backgroundColor: theme.warningSurface, borderRadius: 12, padding: 17, gap: 8 },
     missingVehicleTitle: { color: theme.warning, fontSize: 18, lineHeight: 23, fontWeight: '700' },
     missingVehicleText: { color: theme.ink, fontSize: 14, lineHeight: 20 },
