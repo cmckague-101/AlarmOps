@@ -162,6 +162,13 @@ if ((DO_IOS)); then
     "EAS (Expo) cloud build + submit to App Store Connect" \
     "Local build on this Mac"
   echo
+  # EAS local iOS builds shell out to CocoaPods and fastlane; fail now rather than mid-build.
+  if [[ "$IOS_MODE" == Local* ]]; then
+    for cmd in pod fastlane; do
+      command -v "$cmd" >/dev/null 2>&1 ||
+        die "Local iOS builds need $cmd; install it with: brew install ${cmd/pod/cocoapods}"
+    done
+  fi
 fi
 if ((DO_ANDROID)); then
   ask_choice ANDROID_MODE "How should Android be built?" \
