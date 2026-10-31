@@ -12,7 +12,9 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
     const themeColor=document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const previousThemeColor=themeColor?.content;
     if(themeColor)themeColor.content='#101815';
-    return()=>{if(themeColor&&previousThemeColor)themeColor.content=previousThemeColor};
+    const previousTitle=document.title;
+    document.title='FireOps | Crew, fleet and incident operations for wildland fire';
+    return()=>{if(themeColor&&previousThemeColor)themeColor.content=previousThemeColor;document.title=previousTitle};
   },[]);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
@@ -52,7 +54,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
-        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a></nav></div>
+        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a><a className="login-nav-signin" href="#sign-in">Sign in</a></nav></div>
         <div className="login-intro">
           <p className="login-eyebrow">Wildland operations, connected</p>
           <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
@@ -60,7 +62,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
           <a className="login-discover" href="#features">See what FireOps covers <ArrowDown aria-hidden="true"/></a>
         </div>
 
-        <form className="login-form" onSubmit={submit} aria-labelledby="login-form-title" aria-busy={busy}>
+        <form className="login-form" id="sign-in" onSubmit={submit} aria-labelledby="login-form-title" aria-busy={busy}>
           <div className="login-form-heading">
             <span>Secure workspace</span>
             <h2 id="login-form-title">Welcome back</h2>
@@ -181,11 +183,11 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
           <p>Choose individual career tools or a shared operating workspace for your company.</p>
         </div>
         <div className="pricing-grid">
-          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em></article>
-          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em></article>
-          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em></article>
-          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p></article>
-          <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p></article>
+          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
+          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
+          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
+          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p><a className="pricing-cta" href="#contact">Talk to Fireco</a></article>
+          <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p><a className="pricing-cta" href="#contact">Contact sales</a></article>
         </div>
       </section>
 
@@ -204,6 +206,6 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       </section>
     </main>
 
-    <footer className="login-footer"><span>© {new Date().getFullYear()} FireOps</span><span>Built for teams who answer the call.</span></footer>
+    <footer className="login-footer"><span>© {new Date().getFullYear()} FireOps</span><a href="/privacy">Privacy Policy</a><span>Built for teams who answer the call.</span></footer>
   </div>;
 }
