@@ -5,7 +5,14 @@ import './auth.css';
 
 export default function FleetLogin({onDemo}:{onDemo:()=>void}){
   useEffect(()=>{
-    if(window.location.hash==='#pricing')document.getElementById('pricing')?.scrollIntoView();
+    // The page renders after load, so the browser can't jump to a section link on its own.
+    const target=window.location.hash.slice(1);
+    if(target)document.getElementById(target)?.scrollIntoView();
+    // Match the browser bar to the dark hero while the landing page is shown.
+    const themeColor=document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const previousThemeColor=themeColor?.content;
+    if(themeColor)themeColor.content='#101815';
+    return()=>{if(themeColor&&previousThemeColor)themeColor.content=previousThemeColor};
   },[]);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
@@ -13,21 +20,35 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
   const [busy,setBusy]=useState(false);
   const [resetMode,setResetMode]=useState(false);
   const [sentMethod,setSentMethod]=useState<'reset'|'magic'|null>(null);
-  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(signInError)setError(signInError.message);setBusy(false)};
+  const submit=async(event:React.FormEvent)=>{
+    event.preventDefault();
+    if(!supabase)return;
+    setBusy(true);setError('');
+    try{
+      const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});
+      if(signInError)setError(signInError.message);
+    }catch{
+      setError('FireOps could not be reached. Check your connection and try again.');
+    }finally{setBusy(false)}
+  };
   const requestEmail=async(event:React.FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!supabase)return;
     const submitter=(event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement|null;
     const method=submitter?.value==='magic'?'magic':'reset';
     setBusy(true);setError('');
-    if(method==='magic'){
-      await supabase.auth.signInWithOtp({email:email.trim(),options:{shouldCreateUser:false,emailRedirectTo:new URL('/',window.location.origin).toString()}});
-    }else{
-      await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:new URL('/reset-password',window.location.origin).toString()});
-    }
-    setSentMethod(method);setBusy(false);
+    try{
+      const {error:requestError}=method==='magic'
+        ? await supabase.auth.signInWithOtp({email:email.trim(),options:{shouldCreateUser:false,emailRedirectTo:new URL('/',window.location.origin).toString()}})
+        : await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:new URL('/reset-password',window.location.origin).toString()});
+      // An unknown email is not an error worth showing, so the page never reveals which accounts exist.
+      if(requestError&&requestError.status!==400&&requestError.status!==422)setError(requestError.status===429?'Too many requests. Wait a minute, then try again.':requestError.message);
+      else setSentMethod(method);
+    }catch{
+      setError('FireOps could not be reached. Check your connection and try again.');
+    }finally{setBusy(false)}
   };
-  if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button></>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
+  if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button>{error&&<div className="admin-error" role="alert">{error}</div>}</>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
