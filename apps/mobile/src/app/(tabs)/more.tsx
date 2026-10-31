@@ -59,7 +59,7 @@ export default function More(){
         style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,section.comingSoon&&styles.comingSoon,pressed&&styles.pressed]}
       >
         <View style={[styles.icon,{backgroundColor:section.color}]}>
-          <AppSymbol name={{ios:section.ios,android:section.android} as never} size={27} color="#FFFFFF"/>
+          <AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>
         </View>
         <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
         {section.comingSoon&&<Text style={[styles.soon,{color:theme.secondary}]}>Coming soon</Text>}
@@ -71,11 +71,11 @@ export default function More(){
 }
 
 const styles=StyleSheet.create({
-  grid:{flexDirection:'row',flexWrap:'wrap',gap:12},
-  card:{width:'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:10,padding:18,minHeight:150,borderRadius:16,borderWidth:1},
+  grid:{flexDirection:'row',flexWrap:'wrap',gap:12,marginTop:16},
+  card:{width:'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:8,padding:14,minHeight:118,borderRadius:16,borderWidth:1},
   fullCard:{width:'100%'},
-  icon:{width:52,height:52,alignItems:'center',justifyContent:'center',borderRadius:14},
-  label:{fontSize:16,fontWeight:'800',textAlign:'center'},soon:{fontSize:13,fontWeight:'600'},comingSoon:{opacity:.6},
+  icon:{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:12},
+  label:{fontSize:15,fontWeight:'800',textAlign:'center'},soon:{fontSize:13,fontWeight:'600'},comingSoon:{opacity:.6},
   badge:{overflow:'hidden',borderRadius:999,paddingHorizontal:8,paddingVertical:4,fontSize:11,fontWeight:'800'},
   signOut:{minHeight:50,borderWidth:1,borderRadius:9,alignItems:'center',justifyContent:'center',marginTop:24},
   signOutLabel:{fontSize:16,fontWeight:'700'},
