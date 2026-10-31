@@ -1,11 +1,12 @@
 import {createDeviceHistoryClient,type DeviceHistoryTransport} from './sync-device-history';
+import {syncReviewFileText,type SyncReviewTarget} from './sync-review-shared';
+export {syncReviewFileText,type SyncReviewTarget} from './sync-review-shared';
 import {
   createSyncPatch, mergeSyncUpdate, suggestSyncReviewChoices, type FleetSyncReview,
   type FleetSyncReviewDecision, type FleetSyncReviewRequest, type SyncFieldValue, type SyncRecord, type SyncJsonValue,
   type SyncReviewFieldProvenance,
 } from './offline-sync';
 
-export type SyncReviewTarget = { readonly entityType: 'vehicle' | 'issue'; readonly entityId: string };
 export type SyncConflictGroup = SyncReviewTarget & { readonly count: number; readonly receivedAt: string };
 export interface SyncReviewTransport {
   history?: DeviceHistoryTransport;
@@ -126,12 +127,6 @@ export function syncReviewFieldLabel(key: string): string {
     photo:'Vehicle photo',contract:'Contract',viprChecklist:'VIPR checklist',registration:'Registration',insurance:'Insurance',dotInspection:'DOT inspection'} as Record<string,string>)[key] ?? key;
 }
 /** Vehicle file values ({name,type,dataUrl,path}) as readable text; null for anything else. */
-export function syncReviewFileText(value: unknown): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const file = value as Record<string, unknown>;
-  if (typeof file.name !== 'string' || typeof file.type !== 'string' || typeof file.path !== 'string' || typeof file.dataUrl !== 'string') return null;
-  return `File: ${file.name} (${file.type})\nStored at: ${file.path}${file.path.includes('/sync-') ? '\nUploaded from a device and verified by the server' : ''}`;
-}
 export function syncReviewValueText(value: SyncFieldValue): string {
   if (!value.present) return 'Not set (removed)';
   if (value.value === null) return 'Not reported (null)';

@@ -1,5 +1,5 @@
 import {createSyncPatch,mergeSyncUpdate,type SyncOperation,type SyncRecord,type SyncFieldValue} from './offline-sync';
-import {syncReviewFileText,type SyncReviewTarget} from './sync-review-client';
+import {syncReviewFileText,type SyncReviewTarget} from './sync-review-shared';
 export type DeviceHistoryCursor={receivedAt:string;actorUserId:string;operationId:string};
 export type DeviceHistorySummary=DeviceHistoryCursor & SyncReviewTarget & {companyId:string;actorName:string|null};
 export type DeviceHistoryEntry={before:SyncOperation;after:SyncOperation;reason:string;createdAt:string};
