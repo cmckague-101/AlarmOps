@@ -138,7 +138,7 @@ export default function VehicleTypesScreen() {
                     <Text style={styles.typeName}>{type.name}</Text>
                     <Text style={styles.typeUsage}>{count ? `${count} ${count === 1 ? 'vehicle' : 'vehicles'}` : 'Not in use'}</Text>
                   </View>
-                  <Pressable
+                  {count ? null : <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${type.name}`}
                     accessibilityHint={count ? 'Change vehicles using this type first' : types.length === 1 ? 'Add another type first' : undefined}
@@ -147,7 +147,7 @@ export default function VehicleTypesScreen() {
                     style={({ pressed }) => [styles.removeButton, cannotRemove && styles.removeButtonUnavailable, deletingId === type.id && styles.disabled, pressed && styles.pressed]}
                   >
                     <AppSymbol name="trash" color={cannotRemove ? theme.secondary : theme.danger} size={18} />
-                  </Pressable>
+                  </Pressable>}
                 </View>
               );
             })}

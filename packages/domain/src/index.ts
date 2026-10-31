@@ -7,6 +7,7 @@ export * from './dates';
 export * from './audit-log';
 export * from './crew-roster';
 export * from './receipts';
+export * from './vin';
 export * from './payroll';
 export * from './invoices';
 export * from './tasks';

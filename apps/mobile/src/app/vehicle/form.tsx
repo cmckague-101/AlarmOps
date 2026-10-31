@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { inspectionExpirationDate, localDateToday, type VehicleStatus } from '@fireops/domain';
+import { inspectionExpirationDate, localDateToday, vinError, type VehicleStatus } from '@fireops/domain';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -161,6 +161,8 @@ export default function VehicleFormScreen() {
     if (!form.make.trim()) nextErrors.make = 'Make is required.';
     if (!form.model.trim()) nextErrors.model = 'Model is required.';
     if (!Number.isInteger(year) || year < 1950 || year > currentYear + 1) nextErrors.year = `Enter a year from 1950 to ${currentYear + 1}.`;
+    // Only a changed VIN is checked, so older records with odd VINs can still be edited.
+    if (form.vin.trim().toUpperCase() !== (vehicle?.vin ?? '').trim().toUpperCase() && vinError(form.vin)) nextErrors.vin = vinError(form.vin);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -297,7 +299,7 @@ export default function VehicleFormScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Registration &amp; notes</Text>
-            <Field label="VIN" styles={styles}><TextInput style={styles.textInput} value={form.vin} onChangeText={(value) => update('vin', value)} placeholder="17-character VIN" placeholderTextColor={theme.secondary} maxLength={17} autoCapitalize="characters" autoCorrect={false} /></Field>
+            <Field label="VIN" error={errors.vin} styles={styles}><TextInput style={styles.textInput} value={form.vin} onChangeText={(value) => update('vin', value)} placeholder="17-character VIN" placeholderTextColor={theme.secondary} maxLength={17} autoCapitalize="characters" autoCorrect={false} /></Field>
             <Field label="License plate" styles={styles}><TextInput style={styles.textInput} value={form.plate} onChangeText={(value) => update('plate', value)} placeholder="Plate number" placeholderTextColor={theme.secondary} maxLength={20} autoCapitalize="characters" autoCorrect={false} /></Field>
             {!editing ? <View style={styles.uploadGroup}><Text style={styles.label}>Vehicle photo</Text><Pressable accessibilityRole="button" onPress={() => void choosePhoto()} style={({ pressed }) => [styles.uploadButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'photo', android: 'image' } as never} color={theme.ember} size={18} /><View style={styles.uploadCopy}><Text style={styles.uploadLabel}>{photo ? 'Replace photo' : 'Choose photo'}</Text><Text style={styles.uploadName} numberOfLines={1}>{photo?.name ?? 'No photo selected'}</Text></View></Pressable></View> : null}
             <Field label="Notes" styles={styles}><TextInput style={[styles.textInput, styles.notesInput]} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>

@@ -1,4 +1,5 @@
-import {Check, Circle, ClipboardCheck, FileText, ReceiptText, ShieldCheck, ShoppingBag, Wallet, X} from 'lucide-react';
+import {useState} from 'react';
+import {Check, Circle, ClipboardCheck, FileText, ReceiptText, Search, ShieldCheck, ShoppingBag, Wallet, X} from 'lucide-react';
 import {canInspectVehicle,canManagePersonalTasks,isCompanyManager,type CrewMember,type FireOpsUser} from '@fireops/domain';
 import {useAvailability} from './useAvailability';
 import {useTaskCount} from './useTaskCount';
@@ -15,17 +16,22 @@ export function QuickActions({demoMode=false,companyId,user,onOpen,onInspect}:{d
 }
 export function AvailabilityPage({companyId,user,crew}:{companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
   const {statuses,loading,error,busy,save,retry,canSave,pending,note,verified} = useAvailability(companyId,user.id);
+  const [query,setQuery] = useState('');
   const owner = isCompanyManager(user.role);
-  const members = crew.filter(member=>member.role !== 'owner' && member.status === 'Active');
+  const members = crew.filter(member=>member.role !== 'owner' && member.status === 'Active').sort((a,b)=>a.name.localeCompare(b.name));
+  const shown = members.filter(member=>member.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const availableCount = members.filter(member=>statuses[member.id]===true).length;
+  const unsetCount = members.filter(member=>statuses[member.id]===undefined).length;
   const status = statuses[user.id];
   const label = (value:boolean|undefined)=>value===undefined?'Not set':value?'Available':'Unavailable';
   const controls = (id:string)=><div className="availability-controls">{[true,false].map(value=><button key={String(value)} className={value?'availability-yes':'availability-no'} disabled={!canSave(id)} aria-pressed={statuses[id]===value} onClick={()=>void save(id,value)}>{value?<Check/>:<X/>}{`Show Me As ${value?'Available':'Unavailable'}`}</button>)}</div>;
-  const ownerControl = (id:string)=>{const current=statuses[id];const next=current!==true;return <button className={current===undefined?'availability-unset':current===false?'availability-no':'availability-yes'} disabled={!canSave(id)} aria-label={`${current===undefined?'Set':'Change'} status to ${label(next)}`} onClick={()=>void save(id,next)}>{current===false?<X/>:<Check/>}{!verified?'Status unavailable':current===undefined?'Set Available':label(current)}</button>};
+  // Managers see each person's status and an action that says what clicking does; changes are confirmed.
+  const ownerControl = (member:CrewMember)=>{const current=statuses[member.id];const next=current!==true;return <><span className={`availability-badge ${current===undefined?'unset':current?'yes':'no'}`}>{!verified?(current===undefined?'Status unavailable':`Last known: ${label(current)}`):label(current)}</span><button className="secondary availability-action" disabled={!canSave(member.id)} onClick={()=>{if(window.confirm(`Mark ${member.name} ${label(next).toLowerCase()}? Their availability changes for the whole company.`))void save(member.id,next)}}>{`Mark ${label(next).toLowerCase()}`}</button></>};
   return <div className="page availability-page"><div className="page-heading"><div><h1>{owner?'Crew Availability':'Assignment Availability'}</h1>{!owner&&<p>Your selection is shared immediately with your company.</p>}</div></div>
     {pending&&<p role="status">Submitted availability for {crew.find(member=>member.id===pending.request.userId)?.name??'the selected member'}: {label(pending.request.available)}. {pending.acknowledged?(pending.keptCurrent?'Server kept a different value; refresh pending.':'Server accepted this choice; refresh pending.'):'Not yet confirmed. Keep this page open.'}</p>}
     {note&&<p role="status">{note}</p>}
     {error && <p role="alert" className="receipt-error">{error} <button className="secondary" disabled={busy} onClick={()=>void retry()}>{pending?.acknowledged?'Retry refresh':pending?'Retry original choice':'Retry'}</button></p>}
     {!companyId && <p>Connect a company account to save availability.</p>}
-    {loading ? <p>Loading availability…</p> : owner ? <div className="availability-roster">{members.map(member=><article key={member.id}><h2>{member.name}</h2>{ownerControl(member.id)}</article>)}{!members.length && <p>No active crew members yet.</p>}</div> : <section className="availability-self"><Circle size={64}/><h2 aria-live="polite">{!verified?'Your availability is not verified':status===undefined?'Your availability is not set':`You Are Currently ${label(status)}`}</h2>{controls(user.id)}</section>}
+    {loading ? <p>Loading availability…</p> : owner ? <div className="availability-roster">{members.length>0&&<div className="availability-tools"><p>{availableCount} of {members.length} available{unsetCount?` · ${unsetCount} not set`:''}</p><label className="stock-search"><Search/><span className="sr-only">Search crew</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search crew"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Clear crew search"><X/></button>}</label></div>}{shown.map(member=><article key={member.id} className="availability-row"><h2>{member.name}</h2>{ownerControl(member)}</article>)}{!members.length ? <p>No active crew members yet.</p> : !shown.length && <p>No crew match “{query.trim()}”.</p>}</div> : <section className="availability-self"><Circle size={64}/><h2 aria-live="polite">{!verified?'Your availability is not verified':status===undefined?'Your availability is not set':`You Are Currently ${label(status)}`}</h2>{controls(user.id)}</section>}
   </div>;
 }
