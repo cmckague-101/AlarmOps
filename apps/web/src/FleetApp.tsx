@@ -202,7 +202,7 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
-        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a></nav></div>
+        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a></nav></div>
         <div className="login-intro">
           <p className="login-eyebrow">Wildland operations, connected</p>
           <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
@@ -312,7 +312,7 @@ function FleetLogin({onDemo}:{onDemo:()=>void}){
           <div className="login-mobile-phone">
             <div className="login-mobile-speaker"/>
             <div className="login-mobile-screen">
-              <div className="login-mobile-appbar"><img src="/fireops-icon.png" alt=""/><span>FireOps</span><i>3</i></div>
+              <div className="login-mobile-appbar"><img src="/fireops-icon-64.webp" width="64" height="64" alt=""/><span>FireOps</span><i>3</i></div>
               <p>Good morning</p>
               <h3>Ready for assignment</h3>
               <div className="login-mobile-stats"><span><b>6</b>Vehicles</span><span><b>1</b>Open issue</span></div>
