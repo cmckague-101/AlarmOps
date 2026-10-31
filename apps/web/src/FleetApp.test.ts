@@ -4,7 +4,8 @@ import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
 } from '@fireops/domain';
-import {accountAccessErrorMessage, demoRequested, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+import {accountAccessErrorMessage, fleetRecordsEqual, snapshotFilePaths, stripSignedFileUrls} from './FleetApp';
+import {demoRequested, mayHaveSession} from './FleetRoot';
 
 describe('mobile demo entry',()=>{
   it('opens demo only with explicit demo flag',()=>{
@@ -245,5 +246,18 @@ describe('fleet file persistence',()=>{
       'company/user/registration.pdf',
       'company/user/vipr.pdf',
     ]);
+  });
+});
+
+describe('mayHaveSession', () => {
+  const storage=(keys:string[])=>({length:keys.length,key:(index:number)=>keys[index]??null});
+  it('skips the session check for signed-out visitors', () => {
+    expect(mayHaveSession(storage(['theme']),{search:'',hash:'#pricing'})).toBe(false);
+  });
+  it('checks when a Supabase token is stored or an auth callback is in the URL', () => {
+    expect(mayHaveSession(storage(['sb-abc-auth-token']),{search:'',hash:''})).toBe(true);
+    expect(mayHaveSession(storage([]),{search:'?code=123',hash:''})).toBe(true);
+    expect(mayHaveSession(storage([]),{search:'',hash:'#access_token=x&type=magiclink'})).toBe(true);
+    expect(mayHaveSession(null,{search:'',hash:''})).toBe(true);
   });
 });
