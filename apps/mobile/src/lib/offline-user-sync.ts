@@ -313,13 +313,13 @@ export function createOfflineUserSync(options:{session:OfflineOutboxSession;id:(
       return enqueue('payroll_form',formId,'form.submit',{},null);
     },
     /** Keeps the file on the device first, then saves the command; `id` is chosen once per intended receipt. */
-    async createReceipt(receipt:{id:string;name:string;amountCents:number;fileName:string;mimeType:string},fileUri:string){
+    async createReceipt(receipt:{id:string;name:string;amountCents:number;fileName:string;mimeType:string;purchasedOn?:string},fileUri:string){
       const name=receipt.name.trim();const fileName=receipt.fileName.trim();
       if(!uuid.test(receipt.id)||!name||name.length>160||!Number.isInteger(receipt.amountCents)||receipt.amountCents<1||receipt.amountCents>100000000
-        ||!fileName||fileName.length>255||/[\x00-\x1f\x7f]/.test(fileName)||!receiptMimeTypes.includes(receipt.mimeType))throw new Error('Check the receipt name, amount and file type.');
+        ||!fileName||fileName.length>255||/[\x00-\x1f\x7f]/.test(fileName)||!receiptMimeTypes.includes(receipt.mimeType)||(receipt.purchasedOn!==undefined&&!/^\d{4}-\d{2}-\d{2}$/.test(receipt.purchasedOn)))throw new Error('Check the receipt name, amount and file type.');
       if(!options.receiptFiles)throw new Error('Saving receipts offline is unavailable on this device.');
       guard();const byteSize=await options.receiptFiles.keep(receipt.id,fileUri);
-      return enqueue('receipt',receipt.id,'receipt.create',{name,amountCents:receipt.amountCents,fileName,mimeType:receipt.mimeType,byteSize},null);
+      return enqueue('receipt',receipt.id,'receipt.create',{name,amountCents:receipt.amountCents,fileName,mimeType:receipt.mimeType,byteSize,...(receipt.purchasedOn?{purchasedOn:receipt.purchasedOn}:{})},null);
     },
     /** Own notification preferences, merged per key on the server (later arrival wins). */
     setNotificationPreferences(changes:Record<string,boolean>){

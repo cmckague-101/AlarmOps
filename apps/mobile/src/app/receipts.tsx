@@ -1,4 +1,4 @@
-import { possibleDuplicateReceiptIds } from '@fireops/domain';
+import { formatCalendarDate, possibleDuplicateReceiptIds, receiptDate } from '@fireops/domain';
 import { useMemo, useState } from 'react';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -26,10 +26,6 @@ const timespanOptions: readonly FilterSelectOption<Timespan>[] = [
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 }
 
 function startFor(timespan: Timespan) {
@@ -72,11 +68,12 @@ export default function ReceiptsScreen() {
     const start = startFor(timespan);
     const end = timespan === 'last-year' ? new Date(new Date().getFullYear(), 0, 1) : null;
     return receipts.filter((receipt) => {
-      const created = new Date(receipt.createdAt);
+      const [year, month, day] = receiptDate(receipt).split('-').map(Number);
+      const purchased = new Date(year, month - 1, day);
       return (!isOwner || crewId === 'all' || receipt.uploadedBy === crewId)
-        && (!start || created >= start)
-        && (!end || created < end);
-    });
+        && (!start || purchased >= start)
+        && (!end || purchased < end);
+    }).sort((a, b) => receiptDate(b).localeCompare(receiptDate(a)) || b.createdAt.localeCompare(a.createdAt));
   }, [crewId, isOwner, receipts, timespan]);
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
@@ -130,7 +127,7 @@ export default function ReceiptsScreen() {
       {saved.length ? <View style={styles.list}>{saved.map((receipt, index) => <View key={receipt.id} style={[styles.row, index > 0 && styles.rowBorder]}><View style={styles.rowMain}><View style={styles.receiptIcon}><AppSymbol name={{ ios: 'icloud.and.arrow.up', android: 'cloud_upload' } as never} color={theme.secondary} size={21} /></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{receipt.name}</Text><Text numberOfLines={2} style={styles.rowMeta}>{receipt.state === 'action_needed' ? 'Saved on this device — needs attention in Saved changes & sync' : receipt.state === 'posted' ? 'Uploaded — refreshing list' : 'Saved on this device — uploads when connected'}</Text><Text numberOfLines={1} style={styles.fileName}>{receipt.fileName}</Text></View><View style={styles.rowEnd}><Text style={styles.amount}>{formatMoney(receipt.amountCents)}</Text></View></View></View>)}</View> : null}
       {loading ? <Text style={styles.state}>Loading receipts…</Text> : null}
       {!loading && !error && !visible.length ? <View style={styles.empty}><View style={styles.emptyIcon}><AppSymbol name={{ ios: 'doc.text', android: 'receipt_long' } as never} color={theme.secondary} size={28} /></View><Text style={styles.emptyTitle}>No receipts found</Text><Text style={styles.emptyText}>{receipts.length ? 'Change filters to see more receipts.' : 'Tap Add to upload first receipt.'}</Text></View> : null}
-      {!!visible.length ? <View style={styles.list}>{visible.map((receipt, index) => <View key={receipt.id} style={[styles.row, index > 0 && styles.rowBorder]}><Pressable accessibilityRole="button" accessibilityLabel={`Open ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => void viewReceipt(receipt)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}><View style={styles.receiptIcon}><AppSymbol name={{ ios: 'doc.text.fill', android: 'receipt_long' } as never} color={theme.commandForeground} size={21} /></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{receipt.name}</Text><Text numberOfLines={1} style={styles.rowMeta}>{isOwner ? `${receipt.uploadedByName} · ` : ''}{formatDate(receipt.createdAt)}</Text>{duplicates.has(receipt.id) ? <Text accessibilityLabel="Possible duplicate: same amount, uploader and day as another receipt" numberOfLines={1} style={styles.duplicate}>Possible duplicate</Text> : <Text numberOfLines={1} style={styles.fileName}>{receipt.fileName}</Text>}</View><View style={styles.rowEnd}><Text style={styles.amount}>{formatMoney(receipt.amountCents)}</Text><Text style={styles.openText}>{busyId === receipt.id ? 'Working…' : 'View'}</Text></View></Pressable>{isOwner ? <View style={styles.ownerActions}><Pressable accessibilityRole="button" accessibilityLabel={`Edit ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => router.push({ pathname: '/receipt/form', params: { receiptId: receipt.id } } as never)} style={({ pressed }) => [styles.ownerAction, pressed && styles.pressed]}><AppSymbol name={{ ios: 'pencil', android: 'edit' } as never} color={theme.commandForeground} size={17} /><Text style={styles.ownerActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Delete ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => confirmDelete(receipt)} style={({ pressed }) => [styles.ownerAction, styles.deleteAction, pressed && styles.pressed]}><AppSymbol name={{ ios: 'trash', android: 'delete' } as never} color={theme.danger} size={17} /><Text style={styles.deleteActionText}>Delete</Text></Pressable></View> : null}</View>)}</View> : null}
+      {!!visible.length ? <View style={styles.list}>{visible.map((receipt, index) => <View key={receipt.id} style={[styles.row, index > 0 && styles.rowBorder]}><Pressable accessibilityRole="button" accessibilityLabel={`Open ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => void viewReceipt(receipt)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}><View style={styles.receiptIcon}><AppSymbol name={{ ios: 'doc.text.fill', android: 'receipt_long' } as never} color={theme.commandForeground} size={21} /></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{receipt.name}</Text><Text numberOfLines={1} style={styles.rowMeta}>{isOwner ? `${receipt.uploadedByName} · ` : ''}{formatCalendarDate(receiptDate(receipt))}</Text>{duplicates.has(receipt.id) ? <Text accessibilityLabel="Possible duplicate: same amount, uploader and day as another receipt" numberOfLines={1} style={styles.duplicate}>Possible duplicate</Text> : <Text numberOfLines={1} style={styles.fileName}>{receipt.fileName}</Text>}</View><View style={styles.rowEnd}><Text style={styles.amount}>{formatMoney(receipt.amountCents)}</Text><Text style={styles.openText}>{busyId === receipt.id ? 'Working…' : 'View'}</Text></View></Pressable>{isOwner ? <View style={styles.ownerActions}><Pressable accessibilityRole="button" accessibilityLabel={`Edit ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => router.push({ pathname: '/receipt/form', params: { receiptId: receipt.id } } as never)} style={({ pressed }) => [styles.ownerAction, pressed && styles.pressed]}><AppSymbol name={{ ios: 'pencil', android: 'edit' } as never} color={theme.commandForeground} size={17} /><Text style={styles.ownerActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Delete ${receipt.name}`} disabled={Boolean(busyId)} onPress={() => confirmDelete(receipt)} style={({ pressed }) => [styles.ownerAction, styles.deleteAction, pressed && styles.pressed]}><AppSymbol name={{ ios: 'trash', android: 'delete' } as never} color={theme.danger} size={17} /><Text style={styles.deleteActionText}>Delete</Text></Pressable></View> : null}</View>)}</View> : null}
     </ScrollView>
   </SafeAreaView>;
 }

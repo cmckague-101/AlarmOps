@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { formatCalendarDate, receiptDate } from '@fireops/domain';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -22,6 +24,15 @@ function amountToCents(value: string) {
   return Number.isSafeInteger(result) && result > 0 && result <= 100000000 ? result : null;
 }
 
+function isoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function dateFromIso(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return year ? new Date(year, month - 1, day) : new Date();
+}
+
 export default function ReceiptFormScreen() {
   const router = useRouter();
   const { receiptId } = useLocalSearchParams<{ receiptId?: string }>();
@@ -42,6 +53,8 @@ export default function ReceiptFormScreen() {
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [purchasedOn, setPurchasedOn] = useState<string | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   // Offline, the file is kept on this device and the receipt is created when connected.
   const offlineSync = useOptionalOfflineSync();
   const offline = !!offlineSync?.offline;
@@ -50,6 +63,9 @@ export default function ReceiptFormScreen() {
   const resolvedName = name ?? receipt?.name ?? '';
   const resolvedAmount = amount ?? (receipt ? (receipt.amountCents / 100).toFixed(2) : '');
   const amountCents = amountToCents(resolvedAmount);
+  const resolvedDate = purchasedOn ?? (receipt ? receiptDate(receipt) : isoDate(new Date()));
+  // Offline edits only carry name and amount, so the date is fixed while editing offline.
+  const dateLocked = editing && offline;
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
   if (editing && member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href="/receipts" />;
@@ -83,11 +99,11 @@ export default function ReceiptFormScreen() {
         if (!userSync) throw new Error('Editing receipts offline is unavailable on this device.');
         const seen = receiptList.receipts.find((item) => item.id === receipt.id) ?? receipt;
         await userSync.updateReceipt(receipt.id, { name: resolvedName, amountCents }, edits.baseFor(receipt.id, { name: seen.name, amountCents: seen.amountCents, storagePath: seen.storagePath }));
-      } else if (editing && receipt) await updateReceipt(member.company.id, receipt.id, resolvedName, amountCents);
+      } else if (editing && receipt) await updateReceipt(member.company.id, receipt.id, resolvedName, amountCents, purchasedOn ?? undefined);
       else if (file && offline) {
         if (!userSync) throw new Error('Saving receipts offline is unavailable on this device.');
-        await userSync.createReceipt({ id: offlineId.current, name: resolvedName, amountCents, fileName: file.name, mimeType: effectiveMimeType(file) }, file.uri);
-      } else if (file) await createReceipt(member.company.id, member.user.id, member.user.name, resolvedName, amountCents, file);
+        await userSync.createReceipt({ id: offlineId.current, name: resolvedName, amountCents, fileName: file.name, mimeType: effectiveMimeType(file), purchasedOn: resolvedDate }, file.uri);
+      } else if (file) await createReceipt(member.company.id, member.user.id, member.user.name, resolvedName, amountCents, file, resolvedDate);
       router.back();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : `Receipt could not be ${editing ? 'updated' : 'uploaded'}. Check connection and try again.`);
@@ -107,7 +123,7 @@ export default function ReceiptFormScreen() {
 
         {!editing ? <View style={styles.field}><Text style={styles.label}>Receipt file</Text><View style={[styles.fileCard, attempted && !file && styles.inputError]}><View style={styles.fileIcon}><AppSymbol name={{ ios: file ? 'doc.fill' : 'doc.badge.plus', android: file ? 'description' : 'note_add' } as never} color={file ? theme.green : theme.secondary} size={25} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileTitle}>{file?.name ?? 'No receipt selected'}</Text><Text style={styles.fileHelp}>{file ? (offline ? 'Offline — kept on this device and uploaded when connected' : 'Ready to upload') : 'Image or PDF · maximum 10 MB'}</Text></View></View>{attempted && !file ? <Text style={styles.fieldError}>Photograph or choose receipt file.</Text> : null}<View style={styles.fileActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => void takePhoto()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'camera', android: 'photo_camera' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Camera</Text></Pressable><Pressable accessibilityRole="button" disabled={saving} onPress={() => void chooseFile()} style={({ pressed }) => [styles.fileButton, pressed && styles.pressed]}><AppSymbol name={{ ios: 'folder', android: 'folder' } as never} color={theme.ink} size={19} /><Text style={styles.fileButtonText}>Choose file</Text></Pressable></View>{file ? <Pressable accessibilityRole="button" onPress={() => setFile(null)} style={styles.remove}><Text style={styles.removeText}>Remove selected file</Text></Pressable> : null}</View> : receipt ? <View style={styles.field}><Text style={styles.label}>Receipt file</Text><View style={styles.fileCard}><View style={styles.fileIcon}><AppSymbol name={{ ios: 'doc.fill', android: 'description' } as never} color={theme.green} size={25} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={styles.fileTitle}>{receipt.fileName}</Text><Text style={styles.fileHelp}>Uploaded file stays unchanged</Text></View></View></View> : null}
 
-        <View style={styles.dateNote}><AppSymbol name={{ ios: 'calendar', android: 'calendar_today' } as never} color={theme.secondary} size={18} /><Text style={styles.dateText}>{editing && receipt ? `Uploaded ${new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(receipt.createdAt))}` : `Upload date: ${new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())}`}</Text></View>
+        <View style={styles.field}><Text style={styles.label}>Purchase date</Text><Pressable accessibilityRole="button" accessibilityLabel={`Purchase date, ${formatCalendarDate(resolvedDate)}`} disabled={dateLocked} onPress={() => setDatePickerOpen((open) => !open)} style={[styles.dateNote, dateLocked && styles.disabledField]}><AppSymbol name={{ ios: 'calendar', android: 'calendar_today' } as never} color={theme.secondary} size={18} /><Text style={styles.dateValue}>{formatCalendarDate(resolvedDate)}</Text></Pressable>{datePickerOpen && !dateLocked ? <><DateTimePicker value={dateFromIso(resolvedDate)} mode="date" maximumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (Platform.OS !== 'ios') setDatePickerOpen(false); if (event.type === 'set' && date) setPurchasedOn(isoDate(date)); }} />{Platform.OS === 'ios' ? <Pressable accessibilityRole="button" onPress={() => setDatePickerOpen(false)} style={styles.dateDone}><Text style={styles.dateDoneText}>Done</Text></Pressable> : null}</> : null}<Text style={styles.dateText}>{dateLocked ? 'The purchase date can be changed when online.' : editing && receipt ? `Uploaded ${new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(receipt.createdAt))}` : 'The day the expense was paid.'}</Text></View>
         {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
         <Pressable accessibilityRole="button" disabled={saving || (editing && !receipt)} onPress={() => void submit()} style={({ pressed }) => [styles.submit, (saving || (editing && !receipt)) && styles.disabled, pressed && !saving && styles.pressed]}><Text style={styles.submitText}>{saving ? (editing ? 'Saving…' : 'Uploading…') : (editing ? 'Save changes' : offline ? 'Save on this device' : 'Upload receipt')}</Text></Pressable>
       </ScrollView>
@@ -121,6 +137,6 @@ function createStyles(theme: FireOpsTheme) {
     field: { gap: 9 }, label: { color: theme.ink, fontSize: 15, fontWeight: '700' }, input: { minHeight: 50, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, color: theme.ink, paddingHorizontal: 14, fontSize: 16 }, inputError: { borderColor: theme.danger }, fieldError: { color: theme.danger, fontSize: 13 },
     moneyInput: { minHeight: 50, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper }, currency: { color: theme.secondary, paddingLeft: 14, fontSize: 16, fontWeight: '700' }, moneyText: { flex: 1, minHeight: 48, color: theme.ink, paddingHorizontal: 8, fontSize: 16, fontVariant: ['tabular-nums'] },
     fileCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 13, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper, padding: 13 }, fileIcon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: theme.surfaceAlt }, fileCopy: { flex: 1, gap: 4 }, fileTitle: { color: theme.ink, fontSize: 15, fontWeight: '700' }, fileHelp: { color: theme.secondary, fontSize: 12 }, fileActions: { flexDirection: 'row', gap: 10 }, fileButton: { minHeight: 46, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderColor: theme.divider, borderRadius: 11, backgroundColor: theme.paper }, fileButtonText: { color: theme.ink, fontSize: 14, fontWeight: '700' }, remove: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center' }, removeText: { color: theme.danger, fontSize: 13, fontWeight: '700' },
-    dateNote: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 11, backgroundColor: theme.surfaceAlt, paddingHorizontal: 14 }, dateText: { color: theme.secondary, fontSize: 13, fontWeight: '600' }, saveError: { color: theme.danger, backgroundColor: theme.dangerSurface, borderRadius: 10, padding: 13, fontSize: 14, lineHeight: 20 }, submit: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.ember }, submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' }, pressed: { opacity: 0.68 }, disabled: { opacity: 0.5 },
+    dateNote: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 11, backgroundColor: theme.surfaceAlt, paddingHorizontal: 14 }, dateText: { color: theme.secondary, fontSize: 13, fontWeight: '600' }, dateValue: { color: theme.ink, fontSize: 16, fontWeight: '600' }, disabledField: { opacity: 0.6 }, dateDone: { minHeight: 44, alignItems: 'center', justifyContent: 'center' }, dateDoneText: { color: theme.ember, fontSize: 15, fontWeight: '700' }, saveError: { color: theme.danger, backgroundColor: theme.dangerSurface, borderRadius: 10, padding: 13, fontSize: 14, lineHeight: 20 }, submit: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.ember }, submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' }, pressed: { opacity: 0.68 }, disabled: { opacity: 0.5 },
   });
 }

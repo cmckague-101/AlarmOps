@@ -10,6 +10,8 @@ import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedLis
 import { onAppResume, refreshOnRejoin } from './app-resume';
 
 const bucket = 'receipt-files';
+// '*' keeps reads working before and after the purchase-date migration is deployed.
+const receiptColumns = '*';
 const maxFileSize = 10 * 1024 * 1024;
 const acceptedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
 
@@ -24,6 +26,8 @@ export type CompanyReceipt = {
   uploadedBy: string;
   uploadedByName: string;
   createdAt: string;
+  /** YYYY-MM-DD; missing on receipts saved before purchase dates existed. */
+  purchasedOn?: string;
 };
 
 type ReceiptRow = {
@@ -37,6 +41,7 @@ type ReceiptRow = {
   uploaded_by: string;
   uploaded_by_name: string;
   created_at: string;
+  purchased_on?: string | null;
 };
 
 /** `downloaded`: shown from the verified offline download, not a live read. */
@@ -66,6 +71,7 @@ function fromRow(row: ReceiptRow): CompanyReceipt {
     uploadedBy: row.uploaded_by,
     uploadedByName: row.uploaded_by_name,
     createdAt: row.created_at,
+    purchasedOn: row.purchased_on ?? undefined,
   };
 }
 
@@ -103,7 +109,7 @@ export function refreshReceipts() {
       const downloaded = isOffline() ? downloadedCompanyList('receipts', companyId) : null;
       const { data, error } = downloaded ? { data: downloaded.tables.company_receipts, error: null } : await supabase
         .from('company_receipts')
-        .select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at')
+        .select(receiptColumns)
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
       if (version !== selectionVersion) return;
@@ -117,7 +123,7 @@ export function refreshReceipts() {
   return request;
 }
 
-export async function createReceipt(companyId: string, userId: string, userName: string, name: string, amountCents: number, picked: LocalFleetFile) {
+export async function createReceipt(companyId: string, userId: string, userName: string, name: string, amountCents: number, picked: LocalFleetFile, purchasedOn?: string) {
   if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
   const localFile = new File(picked.uri);
   if (!localFile.exists) throw new Error('Selected file is no longer available.');
@@ -140,7 +146,8 @@ export async function createReceipt(companyId: string, userId: string, userName:
     storage_path: path,
     uploaded_by: userId,
     uploaded_by_name: userName,
-  }).select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at').single<ReceiptRow>();
+    ...(purchasedOn ? { purchased_on: purchasedOn } : {}),
+  }).select(receiptColumns).single<ReceiptRow>();
 
   if (error) {
     await supabase.storage.from(bucket).remove([path]);
@@ -151,13 +158,13 @@ export async function createReceipt(companyId: string, userId: string, userName:
   return receipt;
 }
 
-export async function updateReceipt(companyId: string, receiptId: string, name: string, amountCents: number) {
+export async function updateReceipt(companyId: string, receiptId: string, name: string, amountCents: number, purchasedOn?: string) {
   if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
   const { data, error } = await supabase.from('company_receipts')
-    .update({ name: name.trim(), amount_cents: amountCents })
+    .update({ name: name.trim(), amount_cents: amountCents, ...(purchasedOn ? { purchased_on: purchasedOn } : {}) })
     .eq('company_id', companyId)
     .eq('id', receiptId)
-    .select('id,name,amount_cents,original_file_name,mime_type,byte_size,storage_path,uploaded_by,uploaded_by_name,created_at')
+    .select(receiptColumns)
     .single<ReceiptRow>();
   if (error) throw new Error(error.message);
   const receipt = fromRow(data);
