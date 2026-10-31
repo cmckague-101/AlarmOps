@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
-# Interactive production deployment for FireOps.
+# Interactive production release for FireOps, run from this laptop.
 #
-#   Web:     git push -> Vercel deploys automatically.
-#   iOS:     EAS cloud build + App Store Connect submit, or local build on macOS.
-#   Android: EAS cloud build (optional Google Play submit), or local .aab build.
+#   Checks:    typecheck, unit/database tests and a web build, before anything ships.
+#   Database:  Supabase migrations (shows what is pending, dry runs, then asks).
+#   Web:       git push -> Vercel deploys main automatically.
+#   iOS:       EAS (Expo) cloud build + App Store Connect, or a local build on this Mac.
+#   Android:   EAS (Expo) cloud build (optional Google Play submit), or a local .aab build.
 #
-# Run anywhere other than the dev server (royal), it first syncs this clone's
-# main from royal over SSH, so local builds use the latest committed code.
+# Order matters: database migrations go out before the web push and mobile builds,
+# because the new app code expects the new columns and rules.
 #
-# Usage: ./deploy.sh [--dry-run] [--no-sync]
-#   --dry-run  Print the commands that would run without executing them.
-#   --no-sync  Skip syncing from the dev server.
+# Usage: ./deploy.sh [--dry-run] [--skip-checks]
+#   --dry-run      Print the commands that would run without executing them.
+#   --skip-checks  Skip typecheck, tests and web build (not recommended).
 
 set -euo pipefail
 
@@ -21,20 +23,14 @@ APP_CONFIG="$MOBILE_DIR/app.json"
 BUILD_DIR="$ROOT_DIR/builds"
 # Paths whose commits count as mobile app changes in the release notes.
 MOBILE_PATHS=(apps/mobile packages)
-# Dev server that holds the working repo; other machines sync from it.
-DEV_HOSTNAME=royal
-DEV_SSH=ryan@royal
-DEV_REPO=/home/ryan/fireco
-DEV_REMOTE=royal
-DEV_BUMP_BRANCH=deploy-version-bump
 DRY_RUN=0
-SYNC=1
+CHECKS=1
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
-    --no-sync) SYNC=0 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --skip-checks) CHECKS=0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -84,6 +80,7 @@ run() {
 }
 
 eas() { (cd "$MOBILE_DIR" && run npx eas-cli "$@"); }
+supabase() { (cd "$ROOT_DIR" && run npx supabase "$@"); }
 
 app_version() {
   node -e "process.stdout.write(require(process.argv[1]).expo.version)" "$APP_CONFIG"
@@ -107,57 +104,11 @@ for cmd in git node npm npx; do
 done
 
 cd "$ROOT_DIR"
-IS_MAC=0
-[[ "$(uname -s)" == Darwin ]] && IS_MAC=1
-ON_DEV_SERVER=0
-[[ "$(hostname -s)" == "$DEV_HOSTNAME" ]] && ON_DEV_SERVER=1
-
-# ---------- sync from the dev server ----------
-
-if ((!ON_DEV_SERVER && SYNC)); then
-  bold "Syncing main from $DEV_SSH:$DEV_REPO"
-  # Adding the remote and fetching only touch refs, so they run even in dry runs.
-  if ! git remote get-url "$DEV_REMOTE" >/dev/null 2>&1; then
-    info "Adding git remote '$DEV_REMOTE'"
-    git remote add "$DEV_REMOTE" "ssh://$DEV_SSH$DEV_REPO"
-  fi
-  git fetch --quiet "$DEV_REMOTE" || die "Could not fetch from $DEV_SSH. Use --no-sync to deploy this clone as is."
-  [[ "$(git rev-parse --abbrev-ref HEAD)" == main ]] ||
-    die "Check out main before syncing (or use --no-sync)."
-  [[ -z "$(git status --porcelain)" ]] ||
-    die "Working tree has uncommitted changes; commit or discard them before syncing (or use --no-sync)."
-
-  SYNC_TARGET="$DEV_REMOTE/main"
-  OLD_HEAD="$(git rev-parse HEAD)"
-  if [[ "$OLD_HEAD" == "$(git rev-parse "$SYNC_TARGET")" ]]; then
-    echo "Already up to date with $SYNC_TARGET."
-  elif git merge-base --is-ancestor HEAD "$SYNC_TARGET"; then
-    git log --oneline "HEAD..$SYNC_TARGET" | head -20
-    run git merge --quiet --ff-only "$SYNC_TARGET"
-  else
-    warn "Local main has commits that are not on $DEV_HOSTNAME:"
-    git log --oneline "$SYNC_TARGET..HEAD"
-    ask_yn "Discard them and reset to $SYNC_TARGET?" n || die "Sync aborted."
-    run git reset --hard "$SYNC_TARGET"
-  fi
-  NEW_HEAD="$(git rev-parse HEAD)"
-
-  if [[ ! -d node_modules ]] || ! git diff --quiet "$OLD_HEAD" "$NEW_HEAD" -- package-lock.json patches; then
-    info "Dependencies changed; installing"
-    run npm ci
-  fi
-  if ! git diff --quiet "$OLD_HEAD" "$NEW_HEAD" -- deploy.sh; then
-    info "deploy.sh changed; restarting with the new version"
-    RESTART_ARGS=(--no-sync)
-    ((DRY_RUN)) && RESTART_ARGS+=(--dry-run)
-    exec "$ROOT_DIR/deploy.sh" "${RESTART_ARGS[@]}"
-  fi
-  echo
-fi
+[[ "$(uname -s)" == Darwin ]] || warn "Local iOS builds need macOS; choose an EAS cloud build on other systems."
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
-bold "FireOps production deploy"
+bold "FireOps production release"
 ((DRY_RUN)) && warn "Dry run: commands are printed, not executed."
 echo "Branch: $BRANCH    Mobile version (app.json): $(app_version)"
 [[ "$BRANCH" != main ]] && warn "You are not on main; Vercel production deploys from main."
@@ -170,37 +121,81 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
-  git fetch --quiet || warn "git fetch failed; remote status may be stale."
+  git fetch --quiet origin || warn "git fetch failed; remote status may be stale."
   BEHIND="$(git rev-list --count 'HEAD..@{u}')"
-  ((BEHIND > 0)) && warn "Branch is $BEHIND commit(s) behind its upstream. Consider 'git pull' first."
+  AHEAD="$(git rev-list --count '@{u}..HEAD')"
+  ((BEHIND > 0)) && warn "Branch is $BEHIND commit(s) behind origin. Pull first so you don't ship over someone else's work."
+  echo "$AHEAD commit(s) not yet pushed to origin."
+  echo
+fi
+
+[[ -d node_modules ]] || { info "Installing dependencies"; run npm ci; }
+
+# ---------- checks ----------
+
+if ((CHECKS)); then
+  bold "Checks"
+  if ask_yn "Run typecheck, tests and a web build before releasing?" y; then
+    run npm run typecheck
+    run npm test
+    run npm run build:web
+    info "Checks passed."
+  else
+    warn "Skipped checks."
+  fi
+  echo
 fi
 
 # ---------- targets ----------
 
-DO_WEB=0 DO_IOS=0 DO_ANDROID=0
+DO_DB=0 DO_WEB=0 DO_IOS=0 DO_ANDROID=0
+ask_yn "Apply Supabase database migrations?" y && DO_DB=1
 ask_yn "Deploy web (git push -> Vercel)?" y && DO_WEB=1
 ask_yn "Deploy iOS?" y && DO_IOS=1
 ask_yn "Deploy Android?" y && DO_ANDROID=1
-((DO_WEB + DO_IOS + DO_ANDROID > 0)) || die "Nothing selected."
+((DO_DB + DO_WEB + DO_IOS + DO_ANDROID > 0)) || die "Nothing selected."
 echo
 
 IOS_MODE="" ANDROID_MODE=""
 if ((DO_IOS)); then
   ask_choice IOS_MODE "How should iOS be built?" \
-    "EAS cloud build + submit to App Store Connect" \
-    "Local build (macOS only)"
+    "EAS (Expo) cloud build + submit to App Store Connect" \
+    "Local build on this Mac"
   echo
 fi
 if ((DO_ANDROID)); then
   ask_choice ANDROID_MODE "How should Android be built?" \
-    "EAS cloud build" \
+    "EAS (Expo) cloud build" \
     "Local build (.aab)"
   echo
 fi
 
-IOS_LOCAL_ELSEWHERE=0
-if [[ "$IOS_MODE" == Local* ]] && ((!IS_MAC)); then
-  IOS_LOCAL_ELSEWHERE=1
+# ---------- database ----------
+
+if ((DO_DB)); then
+  bold "Database migrations (production)"
+  echo "This changes the live database. Take a backup first (Supabase dashboard -> Database -> Backups)."
+  echo "The project must be linked once: npx supabase link --project-ref <ref>"
+  echo
+  info "Local vs. applied migrations"
+  supabase migration list --linked
+  echo
+  info "What would be applied (dry run)"
+  supabase db push --linked --dry-run
+  echo
+  echo "Check the list is exactly the pending files, in filename order."
+  if ask_yn "Apply these migrations to production now?" n; then
+    supabase db push --linked
+    info "Migrations applied. Spot-check the app before continuing."
+    ask_yn "Continue with the app release?" y || exit 0
+  else
+    warn "Skipped migrations."
+    if ((DO_WEB || DO_IOS || DO_ANDROID)); then
+      warn "New app code may expect migrations that are not applied yet."
+      ask_yn "Continue with the app release anyway?" n || exit 1
+    fi
+  fi
+  echo
 fi
 
 # ---------- mobile release notes + version ----------
@@ -250,18 +245,6 @@ if ((DO_IOS || DO_ANDROID)); then
       ' "$APP_CONFIG" "$NEW_VERSION"
     fi
     run git commit -m "chore(mobile): bump version to $NEW_VERSION" -- apps/mobile/app.json
-    # royal has main checked out, so it can't be pushed to directly: push a
-    # side branch and fast-forward main there.
-    if ((!ON_DEV_SERVER && SYNC)); then
-      info "Sending the version bump back to $DEV_HOSTNAME"
-      if run git push --quiet --force "$DEV_REMOTE" "HEAD:refs/heads/$DEV_BUMP_BRANCH" &&
-        run ssh "$DEV_SSH" "cd '$DEV_REPO' && [ \"\$(git rev-parse --abbrev-ref HEAD)\" = main ] &&
-          git merge --quiet --ff-only $DEV_BUMP_BRANCH && git branch -D $DEV_BUMP_BRANCH"; then
-        :
-      else
-        warn "Could not fast-forward main on $DEV_HOSTNAME; merge branch $DEV_BUMP_BRANCH there by hand."
-      fi
-    fi
   fi
   VERSION="$(app_version)"
   ((DRY_RUN)) && VERSION="${NEW_VERSION:-$VERSION}"
@@ -279,8 +262,8 @@ fi
 
 if ((DO_WEB)); then
   AHEAD="$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo '?')"
-  info "Pushing $BRANCH ($AHEAD commit(s) ahead of upstream)"
-  ((DO_WEB)) && [[ "$BRANCH" == main ]] && echo "Vercel will deploy the web app from this push."
+  info "Pushing $BRANCH ($AHEAD commit(s) ahead of origin)"
+  [[ "$BRANCH" == main ]] && echo "Vercel will deploy the web app from this push."
   if ask_yn "Push $BRANCH to origin now?" y; then
     run git push origin "$BRANCH"
   else
@@ -288,13 +271,13 @@ if ((DO_WEB)); then
   fi
   echo
 elif ((DO_IOS || DO_ANDROID)) && [[ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]]; then
-  ask_yn "You have unpushed commits. Push $BRANCH too?" n && run git push origin "$BRANCH"
+  ask_yn "You have unpushed commits. Push $BRANCH too? (this also deploys web)" n && run git push origin "$BRANCH"
   echo
 fi
 
 # ---------- mobile builds ----------
 
-if ((DO_IOS || DO_ANDROID)) && ! { ((IOS_LOCAL_ELSEWHERE)) && ((!DO_ANDROID)); }; then
+if ((DO_IOS || DO_ANDROID)); then
   info "Checking EAS login and project"
   eas whoami
   eas project:info
@@ -305,13 +288,6 @@ if ((DO_IOS)); then
   if [[ "$IOS_MODE" == EAS* ]]; then
     info "Queuing iOS $VERSION EAS production build with App Store Connect submission"
     eas build --platform ios --profile production --auto-submit --no-wait
-  elif ((IOS_LOCAL_ELSEWHERE)); then
-    bold "iOS local build must run on your Mac, from a clone on its local disk (not the network share):"
-    cat <<EOF
-  git clone git@github.com:tinykings/fireco.git ~/dev/fireco   # first time only
-  cd ~/dev/fireco
-  ./deploy.sh        # syncs from $DEV_HOSTNAME; answer: web=n, iOS=y (local), Android=n, skip version update
-EOF
   else
     IPA="$BUILD_DIR/fireops-$VERSION.ipa"
     mkdir -p "$BUILD_DIR"
@@ -342,13 +318,11 @@ if ((DO_ANDROID)); then
     # EAS local builds run in a fresh temp dir without local.properties, so Gradle
     # needs ANDROID_HOME to find the SDK.
     if [[ -z "${ANDROID_HOME:-}" ]]; then
-      for sdk in "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" "$HOME/Library/Android/sdk"; do
+      for sdk in "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
         [[ -n "$sdk" && -d "$sdk" ]] && { export ANDROID_HOME="$sdk"; break; }
       done
-      [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not found; set ANDROID_HOME."
+      [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not found; install Android Studio or set ANDROID_HOME."
     fi
-    # EAS defaults to /tmp, which is RAM-backed tmpfs on many Linux systems; the
-    # multi-GB native build there competes with Gradle for memory and triggers OOM.
     export EAS_LOCAL_BUILD_WORKINGDIR="${EAS_LOCAL_BUILD_WORKINGDIR:-$BUILD_DIR/eas-local}"
     info "Building Android $VERSION locally (this takes a while)"
     eas build --platform android --profile production --local --output "$AAB"
@@ -364,16 +338,16 @@ fi
 # ---------- summary ----------
 
 bold "Done."
-((DO_WEB)) && echo "  Web:     check the Vercel dashboard for the deployment."
+((DO_DB)) && echo "  Database: confirm with 'npx supabase migration list --linked'."
+((DO_WEB)) && echo "  Web:      check the Vercel dashboard for the deployment."
 if ((DO_IOS || DO_ANDROID)); then
   echo "  Track EAS builds:      (cd apps/mobile && npx eas-cli build:list --limit 2)"
 fi
 if [[ "$IOS_MODE" == EAS* ]]; then
   echo "  Track iOS submission:  (cd apps/mobile && npx eas-cli submit:list --platform ios --limit 1)"
 fi
-if ((DO_IOS)) && ((!IOS_LOCAL_ELSEWHERE)); then
-  echo "  iOS: after processing, pick the build in App Store Connect and submit it for review."
-fi
+((DO_IOS)) && echo "  iOS: after processing, test in TestFlight, then submit for review in App Store Connect."
 if [[ -n "${NOTES_FILE:-}" ]]; then
   echo "  \"What's new\" draft: ${NOTES_FILE#"$ROOT_DIR"/}"
 fi
+echo "  Release checklist: docs/release-checklist.md"
