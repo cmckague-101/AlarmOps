@@ -11,9 +11,12 @@ import {useFireOpsTheme} from '../theme';
 
 export default function SyncStatusScreen(){
   const {state,available,loading,offline,refresh,retry,detailEditor,attachmentController,attachmentState,decisions,resolveDecision}=useOfflineSync();
+  const [checkedAt,setCheckedAt]=useState<Date|null>(null);
+  // Failures surface through state.error, so only a completed check updates the time.
+  const check=useCallback(async()=>{try{await refresh();setCheckedAt(new Date())}catch{}},[refresh]);
   const [deciding,setDeciding]=useState('');const [decisionError,setDecisionError]=useState('');
   const decide=async(operationId:string,action:'resubmit'|'cancel')=>{const decision=decisions.find(item=>item.entry.operation.operationId===operationId);if(!decision||deciding)return;setDeciding(operationId);setDecisionError('');try{await resolveDecision(decision,action)}catch(failure){setDecisionError(failure instanceof Error?failure.message:'This change could not be resolved.')}finally{setDeciding('')}};const theme=useFireOpsTheme();const router=useRouter();
-  useFocusEffect(useCallback(()=>{if(!loading)void refresh()},[refresh,loading]));
+  useFocusEffect(useCallback(()=>{if(!loading)void check()},[check,loading]));
   const entries=[...state.entries].sort((a,b)=>Date.parse(b.operation.provenance.savedAt)-Date.parse(a.operation.provenance.savedAt));
   const button=(label:string,action:()=>void,disabled=false)=><Pressable accessibilityRole="button" onPress={action} disabled={disabled} style={[styles.button,{borderColor:theme.divider},disabled&&{opacity:.5}]}><Text style={{color:theme.ink,fontWeight:'700'}}>{label}</Text></Pressable>;
   return <SectionScreen title="Saved changes & sync" description="Changes saved on this device and whether they have synced.">
@@ -21,7 +24,9 @@ export default function SyncStatusScreen(){
     {!available?<Text style={{color:theme.secondary}}>Sign in to a company on iOS or Android to view this device's saved changes.</Text>:<>
       {offline&&<Text style={[styles.meta,{color:theme.secondary}]}>Offline — changes will sync when connected.</Text>}
       {loading&&<Text accessibilityLiveRegion="polite" style={{color:theme.secondary}}>Loading saved changes…</Text>}
-      {button(state.busy?'Syncing…':'Sync now',()=>void refresh(),offline||state.busy||loading)}
+      {!loading&&!offline&&!entries.length&&!state.error&&<Text style={{color:theme.ink,fontWeight:'700'}}>All changes synced.</Text>}
+      {button(state.busy?'Syncing…':entries.length?'Sync now':'Check again',()=>void check(),offline||state.busy||loading)}
+      {checkedAt&&<Text style={[styles.meta,{color:theme.secondary}]}>Last checked {checkedAt.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}</Text>}
       {!!state.error&&<View accessibilityRole="alert" style={styles.entry}><Text style={{color:theme.danger}}>{state.error}</Text></View>}
       {attachmentController&&<OfflineAttachmentDrafts key={`${attachmentController.scope.userId}:${attachmentController.scope.companyId}`} controller={attachmentController} state={attachmentState}/>}
       {entries.map(entry=>{const noun=offlineChangeNoun(entry.operation.entityType);const decision=decisions.find(item=>item.entry.operation.operationId===entry.operation.operationId);const locked=!!deciding||(decision?.kind==='conflict'&&offline);
@@ -37,7 +42,7 @@ export default function SyncStatusScreen(){
           {entry.status==='blocked'&&entry.continuation?.phase==='waiting'&&detailEditor&&button('Review later edit',()=>router.push(continuationReviewHref(entry.operation.operationId)),state.busy)}
           {entry.status==='blocked'&&!entry.reviewOutcome&&entry.continuation?.phase!=='waiting'&&button('Retry',()=>void retry(entry.operation.operationId),offline||state.busy)}
         </View>})}
-      {!loading&&!entries.length&&!state.error&&<Text style={{color:theme.secondary}}>No changes saved on this device yet.</Text>}
+      {!loading&&offline&&!entries.length&&!state.error&&<Text style={{color:theme.secondary}}>No changes saved on this device yet.</Text>}
     </>}
   </SectionScreen>;
 }
