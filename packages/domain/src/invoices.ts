@@ -1,4 +1,4 @@
-export type InvoiceStatus = 'draft' | 'submitted';
+export type InvoiceStatus = 'draft' | 'submitted' | 'paid';
 
 export type InvoiceCustomer = {
   id: string;
@@ -27,6 +27,32 @@ export type InvoiceForm = {
   attachment: InvoiceAttachment | null;
   status: InvoiceStatus;
   submittedAt: string | null;
+  /** YYYY-MM-DD; when missing, 30 days after the invoice date is assumed. */
+  dueDate?: string;
+  paidAt?: string | null;
+  paidByName?: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export const DEFAULT_INVOICE_TERM_DAYS = 30;
+export type InvoicePaymentState = 'draft' | 'unpaid' | 'overdue' | 'paid';
+
+function localIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Due date as YYYY-MM-DD: the saved one, else invoice date + 30 days, else ''. */
+export function invoiceDueDate(form: Pick<InvoiceForm, 'dueDate' | 'invoiceDate'>): string {
+  if (form.dueDate) return form.dueDate;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(form.invoiceDate);
+  if (!match) return '';
+  return localIsoDate(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + DEFAULT_INVOICE_TERM_DAYS));
+}
+
+export function invoicePaymentState(form: Pick<InvoiceForm, 'status' | 'dueDate' | 'invoiceDate'>, today = new Date()): InvoicePaymentState {
+  if (form.status === 'draft') return 'draft';
+  if (form.status === 'paid') return 'paid';
+  const due = invoiceDueDate(form);
+  return due && due < localIsoDate(today) ? 'overdue' : 'unpaid';
+}
