@@ -35,6 +35,7 @@ type MotiveCaptureRequest =
   | {status:'ready';imageUrl:string;capturedAt:string;expiresAt?:string;position:string};
 
 const accessRetryDelays=[0,350,900];
+const activityLoadLimit=100;
 const roleUpdateTimeoutMs=8000;
 
 async function requestCrewRoleUpdate(companyId:string,userId:string,role:AssignableUserRole){
@@ -399,7 +400,11 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       const [companyResult,inviteUsageResult,...recordResults]=await Promise.all([
         client.from('companies').select('id,name,company_code,industry,phone,location,logo_path,crew_invite_limit').eq('id',companyId).single<CompanyRow>(),
         client.rpc('company_crew_seats_used',{target_company_id:companyId}),
-        ...collections.map(([,table])=>client.from(table).select('record_id,data,version,updated_by,updated_at').eq('company_id',companyId).order('updated_at',{ascending:false}))
+        ...collections.map(([collection,table])=>{
+          const query=client.from(table).select('record_id,data,version,updated_by,updated_at').eq('company_id',companyId).order('updated_at',{ascending:false});
+          // The activity log only grows and the dashboard shows the newest entries, so skip the history.
+          return collection==='activities'?query.limit(activityLoadLimit):query;
+        })
       ]);
       if(!active)return;
       if(companyResult.error||inviteUsageResult.error||recordResults.some(result=>result.error)){setError('Fleet data could not be loaded. Apply latest database migrations, then try again.');setLoaded(true);return}
