@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
-import './styles.css';
+import './base.css';
 
 const FleetRoot = lazy(() => import('./FleetRoot'));
 const AccountSetup = lazy(() => import('./AccountSetup'));

@@ -1,3 +1,5 @@
+// Load app-wide styles before component styles so the existing cascade order is kept.
+import './styles.css';
 import { useEffect } from 'react';
 import './privacy.css';
 
