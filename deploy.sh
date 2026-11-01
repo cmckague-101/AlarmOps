@@ -172,7 +172,8 @@ if ((DO_IOS)); then
 fi
 if ((DO_ANDROID)); then
   ask_choice ANDROID_MODE "How should Android be built?" \
-    "EAS (Expo) cloud build" \
+    "EAS (Expo) production cloud build + submit to Google Play closed testing (alpha)" \
+    "EAS (Expo) production cloud build only" \
     "Local build (.aab)"
   echo
 fi
@@ -315,8 +316,10 @@ fi
 if ((DO_ANDROID)); then
   if [[ "$ANDROID_MODE" == EAS* ]]; then
     ANDROID_ARGS=(--platform android --profile production --no-wait)
-    ask_yn "Also auto-submit to Google Play? (needs a Play service account key configured in EAS)" n &&
+    if [[ "$ANDROID_MODE" == *" + submit "* ]]; then
       ANDROID_ARGS+=(--auto-submit)
+      info "Auto-submitting to Google Play closed testing (alpha); Play service account key must be configured in EAS."
+    fi
     info "Queuing Android $VERSION EAS production build"
     eas build "${ANDROID_ARGS[@]}"
   else
