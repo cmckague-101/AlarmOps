@@ -287,10 +287,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     ]);
     if(documentResult.error||readResult.error){setDocumentError('Documents could not be loaded. Apply latest database migration, then try again.');return}
     const reads=new Map(((readResult.data??[]) as DocumentReadRow[]).map(read=>[read.document_id,read.viewed_at]));
-    const documents=await Promise.all(((documentResult.data??[]) as CompanyDocumentRow[]).map(async row=>{
-      const file=await refreshFileUrl({name:row.file_name,type:row.mime_type,dataUrl:'',path:row.storage_path});
-      return {id:row.id,name:row.name,file:file!,createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id)};
-    }));
+    const rows=(documentResult.data??[]) as CompanyDocumentRow[];
+    const urls=await signedFileUrls(rows.map(row=>row.storage_path));
+    const documents=rows.map(row=>({id:row.id,name:row.name,file:{name:row.file_name,type:row.mime_type,dataUrl:urls.get(row.storage_path)??'',path:row.storage_path},createdAt:row.created_at,updatedAt:row.updated_at,viewedAt:reads.get(row.id)}));
     setCompanyDocuments(documents);setDocumentError('');
   },[companyId,session.user.id]);
 
@@ -420,13 +419,14 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       if(!snapshot.crew.length&&!isAdmin)snapshot.crew=[{id:session.user.id,name:userName,email:session.user.email||'',phone:'',role,status:'Active'}];
       persisted.current=snapshot;
       const capturedVersions=Object.fromEntries(collections.map(([collection])=>[collection,new Map(versions.current[collection])])) as Record<FleetCollection,Map<string,number>>;
+      const logoUrl=companyResult.data.logo_path?refreshFileUrl({name:'Company logo',type:'image/*',dataUrl:'',path:companyResult.data.logo_path}):Promise.resolve(undefined);
       const hydrated=await hydrateFileUrls(snapshot);
       if(!active)return;
       if(fleetSequenceAtStart!==fleetEventSequence){void load();return}
       hydrated.vehicles=normalizeVehicles(hydrated.vehicles);
       collections.forEach(([collection])=>(hydrated[collection] as {id:string}[]).forEach(record=>{const version=capturedVersions[collection].get(record.id);if(version!==undefined)writeModel.issue(collection,record,version)}));
       setInitialData(hydrated);
-      const logo=companyResult.data.logo_path?await refreshFileUrl({name:'Company logo',type:'image/*',dataUrl:'',path:companyResult.data.logo_path}):undefined;
+      const logo=await logoUrl;
       if(!active)return;
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logo,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
       setLoaded(true);
