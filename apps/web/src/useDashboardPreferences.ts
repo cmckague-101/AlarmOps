@@ -7,6 +7,13 @@ import { createId } from './create-id';
 type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean;pending?:OnlineDashboardWrite;writer?:()=>boolean};
 const states=new Map<string,State>();
 const listeners=new Set<()=>void>();
+// Several components use this hook at once; they share one request while it is in flight.
+const reads=new Map<string,Promise<DashboardPreferences>>();
+function readShared(key:string,read:()=>Promise<DashboardPreferences>){
+  const existing=reads.get(key);if(existing)return existing;
+  const request=read().finally(()=>{if(reads.get(key)===request)reads.delete(key)});
+  reads.set(key,request);return request;
+}
 const leaving=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''};
 function publish(key:string,state:State){
   states.set(key,state);listeners.forEach(listener=>listener());
@@ -33,7 +40,7 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
     const valid=()=>active&&current()&&states.get(key)===before;
     void (async()=>{
       try{
-        const items=await readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,online),userId!,valid);
+        const items=await readShared(key,()=>readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,online),userId!,current));
         if(valid())publish(key,{...before,items,loading:false,loadFailed:false,saving:before.saving&&(before.writer?.()??false),error:before.pending?before.error:''});
       }catch(error){if(valid())publish(key,{...before,loading:false,loadFailed:true,error:error instanceof Error?error.message:'Dashboard preferences could not load. Apply required setup and retry.'})}
     })();
