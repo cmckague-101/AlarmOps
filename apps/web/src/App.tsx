@@ -703,7 +703,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   </div>;
 }
 
-function Brand() { return <div className="brand"><picture><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark.png" width="2117" height="743" alt="FireOps, powered by Fireco"/></picture></div> }
+function Brand() { return <div className="brand"><picture><source media="(prefers-color-scheme: dark)" srcSet="/fireops-wordmark-440.webp"/><img className="brand-mark" src="/fireops-wordmark-light-440.webp" width="440" height="154" alt="FireOps, powered by Fireco"/></picture></div> }
 function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
   return <aside className="sidebar"><Brand/><nav>
     {navigationLayout(user.role).desktop.map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}

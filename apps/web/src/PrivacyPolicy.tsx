@@ -19,7 +19,7 @@ export default function PrivacyPolicy() {
   return <div className="privacy-page">
     <header className="privacy-header">
       <a className="privacy-brand" href="/" aria-label="FireOps home">
-        <img src="/fireops-wordmark-light.png" width="2117" height="743" alt="FireOps" />
+        <img src="/fireops-wordmark-light-440.webp" width="440" height="154" alt="FireOps" />
       </a>
       <a className="privacy-home" href="/">Return to FireOps</a>
     </header>
