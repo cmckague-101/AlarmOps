@@ -1,28 +1,20 @@
+// Load app-wide styles before component styles so the existing cascade order is kept.
+import './styles.css';
 import {createOnlineFleetEditSession,restoreFleetAssignment,type SequencedFleetChange} from './online-fleet-edit-session';
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
-import AuditLogPage from './AuditLogPage';
-import InvoicesPage from './InvoicesPage';
 import {createDemoRecords,demoQualifications} from './demo-records';
-import PayrollPage from './PayrollPage';
 import {QuickActions, AvailabilityPage} from './QuickActions';
 import {TaskListPage} from './TaskListPage';
 import {OwnerDashboard} from './OwnerDashboard';
 import {DashboardCustomization} from './DashboardCustomization';
 import {useDashboardPreferences} from './useDashboardPreferences';
 import {canManagePersonalTasks, dotInspectionWarning, filterAndSortCrew, vinError, formatCalendarDate, inspectionExpirationDate, rosterSortOptions, type DashboardItem, type RosterSort} from '@fireops/domain';
-import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Suspense, cloneElement, isValidElement, lazy, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {fetchIncidents} from './OperationsPage';
-import DispatchListsPage from './DispatchListsPage';
-import HotelsPage from './HotelsPage';
-import TrainingPage from './TrainingPage';
-import InventoryPage from './InventoryPage';
 import {useInspectionTemplate} from './inspectionTemplate';
-import ReceiptsPage from './ReceiptsPage';
 import NationalFireActivitySection from './NationalFireActivitySection';
-import MasterRecordPage from './MasterRecordPage';
-import QualificationCardPage from './QualificationCardPage';
 import SignaturePad from './SignaturePad';
 import CrewReview from './CrewReview';
 import MyProfilePanel from './MyProfilePanel';
@@ -49,6 +41,18 @@ import {
   BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
+
+// Pages most people open rarely load on first visit instead of with the workspace.
+const AuditLogPage=lazy(()=>import('./AuditLogPage'));
+const InvoicesPage=lazy(()=>import('./InvoicesPage'));
+const PayrollPage=lazy(()=>import('./PayrollPage'));
+const DispatchListsPage=lazy(()=>import('./DispatchListsPage'));
+const HotelsPage=lazy(()=>import('./HotelsPage'));
+const InventoryPage=lazy(()=>import('./InventoryPage'));
+const MasterRecordPage=lazy(()=>import('./MasterRecordPage'));
+const QualificationCardPage=lazy(()=>import('./QualificationCardPage'));
+const TrainingPage=lazy(()=>import('./TrainingPage'));
+const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 
 type Page = 'tasks' | 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
@@ -652,6 +656,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
       <main>
         {demoMode&&<div className="demo-mode-banner" role="status"><b>Demo mode</b><span>Explore freely. Changes stay in this session and disappear when you exit.</span><a className="demo-pricing-link" href="/?info=1#pricing" target="_blank" rel="noopener noreferrer">See Pricing</a></div>}
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>{onDataChange?'Retry original save':'Retry save'}</button></div>}
+        <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id)=>{if(id)void dashboardInbox.markRead(id);setPage(target)}} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
@@ -683,6 +688,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'audit-log' && canManageFleet && <AuditLogPage key={companyId??'demo'} companyId={demoMode?undefined:companyId} demoEntries={demoMode?demoRecords.auditLogs:undefined}/>}
         {page === 'settings' && <SettingsPage myProfile={<MyProfilePanel userId={currentUser.id} name={currentUser.name} role={currentUser.role} demoMode={demoMode}/>} dashboardCustomization={<DashboardCustomization userId={currentUser.id} role={currentUser.role} demoMode={demoMode}/>} company={companyDetails} userId={currentUser.id} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive} onSubmitFeedback={onSubmitFeedback??(async(category,message)=>{const stored=JSON.parse(localStorage.getItem('fireops-app-feedback')??'[]') as unknown[];localStorage.setItem('fireops-app-feedback',JSON.stringify([...stored,{category,message,createdAt:new Date().toISOString()}]))})} demoMode={demoMode}/>}
         </div>
+        </Suspense>
       </main>
       <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
     </div>
