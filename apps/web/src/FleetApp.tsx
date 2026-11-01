@@ -396,11 +396,9 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
     const load=async()=>{
       const fleetSequenceAtStart=fleetEventSequence;
       const collections=(Object.entries(fleetTables) as [FleetCollection,string][]);
-      const [companyResult,inviteUsageResult,motiveStatusResult,motiveSyncResult,...recordResults]=await Promise.all([
+      const [companyResult,inviteUsageResult,...recordResults]=await Promise.all([
         client.from('companies').select('id,name,company_code,industry,phone,location,logo_path,crew_invite_limit').eq('id',companyId).single<CompanyRow>(),
         client.rpc('company_crew_seats_used',{target_company_id:companyId}),
-        isCompanyManager(role)||isAdmin?client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'status'}}):Promise.resolve({data:{connected:false},error:null}),
-        client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'sync'}}),
         ...collections.map(([,table])=>client.from(table).select('record_id,data,version,updated_by,updated_at').eq('company_id',companyId).order('updated_at',{ascending:false}))
       ]);
       if(!active)return;
@@ -426,11 +424,20 @@ function CompanyWorkspace({session,userName,companyId,role,isAdmin=false,onSwitc
       const logo=companyResult.data.logo_path?await refreshFileUrl({name:'Company logo',type:'image/*',dataUrl:'',path:companyResult.data.logo_path}):undefined;
       if(!active)return;
       setCompany({name:companyResult.data.name,code:companyResult.data.company_code,industry:companyResult.data.industry,phone:companyResult.data.phone,location:companyResult.data.location,logo,crewInviteLimit:companyResult.data.crew_invite_limit,crewInvitedCount:Number(inviteUsageResult.data??0)});
-      if(!motiveSyncResult.error&&motiveSyncResult.data)setMotiveConnection({...motiveStatusResult.data,...motiveSyncResult.data});
-      else if(!motiveStatusResult.error&&motiveStatusResult.data)setMotiveConnection(motiveStatusResult.data);
       setLoaded(true);
     };
+    // Motive sync calls an external API and can take seconds, so it loads after the workspace renders.
+    const loadMotive=async()=>{
+      const [motiveStatusResult,motiveSyncResult]=await Promise.all([
+        isCompanyManager(role)||isAdmin?client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'status'}}):Promise.resolve({data:{connected:false},error:null}),
+        client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'sync'}})
+      ]);
+      if(!active)return;
+      if(!motiveSyncResult.error&&motiveSyncResult.data)setMotiveConnection({...motiveStatusResult.data,...motiveSyncResult.data});
+      else if(!motiveStatusResult.error&&motiveStatusResult.data)setMotiveConnection(motiveStatusResult.data);
+    };
     void load();
+    void loadMotive();
     void loadCommunications();
     void loadDocuments();
     void loadTrainings();
