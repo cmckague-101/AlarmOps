@@ -12,6 +12,13 @@ import {useOptionalOfflineSync} from '@/providers/offline-sync-provider';
 type State={items:DashboardPreferences;loading:boolean;saving:boolean;error:string;loadFailed?:boolean;ack?:string;writer?:()=>boolean;pending?:OnlineDashboardWrite};
 const states=new Map<string,State>();
 const listeners=new Set<()=>void>();
+// Several components use this hook at once; they share one online read while it is in flight.
+const reads=new Map<string,Promise<DashboardPreferences>>();
+function readShared(key:string,read:()=>Promise<DashboardPreferences>){
+  const existing=reads.get(key);if(existing)return existing;
+  const request=read().finally(()=>{if(reads.get(key)===request)reads.delete(key)});
+  reads.set(key,request);return request;
+}
 const leaving=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''};
 function publish(key:string,state:State){
   states.set(key,state);listeners.forEach(listener=>listener());
@@ -68,7 +75,7 @@ export function useDashboardPreferences(userId:string|undefined,demoMode=false){
           }else if(downloadedItems){void cached.catch(()=>{});items=downloadedItems;acknowledged=ack?.id}
           else items=await cached.catch(error=>{if(!ack)throw error;return parseDashboardPreferences(ack.record?.items)});
         }else{
-          items=await readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,()=>!isOffline()),userId!,valid);
+          items=await readShared(key,()=>readOnlineDashboardPreferences(createDashboardPreferenceTransport(supabase!,userId!,()=>!isOffline()),userId!,current));
         }
         if(valid())publish(key,{...before,items,ack:acknowledged,loading:false,loadFailed:false,saving:before.saving&&(before.writer?.()??false),writer:before.writer,error:before.pending?before.error:''});
       }catch(error){if(valid())publish(key,{...before,loading:false,loadFailed:true,error:error instanceof Error?error.message:'Dashboard preferences could not be loaded.'})}

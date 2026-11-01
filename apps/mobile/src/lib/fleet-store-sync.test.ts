@@ -18,7 +18,7 @@ function setup(local?:OfflineFleetModel){
   const callbacks:{table:string;callback:(payload:unknown)=>void}[]=[];
   const result={data:[] as unknown[],error:null as null|{code?:string;message:string}};
   const client={
-    from:vi.fn((table:string)=>{const query={select:()=>query,eq:()=>query,order:async()=>mode.failed?{data:null,error:{message:'Network unavailable'}}:{data:rows[table],error:null}};return query}),
+    from:vi.fn((table:string)=>{const query={select:()=>query,eq:()=>query,order:()=>{const response=Promise.resolve(mode.failed?{data:null,error:{message:'Network unavailable'}}:{data:rows[table],error:null});return Object.assign(response,{limit:()=>response})}};return query}),
     functions:{invoke:vi.fn().mockResolvedValue({data:{connected:false},error:null})},
     auth:{getSession:vi.fn(async()=>({data:{session:{user:{id:identity.userId},access_token:`token-${identity.userId}`}},error:null}))},
     rpc:vi.fn((_name:string,_args:unknown)=>{const promise=Promise.resolve(result);return Object.assign(promise,{setHeader:vi.fn((_name:string,_value:string)=>promise)})}),

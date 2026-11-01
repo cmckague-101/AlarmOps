@@ -287,6 +287,8 @@ function rebuildVisible(){
 }
 // Legacy payloads may still contain undefined optional fields; display their wire JSON, not a forged base.
 function displayRecord(value:unknown):SyncRecord{return JSON.parse(JSON.stringify(value)) as SyncRecord}
+const activityLoadLimit=100;
+let motiveLoadSequence=0;
 function revisionText(value:number|undefined){return value!==undefined&&Number.isSafeInteger(value)&&value>=0?String(value):'0'}
 function emit(next: SharedFleetSnapshot) {
   snapshot = next;rebuildVisible();
@@ -929,18 +931,19 @@ export function refreshFleet(
     const collections = Object.entries(tables) as [FleetCollection, string][];
     const changeSequenceAtStart = fleetChangeSequence;
     let results;
-    let motiveResult;
+    // Motive sync calls an external API and can take seconds, so the fleet shows first
+    // and Motive details are merged in when they arrive.
+    const motiveRequest=client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'sync'}}).catch(error=>({data:null,error}));
     try {
-      [results,motiveResult] = await Promise.all([
-        Promise.all(collections.map(([, table]) =>
-          client
-            .from(table)
-            .select("record_id, data, version, updated_at")
-            .eq("company_id", companyId)
-            .order("updated_at", { ascending: false }),
-        )),
-        client.functions.invoke<MotiveConnection>('motive-integration',{body:{companyId,action:'sync'}}),
-      ]);
+      results = await Promise.all(collections.map(([collection, table]) => {
+        const query=client
+          .from(table)
+          .select("record_id, data, version, updated_at")
+          .eq("company_id", companyId)
+          .order("updated_at", { ascending: false });
+        // The activity log only grows and the dashboard shows the newest entries.
+        return collection==='activities'?query.limit(activityLoadLimit):query;
+      }));
     } catch (loadError) {
       if (version === companyVersion) {
         const message =
@@ -985,12 +988,9 @@ export function refreshFleet(
       }),
     ) as Record<FleetCollection, unknown[]>;
 
-    const motiveSnapshots=!motiveResult.error&&motiveResult.data?.connected?motiveResult.data.vehicles??[]:[];
-    const motiveByFleetId=new Map(motiveSnapshots.filter(item=>item.fleetVehicleId).map(item=>[item.fleetVehicleId,item]));
-    const motiveByVin=new Map(motiveSnapshots.map(item=>[item.vin.trim().toUpperCase(),item]));
     const vehicles = (results[0].data ?? [])
       .map((row) => normalizeVehicle(row as VehicleRow))
-      .map(vehicle=>rememberRead({...vehicle,motive:motiveByFleetId.get(vehicle.id)??(vehicle.vin?motiveByVin.get(vehicle.vin.trim().toUpperCase()):undefined)},revisionText(versions.vehicles.get(vehicle.id))))
+      .map(vehicle=>rememberRead(vehicle,revisionText(versions.vehicles.get(vehicle.id))))
       .sort((a, b) => a.name.localeCompare(b.name));
     const issues = (loaded.issues as FleetIssue[])
       .map((issue) => rememberRead({
@@ -1010,6 +1010,21 @@ export function refreshFleet(
       error: null,
     });
     refreshOfflineFleet();
+
+    const motiveLoad=++motiveLoadSequence;
+    void motiveRequest.then(motiveResult=>{
+    if(version!==companyVersion||motiveLoad!==motiveLoadSequence||motiveResult.error||!motiveResult.data?.connected)return;
+    const motiveSnapshots=motiveResult.data.vehicles??[];
+    const motiveByFleetId=new Map(motiveSnapshots.filter(item=>item.fleetVehicleId).map(item=>[item.fleetVehicleId,item]));
+    const motiveByVin=new Map(motiveSnapshots.map(item=>[item.vin.trim().toUpperCase(),item]));
+    emit({...snapshot,vehicles:snapshot.vehicles.map(vehicle=>{
+      const motive=motiveByFleetId.get(vehicle.id)??(vehicle.vin?motiveByVin.get(vehicle.vin.trim().toUpperCase()):undefined);
+      if(!motive)return vehicle;
+      // Keep the read version captured for this record so conflict checks still apply.
+      const next={...vehicle,motive};const captured=readVersions.get(vehicle);if(captured)readVersions.set(next,captured);
+      return next;
+    })});
+    });
   })().finally(() => {
     if (requestVersion !== version) return;
     request = null;
