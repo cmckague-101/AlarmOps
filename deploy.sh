@@ -5,8 +5,8 @@
 #   Checks:    typecheck, unit/database tests and a web build, before anything ships.
 #   Database:  Supabase migrations (shows what is pending, dry runs, then asks).
 #   Web:       git push -> Vercel deploys main automatically.
-#   iOS:       EAS (Expo) cloud build + App Store Connect, or a local build on this Mac.
-#   Android:   EAS (Expo) cloud build (optional Google Play submit), or a local .aab build.
+#   iOS:       EAS (Expo) cloud build + App Store Connect submission.
+#   Android:   EAS (Expo) cloud build (optional Google Play submission).
 #
 # Order matters: database migrations go out before the web push and mobile builds,
 # because the new app code expects the new columns and rules.
@@ -104,7 +104,6 @@ for cmd in git node npm npx; do
 done
 
 cd "$ROOT_DIR"
-[[ "$(uname -s)" == Darwin ]] || warn "Local iOS builds need macOS; choose an EAS cloud build on other systems."
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
@@ -156,25 +155,11 @@ ask_yn "Deploy Android?" y && DO_ANDROID=1
 ((DO_DB + DO_WEB + DO_IOS + DO_ANDROID > 0)) || die "Nothing selected."
 echo
 
-IOS_MODE="" ANDROID_MODE=""
-if ((DO_IOS)); then
-  ask_choice IOS_MODE "How should iOS be built?" \
-    "EAS (Expo) cloud build + submit to App Store Connect" \
-    "Local build on this Mac"
-  echo
-  # EAS local iOS builds shell out to CocoaPods and fastlane; fail now rather than mid-build.
-  if [[ "$IOS_MODE" == Local* ]]; then
-    for cmd in pod fastlane; do
-      command -v "$cmd" >/dev/null 2>&1 ||
-        die "Local iOS builds need $cmd; install it with: brew install ${cmd/pod/cocoapods}"
-    done
-  fi
-fi
+ANDROID_MODE=""
 if ((DO_ANDROID)); then
-  ask_choice ANDROID_MODE "How should Android be built?" \
+  ask_choice ANDROID_MODE "How should Android be deployed through EAS (Expo)?" \
     "EAS (Expo) production cloud build + submit to Google Play closed testing (alpha)" \
-    "EAS (Expo) production cloud build only" \
-    "Local build (.aab)"
+    "EAS (Expo) production cloud build only"
   echo
 fi
 
@@ -293,55 +278,19 @@ if ((DO_IOS || DO_ANDROID)); then
 fi
 
 if ((DO_IOS)); then
-  if [[ "$IOS_MODE" == EAS* ]]; then
-    info "Queuing iOS $VERSION EAS production build with App Store Connect submission"
-    eas build --platform ios --profile production --auto-submit --no-wait
-  else
-    IPA="$BUILD_DIR/fireops-$VERSION.ipa"
-    mkdir -p "$BUILD_DIR"
-    info "Building iOS $VERSION locally (this takes a while)"
-    eas build --platform ios --profile production --local --output "$IPA"
-    ask_choice IOS_UPLOAD "Upload $(basename "$IPA") to App Store Connect how?" \
-      "eas submit" \
-      "Open Transporter (drag the .ipa in)" \
-      "Skip upload"
-    case "$IOS_UPLOAD" in
-      "eas submit") eas submit --platform ios --profile production --path "$IPA" ;;
-      Open*) run open -a Transporter; ((DRY_RUN)) || open -R "$IPA" ;;
-    esac
-  fi
+  info "Queuing iOS $VERSION EAS production build with App Store Connect submission"
+  eas build --platform ios --profile production --auto-submit --no-wait
   echo
 fi
 
 if ((DO_ANDROID)); then
-  if [[ "$ANDROID_MODE" == EAS* ]]; then
-    ANDROID_ARGS=(--platform android --profile production --no-wait)
-    if [[ "$ANDROID_MODE" == *" + submit "* ]]; then
-      ANDROID_ARGS+=(--auto-submit)
-      info "Auto-submitting to Google Play closed testing (alpha); Play service account key must be configured in EAS."
-    fi
-    info "Queuing Android $VERSION EAS production build"
-    eas build "${ANDROID_ARGS[@]}"
-  else
-    AAB="$BUILD_DIR/fireops-$VERSION.aab"
-    mkdir -p "$BUILD_DIR"
-    # EAS local builds run in a fresh temp dir without local.properties, so Gradle
-    # needs ANDROID_HOME to find the SDK.
-    if [[ -z "${ANDROID_HOME:-}" ]]; then
-      for sdk in "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
-        [[ -n "$sdk" && -d "$sdk" ]] && { export ANDROID_HOME="$sdk"; break; }
-      done
-      [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not found; install Android Studio or set ANDROID_HOME."
-    fi
-    export EAS_LOCAL_BUILD_WORKINGDIR="${EAS_LOCAL_BUILD_WORKINGDIR:-$BUILD_DIR/eas-local}"
-    info "Building Android $VERSION locally (this takes a while)"
-    eas build --platform android --profile production --local --output "$AAB"
-    if ask_yn "Submit $(basename "$AAB") to Google Play with eas submit? (No = upload manually in Play Console)" n; then
-      eas submit --platform android --profile production --path "$AAB"
-    else
-      echo "Upload $AAB at https://play.google.com/console"
-    fi
+  ANDROID_ARGS=(--platform android --profile production --no-wait)
+  if [[ "$ANDROID_MODE" == *" + submit "* ]]; then
+    ANDROID_ARGS+=(--auto-submit)
+    info "Auto-submitting to Google Play closed testing (alpha); Play service account key must be configured in EAS."
   fi
+  info "Queuing Android $VERSION EAS production build"
+  eas build "${ANDROID_ARGS[@]}"
   echo
 fi
 
@@ -353,7 +302,7 @@ bold "Done."
 if ((DO_IOS || DO_ANDROID)); then
   echo "  Track EAS builds:      (cd apps/mobile && npx eas-cli build:list --limit 2)"
 fi
-if [[ "$IOS_MODE" == EAS* ]]; then
+if ((DO_IOS)); then
   echo "  Track iOS submission:  (cd apps/mobile && npx eas-cli submit:list --platform ios --limit 1)"
 fi
 ((DO_IOS)) && echo "  iOS: after processing, test in TestFlight, then submit for review in App Store Connect."

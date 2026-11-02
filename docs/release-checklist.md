@@ -38,7 +38,7 @@ Always in this order. New app code expects the new database columns and rules.
 ## 4. Mobile
 
 - [ ] Bump the version when asked. It must be higher than the last approved App Store version.
-- [ ] Choose **EAS (Expo) cloud build** (simplest), or **local build** on this Mac (needs Xcode; Android needs Android Studio).
+- [ ] Both iOS and Android build in **EAS (Expo) cloud**; no local mobile builds or native SDKs required. iOS auto-submits to App Store Connect; choose Android build-only or auto-submit to Google Play closed testing (alpha).
 - [ ] iOS: when the build finishes processing in App Store Connect, install it from **TestFlight** and test on a real phone before submitting for review.
 - [ ] Android: upload the build to a Play Console internal test track first, then promote it.
 - [ ] Push notifications only work in real builds, never in Expo Go. Check them in TestFlight.
