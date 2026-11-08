@@ -223,6 +223,16 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     for(let i=0;i<3;i++)await f.worker.wake();const entry=(await f.session.list())[0];
     expect(entry.status).toBe('synced');expect(offlineSyncEntryLabel(entry)).toContain('file is kept on this device');expect(deviceReceipts([entry])).toEqual([]);
   });
+  it('sends a trimmed receipt project only when one is given',async()=>{
+    const f=await setup();
+    const files={keep:vi.fn(async()=>2048),read:vi.fn(),uri:vi.fn(),remove:vi.fn()};
+    const sync=createOfflineUserSync({session:f.session,id:nextId,now:()=>date,offline:()=>true,canEdit:()=>true,changed:async()=>{},receiptFiles:files});
+    await expect(sync.createReceipt({id:nextId(),name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',project:'x'.repeat(121)},'file:///tmp/fuel.jpg')).rejects.toThrow();
+    const withProject=await sync.createReceipt({id:nextId(),name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',purchasedOn:'2026-11-01',project:' Pine Valley '},'file:///tmp/fuel.jpg');
+    expect((withProject.operation.mutation as {payload:unknown}).payload).toEqual({name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',byteSize:2048,purchasedOn:'2026-11-01',project:'Pine Valley'});
+    const blank=await sync.createReceipt({id:nextId(),name:'Fuel',amountCents:4599,fileName:'fuel.jpg',mimeType:'image/jpeg',project:'  '},'file:///tmp/fuel.jpg');
+    expect((blank.operation.mutation as {payload:Record<string,unknown>}).payload.project).toBeUndefined();
+  });
   it('queues own notification preferences per key and feedback once per ID',async()=>{
     const f=await setup();
     for(const changes of [{},{vehicleAssigned:false},{pushEnabled:'no'}] as Record<string,unknown>[])await expect(f.sync.setNotificationPreferences(changes as Record<string,boolean>)).rejects.toThrow();
