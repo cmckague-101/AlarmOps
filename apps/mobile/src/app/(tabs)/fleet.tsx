@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSymbol } from '@/components/app-symbol';
 import { FilterSelect } from '@/components/filter-select';
+import { fleetOrganizeOptions, organizeFleet, type FleetOrganizeMode } from '@fireops/domain';
 import { FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
@@ -25,8 +26,6 @@ function statusTone(status: string): 'dotReady' | 'dotAttention' | 'dotAssigned'
 }
 
 type FleetStyles = ReturnType<typeof createStyles>;
-type StatusFilter = 'All' | 'Ready' | 'Assigned' | 'Out of service';
-const statusFilters: StatusFilter[] = ['All', 'Ready', 'Assigned', 'Out of service'];
 
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pendingLabel }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void;pendingLabel?:string }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
@@ -113,14 +112,13 @@ export default function FleetScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { vehicles, issues, crew, loading, refreshing, error,pendingDetails } = useFleetVehicles(companyId);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<StatusFilter>('All');
+  const [organizeMode, setOrganizeMode] = useState<FleetOrganizeMode>('name');
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredVehicles = vehicles.filter((vehicle) => {
-    const matchesStatus = filter === 'All' || vehicle.status === filter;
-    const matchesQuery = !normalizedQuery || [vehicle.name, vehicle.type, vehicle.detail, vehicle.vin, vehicle.plate]
+  const filteredVehicles = useMemo(() => vehicles.filter((vehicle) => {
+    return !normalizedQuery || [vehicle.name, vehicle.type, vehicle.detail, vehicle.vin, vehicle.plate]
       .some((value) => value?.toLowerCase().includes(normalizedQuery));
-    return matchesStatus && matchesQuery;
-  }).sort((a, b) => Number(b.assignedTo === currentUser?.id) - Number(a.assignedTo === currentUser?.id));
+  }), [vehicles, normalizedQuery]);
+  const organized = useMemo(() => organizeFleet(filteredVehicles, organizeMode), [filteredVehicles, organizeMode]);
   const visibleIssues = currentUser ? visibleVehicleIssues(issues, currentUser) : [];
   const openIssues = visibleIssues.filter((issue) => issue.status === 'Open');
 
@@ -185,33 +183,43 @@ export default function FleetScreen() {
                 value={query}
               />
               <FilterSelect
-                accessibilityLabel="Fleet status filter"
-                onChange={setFilter}
-                options={statusFilters.map((status) => ({ label: status === 'All' ? status : displayStatus(status), value: status }))}
-                value={filter}
+                accessibilityLabel="Organize fleet"
+                onChange={setOrganizeMode}
+                options={fleetOrganizeOptions}
+                value={organizeMode}
               />
             </View>
 
             {filteredVehicles.length ? (
               <View style={styles.list}>
-                {filteredVehicles.map((vehicle) => (
-                  <VehicleRow
-                    key={vehicle.id}
-                    vehicle={vehicle}
-                    pendingLabel={pendingDetails?.[`vehicle:${vehicle.id}`]}
-                    assignedName={crew.find((member) => member.id === vehicle.assignedTo)?.name}
-                    issueCount={openIssues.filter((issue) => issue.vehicleId === vehicle.id).length}
-                    styles={styles}
-                    onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}` as never)}
-                  />
+                {organized.groups.map((group) => (
+                  <View key={group.type || 'name'} style={styles.group}>
+                    {organizeMode === 'type' && group.type ? (
+                      <View style={styles.groupHeading}>
+                        <Text style={styles.groupTitle}>{group.type}</Text>
+                        <Text style={styles.groupCount}>{group.vehicles.length}</Text>
+                      </View>
+                    ) : null}
+                    {group.vehicles.map((vehicle) => (
+                      <VehicleRow
+                        key={vehicle.id}
+                        vehicle={vehicle}
+                        pendingLabel={pendingDetails?.[`vehicle:${vehicle.id}`]}
+                        assignedName={crew.find((member) => member.id === vehicle.assignedTo)?.name}
+                        issueCount={openIssues.filter((issue) => issue.vehicleId === vehicle.id).length}
+                        styles={styles}
+                        onPress={() => router.push(`/vehicle/${encodeURIComponent(vehicle.id)}` as never)}
+                      />
+                    ))}
+                  </View>
                 ))}
               </View>
             ) : (
               <View style={styles.filteredEmpty}>
                 <Text style={styles.emptyTitle}>No vehicles found</Text>
-                <Text style={styles.emptyText}>Try another search or status filter.</Text>
-                <Pressable accessibilityRole="button" onPress={() => { setQuery(''); setFilter('All'); }} style={styles.clearButton}>
-                  <Text style={styles.clearLabel}>Clear filters</Text>
+                <Text style={styles.emptyText}>Try another search.</Text>
+                <Pressable accessibilityRole="button" onPress={() => setQuery('')} style={styles.clearButton}>
+                  <Text style={styles.clearLabel}>Clear search</Text>
                 </Pressable>
               </View>
             )}
@@ -262,6 +270,10 @@ function createStyles(theme: FireOpsTheme) {
   controls: { gap: 12 },
   searchInput: { minHeight: 48, backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, paddingHorizontal: 15, color: theme.ink, fontSize: 16 },
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider },
+  group: {},
+  groupHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, paddingTop: 18, paddingBottom: 8 },
+  groupTitle: { color: theme.ink, fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0.2 },
+  groupCount: { color: theme.secondary, fontSize: 12, lineHeight: 16, fontVariant: ['tabular-nums'] },
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 92, paddingVertical: 17, paddingHorizontal: 6, marginHorizontal: -6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 8 },
   vehicleRowPressed: { backgroundColor: theme.surfaceAlt },
   vehicleThumbnail: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: theme.surfaceAlt },

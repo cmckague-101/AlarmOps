@@ -24,5 +24,6 @@ export * from './offline-sync';
 export * from './sync-review-client';
 export * from './sync-device-history';
 export * from './attachment-upload';
+export * from './fleet-organize';
 export * from './fleet-sync-fields';
 export * from './receipt-export';

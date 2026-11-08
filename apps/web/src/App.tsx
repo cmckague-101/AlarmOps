@@ -23,6 +23,7 @@ import {useDashboardInbox} from './useDashboardInbox';
 import {useDismissedNotifications} from './useDismissedNotifications';
 import {filterDismissedNotifications} from './dismissedNotifications';
 import {SwipeToClear} from './SwipeToClear';
+import {fleetOrganizeOptions, organizeFleet, type FleetOrganizeMode} from '@fireops/domain';
 import {
   assignableUserRoles, canInspectVehicle, canProcessFinance, canOpenVehicleIssue, credentialExpiresWithinMonth, crewCredentials, dashboardNotifications, formatPhoneNumber, isCompanyManager, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, qualificationPositions, trainingStage, userRoleLabel, visibleVehicleIssues,
   type Activity, type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
@@ -41,7 +42,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
-  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
 
@@ -102,7 +103,6 @@ const seed: Vehicle[] = [
 const defaultVehicleTypeNames = ['Type 3 Engine','Type 4 Engine','Type 6 Engine','Water Tender','Crew Carrier','Crew Transport','Command Vehicle','Dozer','Transport','Support Vehicle','Other'];
 const defaultVehicleTypes:VehicleTypeOption[]=defaultVehicleTypeNames.map((name,index)=>({id:`default-${index}`,name}));
 const currentStatuses: Status[] = ['Ready','Out of service'];
-const fleetStatusFilters: Status[] = ['Ready','Assigned','Out of service'];
 const vehicleStatusLabel = (status:Status) => status==='Out of service'?'Out of Service':status;
 const priorities: Priority[] = ['Low','Medium','High','Critical'];
 const vehicleDocumentOptions: {key:VehicleDocumentKey;label:string}[] = [
@@ -263,7 +263,6 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [vehicleTypes,setVehicleTypes]=useState<VehicleTypeOption[]>(()=>vehicleTypeData??loadVehicleTypes());
   useEffect(()=>{if(vehicleTypeData)setVehicleTypes(vehicleTypeData)},[vehicleTypeData]);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Status | 'All'>('All');
   const [formOpen, setFormOpen] = useState(false);
   const [issueFormOpen, setIssueFormOpen] = useState(false);
   const [issueVehicleId, setIssueVehicleId] = useState('');
@@ -374,10 +373,13 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     logActivity({action:`Change undone for ${previous.unit}`,detail:'Vehicle status and assignment restored',targetType:'vehicle',targetId:previous.id,tone:'complete'});
     showNotice(onDataChange?'Saving assignment undo…':`${previous.unit} restored`);
   };
-  const filtered = useMemo(() => vehicles.filter(v => {
-    const text = `${v.unit} ${v.type} ${v.make} ${v.model} ${v.year} ${v.plate} ${v.assignedFire?.name??''}`.toLowerCase();
-    return text.includes(query.toLowerCase()) && (filter === 'All' || v.status === filter);
-  }).sort((a,b)=>Number(b.assignedTo===currentUser.id)-Number(a.assignedTo===currentUser.id)), [vehicles, query, filter, currentUser.id]);
+  const filtered = useMemo(() => {
+    const needle = query.toLowerCase();
+    return vehicles.filter(v => {
+      const text = `${v.unit} ${v.type} ${v.make} ${v.model} ${v.year} ${v.plate} ${v.assignedFire?.name??''}`.toLowerCase();
+      return text.includes(needle);
+    });
+  }, [vehicles, query]);
   const visibleIssues=useMemo(()=>visibleVehicleIssues(issues,currentUser),[currentUser,issues]);
   const operationsVehicles=useMemo(()=>canManageFleet?vehicles:vehicles.filter(vehicle=>vehicle.assignedTo===currentUser.id),[canManageFleet,currentUser.id,vehicles]);
   const addVehicle = (vehicle: Vehicle) => {
@@ -665,7 +667,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>{onDataChange?'Retry original save':'Retry save'}</button></div>}
         <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
         <div className="page-stage" key={page}>
-        {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
+        {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id)=>{if(id)void dashboardInbox.markRead(id);setPage(target)}} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
         {page === 'crew' && <CrewPage crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
@@ -799,18 +801,28 @@ function AddCredentialPage({credential,uploadFile,onDiscardFiles,onCancel,onSave
   return <div className="page add-credential-page"><button className="qualification-back" onClick={cancel}><ArrowLeft/> Back to qualifications</button><div className="page-heading"><div><h1>{credential?'Credential details':'Add credential'}</h1>{credential&&<p>View or edit credential information.</p>}</div></div><form className="qualification-form" onSubmit={submit}><Field label="Record type" required wide><select value={recordType} onChange={event=>changeRecordType(event.target.value as CredentialRecordType)}>{recordTypes.map(type=><option key={type}>{type}</option>)}</select></Field>{photoOnly?<div className="wide"><FileUpload label={`${recordType} photo`} accept="image/*" file={currentFile} uploadFile={uploadFile} onChange={setFile} photoActions/></div>:<>{recordType==='Qualification'?<Field label="Qualification" required wide><select value={selectedQualification?.code??''} onChange={event=>selectQualification(event.target.value)}><option value="">Select qualification</option>{qualificationPositions.map(position=><option key={position.code} value={position.code}>{position.title} — {position.code}</option>)}</select></Field>:<><Field label="Course or position code" required wide><input maxLength={80} value={courseCode} onChange={event=>setCourseCode(event.target.value)} placeholder="e.g. S-130 or FFT2"/></Field><Field label="Title" required wide><input maxLength={160} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Credential title"/></Field></>}<Field label="Completion date" required><input type="date" value={completionDate} onChange={event=>setCompletionDate(event.target.value)}/></Field><Field label="Expiration or currency date (optional)"><input type="date" min={completionDate||undefined} value={expirationDate} onChange={event=>setExpirationDate(event.target.value)}/></Field><Field label="Provider or certifying organization" required wide><input maxLength={160} value={provider} onChange={event=>setProvider(event.target.value)} placeholder="Organization name"/></Field><div className="wide"><FileUpload label="Photo or file (optional)" accept="image/*,.pdf,application/pdf" file={currentFile} uploadFile={uploadFile} onChange={setFile}/></div></>}{error&&<div className="form-submit-error wide" role="alert">{error}</div>}<footer className="wide"><button className="secondary" type="button" disabled={busy} onClick={cancel}>Cancel</button><button className="primary" disabled={busy||!valid}>{busy?'Saving...':credential?'Save changes':'Save credential'}</button></footer></form>{credential&&onDelete&&<button className="qualification-delete" disabled={busy} onClick={()=>void remove()}><Trash2/> {busy?'Deleting...':'Delete credential'}</button>}</div>;
 }
 
-function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,filter,setFilter,canManage,motiveConnection,onAdd,onSelect,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;filter:Status|'All';setFilter:(v:Status|'All')=>void;canManage:boolean;motiveConnection:MotiveConnection;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
+function VehiclesPage({vehicles,issues,crew,filtered,query,setQuery,canManage,motiveConnection,onAdd,onSelect,onSelectIssue}:{vehicles:Vehicle[];issues:FleetIssue[];crew:CrewMember[];filtered:Vehicle[];query:string;setQuery:(v:string)=>void;canManage:boolean;motiveConnection:MotiveConnection;onAdd:()=>void;onSelect:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void}) {
+  const [organizeMode,setOrganizeMode]=useState<FleetOrganizeMode>('name');
   const openIssues=issues.filter(issue=>issue.status==='Open');
+  const organized=useMemo(()=>organizeFleet(filtered,organizeMode),[filtered,organizeMode]);
+  let photoIndex=0;
   return <div className="page"><div className="page-heading"><div><h1 className="fleet-title">Fleet <span aria-hidden="true">-</span> <a href="#fleet-issues">{openIssues.length} {openIssues.length===1?'Issue':'Issues'}</a></h1></div><div className="fleet-heading-actions">{canManage&&<><button className="primary desktop-add" onClick={onAdd}><Plus size={19}/> Add vehicle</button><button className="primary mobile-add-vehicle" onClick={onAdd}><Plus size={18}/> Add vehicle</button></>}</div></div>
     <section className="stats-row fleet-stats">
       <Stat label="Total vehicles" value={vehicles.length}/>
       <Stat label="Ready" value={vehicles.filter(v=>v.status==='Ready').length}/>
       <Stat label="Needs attention" value={vehicles.filter(v=>v.status==='Out of service').length}/>
     </section>
-    <section className="inventory-panel"><div className="inventory-tools"><div className="search"><Search size={19}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search vehicles" aria-label="Search vehicles"/>{query&&<button onClick={()=>setQuery('')} aria-label="Clear vehicle search"><X size={16}/></button>}</div><div className="filter-wrap"><SlidersHorizontal size={17}/><select value={filter} onChange={e=>setFilter(e.target.value as Status|'All')} aria-label="Filter by status"><option>All</option>{fleetStatusFilters.map(s=><option key={s} value={s}>{vehicleStatusLabel(s)}</option>)}</select></div></div>
+    <section className="inventory-panel"><div className="inventory-tools"><div className="search"><Search size={19}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search vehicles" aria-label="Search vehicles"/>{query&&<button onClick={()=>setQuery('')} aria-label="Clear vehicle search"><X size={16}/></button>}</div><div className="roster-sort" role="radiogroup" aria-label="Organize fleet"><span>Organize</span>{fleetOrganizeOptions.map(option=><button key={option.value} type="button" role="radio" aria-checked={organizeMode===option.value} className={organizeMode===option.value?'selected':''} onClick={()=>setOrganizeMode(option.value)}>{option.label}</button>)}</div></div>
       <div className="list-label"><b>{filtered.length} {filtered.length===1?'vehicle':'vehicles'}</b></div>
-      <div className="vehicle-list">{filtered.map((v,index)=><VehicleCard key={v.id} vehicle={v} assignedName={crew.find(member=>member.id===v.assignedTo)?.name} issueCount={issues.filter(issue=>issue.vehicleId===v.id&&issue.status==='Open').length} motive={motiveConnection.connected?motiveSnapshotFor(v,motiveConnection):undefined} motiveMock={Boolean(motiveConnection.mock)} prioritizePhoto={index<6} onClick={()=>onSelect(v)}/>)}
-      {!filtered.length && <div className="empty">{vehicles.length?<Search/>:<Truck/>}<h3>{vehicles.length?'No vehicles found':'No vehicles yet'}</h3><p>{vehicles.length?'Try another search or clear current filter.':canManage?'Add first vehicle to start building company fleet.':'Company owner has not added any vehicles yet.'}</p>{vehicles.length?<button className="secondary" onClick={()=>{setQuery('');setFilter('All')}}>Clear filters</button>:canManage&&<button className="primary" onClick={onAdd}><Plus/> Add vehicle</button>}</div>}</div>
+      <div className="vehicle-list">{organized.groups.map(group=>{
+        const cards=group.vehicles.map(v=>{
+          const index=photoIndex++;
+          return <VehicleCard key={v.id} vehicle={v} assignedName={crew.find(member=>member.id===v.assignedTo)?.name} issueCount={issues.filter(issue=>issue.vehicleId===v.id&&issue.status==='Open').length} motive={motiveConnection.connected?motiveSnapshotFor(v,motiveConnection):undefined} motiveMock={Boolean(motiveConnection.mock)} prioritizePhoto={index<6} onClick={()=>onSelect(v)}/>;
+        });
+        if(organizeMode!=='type'||!group.type)return <div className="vehicle-type-group" key="by-name">{cards}</div>;
+        return <div className="vehicle-type-group" key={group.type}><div className="vehicle-type-heading"><h3>{group.type}</h3><span>{group.vehicles.length}</span></div>{cards}</div>;
+      })}
+      {!filtered.length && <div className="empty">{vehicles.length?<Search/>:<Truck/>}<h3>{vehicles.length?'No vehicles found':'No vehicles yet'}</h3><p>{vehicles.length?'Try another search.':canManage?'Add first vehicle to start building company fleet.':'Company owner has not added any vehicles yet.'}</p>{vehicles.length?<button className="secondary" onClick={()=>setQuery('')}>Clear search</button>:canManage&&<button className="primary" onClick={onAdd}><Plus/> Add vehicle</button>}</div>}</div>
     </section>
     <FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue}/>
   </div>
