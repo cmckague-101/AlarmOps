@@ -62,14 +62,20 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
     expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 
+  it('shows Shop to owners, admins and shop techs only',()=>{
+    expect(navigationLayout('shop_tech').desktop).toContain('shop');
+    expect(navigationLayout('accounting').desktop).not.toContain('shop');
+    expect(navigationLayout('fire_fighter').desktop).not.toContain('shop');
+  });
+
   it('moves only footer overflow into More on mobile',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['dispatch','hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['dispatch','hotels','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['dispatch','hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
   });
 });

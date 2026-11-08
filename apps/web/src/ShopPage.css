@@ -1,0 +1,165 @@
+.shop-page{display:grid;gap:18px;font-family:'DM Sans',sans-serif;color:var(--ink)}
+.shop-page h1,.shop-page h2,.shop-page h3,.shop-page .shop-vehicle-copy b,.shop-page .shop-tasks-heading,.shop-page .shop-status-label{
+  font-family:Manrope,sans-serif
+}
+.shop-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:4px}
+.shop-heading h1{margin:0;font:800 32px/1.15 Manrope,sans-serif}
+.shop-heading .primary{flex:none;white-space:nowrap}
+.shop-back{display:inline-flex;align-items:center;gap:8px;width:fit-content;border:0;background:transparent;padding:0;color:var(--ink);font:700 14px 'DM Sans',sans-serif;cursor:pointer}
+.shop-back svg{width:18px;height:18px}
+.shop-board-controls{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.shop-board-controls input{min-width:min(280px,100%);border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--canvas);color:var(--ink);font:400 14px 'DM Sans',sans-serif}
+.shop-status-filter select{min-width:180px;height:40px;border:1px solid var(--line);border-radius:9px;padding:0 12px;background:var(--canvas);color:var(--ink);font:700 13px 'DM Sans',sans-serif}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+.shop-vehicle-board,.shop-vehicle-detail,.shop-job-panel{border:1px solid var(--line);border-radius:16px;background:var(--paper);overflow:hidden}
+.shop-vehicle-board{display:grid;gap:0;padding:16px}
+.shop-vehicle-board .shop-board-controls{margin-bottom:14px}
+.shop-vehicle-list{display:grid;gap:10px}
+.shop-vehicle-card{display:grid;grid-template-columns:88px 1fr 18px;gap:14px;align-items:center;width:100%;border:1px solid var(--line);border-radius:14px;background:var(--canvas);padding:12px;text-align:left;color:inherit;cursor:pointer}
+.shop-vehicle-card:hover{background:var(--surface-subtle)}
+.shop-critical-card{border-color:color-mix(in srgb,var(--danger) 45%,var(--line));background:color-mix(in srgb,var(--danger) 8%,var(--canvas))}
+.shop-critical-card:hover{background:color-mix(in srgb,var(--danger) 12%,var(--canvas))}
+.shop-vehicle-photo{width:88px;height:66px;border-radius:10px;object-fit:cover;background:var(--surface-subtle)}
+.shop-vehicle-photo.placeholder{display:grid;place-items:center;color:var(--muted);border:1px solid var(--line)}
+.shop-vehicle-photo.placeholder.critical{color:#fff;background:var(--danger);border-color:var(--danger)}
+.shop-vehicle-photo.placeholder svg{width:22px;height:22px}
+.shop-vehicle-copy{display:grid;gap:3px;min-width:0}
+.shop-vehicle-copy b{color:var(--ink);font:800 16px/1.25 Manrope,sans-serif}
+.shop-vehicle-copy small{color:var(--muted);font-size:12px;line-height:1.35}
+.shop-vehicle-preview{color:var(--ink)!important;font-weight:600}
+
+.shop-vehicle-detail{padding:16px;display:grid;gap:16px}
+.shop-vehicle-hero{display:flex;align-items:center;gap:16px}
+.shop-vehicle-hero .shop-vehicle-photo{width:120px;height:90px}
+.shop-vehicle-hero h2{margin:0;font:800 24px/1.2 Manrope,sans-serif}
+.shop-vehicle-hero p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.shop-vehicle-controls{justify-content:space-between}
+.shop-tasks-heading{margin:0;font:800 15px/1.3 Manrope,sans-serif}
+.shop-job-panel-header h2{font:800 24px/1.2 Manrope,sans-serif}
+.shop-job-panel-header p,.shop-vehicle-hero p,.shop-task-main small,.shop-vehicle-copy small,.shop-note p,.shop-hint{
+  font-family:'DM Sans',sans-serif
+}
+.shop-task-list{display:grid;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.shop-task-row{display:grid;grid-template-columns:1fr auto 18px;gap:12px;align-items:center;width:100%;padding:12px 14px;border:0;border-bottom:1px solid var(--line);border-left:4px solid transparent;background:transparent;text-align:left;color:inherit;cursor:pointer}
+.shop-task-row:last-child{border-bottom:0}
+.shop-task-row:hover{background:var(--surface-subtle)}
+.shop-task-row.priority-standard{border-left-color:#ffd400}
+.shop-task-row.priority-urgent{border-left-color:var(--danger)}
+.shop-task-main{display:grid;gap:3px;min-width:0}
+.shop-drawer-back{display:flex;margin:0 0 10px}
+.shop-job-top{color:var(--ink);font:700 15px/1.35 'DM Sans',sans-serif}
+.shop-task-main small{color:var(--muted);font-size:12px;line-height:1.4}
+.shop-status-block{display:grid;gap:10px}
+.shop-status-block h3{margin:0;font:800 15px/1.3 Manrope,sans-serif}
+.shop-blocker{color:var(--warning)!important;font-weight:700}
+.shop-status-label{display:inline-flex;border-radius:6px;padding:4px 8px;font:700 10px/1 Manrope,sans-serif;text-transform:uppercase;font-style:normal;white-space:nowrap}
+.shop-status-label.shop-status-queued{color:#fff;background:var(--orange)}
+.shop-status-label.shop-status-progress{color:#3d3200;background:#ffd400}
+.shop-status-label.shop-status-parts{color:#3d3200;background:#ffd400}
+.shop-status-label.shop-status-done{color:#26765a;background:#e7f3ee}
+.shop-task-chevron{width:16px;height:16px;color:var(--muted)}
+.shop-history{display:grid;gap:12px;margin-top:4px}
+.shop-history-toolbar{display:flex;justify-content:flex-end}
+.shop-history-export{display:inline-flex;align-items:center;gap:8px}
+.shop-history-export:disabled{opacity:.55;cursor:not-allowed}
+.shop-history-list .shop-task-row-closed{opacity:.92}
+.shop-history-notes{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap}
+.shop-history-button{
+  display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:8px;
+  border:1px solid var(--danger);border-radius:10px;background:transparent;color:var(--danger);
+  font:800 14px 'DM Sans',sans-serif;cursor:pointer
+}
+.shop-history-button:hover{background:color-mix(in srgb,var(--danger) 10%,var(--paper))}
+
+.shop-job-panel{display:grid}
+.shop-job-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 18px 0}
+.shop-job-panel-header h2{margin:0 0 4px}
+.shop-job-panel-header p{margin:0;color:var(--muted);font-size:13px}
+.shop-assign-top{flex:none;white-space:nowrap}
+.shop-assign-top.assigned{opacity:.72;cursor:default;box-shadow:none}
+.shop-job-panel-footer{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:12px;padding:16px 18px;border-top:1px solid var(--line)}
+.shop-job-panel-footer .primary{min-width:140px}
+.shop-delete-button{
+  display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;
+  border:1px solid var(--danger);border-radius:10px;background:transparent;color:var(--danger);
+  font:800 14px 'DM Sans',sans-serif;cursor:pointer
+}
+.shop-delete-button:hover{background:color-mix(in srgb,var(--danger) 10%,var(--paper))}
+.shop-note-compose{display:grid;gap:6px}
+.shop-note-compose textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--canvas);color:var(--ink);font:inherit;resize:vertical;line-height:1.45}
+
+.shop-drawer{width:min(560px,100%)}
+.shop-drawer>header h2{margin:0;font:800 25px/1.15 Manrope,sans-serif;letter-spacing:-.035em;color:var(--ink)}
+.shop-drawer-body{display:grid;gap:14px;padding:18px;overflow:auto}
+.shop-drawer-body label,.shop-repair-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--ink)}
+.shop-drawer-body input,.shop-drawer-body select,.shop-drawer-body textarea,
+.shop-repair-form input,.shop-repair-form select,.shop-repair-form textarea{
+  width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--canvas);color:var(--ink);font:inherit
+}
+.shop-drawer-body fieldset{margin:0;padding:0;border:0;display:grid;gap:12px}
+.shop-drawer-body legend{margin-bottom:2px;color:var(--muted);font:800 11px/1.2 Manrope,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.shop-context{border:1px solid var(--line);border-radius:12px;background:var(--surface-subtle);padding:14px}
+.shop-assign-row,.shop-note-chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.shop-link-button{border:0;background:transparent;padding:0;color:var(--orange);font:700 13px DM Sans,sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.shop-kind-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.shop-kind-toggle button{min-height:44px;padding:10px 14px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font:700 14px 'DM Sans',sans-serif;cursor:pointer;text-align:center}
+.shop-kind-toggle button.selected{border-color:var(--orange);background:color-mix(in srgb,var(--orange) 10%,var(--paper));color:var(--orange)}
+.shop-new-job-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:16px 18px;border-top:1px solid var(--line)}
+.shop-new-job-footer .secondary,.shop-new-job-footer .primary{min-width:120px}
+.shop-priority-seg,.shop-status-seg{display:flex;flex-wrap:wrap;gap:8px}
+.shop-priority-seg button,.shop-status-seg button{
+  display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font:700 13px DM Sans,sans-serif;cursor:pointer
+}
+.shop-priority-seg button.shop-priority-low.selected,
+.shop-priority-seg button.shop-priority-medium.selected,
+.shop-status-seg button.shop-status-progress.selected,
+.shop-status-seg button.shop-status-parts.selected{
+  border-color:#ffd400;background:#ffd400;color:#3d3200
+}
+.shop-priority-seg button.shop-priority-high.selected,
+.shop-priority-seg button.shop-priority-critical.selected,
+.shop-status-seg button.shop-status-queued.selected{
+  border-color:var(--danger);background:var(--danger);color:#fff
+}
+.shop-note-thread{display:grid;gap:10px}
+.shop-note{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--paper)}
+.shop-note.system{background:var(--surface-subtle)}
+.shop-note header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.shop-note header time{color:var(--muted);font-size:12px}
+.shop-note header i{border-radius:6px;padding:3px 7px;font:800 10px Manrope,sans-serif;font-style:normal;text-transform:uppercase}
+.shop-note p{margin:0;color:var(--ink);font-size:14px;line-height:1.45}
+.shop-repairs-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+.shop-unit-list,.shop-repair-form{border:1px solid var(--line);border-radius:16px;background:var(--paper);padding:16px}
+.shop-unit-list{display:grid;gap:8px;align-content:start}
+.shop-unit-list h2,.shop-repair-form h2,.shop-repair-form h3{margin:0 0 8px;font:800 18px Manrope,sans-serif}
+.shop-unit-list button{display:grid;gap:2px;width:100%;border:1px solid var(--line);border-radius:12px;background:var(--canvas);padding:12px;text-align:left;color:inherit;cursor:pointer}
+.shop-unit-list button.selected{border-color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
+.shop-unit-reading{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.shop-repair-form{display:grid;gap:12px;position:relative}
+.shop-typeahead{position:absolute;z-index:5;list-style:none;margin:0;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--paper);box-shadow:0 10px 30px #00000014;max-height:240px;overflow:auto;width:min(420px,100%)}
+.shop-typeahead button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;background:transparent;padding:10px;text-align:left;color:var(--ink);cursor:pointer}
+.shop-typeahead button:hover{background:var(--surface-subtle)}
+.shop-typeahead button span{display:inline-flex;align-items:center;gap:8px}
+.shop-typeahead small{color:var(--muted)}
+.shop-hint{margin:0;color:var(--muted);font-size:13px;line-height:1.4}
+.shop-reading{display:grid;gap:10px;border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface-subtle)}
+.shop-reading > div{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.shop-motive-badge{border-radius:999px;background:#e7f3ee;color:#26765a;padding:4px 8px;font:800 10px Manrope,sans-serif;letter-spacing:.04em;font-style:normal}
+.shop-check{display:flex!important;grid-template-columns:none!important;gap:8px!important;align-items:center;font-size:14px!important;font-weight:600!important}
+.shop-check input{width:auto!important}
+@media (max-width:900px){
+  .shop-repairs-layout{grid-template-columns:1fr}
+  .shop-drawer>header h2{font-size:22px}
+  .shop-kind-toggle{grid-template-columns:1fr 1fr}
+  .shop-new-job-footer{flex-direction:column-reverse}
+  .shop-new-job-footer .secondary,.shop-new-job-footer .primary{width:100%}
+  .shop-board-controls{width:100%}
+  .shop-status-filter,.shop-status-filter select,.shop-board-controls input{width:100%;min-width:0}
+  .shop-vehicle-card{grid-template-columns:72px 1fr 18px}
+  .shop-vehicle-photo{width:72px;height:54px}
+  .shop-vehicle-hero{align-items:flex-start;flex-direction:column}
+  .shop-task-row{grid-template-columns:1fr 18px}
+  .shop-status-label{grid-column:1}
+}
+

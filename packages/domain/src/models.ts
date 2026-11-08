@@ -131,6 +131,8 @@ export type MotiveDiagnosticCode = {
 };
 export type MotiveVehicleSnapshot = {
   vin:string;location:string;speed:string;updatedAt:string;fleetVehicleId?:string;motiveId?:string;entityType?:'vehicle'|'asset';latitude?:number;longitude?:number;
+  /** Live odometer from Motive, in miles when available. */
+  odometerMiles?:number;
   diagnostics?:MotiveDiagnosticCode[];
   camera?:{status:'online'|'offline'|'unavailable';imageUrl?:string;capturedAt?:string};
 };

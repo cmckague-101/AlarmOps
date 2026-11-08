@@ -24,6 +24,7 @@ import {useDismissedNotifications} from './useDismissedNotifications';
 import {filterDismissedNotifications} from './dismissedNotifications';
 import {SwipeToClear} from './SwipeToClear';
 import {fleetOrganizeOptions, organizeFleet, type FleetOrganizeMode} from '@fireops/domain';
+import {canWorkShop} from '@fireops/domain';
 import {
   assignableUserRoles, canInspectVehicle, canProcessFinance, canOpenVehicleIssue, credentialExpiresWithinMonth, crewCredentials, dashboardNotifications, formatPhoneNumber, isCompanyManager, isDocumentUnread, isThreadUnread, isTrainingUnread, normalizeVehicle, normalizeVehicles, qualificationPositions, trainingStage, userRoleLabel, visibleVehicleIssues,
   type Activity, type AnnualQualificationRecord, type CommunicationReply, type CommunicationThread, type CompanyDocument, type CompanyInfo,
@@ -53,12 +54,13 @@ const PayrollPage=lazy(()=>import('./PayrollPage'));
 const DispatchListsPage=lazy(()=>import('./DispatchListsPage'));
 const HotelsPage=lazy(()=>import('./HotelsPage'));
 const InventoryPage=lazy(()=>import('./InventoryPage'));
+const ShopPage=lazy(()=>import('./ShopPage'));
 const MasterRecordPage=lazy(()=>import('./MasterRecordPage'));
 const QualificationCardPage=lazy(()=>import('./QualificationCardPage'));
 const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 const navigationMeta = {
@@ -68,6 +70,7 @@ const navigationMeta = {
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
+  shop:{label:'Shop',description:'Shop tasks and fleet repairs',Icon:Wrench},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
   qualifications:{label:'Qualifications',description:'Credentials, licenses, and expiration dates',Icon:ShieldCheck},
   documents:{label:'Documents',description:'Company files and reference documents',Icon:FileText},
@@ -82,11 +85,11 @@ const navigationMeta = {
   'audit-log':{label:'Audit log',description:'Company activity from the last 30 days',Icon:Clock3},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','operations','dispatch','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 export function navigationLayout(role:UserRole){
-  const desktop=navigationOrder.filter(page=>(page!=='inspections'&&page!=='audit-log')||isCompanyManager(role));
+  const desktop=navigationOrder.filter(page=>page==='shop'?canWorkShop(role):(page!=='inspections'&&page!=='audit-log')||isCompanyManager(role));
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:desktop.filter(page=>!mobilePrimary.includes(page))};
 }
@@ -391,6 +394,18 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const addIssue = (issue: FleetIssue) => {
     if (!canOpenIssues||!allowLocalChange()) return false;
     const vehicle=vehicles.find(item=>item.id===issue.vehicleId);setIssues(items => [issue, ...items]); logActivity({action:`Issue reported: ${issue.title}`,detail:`${vehicle?.unit??'Unknown vehicle'} · ${issue.priority} priority`,targetType:'issue',targetId:issue.id,tone:'urgent'}); setIssueFormOpen(false); showNotice(onDataChange?'Saving issue…':'Issue created');
+  };
+  // Closing a shop task opened for a fleet issue resolves the issue through the normal issue save.
+  const resolveIssueFromShop=(issueId:string)=>{
+    const issue=issues.find(item=>item.id===issueId);
+    if(!issue||issue.status!=='Open')return;
+    const now=new Date().toISOString();
+    updateIssue({...issue,status:'Resolved',resolvedAt:now,updates:[{id:createId(),text:'Resolved when the shop task was closed',createdBy:currentUser.name,createdById:currentUser.id,createdAt:now},...issue.updates]},issue);
+  };
+  const shopMotiveReading=(vehicle:Vehicle)=>{
+    if(!activeMotiveConnection.connected||activeMotiveConnection.mock)return null;
+    const snapshot=activeMotiveConnection.vehicles?.find(item=>item.fleetVehicleId===vehicle.id);
+    return typeof snapshot?.odometerMiles==='number'?{value:snapshot.odometerMiles,unit:'miles' as const,locatedAt:snapshot.updatedAt}:null;
   };
   const updateIssue = (issue: FleetIssue,base?:FleetIssue) => {
     if(!allowLocalChange())return false;
@@ -699,6 +714,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} demoForms={demoMode?demoRecords.payroll:undefined} onDemoChange={payroll=>setDemoRecords(current=>({...current,payroll}))} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
         {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
+        {page === 'shop' && canWorkShop(currentUser.role) && <ShopPage key={companyId??'demo'} companyId={companyId} demoMode={demoMode} user={currentUser} vehicles={vehicles} issues={issues} canWork={canWorkShop(currentUser.role)} onBack={()=>setPage('overview')} onResolveLinkedIssue={resolveIssueFromShop} motiveReadingFor={shopMotiveReading}/>}
         {page === 'inventory' && <InventoryPage canManage={canManageFleet} currentUserId={currentUser.id} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem} onCheckout={checkoutInventoryItem} onCheckin={checkinInventoryItem}/>}
         {page === 'inspections' && canManageFleet && <InspectionsPage vehicles={vehicles} template={inspectionTemplate} onDelete={deleteInspection}/>}
         {page === 'qualifications' && <QualificationsPage member={crew.find(member=>member.id===currentUser.id)} crew={crew} pendingCardCount={pendingQualificationCardCount} setPage={page=>{if(page==='qualification-master-record')setMasterRecordMemberId(currentUser.id);setPage(page)}} onSelectCredential={credential=>{setSelectedCredential(credential);setPage('credential-detail')}} onSelectExperience={experience=>{setSelectedExperience(experience);setPage('experience-detail')}} onOpenCrewMasterRecord={member=>{setMasterRecordMemberId(member.id);setPage('qualification-master-record')}}/>}

@@ -27,7 +27,7 @@ type MotiveDiagnosticCode = {
   id:string;code:string;label:string;description?:string;status:'open'|'closed';type?:'constant'|'intermittent';
   firstObservedAt?:string;lastObservedAt?:string;occurrenceCount?:number;severity?:string;network?:string;
 };
-type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number;diagnostics?:MotiveDiagnosticCode[]};
+type MotiveEntity = {id:string;type:'vehicle'|'asset';vin:string;location:string;speed:string;updatedAt:string;latitude?:number;longitude?:number;odometerMiles?:number;diagnostics?:MotiveDiagnosticCode[]};
 type MotiveCaptureResponse = {
   request_id?:string|number;camera_type?:string;position?:string;status?:string;failure_reason?:string;created_at?:string;
   error?:string|{message?:string};message?:string;errors?:Array<string|{message?:string}>;
@@ -173,9 +173,16 @@ function diagnosticsByVehicle(rows:unknown[]){
   }
   return {byVehicleId,byVin};
 }
+function odometerMilesFrom(source:Record<string,unknown>|null|undefined){
+  if(!source)return undefined;
+  const miles=finiteNumber(source.odometer_mi)??finiteNumber(source.odometer_miles)??finiteNumber(source.odometer);
+  if(miles!==undefined)return miles;
+  const meters=finiteNumber(source.odometer_in_meters)??finiteNumber(source.odometer_meters);
+  return meters===undefined?undefined:meters/1609.344;
+}
 function motiveEntities(vehicleRows:unknown[],assetRows:unknown[]):MotiveEntity[]{
-  const vehicles=vehicleRows.flatMap(row=>{const vehicle=(row as {vehicle?:Record<string,unknown>})?.vehicle;if(!vehicle)return[];const vin=normalizedVin(vehicle.vin);if(!vin)return[];const location=vehicle.current_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const speed=finiteNumber(location?.speed);return [{id:String(vehicle.id),type:'vehicle' as const,vin,location:typeof location?.description==='string'&&location.description.trim()?location.description:'Location unavailable',speed:speed===undefined?'Speed unavailable':`${Math.round(speed)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:String(vehicle.updated_at??new Date().toISOString()),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
-  const assets=assetRows.flatMap(row=>{const asset=(row as {asset?:Record<string,unknown>})?.asset;if(!asset)return[];const vin=normalizedVin(asset.vin);if(!vin)return[];const gateway=asset.asset_gateway as Record<string,unknown>|null|undefined;const location=gateway?.last_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const kph=finiteNumber(location?.ground_speed_kph);return [{id:String(asset.id),type:'asset' as const,vin,location:typeof location?.address==='string'&&location.address.trim()?location.address:'Location unavailable',speed:kph===undefined?'Speed unavailable':`${Math.round(kph*0.621371)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:new Date().toISOString(),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude})}];});
+  const vehicles=vehicleRows.flatMap(row=>{const vehicle=(row as {vehicle?:Record<string,unknown>})?.vehicle;if(!vehicle)return[];const vin=normalizedVin(vehicle.vin);if(!vin)return[];const location=vehicle.current_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const speed=finiteNumber(location?.speed);const odometerMiles=odometerMilesFrom(location)??odometerMilesFrom(vehicle);return [{id:String(vehicle.id),type:'vehicle' as const,vin,location:typeof location?.description==='string'&&location.description.trim()?location.description:'Location unavailable',speed:speed===undefined?'Speed unavailable':`${Math.round(speed)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:String(vehicle.updated_at??new Date().toISOString()),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude}),...(odometerMiles===undefined?{}:{odometerMiles})}];});
+  const assets=assetRows.flatMap(row=>{const asset=(row as {asset?:Record<string,unknown>})?.asset;if(!asset)return[];const vin=normalizedVin(asset.vin);if(!vin)return[];const gateway=asset.asset_gateway as Record<string,unknown>|null|undefined;const location=gateway?.last_location as Record<string,unknown>|null|undefined;const latitude=finiteNumber(location?.lat);const longitude=finiteNumber(location?.lon);const kph=finiteNumber(location?.ground_speed_kph);const odometerMiles=odometerMilesFrom(location)??odometerMilesFrom(gateway)??odometerMilesFrom(asset);return [{id:String(asset.id),type:'asset' as const,vin,location:typeof location?.address==='string'&&location.address.trim()?location.address:'Location unavailable',speed:kph===undefined?'Speed unavailable':`${Math.round(kph*0.621371)} mph`,updatedAt:typeof location?.located_at==='string'?location.located_at:new Date().toISOString(),...(latitude===undefined?{}:{latitude}),...(longitude===undefined?{}:{longitude}),...(odometerMiles===undefined?{}:{odometerMiles})}];});
   return [...vehicles,...assets];
 }
 
