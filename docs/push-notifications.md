@@ -14,6 +14,8 @@ FireOps stores every notification in a persistent inbox. Push delivery is an ale
 | Issue resolved/reopened | Issue creator, assigned vehicle crew member, company owners | `Issue resolved/reopened: {issue}` | `{actor} resolved/reopened the issue for {vehicle}.` | `/issue/{issueId}` |
 | Task due | Task owner only (owner/admin/shop tech) | `Task due today: {subject}` | `Your task is due today. Open Task List to review or complete it.` | `/tasks` |
 
+Crew Chat “Joined the conversation.” replies still appear in the thread so the member becomes a participant, but they do not create inbox or push notifications.
+
 Task reminders are scheduled events with no actor; they notify only the task owner. For user-generated events, actor never receives their own event. Recipient lists are deduplicated. Document updates, training changes, new communications, and new issues do not generate notifications.
 
 Every event stores an entity `group_key`. Inbox groups related events under that key while preserving every row. Push payload carries same key for platform/client grouping without delaying or collapsing delivery; native notification-center layout remains OS-managed.
