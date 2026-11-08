@@ -3,10 +3,31 @@ import {dotInspectionWarning, inspectionExpirationDate, localDateToday} from './
 import {nextOilChangeWarning} from './oil-change';
 
 export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[];nextOilChange?:string;nextOilChangeDue?:string};
-export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll';id:string};
+export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll'|'shop';id:string};
 export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:CommandTarget};
 export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'|'crew'};
 export type CommandPayroll = {id:string;createdByName:string;engineNumber:string;incidents:string;status:string};
+
+/** RT-130 / work capacity test reminders: from 11 months after completion until renewed. */
+export function annualQualificationRows(crew:CrewMember[],now=new Date()):CommandRow[] {
+  const today=localDateToday(now);
+  return crew.flatMap(member=>{
+    const record=member.annualRecord;
+    if(!record)return [];
+    return ([['rt130CompletionDate','RT-130'],['wctCompletionDate','Work capacity test']] as const).flatMap(([field,label])=>{
+      const completion=record[field];
+      const expiration=inspectionExpirationDate(completion);
+      if(!expiration)return [];
+      const date=new Date(`${completion}T00:00:00Z`);
+      const month=date.getUTCMonth()+11;
+      const day=Math.min(date.getUTCDate(),new Date(Date.UTC(date.getUTCFullYear(),month+1,0)).getUTCDate());
+      const reminder=new Date(Date.UTC(date.getUTCFullYear(),month,day)).toISOString().slice(0,10);
+      if(today<reminder)return [];
+      const expired=today>=expiration;
+      return [{id:`annual-${member.id}-${field}`,title:`${member.name} — ${label} ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Annual record needs updating`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'crew' as const,id:member.id}}];
+    });
+  });
+}
 
 export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payrolls:CommandPayroll[],now=new Date(),crew:CrewMember[]=[]):CommandAlert[] {
   const rank={Critical:0,High:1,Medium:2,Low:3};
@@ -28,23 +49,7 @@ export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payr
     if(!warning)return [];
     return [{id:`oil-change-${vehicle.id}`,kind:'vehicle',title:`${vehicle.unit} needs attention — oil change due`,detail:[warning.note,`Due ${warning.due}`].filter(Boolean).join(' · '),badge:'Needs attention',urgent:true,lines:[],target:{type:'vehicle',id:vehicle.id}}];
   });
-  const today=localDateToday(now);
-  const annualAlerts:CommandAlert[]=crew.flatMap(member=>{
-    const record=member.annualRecord;
-    if(!record)return [];
-    return ([['rt130CompletionDate','RT-130'],['wctCompletionDate','Work capacity test']] as const).flatMap(([field,label])=>{
-      const completion=record[field];
-      const expiration=inspectionExpirationDate(completion);
-      if(!expiration)return [];
-      const date=new Date(`${completion}T00:00:00Z`);
-      const month=date.getUTCMonth()+11;
-      const day=Math.min(date.getUTCDate(),new Date(Date.UTC(date.getUTCFullYear(),month+1,0)).getUTCDate());
-      const reminder=new Date(Date.UTC(date.getUTCFullYear(),month,day)).toISOString().slice(0,10);
-      if(today<reminder)return [];
-      const expired=today>=expiration;
-      return [{id:`annual-${member.id}-${field}`,kind:'crew' as const,title:`${member.name} — ${label} ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Annual record needs updating`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'crew' as const,id:member.id}}];
-    });
-  });
+  const annualAlerts:CommandAlert[]=annualQualificationRows(crew,now).map(row=>({...row,kind:'crew' as const}));
   return [...vehicleAlerts,...oilChangeAlerts,...inspectionAlerts,...annualAlerts,...payrollAlerts];
 }
 export function commandCenter(vehicles:CommandVehicle[],crew:CrewMember[],issues:FleetIssue[]) {

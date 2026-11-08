@@ -18,6 +18,7 @@ export * from './online-dashboard-preferences';
 export * from './online-availability';
 
 export * from './command-center';
+export * from './command-attention';
 export * from './dot-inspection';
 export * from './oil-change';
 export * from './shop';

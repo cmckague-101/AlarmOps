@@ -30,6 +30,9 @@ type Props = {
   onBack:()=>void;
   onResolveLinkedIssue:(issueId:string)=>void;
   motiveReadingFor:(vehicle:Vehicle)=>MotiveReading|null;
+  /** Shop job to open once it loads (e.g. from the dashboard's Needs Attention card). */
+  requestedJobId?:string|null;
+  onJobOpened?:()=>void;
 };
 
 function priorityStripeClass(priority:ShopJobPriority) {
@@ -45,7 +48,7 @@ function printHtml(html:string) {
   return true;
 }
 
-export default function ShopPage({companyId, user, vehicles, issues, canWork, demoMode=false, onBack, onResolveLinkedIssue, motiveReadingFor}:Props) {
+export default function ShopPage({companyId, user, vehicles, issues, canWork, demoMode=false, onBack, onResolveLinkedIssue, motiveReadingFor, requestedJobId, onJobOpened}:Props) {
   const shop = useShop(demoMode ? undefined : companyId);
   const [filter, setFilter] = useState<ShopBoardFilter>('open');
   const [query, setQuery] = useState('');
@@ -56,6 +59,11 @@ export default function ShopPage({companyId, user, vehicles, issues, canWork, de
   const [repairVehicleId, setRepairVehicleId] = useState<string|null>(null);
 
   useEffect(()=>{setShowRepairHistory(false);}, [boardFocus]);
+  useEffect(()=>{
+    if (!requestedJobId || shop.loading) return;
+    if (shop.jobs.some(job=>job.id === requestedJobId)) setSelectedId(requestedJobId);
+    onJobOpened?.();
+  }, [requestedJobId, shop.loading, shop.jobs, onJobOpened]);
 
   const vehicleById = useMemo(()=>new Map(vehicles.map(vehicle=>[vehicle.id, vehicle])), [vehicles]);
   const unitFor = (job:ShopJob)=>job.fleetVehicleId ? vehicleById.get(job.fleetVehicleId)?.unit : undefined;
