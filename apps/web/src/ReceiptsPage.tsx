@@ -1,9 +1,10 @@
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import { useCallback, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
-import { formatCalendarDate, isCompanyManager, possibleDuplicateReceiptIds, receiptDate, type CrewMember, type FireOpsUser } from '@fireops/domain';
+import { Download, ExternalLink, FileText, Pencil, ReceiptText, Trash2, Upload, X } from 'lucide-react';
+import { collectReceiptExportEntries, formatCalendarDate, isCompanyManager, possibleDuplicateReceiptIds, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type CrewMember, type FireOpsUser } from '@fireops/domain';
 import { supabase } from './supabase';
 import { createId } from './create-id';
+import { fetchReceiptBytes, triggerBrowserDownload } from './receipt-export';
 
 const BUCKET = 'receipt-files';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -110,7 +111,9 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const [editAmount, setEditAmount] = useState('');
   const [editPurchasedOn, setEditPurchasedOn] = useState('');
   const [actionId, setActionId] = useState('');
+  const [exporting, setExporting] = useState(false);
   const isOwner = isCompanyManager(user.role);
+  const storageReady = Boolean(supabase && companyId && !demoMode);
 
   const load = useCallback(async () => {
     if (!companyId || !supabase) {
@@ -205,6 +208,45 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const signedReceiptBytes = async (receipt: Receipt) => {
+    if (!supabase) throw new Error('Receipt storage is unavailable in this build.');
+    const { data, error: urlError } = await supabase.storage.from(BUCKET).createSignedUrl(receipt.storagePath, 5 * 60);
+    if (urlError || !data?.signedUrl) throw new Error(urlError?.message ?? 'Receipt file could not be prepared.');
+    return fetchReceiptBytes(data.signedUrl);
+  };
+
+  const downloadReceiptZip = async (receipt: Receipt) => {
+    if (!storageReady || actionId || exporting) return;
+    setActionId(receipt.id);
+    setError('');
+    try {
+      const data = await signedReceiptBytes(receipt);
+      const purchase = receiptDate(receipt);
+      const zip = zipStore([{name: receiptExportEntryName(receipt, purchase), data}]);
+      triggerBrowserDownload(zip, receiptSingleExportZipName(receipt, purchase));
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Receipt could not be downloaded.');
+    } finally {
+      setActionId('');
+    }
+  };
+
+  const exportVisibleZip = async () => {
+    if (!storageReady || !visible.length || actionId || exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const result = await collectReceiptExportEntries(visible, signedReceiptBytes);
+      if (!result.entries.length) throw new Error(result.warning ?? 'No receipt files were available to export.');
+      triggerBrowserDownload(zipStore(result.entries), receiptExportZipName());
+      if (result.warning) setError(result.warning);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Receipts could not be exported.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const beginEdit = (receipt: Receipt) => {
     setEditingReceipt(receipt);
     setEditName(receipt.name);
@@ -279,14 +321,18 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
 
     <section className="receipt-list-card" aria-labelledby="receipt-list-heading">
       <div className="receipt-list-heading"><div><h2 id="receipt-list-heading">{isOwner ? 'Submitted receipts' : 'Receipt history'}</h2><p>{visible.length} {visible.length === 1 ? 'receipt' : 'receipts'} · {formatMoney(visible.reduce((total, receipt) => total + receipt.amountCents, 0))}</p></div>
-        <div className="receipt-filters">
-          {isOwner && <label><span>Crew member</span><select value={crewId} onChange={(event) => setCrewId(event.target.value)}><option value="all">All crew</option>{filterCrew.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>}
-          <label><span>Timespan</span><select value={timespan} onChange={(event) => setTimespan(event.target.value as Timespan)}><option value="30-days">Last 30 days</option><option value="this-year">This year</option><option value="last-year">Last year</option><option value="all">All time</option></select></label>
+        <div className="receipt-list-tools">
+          {!!visible.length && <button type="button" className="secondary receipt-export" disabled={!storageReady || exporting || Boolean(actionId)} onClick={() => void exportVisibleZip()} title={storageReady ? 'Download a ZIP of the filtered original receipt files' : 'Receipt export needs a connected company workspace'}><Download/>{exporting ? 'Exporting…' : 'Export ZIP'}</button>}
+          <div className="receipt-filters">
+            {isOwner && <label><span>Crew member</span><select value={crewId} onChange={(event) => setCrewId(event.target.value)}><option value="all">All crew</option>{filterCrew.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>}
+            <label><span>Timespan</span><select value={timespan} onChange={(event) => setTimespan(event.target.value as Timespan)}><option value="30-days">Last 30 days</option><option value="this-year">This year</option><option value="last-year">Last year</option><option value="all">All time</option></select></label>
+          </div>
         </div>
       </div>
+      {demoMode && !!visible.length && <p className="receipt-state">Demo mode keeps sample receipts on-screen only. Connect a company workspace to download or export files.</p>}
       {loading && <p className="receipt-state">Loading receipts…</p>}
       {!loading && !error && !visible.length && <div className="receipt-empty"><FileText/><h3>No receipts found</h3><p>{receipts.length ? 'Change filters to see more receipts.' : 'Uploaded receipts will appear here.'}</p></div>}
-      {!!visible.length && <div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Name</th>{isOwner && <th>Crew member</th>}<th className="receipt-date">Date</th><th className="receipt-amount">Amount</th><th><span className="sr-only">File</span></th>{isOwner && <th><span className="sr-only">Actions</span></th>}</tr></thead><tbody>{visible.map((receipt) => <tr key={receipt.id}><td><b>{receipt.name}</b>{duplicates.has(receipt.id) ? <small className="receipt-duplicate" title="Same amount, uploader and day as another receipt">Possible duplicate</small> : <small>{receipt.fileName}</small>}</td>{isOwner && <td>{receipt.uploadedByName}</td>}<td className="receipt-date">{formatCalendarDate(receiptDate(receipt))}</td><td className="receipt-amount"><b>{formatMoney(receipt.amountCents)}</b></td><td><button className="receipt-open" onClick={() => void openReceipt(receipt)} aria-label={`Open ${receipt.name}`}><ExternalLink/>View</button></td>{isOwner && <td><div className="receipt-actions"><button type="button" disabled={Boolean(actionId)} onClick={() => beginEdit(receipt)} aria-label={`Edit ${receipt.name}`}><Pencil/></button><button className="delete" type="button" disabled={Boolean(actionId)} onClick={() => void removeReceipt(receipt)} aria-label={`Delete ${receipt.name}`}><Trash2/></button></div></td>}</tr>)}</tbody></table></div>}
+      {!!visible.length && <div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Name</th>{isOwner && <th>Crew member</th>}<th className="receipt-date">Date</th><th className="receipt-amount">Amount</th><th><span className="sr-only">File</span></th>{isOwner && <th><span className="sr-only">Actions</span></th>}</tr></thead><tbody>{visible.map((receipt) => <tr key={receipt.id}><td><b>{receipt.name}</b>{duplicates.has(receipt.id) ? <small className="receipt-duplicate" title="Same amount, uploader and day as another receipt">Possible duplicate</small> : <small>{receipt.fileName}</small>}</td>{isOwner && <td>{receipt.uploadedByName}</td>}<td className="receipt-date">{formatCalendarDate(receiptDate(receipt))}</td><td className="receipt-amount"><b>{formatMoney(receipt.amountCents)}</b></td><td><div className="receipt-file-actions"><button className="receipt-open" type="button" disabled={Boolean(actionId) || exporting} onClick={() => void openReceipt(receipt)} aria-label={`Open ${receipt.name}`}><ExternalLink/>View</button><button className="receipt-open" type="button" disabled={!storageReady || Boolean(actionId) || exporting} onClick={() => void downloadReceiptZip(receipt)} aria-label={`Download ZIP for ${receipt.name}`}><Download/>{actionId === receipt.id ? '…' : 'ZIP'}</button></div></td>{isOwner && <td><div className="receipt-actions"><button type="button" disabled={Boolean(actionId) || exporting} onClick={() => beginEdit(receipt)} aria-label={`Edit ${receipt.name}`}><Pencil/></button><button className="delete" type="button" disabled={Boolean(actionId) || exporting} onClick={() => void removeReceipt(receipt)} aria-label={`Delete ${receipt.name}`}><Trash2/></button></div></td>}</tr>)}</tbody></table></div>}
     </section>
 
     {editingReceipt && <div className="receipt-edit-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !actionId) setEditingReceipt(null); }}><section className="receipt-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-receipt-heading"><header><div><h2 id="edit-receipt-heading">Edit receipt</h2><p>{editingReceipt.fileName}</p></div><button type="button" disabled={Boolean(actionId)} onClick={() => setEditingReceipt(null)} aria-label="Close edit receipt"><X/></button></header><form onSubmit={(event) => void saveEdit(event)}><label><span>Name</span><input autoFocus maxLength={160} value={editName} onChange={(event) => setEditName(event.target.value)}/></label><label><span>Amount</span><div className="receipt-money-input"><b>$</b><input inputMode="decimal" value={editAmount} onChange={(event) => setEditAmount(event.target.value)}/></div></label><label><span>Purchase date</span><input type="date" max={todayIso()} value={editPurchasedOn} onChange={(event) => setEditPurchasedOn(event.target.value)}/></label>{error && <p className="receipt-error" role="alert">{error}</p>}<footer><button className="secondary" type="button" disabled={Boolean(actionId)} onClick={() => setEditingReceipt(null)}>Cancel</button><button className="primary" type="submit" disabled={Boolean(actionId) || !editName.trim() || amountToCents(editAmount) === null}><Pencil/>{actionId ? 'Saving…' : 'Save changes'}</button></footer></form></section></div>}

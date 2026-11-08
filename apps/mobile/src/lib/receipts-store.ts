@@ -1,6 +1,8 @@
-import { File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useSyncExternalStore } from 'react';
+import * as Sharing from 'expo-sharing';
+import { collectReceiptExportEntries, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type ReceiptExportEntry } from '@fireops/domain';
 
 import type { LocalFleetFile } from '@/lib/fleet-files';
 import { createFleetId } from '@/lib/fleet-store';
@@ -183,9 +185,60 @@ export async function deleteReceipt(companyId: string, receipt: CompanyReceipt) 
 
 export async function openReceipt(receipt: CompanyReceipt) {
   if (!supabase) throw new Error('Receipt storage is unavailable.');
+  if (!receipt.storagePath) throw new Error('This receipt file has not finished uploading yet.');
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(receipt.storagePath, 60 * 60);
   if (error) throw error;
   return data.signedUrl;
+}
+
+async function fetchReceiptBytes(signedUrl: string) {
+  const response = await fetch(signedUrl);
+  if (!response.ok) throw new Error(`Receipt file could not download (${response.status}).`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function exportDirectory() {
+  const directory = new Directory(Paths.cache, 'receipt-exports');
+  directory.create({ intermediates: true, idempotent: true });
+  return directory;
+}
+
+async function writeZipAndShare(zipName: string, entries: ReceiptExportEntry[], dialogTitle: string) {
+  if (!entries.length) throw new Error('No receipt files were available to export.');
+  if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is unavailable on this device.');
+  const directory = exportDirectory();
+  const target = new File(directory, zipName);
+  if (target.exists) target.delete();
+  target.create();
+  target.write(zipStore(entries));
+  await Sharing.shareAsync(target.uri, {
+    mimeType: 'application/zip',
+    UTI: 'public.zip-archive',
+    dialogTitle,
+  });
+  return target.uri;
+}
+
+/** Share one receipt as a ZIP containing the original file. */
+export async function shareReceiptZip(receipt: CompanyReceipt) {
+  if (!receipt.storagePath) throw new Error('This receipt file is not available to share yet.');
+  const signedUrl = await openReceipt(receipt);
+  const data = await fetchReceiptBytes(signedUrl);
+  const purchase = receiptDate(receipt);
+  return writeZipAndShare(
+    receiptSingleExportZipName(receipt, purchase),
+    [{ name: receiptExportEntryName(receipt, purchase), data }],
+    `Share ${receipt.name}`,
+  );
+}
+
+/** Share the filtered receipt list as one ZIP of original files. Skips receipts without a remote file. */
+export async function shareReceiptsZip(receipts: CompanyReceipt[]) {
+  if (!receipts.some((receipt) => Boolean(receipt.storagePath))) throw new Error('No uploaded receipt files are available to export yet.');
+  const result = await collectReceiptExportEntries(receipts, async (receipt) => fetchReceiptBytes(await openReceipt(receipt)));
+  if (!result.entries.length) throw new Error(result.warning ?? 'Receipt files could not be downloaded for export.');
+  await writeZipAndShare(receiptExportZipName(), result.entries, 'Export receipts');
+  return { exported: result.entries.length, warning: result.warning };
 }
 
 function selectCompany(companyId: string | null) {
