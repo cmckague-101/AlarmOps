@@ -30,6 +30,8 @@ Every event stores an entity `group_key`. Inbox groups related events under that
 
 Badge value comes from recipient's current unread inbox count. Opening inbox event or push marks it read and synchronizes app badge.
 
+Users can clear notifications (swipe left or **Clear all**, web dashboard and mobile inbox). Clearing sets `dismissed_at` through `dismiss_user_notifications` (`20270104000200_dismiss_user_notifications.sql`) and also marks the notification read, so it disappears on every device and drops out of unread and badge counts. Rows are kept for delivery history. Clear all only clears the event types that screen lists. Mobile clears made offline stay hidden on that device and are sent on the next online refresh.
+
 ## Database setup
 
 Apply migrations in order. Push support depends on:

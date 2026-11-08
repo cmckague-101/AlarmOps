@@ -6,6 +6,14 @@ import type {UserRole} from '@fireops/domain';
 import {supabase} from '@/lib/supabase';
 import {offlineChatInbox, subscribeOfflineChatInbox, type OfflineChatInbox} from './offline-chat-inbox';
 import {downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo} from './offline-company-lists';
+import {
+  currentDismissedNotificationIds,
+  forgetDismissedNotifications,
+  rememberDismissedNotifications,
+  selectDismissedNotificationsAccount,
+  subscribeDismissedNotifications,
+  withDismissedNotifications,
+} from './dismissed-notifications';
 import {isOffline} from '@/providers/network-provider';
 import { onAppResume, refreshOnRejoin } from './app-resume';
 
@@ -126,10 +134,18 @@ export function withOfflineReads(value: InboxSnapshot, markers: (Pick<OfflineCha
   return cleared ? {...value, notifications, unreadCount: Math.max(0, value.unreadCount - cleared)} : value;
 }
 
-let view: {source: InboxSnapshot; markers: OfflineChatInbox | null; value: InboxSnapshot} | null = null;
+let view: {source: InboxSnapshot; markers: OfflineChatInbox | null; dismissed: Set<string>; value: InboxSnapshot} | null = null;
 function currentView() {
   const markers = offlineChatInbox(activeCompanyId, activeUserId);
-  if (view?.source !== snapshot || view.markers !== markers) view = {source: snapshot, markers, value: withOfflineReads(snapshot, markers)};
+  const dismissed = currentDismissedNotificationIds();
+  if (view?.source !== snapshot || view.markers !== markers || view.dismissed !== dismissed) {
+    view = {
+      source: snapshot,
+      markers,
+      dismissed,
+      value: withDismissedNotifications(withOfflineReads(snapshot, markers), dismissed),
+    };
+  }
   return view.value;
 }
 
@@ -139,6 +155,10 @@ function emit(next: InboxSnapshot) {
   listeners.forEach((listener) => listener());
 }
 subscribeOfflineChatInbox(() => {
+  syncBadge(currentView().unreadCount);
+  listeners.forEach((listener) => listener());
+});
+subscribeDismissedNotifications(() => {
   syncBadge(currentView().unreadCount);
   listeners.forEach((listener) => listener());
 });
@@ -223,7 +243,7 @@ export function refreshNotificationInbox() {
       }
       let notificationQuery = supabase.from('user_notifications')
         .select('id,event_type,entity_type,entity_id,title,body,path,group_key,read_at,created_at')
-        .eq('company_id', companyId).eq('user_id', userId)
+        .eq('company_id', companyId).eq('user_id', userId).is('dismissed_at', null)
         .order('created_at', {ascending: false}).limit(100);
       let unreadQuery = supabase.from('user_notifications')
         .select('id', {count: 'exact', head: true})
@@ -255,6 +275,9 @@ export function refreshNotificationInbox() {
         savingPreferences: false,
         error: null,
       });
+      // Send clears made offline (or that failed) now that the server is reachable.
+      const pending = [...currentDismissedNotificationIds()];
+      if (pending.length) void sendDismissals(pending);
     } catch (loadError) {
       if (version !== selectionVersion) return;
       const detail = loadError instanceof Error ? loadError.message : 'Network request failed.';
@@ -270,6 +293,31 @@ export function refreshNotificationInbox() {
   });
   requestVersion = version;
   return request;
+}
+
+/** Clears notifications on the server (all devices); `all` clears everything this inbox lists. */
+async function sendDismissals(ids: string[], all = false) {
+  const companyId = activeCompanyId;
+  const userId = activeUserId;
+  if (!supabase || !companyId || !userId || isOffline() || (!all && !ids.length)) return;
+  const {error} = await supabase.rpc('dismiss_user_notifications', {
+    target_company_id: companyId,
+    notification_ids: all ? null : ids.slice(0, 500),
+    event_types: all && isCrewRole(activeRole) ? crewDashboardEventTypes : null,
+  });
+  // On failure the ids stay queued on this device and are retried on the next refresh.
+  if (!error) await forgetDismissedNotifications(companyId, userId, all ? ids : ids.slice(0, 500));
+}
+
+export async function dismissInboxNotification(id: string) {
+  await rememberDismissedNotifications([id]);
+  await sendDismissals([id]);
+}
+
+export async function clearInboxNotifications(ids: Iterable<string>) {
+  const visible = [...ids];
+  await rememberDismissedNotifications(visible);
+  await sendDismissals(visible, true);
 }
 
 export async function markInboxNotificationRead(notificationId: string) {
@@ -364,6 +412,7 @@ function selectAccount(companyId: string | null, userId: string | null, role: Us
   activeRole = role;
   selectionVersion += 1;
   refreshQueued = false;
+  selectDismissedNotificationsAccount(companyId, userId);
   if (channel && supabase) void supabase.removeChannel(channel);
   channel = null;
   emit({notifications: [], unreadCount: 0, preferences: defaultNotificationPreferences, loading: Boolean(companyId && userId), refreshing: false, savingPreferences: false, error: null});

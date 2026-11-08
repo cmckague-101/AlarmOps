@@ -9,6 +9,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 import {DarkTheme,DefaultTheme,router,Stack,ThemeProvider} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {Pressable,StyleSheet,Text,View} from 'react-native';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppProviders} from '@/providers/app-providers';
@@ -16,7 +17,7 @@ import {OfflineSyncNotice} from '@/components/offline-sync-notice';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
-export default function RootLayout(){return <AppProviders><RootNavigator/></AppProviders>}
+export default function RootLayout(){return <GestureHandlerRootView style={styles.root}><AppProviders><RootNavigator/></AppProviders></GestureHandlerRootView>}
 
 function RootNavigator(){
   const theme=useFireOpsTheme();

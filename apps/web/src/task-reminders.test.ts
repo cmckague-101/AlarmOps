@@ -19,7 +19,7 @@ beforeEach(()=>{
   vi.clearAllMocks();mocks.rpc.mockResolvedValue({error:null});mocks.execute.mockResolvedValue({data:[],error:null});
   mocks.from.mockImplementation(table=>{
     const request={table,action:'select',filters:[] as unknown[],values:undefined as unknown};
-    const query={select(){return query},order(){return query},limit(){return query},single(){return query},eq(...args:unknown[]){request.filters.push(args);return query},in(...args:unknown[]){request.filters.push(args);return query},
+    const query={select(){return query},order(){return query},limit(){return query},single(){return query},eq(...args:unknown[]){request.filters.push(args);return query},in(...args:unknown[]){request.filters.push(args);return query},is(...args:unknown[]){request.filters.push(args);return query},
       update(values:unknown){request.action='update';request.values=values;return query},insert(values:unknown){request.action='insert';request.values=values;return query},
       then(yes:(value:unknown)=>unknown,no:(reason:unknown)=>unknown){return Promise.resolve().then(()=>mocks.execute(request)).then(yes,no)}};
     return query;

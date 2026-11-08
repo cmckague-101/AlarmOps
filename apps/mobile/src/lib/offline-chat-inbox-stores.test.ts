@@ -4,7 +4,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 // store hooks with persistent hook slots. No UI, server or device.
 const runtime=await vi.hoisted(async()=>{const {createHookRuntime}=await import('../../../../packages/domain/test-fixtures/hook-runtime');return createHookRuntime()});
 vi.mock('react',()=>runtime.hooks);
-const mocks=vi.hoisted(()=>({offline:true,tables:{} as Record<string,{data:unknown;error:null;count?:number}>,writes:[] as {table:string;action:string}[]}));
+const mocks=vi.hoisted(()=>({offline:true,tables:{} as Record<string,{data:unknown;error:null;count?:number}>,writes:[] as {table:string;action:string}[],rpcs:[] as {name:string;args:Record<string,unknown>}[]}));
 vi.mock('expo-notifications',()=>({setBadgeCountAsync:vi.fn(async()=>undefined)}));
 vi.mock('@/providers/network-provider',()=>({isOffline:()=>mocks.offline}));
 vi.mock('@/lib/supabase',()=>{
@@ -14,12 +14,15 @@ vi.mock('@/lib/supabase',()=>{
     chain.maybeSingle=()=>chain;chain.single=()=>chain;
     chain.then=(yes:(value:unknown)=>unknown,no:(error:unknown)=>unknown)=>Promise.resolve(mocks.tables[table]??{data:[],error:null}).then(yes,no);return chain};
   const channel={on:()=>channel,subscribe:()=>channel};
-  return {supabase:{from:query,channel:()=>channel,removeChannel:async()=>undefined}};
+  return {supabase:{from:query,rpc:async(name:string,args:Record<string,unknown>)=>{mocks.rpcs.push({name,args});return {data:1,error:null}},channel:()=>channel,removeChannel:async()=>undefined}};
 });
 import {publishOfflineChatInbox,type OfflineChatInbox} from './offline-chat-inbox';
 import {publishOfflineCompanyLists} from './offline-company-lists';
-import {markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,saveNotificationPreferences,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
+import {clearInboxNotifications,dismissInboxNotification,markAllInboxNotificationsRead,markInboxNotificationRead,refreshNotificationInbox,saveNotificationPreferences,useNotificationInbox,withOfflineReads} from './notification-inbox-store';
+import {currentDismissedNotificationIds,resetDismissedNotificationsForTests,selectDismissedNotificationsAccount} from './dismissed-notifications';
 import {displayedThroughOf,markCommunicationThreadSeen,refreshCommunications,replyToCommunicationThread,useCommunications,withOfflineReplies,withOfflineSeen} from './communications-store';
+
+vi.mock('expo-secure-store',()=>({getItemAsync:vi.fn(async()=>null),setItemAsync:vi.fn(async()=>undefined),deleteItemAsync:vi.fn(async()=>undefined)}));
 
 const company='10000000-0000-4000-8000-000000000001',user='20000000-0000-4000-8000-000000000001';
 const first='30000000-0000-4000-8000-000000000001',second='30000000-0000-4000-8000-000000000002',thread='40000000-0000-4000-8000-000000000001';
@@ -33,13 +36,15 @@ function markers(changes:Partial<OfflineChatInbox>={}):OfflineChatInbox{
   return {companyId:company,userId:user,markNotificationRead:vi.fn(async()=>({})),markThreadSeen:vi.fn(async()=>({})),reads:new Map(),seen:new Map(),postReply:vi.fn(async()=>({})),newId:vi.fn(()=>'50000000-0000-4000-8000-000000000001'),replies:[],savePreferences:vi.fn(async()=>({})),preferences:{},...changes};
 }
 beforeEach(()=>{
-  mocks.offline=true;mocks.writes=[];
+  mocks.offline=true;mocks.writes=[];mocks.rpcs=[];
+  resetDismissedNotificationsForTests();
+  selectDismissedNotificationsAccount(null,null);
   mocks.tables={user_notifications:{data:[row(first),row(second)],error:null,count:2},
     communication_threads:{data:[{id:thread,subject:'S',description:'D',created_by:'other',created_by_name:'O',created_by_role:'owner',created_at:'2026-01-01T09:00:00+00:00'}],error:null},
     communication_replies:{data:[{id:'r1',thread_id:thread,body:'Hi',created_by:'other',created_by_name:'O',created_at:'2026-01-01T10:00:00.123456+00:00'}],error:null},
     communication_reads:{data:[],error:null}};
 });
-afterEach(()=>publishOfflineChatInbox(null));
+afterEach(()=>{publishOfflineChatInbox(null);selectDismissedNotificationsAccount(null,null)});
 
 describe('offline read-marker overlays',()=>{
   it('marks downloaded unread notifications read without changing already-read ones',()=>{
@@ -117,5 +122,24 @@ describe('offline store actions',()=>{
     expect(chat.render().threads.map(item=>item.subject)).toEqual(['Downloaded']);
     mocks.offline=false;await refreshNotificationInbox();await flush();expect(inbox.render().downloaded).toBeFalsy();
     publishOfflineCompanyLists(null);
+  });
+});
+describe('clearing notifications',()=>{
+  it('hides clears offline, then sends them to the server on the next online refresh',async()=>{
+    publishOfflineChatInbox(null);mocks.offline=false;mocks.tables={user_notifications:{data:[row(first),row(second)],error:null,count:2}};
+    const f=hook(()=>useNotificationInbox(company,user));f.render();f.effects();selectDismissedNotificationsAccount(company,user);await refreshNotificationInbox();await flush();
+    mocks.offline=true;
+    await dismissInboxNotification(first);
+    expect(f.render().notifications.map(item=>item.id)).toEqual([second]);expect(mocks.rpcs).toEqual([]);
+    mocks.offline=false;await refreshNotificationInbox();await flush();
+    expect(mocks.rpcs).toEqual([{name:'dismiss_user_notifications',args:{target_company_id:company,notification_ids:[first],event_types:null}}]);
+    expect([...currentDismissedNotificationIds()]).toEqual([]);
+  });
+  it('clear all online clears everything the inbox lists on the server',async()=>{
+    publishOfflineChatInbox(null);mocks.offline=false;mocks.tables={user_notifications:{data:[row(first),row(second)],error:null,count:2}};
+    const f=hook(()=>useNotificationInbox(company,user));f.render();f.effects();selectDismissedNotificationsAccount(company,user);await refreshNotificationInbox();await flush();
+    await clearInboxNotifications([first,second]);
+    expect(mocks.rpcs).toEqual([{name:'dismiss_user_notifications',args:{target_company_id:company,notification_ids:null,event_types:null}}]);
+    expect([...currentDismissedNotificationIds()]).toEqual([]);
   });
 });

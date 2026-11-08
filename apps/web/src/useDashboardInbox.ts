@@ -27,6 +27,10 @@ function source(event:NotificationRow['event_type'],path:string|null):DashboardN
   return 'qualifications';
 }
 
+function eventTypes(role:FireOpsUser['role']):NotificationRow['event_type'][] {
+  return isCompanyManager(role)?['task_due']:role==='shop_tech'?[...visibleEvents,'task_due']:canProcessFinance(role)?financeEvents:visibleEvents;
+}
+
 export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
   const token=useMemo(()=>({}),[companyId,user.id,user.role]);
   const currentToken=useRef(token);currentToken.current=token;
@@ -38,7 +42,7 @@ export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
     const {data,error}=await supabase.from('user_notifications')
       .select('id,event_type,title,body,path,read_at,created_at')
       .eq('company_id',companyId).eq('user_id',user.id)
-      .in('event_type',isCompanyManager(user.role)?['task_due']:user.role==='shop_tech'?[...visibleEvents,'task_due']:canProcessFinance(user.role)?financeEvents:visibleEvents)
+      .is('dismissed_at',null).in('event_type',eventTypes(user.role))
       .order('created_at',{ascending:false}).limit(5);
     if(error||currentToken.current!==token)return;
     setStored({token,items:((data??[]) as NotificationRow[]).map(row=>({
@@ -64,5 +68,13 @@ export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
       .eq('company_id',companyId).eq('user_id',user.id).eq('id',id);
   },[companyId,user.id,token]);
 
-  return {notifications,markRead};
+  /** Clears notifications for this user on every device; null clears everything this dashboard lists. */
+  const dismiss=useCallback(async(ids:string[]|null)=>{
+    if(!supabase||!companyId||currentToken.current!==token)return;
+    setStored(before=>before.token===token?{token,items:ids?before.items?.filter(item=>!ids.includes(item.id))??null:[]}:before);
+    const {error}=await supabase.rpc('dismiss_user_notifications',{target_company_id:companyId,notification_ids:ids,event_types:ids?null:eventTypes(user.role)});
+    if(error)void load();
+  },[companyId,user.role,token,load]);
+
+  return {notifications,markRead,dismiss};
 }

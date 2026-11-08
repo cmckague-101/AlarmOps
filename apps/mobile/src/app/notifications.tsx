@@ -1,11 +1,14 @@
-import {useMemo} from 'react';
+import {useMemo, useRef} from 'react';
 import {Redirect, Stack, useRouter} from 'expo-router';
 import {Pressable, RefreshControl, ScrollView, StyleSheet, Text, View} from 'react-native';
+import Swipeable, {SwipeDirection, type SwipeableMethods} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {SafeAreaView} from 'react-native-safe-area-context';
 
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import {AppSymbol} from '@/components/app-symbol';
 import {
+  clearInboxNotifications,
+  dismissInboxNotification,
   markAllInboxNotificationsRead,
   markInboxNotificationRead,
   refreshNotificationInbox,
@@ -33,6 +36,67 @@ function iconFor(notification: InboxNotification) {
   }
 }
 
+function NotificationRow({
+  notification,
+  styles,
+  theme,
+  onOpen,
+  onClear,
+}: {
+  notification: InboxNotification;
+  styles: ReturnType<typeof createStyles>;
+  theme: FireOpsTheme;
+  onOpen: (notification: InboxNotification) => void;
+  onClear: (id: string) => void;
+}) {
+  const swipeable = useRef<SwipeableMethods>(null);
+  return (
+    <Swipeable
+      ref={swipeable}
+      overshootRight={false}
+      rightThreshold={64}
+      onSwipeableOpen={(direction) => {
+        // Swiping the row left reveals the right-side Clear action.
+        if (direction !== SwipeDirection.LEFT) return;
+        onClear(notification.id);
+      }}
+      renderRightActions={() => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Clear notification ${notification.title}`}
+          onPress={() => {
+            swipeable.current?.close();
+            onClear(notification.id);
+          }}
+          style={({pressed}) => [styles.clearAction, pressed && styles.pressed]}
+        >
+          <Text style={styles.clearActionLabel}>Clear</Text>
+        </Pressable>
+      )}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${notification.title}${notification.readAt ? '' : ', unread'}`}
+        onPress={() => void onOpen(notification)}
+        style={({pressed}) => [styles.row, !notification.readAt && styles.unreadRow, pressed && styles.pressed]}
+      >
+        <View style={[styles.icon, !notification.readAt && styles.unreadIcon]}>
+          <AppSymbol name={iconFor(notification) as never} color={!notification.readAt ? theme.ember : theme.secondary} size={18} />
+        </View>
+        <View style={styles.copy}>
+          <View style={styles.titleLine}>
+            <Text numberOfLines={1} style={styles.rowTitle}>{notification.title}</Text>
+            {!notification.readAt ? <View accessibilityLabel="Unread" style={styles.dot} /> : null}
+          </View>
+          <Text numberOfLines={2} style={styles.body}>{notification.body}</Text>
+          <Text style={styles.date}>{formatDate(notification.createdAt)}</Text>
+        </View>
+        <AppSymbol name={{ios: 'chevron.right', android: 'chevron_right'} as never} color={theme.secondary} size={17} />
+      </Pressable>
+    </Swipeable>
+  );
+}
+
 export default function NotificationsScreen() {
   const router = useRouter();
   const theme = useFireOpsTheme();
@@ -54,6 +118,14 @@ export default function NotificationsScreen() {
     router.push(notification.path as never);
   };
 
+  const clearOne = (id: string) => {
+    void dismissInboxNotification(id);
+  };
+
+  const clearAll = () => {
+    void clearInboxNotifications(notifications.map((notification) => notification.id));
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <Stack.Screen options={{title: 'Notifications'}} />
@@ -66,11 +138,18 @@ export default function NotificationsScreen() {
             <Text accessibilityRole="header" style={styles.title}>Notifications</Text>
             <Text style={styles.subtitle}>{unreadCount ? `${unreadCount} unread` : 'You’re all caught up.'}</Text>
           </View>
-          {unreadCount ? (
-            <Pressable accessibilityRole="button" onPress={() => void markAllInboxNotificationsRead()} style={({pressed}) => [styles.markAll, pressed && styles.pressed]}>
-              <Text style={styles.markAllLabel}>Mark all read</Text>
-            </Pressable>
-          ) : null}
+          <View style={styles.headingActions}>
+            {notifications.length ? (
+              <Pressable accessibilityRole="button" onPress={clearAll} style={({pressed}) => [styles.markAll, pressed && styles.pressed]}>
+                <Text style={styles.markAllLabel}>Clear all</Text>
+              </Pressable>
+            ) : null}
+            {unreadCount ? (
+              <Pressable accessibilityRole="button" onPress={() => void markAllInboxNotificationsRead()} style={({pressed}) => [styles.markAll, pressed && styles.pressed]}>
+                <Text style={styles.markAllLabel}>Mark all read</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {loading && notifications.length === 0 ? <Text style={styles.state}>Loading notifications…</Text> : null}
@@ -88,26 +167,14 @@ export default function NotificationsScreen() {
               <View key={group.key} style={styles.group}>
                 {group.items.length > 1 ? <Text style={styles.groupLabel}>{group.items.length} related notifications</Text> : null}
                 {group.items.map((notification) => (
-                  <Pressable
+                  <NotificationRow
                     key={notification.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${notification.title}${notification.readAt ? '' : ', unread'}`}
-                    onPress={() => void open(notification)}
-                    style={({pressed}) => [styles.row, !notification.readAt && styles.unreadRow, pressed && styles.pressed]}
-                  >
-                    <View style={[styles.icon, !notification.readAt && styles.unreadIcon]}>
-                      <AppSymbol name={iconFor(notification) as never} color={!notification.readAt ? theme.ember : theme.secondary} size={18} />
-                    </View>
-                    <View style={styles.copy}>
-                      <View style={styles.titleLine}>
-                        <Text numberOfLines={1} style={styles.rowTitle}>{notification.title}</Text>
-                        {!notification.readAt ? <View accessibilityLabel="Unread" style={styles.dot} /> : null}
-                      </View>
-                      <Text numberOfLines={2} style={styles.body}>{notification.body}</Text>
-                      <Text style={styles.date}>{formatDate(notification.createdAt)}</Text>
-                    </View>
-                    <AppSymbol name={{ios: 'chevron.right', android: 'chevron_right'} as never} color={theme.secondary} size={17} />
-                  </Pressable>
+                    notification={notification}
+                    styles={styles}
+                    theme={theme}
+                    onOpen={open}
+                    onClear={clearOne}
+                  />
                 ))}
               </View>
             ))}
@@ -124,15 +191,18 @@ function createStyles(theme: FireOpsTheme) {
     content: {flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 48, gap: 20},
     heading: {flexDirection: 'row', alignItems: 'center', gap: 14},
     headingCopy: {flex: 1, gap: 4},
+    headingActions: {alignItems: 'flex-end', gap: 2},
     title: {color: theme.ink, fontSize: 30, lineHeight: 36, fontWeight: '800'},
     subtitle: {color: theme.secondary, fontSize: 14},
     markAll: {minHeight: 40, justifyContent: 'center', paddingHorizontal: 10},
     markAllLabel: {color: theme.ember, fontSize: 13, fontWeight: '700'},
     list: {gap: 12},
-    group: {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider},
+    group: {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider, overflow: 'hidden'},
     groupLabel: {color: theme.secondary, backgroundColor: theme.surfaceAlt, fontSize: 11, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 7},
-    row: {minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 12},
+    row: {minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 12, backgroundColor: theme.canvas},
     unreadRow: {backgroundColor: theme.dangerSurface},
+    clearAction: {width: 88, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.danger},
+    clearActionLabel: {color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase'},
     icon: {width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.surfaceAlt},
     unreadIcon: {backgroundColor: theme.paper},
     copy: {flex: 1, gap: 4},
