@@ -1,7 +1,8 @@
 import type {CrewMember, FleetIssue, NifcIncident} from './models';
 import {dotInspectionWarning, inspectionExpirationDate, localDateToday} from './dot-inspection';
+import {nextOilChangeWarning} from './oil-change';
 
-export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[]};
+export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[];nextOilChange?:string;nextOilChangeDue?:string};
 export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll';id:string};
 export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:CommandTarget};
 export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'|'crew'};
@@ -22,6 +23,11 @@ export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payr
     const {inspectionDate,expiration,expired}=warning;
     return [{id:`dot-inspection-${vehicle.id}`,kind:'vehicle',title:`${vehicle.unit} DOT inspection ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Inspected ${inspectionDate}`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'vehicle',id:vehicle.id}}];
   });
+  const oilChangeAlerts:CommandAlert[]=vehicles.flatMap(vehicle=>{
+    const warning=nextOilChangeWarning(vehicle,now);
+    if(!warning)return [];
+    return [{id:`oil-change-${vehicle.id}`,kind:'vehicle',title:`${vehicle.unit} needs attention — oil change due`,detail:[warning.note,`Due ${warning.due}`].filter(Boolean).join(' · '),badge:'Needs attention',urgent:true,lines:[],target:{type:'vehicle',id:vehicle.id}}];
+  });
   const today=localDateToday(now);
   const annualAlerts:CommandAlert[]=crew.flatMap(member=>{
     const record=member.annualRecord;
@@ -39,7 +45,7 @@ export function commandAlerts(vehicles:CommandVehicle[],issues:FleetIssue[],payr
       return [{id:`annual-${member.id}-${field}`,kind:'crew' as const,title:`${member.name} — ${label} ${expired?'expired':'expires soon'}`,detail:`${expired?'Expired':'Expires'} ${expiration} · Annual record needs updating`,badge:expired?'Expired':'Due soon',urgent:expired,lines:[],target:{type:'crew' as const,id:member.id}}];
     });
   });
-  return [...vehicleAlerts,...inspectionAlerts,...annualAlerts,...payrollAlerts];
+  return [...vehicleAlerts,...oilChangeAlerts,...inspectionAlerts,...annualAlerts,...payrollAlerts];
 }
 export function commandCenter(vehicles:CommandVehicle[],crew:CrewMember[],issues:FleetIssue[]) {
   const assigned=vehicles.filter(vehicle=>Boolean(vehicle.assignedTo));

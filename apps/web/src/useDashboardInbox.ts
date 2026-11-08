@@ -5,7 +5,8 @@ import {supabase} from './supabase';
 
 type NotificationRow = {
   id:string;
-  event_type:'communication_reply'|'training_created'|'qualification_approved'|'payroll_rejected'|'invoice_paid'|'task_due'|'system';
+  event_type:'communication_reply'|'training_created'|'qualification_approved'|'payroll_rejected'|'invoice_paid'|'task_due'|'oil_change_due'|'system';
+  entity_id:string|null;
   path:string|null;
   title:string;
   body:string;
@@ -19,6 +20,7 @@ const financeEvents:NotificationRow['event_type'][]=[...visibleEvents,'system'];
 
 function source(event:NotificationRow['event_type'],path:string|null):DashboardNotification['source'] {
   if(event==='task_due')return 'tasks';
+  if(event==='oil_change_due')return 'fleet';
   if(event==='payroll_rejected')return 'payroll';
   if(event==='invoice_paid')return 'invoices';
   if(event==='system')return path==='/invoices'?'invoices':'payroll';
@@ -28,7 +30,7 @@ function source(event:NotificationRow['event_type'],path:string|null):DashboardN
 }
 
 function eventTypes(role:FireOpsUser['role']):NotificationRow['event_type'][] {
-  return isCompanyManager(role)?['task_due']:role==='shop_tech'?[...visibleEvents,'task_due']:canProcessFinance(role)?financeEvents:visibleEvents;
+  return isCompanyManager(role)?['task_due']:role==='shop_tech'?[...visibleEvents,'task_due','oil_change_due']:canProcessFinance(role)?financeEvents:visibleEvents;
 }
 
 export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
@@ -40,7 +42,7 @@ export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
     if(currentToken.current!==token)return;
     if(!supabase||!companyId){setStored({token,items:null});return}
     const {data,error}=await supabase.from('user_notifications')
-      .select('id,event_type,title,body,path,read_at,created_at')
+      .select('id,event_type,entity_id,title,body,path,read_at,created_at')
       .eq('company_id',companyId).eq('user_id',user.id)
       .is('dismissed_at',null).in('event_type',eventTypes(user.role))
       .order('created_at',{ascending:false}).limit(5);
@@ -48,6 +50,7 @@ export function useDashboardInbox(companyId:string|undefined,user:FireOpsUser) {
     setStored({token,items:((data??[]) as NotificationRow[]).map(row=>({
       id:row.id,source:source(row.event_type,row.path),title:row.title,detail:row.body,
       createdAt:row.created_at,unread:!row.read_at,
+      ...(row.event_type==='oil_change_due'&&row.entity_id?{vehicleId:row.entity_id}:{}),
     }))});
   },[companyId,user.id,user.role,token]);
 

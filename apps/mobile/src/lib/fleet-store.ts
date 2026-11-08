@@ -54,6 +54,9 @@ export type FleetVehicle = {
   assignedFire?: Pick<NifcIncident, "id" | "name" | "state">;
   motive?: MotiveVehicleSnapshot;
   notes: string | null;
+  /** Free-text oil change target (e.g. "45,000 mi") and its YYYY-MM-DD due date. */
+  nextOilChange?: string;
+  nextOilChangeDue?: string;
   inspections: VehicleInspection[];
   photo: FleetVehicleFile | null;
   documents: FleetVehicleDocument[];
@@ -241,6 +244,8 @@ function normalizeVehicle(row: VehicleRow): FleetVehicle {
         ? (payload.motive as MotiveVehicleSnapshot)
         : undefined,
     notes: text(payload, "notes"),
+    nextOilChange: text(payload, "nextOilChange") ?? undefined,
+    nextOilChangeDue: text(payload, "nextOilChangeDue") ?? undefined,
     inspections: Array.isArray(payload.inspections) ? payload.inspections as VehicleInspection[] : [],
     photo,
     documents,

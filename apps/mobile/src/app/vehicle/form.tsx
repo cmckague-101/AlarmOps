@@ -5,6 +5,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -145,12 +146,54 @@ export default function VehicleFormScreen() {
     setPhoto({ uri: asset.uri, name: asset.fileName ?? `${form.unit.trim() || 'vehicle'}-photo.jpg`, type: asset.mimeType ?? 'image/jpeg' });
   };
 
-  const chooseBinderDocument = async (key: BinderDocumentKey) => {
-    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
-    if (result.canceled) return;
-    const asset = result.assets[0];
+  const applyBinderFile = (key: BinderDocumentKey, file: LocalFleetFile) => {
     if (key === 'dotInspection') setInspectionDate('');
-    setBinderFiles((current) => ({ ...current, [key]: { uri: asset.uri, name: asset.name, type: asset.mimeType ?? null } }));
+    setBinderFiles((current) => ({ ...current, [key]: file }));
+  };
+
+  const chooseBinderDocument = async (key: BinderDocumentKey) => {
+    const allowCamera = key === 'registration' || key === 'dotInspection';
+    if (!allowCamera) {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      applyBinderFile(key, { uri: asset.uri, name: asset.name, type: asset.mimeType ?? null });
+      return;
+    }
+    Alert.alert(
+      key === 'dotInspection' ? 'DOT Inspection' : 'Registration',
+      'Take a photo or choose an image/PDF file.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Take photo',
+          onPress: () => {
+            void (async () => {
+              const permission = await ImagePicker.requestCameraPermissionsAsync();
+              if (!permission.granted) {
+                setSaveError('Camera permission is required to photograph this document.');
+                return;
+              }
+              const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 });
+              if (result.canceled) return;
+              const asset = result.assets[0];
+              applyBinderFile(key, { uri: asset.uri, name: asset.fileName ?? `${key}-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' });
+            })();
+          },
+        },
+        {
+          text: 'Choose file',
+          onPress: () => {
+            void (async () => {
+              const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+              if (result.canceled) return;
+              const asset = result.assets[0];
+              applyBinderFile(key, { uri: asset.uri, name: asset.name, type: asset.mimeType ?? null });
+            })();
+          },
+        },
+      ],
+    );
   };
 
   const submit = async () => {
@@ -305,7 +348,7 @@ export default function VehicleFormScreen() {
             <Field label="Notes" styles={styles}><TextInput style={[styles.textInput, styles.notesInput]} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>
           </View>
 
-          {editing ? <View style={styles.section}><Text style={styles.sectionTitle}>Digital Equipment Binder</Text><Text style={styles.sectionHelp}>Upload image or PDF for each document.</Text><View style={styles.binderList}>{binderDocuments.map(({ key, label }) => { const pending = binderFiles[key]; const existing = attachedBinderFile(vehicle, label); return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`${pending || existing ? 'Replace' : 'Upload'} ${label}`} onPress={() => void chooseBinderDocument(key)} style={({ pressed }) => [styles.binderRow, pressed && styles.pressed]}><View style={styles.binderIcon}><AppSymbol name={{ ios: 'doc.fill', android: 'description' } as never} color={theme.ember} size={18} /></View><View style={styles.uploadCopy}><Text style={styles.binderLabel}>{label}</Text><Text style={styles.uploadName} numberOfLines={1}>{pending?.name ?? existing?.name ?? 'No document attached'}</Text></View><Text style={styles.binderAction}>{pending || existing ? 'Replace' : 'Upload'}</Text></Pressable>; })}</View>{(binderFiles.dotInspection || attachedBinderFile(vehicle, 'DOT Inspection')) ? <Field label="DOT inspection date" required styles={styles}><Pressable accessibilityRole="button" accessibilityLabel="Select DOT inspection date" style={styles.binderRow} onPress={() => setDatePickerOpen(open => !open)}><Text style={styles.binderLabel}>{inspectionDate || 'Select inspection date'}</Text></Pressable><Text style={styles.sectionHelp}>Expires {inspectionExpirationDate(inspectionDate) ?? 'one year after inspection'}</Text>{datePickerOpen ? <><DateTimePicker value={inspectionDate ? new Date(`${inspectionDate}T12:00:00`) : new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (Platform.OS !== 'ios') setDatePickerOpen(false); if (event.type === 'set' && date) setInspectionDate(localDateToday(date)); }}/>{Platform.OS === 'ios' ? <Pressable accessibilityRole="button" onPress={() => setDatePickerOpen(false)}><Text style={styles.binderAction}>Done</Text></Pressable> : null}</> : null}</Field> : null}</View> : null}
+          {editing ? <View style={styles.section}><Text style={styles.sectionTitle}>Digital Equipment Binder</Text><Text style={styles.sectionHelp}>Upload image or PDF for each document. Registration and DOT Inspection also support photo capture.</Text><View style={styles.binderList}>{binderDocuments.map(({ key, label }) => { const pending = binderFiles[key]; const existing = attachedBinderFile(vehicle, label); const cameraCapable = key === 'registration' || key === 'dotInspection'; return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`${pending || existing ? 'Replace' : 'Upload'} ${label}`} onPress={() => void chooseBinderDocument(key)} style={({ pressed }) => [styles.binderRow, pressed && styles.pressed]}><View style={styles.binderIcon}><AppSymbol name={{ ios: cameraCapable ? 'camera.fill' : 'doc.fill', android: cameraCapable ? 'photo_camera' : 'description' } as never} color={theme.ember} size={18} /></View><View style={styles.uploadCopy}><Text style={styles.binderLabel}>{label}</Text><Text style={styles.uploadName} numberOfLines={1}>{pending?.name ?? existing?.name ?? 'No document attached'}</Text></View><Text style={styles.binderAction}>{pending || existing ? 'Replace' : cameraCapable ? 'Photo / file' : 'Upload'}</Text></Pressable>; })}</View>{(binderFiles.dotInspection || attachedBinderFile(vehicle, 'DOT Inspection')) ? <Field label="DOT inspection date" required styles={styles}><Pressable accessibilityRole="button" accessibilityLabel="Select DOT inspection date" style={styles.binderRow} onPress={() => setDatePickerOpen(open => !open)}><Text style={styles.binderLabel}>{inspectionDate || 'Select inspection date'}</Text></Pressable><Text style={styles.sectionHelp}>Expires {inspectionExpirationDate(inspectionDate) ?? 'one year after inspection'}</Text>{datePickerOpen ? <><DateTimePicker value={inspectionDate ? new Date(`${inspectionDate}T12:00:00`) : new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (Platform.OS !== 'ios') setDatePickerOpen(false); if (event.type === 'set' && date) setInspectionDate(localDateToday(date)); }}/>{Platform.OS === 'ios' ? <Pressable accessibilityRole="button" onPress={() => setDatePickerOpen(false)}><Text style={styles.binderAction}>Done</Text></Pressable> : null}</> : null}</Field> : null}</View> : null}
         </ScrollView>
 
         <View style={styles.footer}>

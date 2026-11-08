@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { dotInspectionWarning, formatCalendarDate, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
+import { dotInspectionWarning, formatCalendarDate, nextOilChangeWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +30,7 @@ type FleetStyles = ReturnType<typeof createStyles>;
 function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pendingLabel }: { vehicle: FleetVehicle; assignedName?: string; issueCount: number; styles: FleetStyles; onPress: () => void;pendingLabel?:string }) {
   const photoUrl = useFleetFileUrl(vehicle.photo);
   const dotWarning = dotInspectionWarning(vehicle);
+  const oilWarning = nextOilChangeWarning(vehicle);
   const [loadedPhotoUrl, setLoadedPhotoUrl] = useState<string | null>(null);
 
   return (
@@ -60,13 +61,14 @@ function VehicleRow({ vehicle, assignedName, issueCount, styles, onPress,pending
         <Text style={styles.vehicleMeta} numberOfLines={1}>
           {[vehicle.type, vehicle.detail].filter(Boolean).join(' · ')}
         </Text>
-        {assignedName || vehicle.location || issueCount > 0 || vehicle.motive?.diagnostics?.length ? (
-          <Text style={[styles.location, (issueCount > 0 || Boolean(vehicle.motive?.diagnostics?.length)) && styles.issueCount]} numberOfLines={1}>
-            {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null, vehicle.motive?.diagnostics?.length ? `${vehicle.motive.diagnostics.length} diagnostic ${vehicle.motive.diagnostics.length === 1 ? 'code' : 'codes'}` : null].filter(Boolean).join(' · ')}
+        {assignedName || vehicle.location || issueCount > 0 ? (
+          <Text style={[styles.location, issueCount > 0 && styles.issueCount]} numberOfLines={1}>
+            {[assignedName ? `Assigned to ${assignedName}` : vehicle.location, issueCount > 0 ? `${issueCount} open ${issueCount === 1 ? 'issue' : 'issues'}` : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
         {pendingLabel?<Text style={styles.location}>{pendingLabel}</Text>:null}
         {dotWarning ? <Text style={[styles.location, styles.issueCount]}>DOT inspection {dotWarning.expired ? 'expired' : 'expiring'} · {formatCalendarDate(dotWarning.expiration)}</Text> : null}
+        {oilWarning ? <Text style={[styles.location, styles.issueCount]}>Needs attention · Oil change due {formatCalendarDate(oilWarning.due)}</Text> : null}
       </View>
       <View style={styles.rowEnd}>
         <Text style={[styles.status, { color: styles[statusTone(vehicle.status)].backgroundColor }]}>{displayStatus(vehicle.status)}</Text>

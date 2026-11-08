@@ -108,7 +108,7 @@ export type Vehicle = {
   id:string;unit:string;type:string;year:number;make:string;model:string;
   vin:string;plate:string;status:VehicleStatus;photo?:VehicleFile;contract?:VehicleFile;
   viprChecklist?:VehicleFile;registration?:VehicleFile;insurance?:VehicleFile;
-  dotInspection?:VehicleFile;documents?:NamedDocument[];notes?:string;createdAt:string;assignedTo?:string;
+  dotInspection?:VehicleFile;documents?:NamedDocument[];notes?:string;nextOilChange?:string;nextOilChangeDue?:string;createdAt:string;assignedTo?:string;
   inspections?:VehicleInspection[];
   assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;
 };
@@ -175,5 +175,7 @@ export type FireResourceVehicle = {
 };
 
 export type DashboardNotification = {
-  id:string;source:'communications'|'documents'|'training'|'qualifications'|'payroll'|'invoices'|'tasks';title:string;detail:string;createdAt:string;unread:boolean;
+  id:string;source:'communications'|'documents'|'training'|'qualifications'|'payroll'|'invoices'|'tasks'|'fleet';title:string;detail:string;createdAt:string;unread:boolean;
+  /** Vehicle to open for fleet notifications (oil change due). */
+  vehicleId?:string;
 };

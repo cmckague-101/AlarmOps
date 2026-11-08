@@ -654,7 +654,7 @@ export default function VehicleDetailScreen() {
                     onPress={() => router.push(`/vehicle-notes/${encodeURIComponent(vehicle.id)}` as never)}
                     style={({ pressed }) => [styles.vehicleNotesButton, pressed && styles.buttonPressed]}
                   >
-                    <Text style={styles.vehicleNotesLabel}>Vehicle Notes</Text>
+                    <Text style={styles.vehicleNotesLabel}>Service</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -690,22 +690,6 @@ export default function VehicleDetailScreen() {
                     <Text style={styles.motiveValue}>{formatSpeed(vehicle.motive.speed)}</Text>
                   </View>
                 </View>
-                {vehicle.motive.diagnostics !== undefined ? (
-                  <View accessibilityLabel={vehicle.motive.diagnostics.length ? `${vehicle.motive.diagnostics.length} open diagnostic codes` : "No open diagnostic codes"} style={styles.diagnostics}>
-                    <View style={styles.diagnosticsHeading}>
-                      <AppSymbol name={vehicle.motive.diagnostics.length ? ({ ios: "exclamationmark.triangle.fill", android: "warning" } as never) : ({ ios: "checkmark.circle.fill", android: "check_circle" } as never)} color={vehicle.motive.diagnostics.length ? "#FFB4AB" : "#52D394"} size={17} />
-                      <Text style={[styles.diagnosticsTitle, !vehicle.motive.diagnostics.length && styles.diagnosticsClear]}>{vehicle.motive.diagnostics.length ? "Open diagnostic codes" : "No open diagnostic codes"}</Text>
-                      {vehicle.motive.diagnostics.length ? <Text style={styles.diagnosticsCount}>{vehicle.motive.diagnostics.length}</Text> : null}
-                    </View>
-                    {vehicle.motive.diagnostics.map(code => (
-                      <View key={code.id} style={styles.diagnosticRow}>
-                        <Text style={styles.diagnosticCode}>{code.label}</Text>
-                        <Text style={styles.diagnosticDescription}>{code.description || "Description unavailable"}</Text>
-                        <Text style={styles.diagnosticDate}>Last observed {formattedDate(code.lastObservedAt ?? null) ?? "unknown"}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
                 </View>
                 {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
                   <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} stale={telemetryFreshness(vehicle.motive.updatedAt) === "stale"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />

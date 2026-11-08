@@ -255,9 +255,12 @@ Deno.serve(async (request) => {
   try {
     const {data: taskReminders, error: reminderError} = await admin.rpc('enqueue_due_task_reminders');
     if (reminderError) throw new Error(`Task reminders could not be queued: ${reminderError.message}`);
+    const {data: oilChangeReminders, error: oilChangeError} = await admin.rpc('enqueue_due_oil_change_reminders');
+    // Not fatal: other pushes still go out if this reminder query fails.
+    if (oilChangeError) console.error('Oil change reminders could not be queued:', oilChangeError.message);
     const receipts = await processReceipts(admin);
     const dispatch = await dispatchJobs(admin);
-    return json(200, {taskReminders, receipts, dispatch});
+    return json(200, {taskReminders, oilChangeReminders, receipts, dispatch});
   } catch (dispatchError) {
     console.error('Push dispatch failed:', dispatchError);
     return json(500, {error: errorText(dispatchError)});

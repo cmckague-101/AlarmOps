@@ -19,6 +19,7 @@ export * from './online-availability';
 
 export * from './command-center';
 export * from './dot-inspection';
+export * from './oil-change';
 export * from './demo-data';
 export * from './offline-sync';
 export * from './sync-review-client';
