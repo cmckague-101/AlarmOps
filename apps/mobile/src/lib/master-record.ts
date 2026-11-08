@@ -1,4 +1,4 @@
-import type {CrewCredential,CrewMember} from '@fireops/domain';
+import {crewCredentials,type CrewCredential,type CrewMember} from '@fireops/domain';
 
 export type MasterRecordSection={title:string;columns:string[];rows:string[][]};
 
@@ -16,7 +16,7 @@ function byType(credentials:CrewCredential[],types:CrewCredential['recordType'][
 }
 
 export function getMasterRecordSections(member:CrewMember):MasterRecordSection[]{
-  const credentials=member.credentials??[];
+  const credentials=crewCredentials(member);
   const trainingRows=credentialRows(byType(credentials,['Training']));
   const annual=member.annualRecord;
   if(annual)trainingRows.push(

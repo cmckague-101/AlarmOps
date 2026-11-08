@@ -1,52 +1,86 @@
-import type { CredentialRecordType, CrewMember, QualificationCardRequest } from '@fireops/domain';
-import { crewCredentials } from '@fireops/domain';
-import { useEffect, useMemo, useState } from 'react';
-import { loadCompanyQualificationCardRequests } from './qualificationCardStore';
+import type { CrewMember } from '@fireops/domain';
+import { userRoleLabel } from '@fireops/domain';
+import { ChevronDown, CircleUserRound, Users } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import './CrewReview.css';
 
-const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'DOT Medical'];
-const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'Not recorded';
-
-export default function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId?: string }) {
-  const members = useMemo(() => crew.filter((member) => member.role !== 'owner').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
-  const [selectedId, setSelectedId] = useState('');
-  const [requests, setRequests] = useState<QualificationCardRequest[]>([]);
-  const [cardError, setCardError] = useState('');
-  const member = members.find((item) => item.id === selectedId);
+export default function CrewReview({ viewer, crew, onOpenMasterRecord }: { viewer: CrewMember; crew: CrewMember[]; onOpenMasterRecord: (member: CrewMember) => void }) {
+  const members = useMemo(
+    () => crew.filter((member) => member.id !== viewer.id).sort((a, b) => a.name.localeCompare(b.name)),
+    [crew, viewer.id],
+  );
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
 
   useEffect(() => {
-    if (!companyId) return;
-    let active = true;
-    loadCompanyQualificationCardRequests(companyId)
-      .then((next) => { if (active) setRequests(next); })
-      .catch((error: unknown) => { if (active) setCardError(error instanceof Error ? error.message : 'Qualification card status unavailable.'); });
-    return () => { active = false; };
-  }, [companyId, members]);
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
 
-  const credentials = member ? crewCredentials(member) : [];
-  const approvedCard = member ? requests.find((request) => request.crewUserId === member.id && request.status === 'approved') : undefined;
+  const openRecord = (member: CrewMember) => {
+    setOpen(false);
+    onOpenMasterRecord(member);
+  };
 
-  return <div className="crew-review">
-    <div className="crew-review-select">
-      <label htmlFor="crew-review-member"><b>Crew Review</b></label>
-      <select id="crew-review-member" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-        <option value="">Select crew member</option>
-        {members.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select>
-      {selectedId && <button type="button" className="crew-review-clear" aria-label="Clear crew selection" onClick={() => setSelectedId('')}>×</button>}
-    </div>
-    {member && <div className="crew-review-details">
-      <header><div><h3>{member.name}</h3><p>{member.email} · {member.phone}</p></div><strong className={approvedCard ? 'complete' : ''}>{approvedCard ? 'Qualification card completed' : 'No completed qualification card'}</strong></header>
-      {cardError && <p className="crew-review-error">{cardError}</p>}
-      <div className="crew-review-grid">
-        {recordTypes.map((type) => {
-          const records = credentials.filter((credential) => (credential.recordType ?? 'Qualification') === type);
-          const photoOnly = type === 'License' || type === 'DOT Medical';
-          return <section key={type}><h4>{type}</h4>{records.length ? records.map((record) => <article key={record.id}><b>{record.name}</b>{photoOnly ? <span>Photo: {record.file?.name || 'None'}</span> : <><span>Course: {record.courseCode || 'Not recorded'}</span><span>Completed: {date(record.completionDate)}</span><span>Expires: {date(record.expirationDate)}</span><span>Provider: {record.provider || 'Not recorded'}</span><span>File: {record.file?.name || 'None'}</span></>}</article>) : <p>No records</p>}</section>;
-        })}
-        <section><h4>Experience</h4>{member.experiences?.length ? member.experiences.map((experience) => <article key={experience.id}><b>{experience.incident}</b><span>Position: {experience.position}</span><span>Days: {experience.days}</span><span>File: {experience.file?.name || 'None'}</span></article>) : <p>No experience records</p>}</section>
-        <section><h4>Annual records</h4>{member.annualRecord ? <article><span>RT-130 completion: {date(member.annualRecord.rt130CompletionDate)}</span><span>RT-130 currency: {date(member.annualRecord.rt130CurrencyDate)}</span><span>WCT completion: {date(member.annualRecord.wctCompletionDate)}</span><span>WCT currency: {date(member.annualRecord.wctCurrencyDate)}</span></article> : <p>No annual record</p>}</section>
+  return <section className="crew-records" aria-labelledby="crew-records-heading">
+    <header className="crew-records-heading">
+      <span className="crew-records-mark" aria-hidden="true"><Users /></span>
+      <div>
+        <h2 id="crew-records-heading">Crew records</h2>
+        <p>Open your master record or review another crew member’s.</p>
       </div>
-    </div>}
-  </div>;
+    </header>
+    <div className="crew-records-picker" ref={rootRef}>
+      <button
+        type="button"
+        className={`crew-records-trigger${open ? ' open' : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="crew-records-trigger-icon" aria-hidden="true"><Users /></span>
+        <span className="crew-records-trigger-copy">
+          <b>Select a record</b>
+          <small>My records + {members.length} {members.length === 1 ? 'crew member' : 'crew members'}</small>
+        </span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {open && <ul className="crew-records-menu" id={listId} role="listbox" aria-label="Qualification records">
+        <li role="option">
+          <button type="button" className="crew-records-self" onClick={() => openRecord(viewer)}>
+            <span className="crew-records-avatar self" aria-hidden="true"><CircleUserRound /></span>
+            <span className="crew-records-member-copy">
+              <b>My records</b>
+              <small>{viewer.name} · {userRoleLabel(viewer.role)}</small>
+            </span>
+          </button>
+        </li>
+        {members.length > 0 && <li className="crew-records-divider" aria-hidden="true">Crew</li>}
+        {members.map((member) => (
+          <li key={member.id} role="option">
+            <button type="button" onClick={() => openRecord(member)}>
+              <span className="crew-records-avatar" aria-hidden="true">{member.name.slice(0, 1).toUpperCase()}</span>
+              <span className="crew-records-member-copy">
+                <b>{member.name}</b>
+                <small>{userRoleLabel(member.role)}{member.status === 'Invited' ? ' · Invited' : ''}</small>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>}
+    </div>
+  </section>;
 }

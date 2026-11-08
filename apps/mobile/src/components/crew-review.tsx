@@ -1,58 +1,87 @@
-import type { CredentialRecordType, CrewMember, QualificationCardRequest } from '@fireops/domain';
-import { crewCredentials } from '@fireops/domain';
-import { useEffect, useMemo, useState } from 'react';
+import type { CrewMember } from '@fireops/domain';
+import { userRoleLabel } from '@fireops/domain';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppSymbol } from '@/components/app-symbol';
-import { loadCompanyCardRequests } from '@/lib/qualification-card-store';
 import { useFireOpsTheme } from '@/theme';
 
-const recordTypes: CredentialRecordType[] = ['Training', 'Qualification', 'License', 'Task Book', 'DOT Medical'];
-const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'Not recorded';
-
-export function CrewReview({ crew, companyId }: { crew: CrewMember[]; companyId: string }) {
+/** Manager-only picker that opens "My records" or another crew member's master record. */
+export function CrewReview({ viewer, crew, onOpenMasterRecord }: { viewer: CrewMember; crew: CrewMember[]; onOpenMasterRecord: (member: CrewMember) => void }) {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const members = useMemo(() => crew.filter((member) => member.role !== 'owner').sort((a, b) => a.name.localeCompare(b.name)), [crew]);
+  const members = useMemo(
+    () => crew.filter((member) => member.id !== viewer.id).sort((a, b) => a.name.localeCompare(b.name)),
+    [crew, viewer.id],
+  );
   const [open, setOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState('');
-  const [requests, setRequests] = useState<QualificationCardRequest[]>([]);
-  const [cardError, setCardError] = useState('');
-  const member = members.find((item) => item.id === selectedId);
-
-  useEffect(() => {
-    let active = true;
-    loadCompanyCardRequests(companyId)
-      .then((next) => { if (active) setRequests(next); })
-      .catch((error: unknown) => { if (active) setCardError(error instanceof Error ? error.message : 'Qualification card status unavailable.'); });
-    return () => { active = false; };
-  }, [companyId, members]);
-
-  const credentials = member ? crewCredentials(member) : [];
-  const approvedCard = member ? requests.find((request) => request.crewUserId === member.id && request.status === 'approved') : undefined;
+  const openRecord = (member: CrewMember) => {
+    setOpen(false);
+    onOpenMasterRecord(member);
+  };
 
   return <View style={styles.container}>
-    <View style={styles.selectRow}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Crew Review, select crew member" onPress={() => setOpen((value) => !value)} style={({ pressed }) => [styles.select, pressed && styles.pressed]}>
-        <View><Text style={styles.title}>Crew Review</Text><Text style={styles.subtitle}>{member?.name ?? 'Select crew member'}</Text></View><AppSymbol name={open ? 'chevron.up' : 'chevron.down'} color={theme.secondary} size={15} />
-      </Pressable>
-      {selectedId ? <Pressable accessibilityRole="button" accessibilityLabel="Clear crew selection" onPress={() => { setSelectedId(''); setOpen(false); }} style={({ pressed }) => [styles.clear, pressed && styles.pressed]}><Text style={styles.clearText}>×</Text></Pressable> : null}
+    <View style={styles.heading}>
+      <View style={styles.mark}><AppSymbol name={{ ios: 'person.2.fill', android: 'group' } as never} color={theme.ember} size={20} /></View>
+      <View style={styles.grow}>
+        <Text accessibilityRole="header" style={styles.title}>Crew records</Text>
+        <Text style={styles.subtitle}>Open your master record or review another crew member’s.</Text>
+      </View>
     </View>
-    {open && <View style={styles.options}>{members.length ? members.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => { setSelectedId(item.id); setOpen(false); }} style={({ pressed }) => [styles.option, pressed && styles.pressed]}><Text style={styles.optionText}>{item.name}</Text></Pressable>) : <Text style={styles.empty}>No crew members</Text>}</View>}
-    {member && <View style={styles.details}>
-      <Text style={styles.memberName}>{member.name}</Text><Text style={styles.meta}>{member.email} · {member.phone}</Text>
-      <Text style={[styles.cardStatus, approvedCard && styles.cardComplete]}>{approvedCard ? 'Qualification card completed' : 'No completed qualification card'}</Text>
-      {cardError ? <Text style={styles.error}>{cardError}</Text> : null}
-      {recordTypes.map((type) => {
-        const records = credentials.filter((credential) => (credential.recordType ?? 'Qualification') === type);
-        const photoOnly = type === 'License' || type === 'DOT Medical';
-        return <View key={type} style={styles.section}><Text style={styles.sectionTitle}>{type}</Text>{records.length ? records.map((record) => <View key={record.id} style={styles.record}><Text style={styles.recordTitle}>{record.name}</Text>{photoOnly ? <Text style={styles.meta}>Photo: {record.file?.name || 'None'}</Text> : <><Text style={styles.meta}>Course: {record.courseCode || 'Not recorded'}</Text><Text style={styles.meta}>Completed: {date(record.completionDate)}</Text><Text style={styles.meta}>Expires: {date(record.expirationDate)}</Text><Text style={styles.meta}>Provider: {record.provider || 'Not recorded'}</Text><Text style={styles.meta}>File: {record.file?.name || 'None'}</Text></>}</View>) : <Text style={styles.empty}>No records</Text>}</View>;
-      })}
-      <View style={styles.section}><Text style={styles.sectionTitle}>Experience</Text>{member.experiences?.length ? member.experiences.map((experience) => <View key={experience.id} style={styles.record}><Text style={styles.recordTitle}>{experience.incident}</Text><Text style={styles.meta}>Position: {experience.position}</Text><Text style={styles.meta}>Days: {experience.days}</Text><Text style={styles.meta}>File: {experience.file?.name || 'None'}</Text></View>) : <Text style={styles.empty}>No experience records</Text>}</View>
-      <View style={styles.section}><Text style={styles.sectionTitle}>Annual records</Text>{member.annualRecord ? <View style={styles.record}><Text style={styles.meta}>RT-130 completion: {date(member.annualRecord.rt130CompletionDate)}</Text><Text style={styles.meta}>RT-130 currency: {date(member.annualRecord.rt130CurrencyDate)}</Text><Text style={styles.meta}>WCT completion: {date(member.annualRecord.wctCompletionDate)}</Text><Text style={styles.meta}>WCT currency: {date(member.annualRecord.wctCurrencyDate)}</Text></View> : <Text style={styles.empty}>No annual record</Text>}</View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Select a record"
+      accessibilityState={{ expanded: open }}
+      onPress={() => setOpen((value) => !value)}
+      style={({ pressed }) => [styles.trigger, open && styles.triggerOpen, pressed && styles.pressed]}
+    >
+      <View style={styles.triggerIcon}><AppSymbol name={{ ios: 'person.2.fill', android: 'group' } as never} color={theme.ember} size={17} /></View>
+      <View style={styles.grow}>
+        <Text style={styles.triggerTitle}>Select a record</Text>
+        <Text style={styles.small}>My records + {members.length} {members.length === 1 ? 'crew member' : 'crew members'}</Text>
+      </View>
+      <AppSymbol name={open ? 'chevron.up' : 'chevron.down'} color={open ? theme.ember : theme.secondary} size={15} />
+    </Pressable>
+    {open && <View style={styles.menu}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`My records, ${viewer.name}`} onPress={() => openRecord(viewer)} style={({ pressed }) => [styles.option, styles.selfOption, pressed && styles.pressed]}>
+        <View style={[styles.avatar, styles.selfAvatar]}><AppSymbol name={{ ios: 'person.crop.circle', android: 'account_circle' } as never} color={theme.ember} size={18} /></View>
+        <View style={styles.grow}>
+          <Text style={styles.optionTitle}>My records</Text>
+          <Text style={styles.small} numberOfLines={1}>{viewer.name} · {userRoleLabel(viewer.role)}</Text>
+        </View>
+      </Pressable>
+      {members.length > 0 && <Text style={styles.divider}>CREW</Text>}
+      {members.map((member) => (
+        <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={`${member.name} master record`} onPress={() => openRecord(member)} style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{member.name.slice(0, 1).toUpperCase()}</Text></View>
+          <View style={styles.grow}>
+            <Text style={styles.optionTitle} numberOfLines={1}>{member.name}</Text>
+            <Text style={styles.small}>{userRoleLabel(member.role)}{member.status === 'Invited' ? ' · Invited' : ''}</Text>
+          </View>
+        </Pressable>
+      ))}
     </View>}
   </View>;
 }
 
 function createStyles(theme: ReturnType<typeof useFireOpsTheme>) { return StyleSheet.create({
-  container: { width: '100%', marginBottom: 10 }, selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, select: { flex: 1, minHeight: 78, padding: 16, borderRadius: 16, backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, clear: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.divider }, clearText: { color: theme.ink, fontSize: 24, lineHeight: 26 }, pressed: { opacity: .72 }, title: { color: theme.ink, fontSize: 17, fontWeight: '800' }, subtitle: { color: theme.secondary, fontSize: 13, marginTop: 4 }, chevron: { color: theme.secondary, fontSize: 14 }, options: { marginTop: 6, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper }, option: { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider }, optionText: { color: theme.ink, fontSize: 15, fontWeight: '600' }, details: { marginTop: 8, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper }, memberName: { color: theme.ink, fontSize: 20, fontWeight: '800' }, meta: { color: theme.secondary, fontSize: 13, lineHeight: 19 }, cardStatus: { alignSelf: 'flex-start', color: theme.danger, backgroundColor: theme.dangerSurface, fontSize: 12, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12, marginTop: 10 }, cardComplete: { color: theme.green, backgroundColor: theme.greenSurface }, error: { color: theme.danger, marginTop: 8 }, section: { marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.divider }, sectionTitle: { color: theme.ink, fontSize: 16, fontWeight: '800', marginBottom: 7 }, record: { paddingVertical: 6 }, recordTitle: { color: theme.ink, fontSize: 14, fontWeight: '700', marginBottom: 2 }, empty: { color: theme.secondary, fontSize: 13, padding: 12 },
+  container: { gap: 14, padding: 17, borderRadius: 14, borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  grow: { flex: 1, minWidth: 0 },
+  mark: { width: 44, height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.dangerSurface },
+  title: { color: theme.ink, fontSize: 15, fontWeight: '800' },
+  subtitle: { color: theme.secondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  trigger: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.surfaceAlt },
+  triggerOpen: { borderColor: theme.ember, backgroundColor: theme.paper },
+  triggerIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.dangerSurface },
+  triggerTitle: { color: theme.ink, fontSize: 14, fontWeight: '800' },
+  small: { color: theme.secondary, fontSize: 11, marginTop: 2 },
+  menu: { padding: 6, borderRadius: 12, borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper },
+  option: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9 },
+  selfOption: { backgroundColor: theme.dangerSurface },
+  divider: { paddingTop: 10, paddingHorizontal: 12, paddingBottom: 4, color: theme.secondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ember },
+  selfAvatar: { backgroundColor: theme.paper },
+  avatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  optionTitle: { color: theme.ink, fontSize: 13, fontWeight: '800' },
+  pressed: { opacity: 0.72 },
 }); }

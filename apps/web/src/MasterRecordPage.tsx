@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, FileText } from 'lucide-react';
-import type { CrewCredential, CrewMember } from '@fireops/domain';
+import { crewCredentials, type CrewCredential, type CrewMember } from '@fireops/domain';
 import './MasterRecordPage.css';
 
 type Section = { title: string; columns: string[]; rows: string[][] };
@@ -16,7 +16,7 @@ function credentialRows(items: CrewCredential[]): string[][] {
 }
 
 function sectionsFor(member: CrewMember): Section[] {
-  const credentials = member.credentials ?? [];
+  const credentials = crewCredentials(member);
   const experiences = member.experiences ?? [];
   const annual = member.annualRecord;
   const trainingRows = credentialRows(credentialsFor(credentials, ['Training']));
@@ -50,33 +50,36 @@ function packetHtml(member: CrewMember, sections: Section[]) {
   </style></head><body><header><div class="responder"><small>Responder</small><strong>${escapeHtml(member.name)}</strong></div><div class="report"><strong>Master Qualification Record</strong><br>Responder Master Record (C028) Report</div></header><main><h1>Master Record</h1>${body}</main><footer><span>FireOps qualification record</span><span>Prepared ${escapeHtml(generated)}</span></footer></body></html>`;
 }
 
+/** Opens the browser print dialog for a master-record PDF packet (Save as PDF). */
+export function openMasterRecordPdf(member: CrewMember) {
+  const sections = sectionsFor(member);
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed'; frame.style.width = '1px'; frame.style.height = '1px'; frame.style.opacity = '0'; frame.style.pointerEvents = 'none';
+  document.body.appendChild(frame);
+  const documentToPrint = frame.contentDocument;
+  if (!documentToPrint) { frame.remove(); return; }
+  documentToPrint.open(); documentToPrint.write(packetHtml(member, sections)); documentToPrint.close();
+  window.setTimeout(() => {
+    const printWindow = frame.contentWindow;
+    if (!printWindow) { frame.remove(); return; }
+    const cleanup = () => frame.remove();
+    printWindow.addEventListener('afterprint', cleanup, { once: true });
+    printWindow.focus(); printWindow.print();
+    window.setTimeout(cleanup, 60_000);
+  }, 250);
+}
+
 export default function MasterRecordPage({ member, onBack }: { member?: CrewMember; onBack: () => void }) {
   const sections = member ? sectionsFor(member) : [];
-  const preparePacket = () => {
-    if (!member) return;
-    const frame = document.createElement('iframe');
-    frame.style.position = 'fixed'; frame.style.width = '1px'; frame.style.height = '1px'; frame.style.opacity = '0'; frame.style.pointerEvents = 'none';
-    document.body.appendChild(frame);
-    const documentToPrint = frame.contentDocument;
-    if (!documentToPrint) { frame.remove(); return; }
-    documentToPrint.open(); documentToPrint.write(packetHtml(member, sections)); documentToPrint.close();
-    window.setTimeout(() => {
-      const printWindow = frame.contentWindow;
-      if (!printWindow) { frame.remove(); return; }
-      const cleanup = () => frame.remove();
-      printWindow.addEventListener('afterprint', cleanup, { once: true });
-      printWindow.focus(); printWindow.print();
-      window.setTimeout(cleanup, 60_000);
-    }, 250);
-  };
+  const credentials = member ? crewCredentials(member) : [];
 
   return <div className="page master-record-page">
     <button className="qualification-back" onClick={onBack}><ArrowLeft /> Back to qualifications</button>
     <div className="master-record-heading"><div><p className="master-record-eyebrow">Master Record</p><h1>{member?.name ?? 'Master Record'}</h1></div></div>
     {!member ? <div className="master-record-empty"><FileText/><h2>No responder record found</h2><p>Your crew profile is not available.</p></div> : <>
-      <section className="master-record-summary"><div><span>Responder</span><strong>{member.name}</strong></div><div><span>Credentials on record</span><strong>{member.credentials?.length ?? 0}</strong></div><div><span>Incident experience</span><strong>{member.experiences?.length ?? 0}</strong></div></section>
+      <section className="master-record-summary"><div><span>Responder</span><strong>{member.name}</strong></div><div><span>Credentials on record</span><strong>{credentials.length}</strong></div><div><span>Incident experience</span><strong>{member.experiences?.length ?? 0}</strong></div></section>
       <div className="master-record-sections">{sections.map(section => <section className="master-record-section" key={section.title}><div className="master-record-section-title"><h2>{section.title}</h2><span>{section.rows.length} {section.rows.length === 1 ? 'record' : 'records'}</span></div>{section.rows.length ? <div className="master-record-table-wrap"><table><thead><tr>{section.columns.map(column => <th key={column}>{column}</th>)}</tr></thead><tbody>{section.rows.map((row, rowIndex) => <tr key={`${section.title}-${rowIndex}`}>{row.map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}</tr>)}</tbody></table></div> : <p className="master-record-no-records">No records on file</p>}</section>)}</div>
-      <div className="master-record-actions"><button className="master-record-prepare" onClick={preparePacket}><Download /> Prepare PDF Packet</button></div>
+      <div className="master-record-actions"><button className="master-record-prepare" onClick={() => openMasterRecordPdf(member)}><Download /> Prepare PDF Packet</button></div>
     </>}
   </div>;
 }
