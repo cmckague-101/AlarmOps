@@ -12,12 +12,15 @@ import { FireOpsTheme, useFireOpsTheme } from '@/theme';
 type LineItem = { id: number; description: string; quantity: string; rate: string };
 type Draft = { invoiceDate: string; invoiceNumber: string; billFrom: string; billTo: string; customerId: string; items: LineItem[] };
 export type GeneratedInvoice = { pdfUri: string; invoiceNumber: string; invoiceDate: string; amount: number; customerId: string };
+const ADD_CUSTOMER = '__add_customer__';
+
 type Props = {
   companyLogoUri?: string | null;
   company: { name: string; phone?: string; location?: string };
   customers: InvoiceCustomer[];
   /** Where this user's unfinished generator draft is kept on the device. */
   draftKey: string;
+  onAddCustomer: (name: string) => Promise<InvoiceCustomer>;
   onAddToInvoices: (invoice: GeneratedInvoice) => Promise<void>;
 };
 const item = (id: number): LineItem => ({ id, description: '', quantity: '1', rate: '0.00' });
@@ -40,13 +43,15 @@ const emptyDraft = (company: Props['company']): Draft => ({
   items: [item(1)],
 });
 
-export function InvoiceGeneratorScreen({ companyLogoUri, company, customers, draftKey, onAddToInvoices }: Props) {
+export function InvoiceGeneratorScreen({ companyLogoUri, company, customers, draftKey, onAddCustomer, onAddToInvoices }: Props) {
   const theme = useFireOpsTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(company));
   const [restored, setRestored] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [customerName, setCustomerName] = useState('');
   const lastPdf = useRef<{ uri: string; signature: string } | null>(null);
   const logo = companyLogoUri ?? '';
   const total = useMemo(() => draft.items.reduce((sum, row) => sum + lineTotal(row), 0), [draft.items]);
@@ -72,9 +77,31 @@ export function InvoiceGeneratorScreen({ companyLogoUri, company, customers, dra
   const patch = (values: Partial<Draft>) => setDraft((current) => ({ ...current, ...values }));
   const update = (id: number, key: 'description' | 'quantity' | 'rate', value: string) => patch({ items: draft.items.map((row) => row.id === id ? { ...row, [key]: value } : row) });
   const chooseCustomer = (customerId: string) => {
+    if (customerId === ADD_CUSTOMER) {
+      setAddingCustomer(true);
+      setCustomerName('');
+      return;
+    }
+    setAddingCustomer(false);
     const name = customers.find((customer) => customer.id === customerId)?.name ?? '';
     const [, ...rest] = draft.billTo.split('\n');
     patch({ customerId, billTo: name ? [name, ...rest].join('\n') : draft.billTo });
+  };
+  const saveCustomer = async () => {
+    const name = customerName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const created = await onAddCustomer(name);
+      const [, ...rest] = draft.billTo.split('\n');
+      patch({ customerId: created.id, billTo: [created.name, ...rest].join('\n') });
+      setAddingCustomer(false);
+      setCustomerName('');
+    } catch (error) {
+      Alert.alert('Could not add customer', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setBusy(false);
+    }
   };
   const startOver = () => Alert.alert('Start a new invoice?', 'This clears the invoice in the generator.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Start over', style: 'destructive', onPress: () => { lastPdf.current = null; setDraft(emptyDraft(company)); } }]);
 
@@ -123,7 +150,8 @@ export function InvoiceGeneratorScreen({ companyLogoUri, company, customers, dra
       <Text style={styles.label}>Invoice number</Text><TextInput style={styles.input} value={draft.invoiceNumber} onChangeText={(invoiceNumber) => patch({ invoiceNumber })} placeholder="INV-001" placeholderTextColor={theme.secondary} />
       <Text style={styles.label}>Bill from</Text><TextInput style={[styles.input, styles.multiline]} multiline value={draft.billFrom} onChangeText={(billFrom) => patch({ billFrom })} placeholder={'Company name\nAddress\nEmail'} placeholderTextColor={theme.secondary} />
       <Text style={styles.label}>Customer</Text>
-      {customers.length ? <FilterSelect accessibilityLabel="Customer" placeholder="Select customer" value={draft.customerId} onChange={chooseCustomer} options={customers.map((customer) => ({ value: customer.id, label: customer.name }))} /> : <Text style={styles.help}>Add customers from Invoices → Customers.</Text>}
+      <FilterSelect accessibilityLabel="Customer" placeholder={customers.length ? 'Select customer' : 'Add a customer'} value={addingCustomer ? ADD_CUSTOMER : draft.customerId} onChange={chooseCustomer} options={[...customers.map((customer) => ({ value: customer.id, label: customer.name })), { value: ADD_CUSTOMER, label: 'Add customer…' }]} />
+      {addingCustomer ? <View style={styles.addCustomerRow}><TextInput autoFocus value={customerName} onChangeText={setCustomerName} maxLength={160} placeholder="Customer name" placeholderTextColor={theme.secondary} style={[styles.input, styles.addCustomerInput]} /><Pressable disabled={!customerName.trim() || busy} onPress={() => void saveCustomer()} style={[styles.addCustomerButton, (!customerName.trim() || busy) && styles.disabled]}><Text style={styles.addCustomerButtonText}>Add</Text></Pressable><Pressable onPress={() => { setAddingCustomer(false); setCustomerName(''); }} style={styles.cancelAdd}><Text style={styles.cancelAddText}>Cancel</Text></Pressable></View> : null}
       <Text style={styles.label}>Bill to</Text><TextInput style={[styles.input, styles.multiline]} multiline value={draft.billTo} onChangeText={(billTo) => patch({ billTo })} placeholder={'Customer name\nAddress\nEmail'} placeholderTextColor={theme.secondary} />
       <Text style={styles.label}>Company logo</Text>{logo ? <Image source={{ uri: logo }} style={styles.logo} resizeMode="contain" /> : <Text style={styles.help}>Add company logo in Settings to include it on invoices.</Text>}
       <View style={styles.lineHeader}><Text style={styles.sectionTitle}>Line items</Text><Pressable style={styles.secondaryButton} onPress={() => patch({ items: [...draft.items, item(Date.now())] })}><Text style={styles.secondaryText}>+ Add item</Text></Pressable></View>
@@ -161,5 +189,11 @@ function createStyles(theme: FireOpsTheme) {
     removeButton: { alignSelf: 'flex-end', paddingVertical: 4 }, remove: { color: theme.danger, fontWeight: '700' },
     total: { textAlign: 'right', color: theme.ink, fontSize: 20, fontWeight: '800', marginVertical: 20 },
     primaryButton: { backgroundColor: theme.ember, borderRadius: 9, padding: 14, alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 }, disabled: { opacity: 0.45 },
+    addCustomerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 8 },
+    addCustomerInput: { flex: 1, minWidth: 140 },
+    addCustomerButton: { minHeight: 44, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: theme.ember },
+    addCustomerButtonText: { color: '#fff', fontWeight: '800' },
+    cancelAdd: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+    cancelAddText: { color: theme.secondary, fontWeight: '700' },
   });
 }

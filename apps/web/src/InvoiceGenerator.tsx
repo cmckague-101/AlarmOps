@@ -4,12 +4,15 @@ import { ArrowLeft, FileDown, Plus, Trash2 } from 'lucide-react';
 
 type LineItem = { id: number; description: string; quantity: string; rate: string };
 
+const ADD_CUSTOMER = '__add_customer__';
+
 type InvoiceGeneratorProps = {
   companyLogoUrl?: string | null;
   company: { name: string; phone?: string; location?: string };
   customers: InvoiceCustomer[];
   /** localStorage key for this user's unfinished generator draft. */
   draftKey: string;
+  onAddCustomer: (name: string) => Promise<InvoiceCustomer>;
   onAddToInvoices: (invoice: { invoiceNumber: string; invoiceDate: string; amount: number; customerId: string }) => Promise<void>;
   onBack: () => void;
 };
@@ -24,7 +27,7 @@ const emptyItem = (id: number): LineItem => ({ id, description: '', quantity: '1
 const money = (value: number) => value.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char] ?? char);
 
-export function InvoiceGenerator({ companyLogoUrl, company, customers, draftKey, onAddToInvoices, onBack }: InvoiceGeneratorProps) {
+export function InvoiceGenerator({ companyLogoUrl, company, customers, draftKey, onAddCustomer, onAddToInvoices, onBack }: InvoiceGeneratorProps) {
   const [draft, setDraft] = useState<Draft>(() => readDraft(draftKey, company));
   const { invoiceDate, invoiceNumber, billFrom, billTo, customerId, items } = draft;
   const patch = (values: Partial<Draft>) => setDraft((current) => ({ ...current, ...values }));
@@ -35,9 +38,29 @@ export function InvoiceGenerator({ companyLogoUrl, company, customers, draftKey,
   const setItems = (next: (current: LineItem[]) => LineItem[]) => setDraft((current) => ({ ...current, items: next(current.items) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [customerName, setCustomerName] = useState('');
   // Keep the unfinished invoice in this browser so leaving the page does not lose it.
   useEffect(() => { try { window.localStorage.setItem(draftKey, JSON.stringify(draft)); } catch { /* storage unavailable */ } }, [draft, draftKey]);
-  const chooseCustomer = (id: string) => { const name = customers.find((customer) => customer.id === id)?.name ?? ''; const [, ...rest] = billTo.split('\n'); patch({ customerId: id, billTo: name ? [name, ...rest].join('\n') : billTo }); };
+  const chooseCustomer = (id: string) => {
+    if (id === ADD_CUSTOMER) { setAddingCustomer(true); setCustomerName(''); return; }
+    setAddingCustomer(false);
+    const name = customers.find((customer) => customer.id === id)?.name ?? '';
+    const [, ...rest] = billTo.split('\n');
+    patch({ customerId: id, billTo: name ? [name, ...rest].join('\n') : billTo });
+  };
+  const saveCustomer = async () => {
+    const name = customerName.trim();
+    if (!name) return;
+    setBusy(true); setError('');
+    try {
+      const created = await onAddCustomer(name);
+      const [, ...rest] = billTo.split('\n');
+      patch({ customerId: created.id, billTo: [created.name, ...rest].join('\n') });
+      setAddingCustomer(false); setCustomerName('');
+    } catch (addError) { setError(addError instanceof Error ? addError.message : 'Customer could not be added.'); }
+    finally { setBusy(false); }
+  };
   const startOver = () => { if (window.confirm('Start a new invoice? This clears the invoice in the generator.')) setDraft(emptyDraft(company)); };
   const logo = companyLogoUrl ?? '';
   const total = useMemo(() => items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.rate) || 0), 0), [items]);
@@ -81,7 +104,7 @@ export function InvoiceGenerator({ companyLogoUrl, company, customers, draftKey,
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16 }}>
         <label style={labelStyle}>Bill from<textarea style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} value={billFrom} onChange={(event) => setBillFrom(event.target.value)} placeholder={'Company name\nAddress\nEmail'} /></label>
-        <div style={{ display: 'grid', gap: 10 }}><label style={labelStyle}>Customer<select style={inputStyle} value={customerId} onChange={(event) => chooseCustomer(event.target.value)}><option value="">{customers.length ? 'Select customer' : 'Add customers from Invoices first'}</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><label style={labelStyle}>Bill to<textarea style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} value={billTo} onChange={(event) => setBillTo(event.target.value)} placeholder={'Customer name\nAddress\nEmail'} /></label></div>
+        <div style={{ display: 'grid', gap: 10 }}><label style={labelStyle}>Customer<select style={inputStyle} value={addingCustomer ? ADD_CUSTOMER : customerId} onChange={(event) => chooseCustomer(event.target.value)}><option value="">{customers.length ? 'Select customer' : 'Add a customer'}</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}<option value={ADD_CUSTOMER}>Add customer…</option></select></label>{addingCustomer && <div className="invoice-inline-customer"><input style={inputStyle} autoFocus value={customerName} maxLength={160} placeholder="Customer name" onChange={(event) => setCustomerName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCustomer(); } }} /><button type="button" className="primary" disabled={!customerName.trim() || busy} onClick={() => void saveCustomer()}>Add</button><button type="button" className="secondary" onClick={() => { setAddingCustomer(false); setCustomerName(''); }}>Cancel</button></div>}<label style={labelStyle}>Bill to<textarea style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} value={billTo} onChange={(event) => setBillTo(event.target.value)} placeholder={'Customer name\nAddress\nEmail'} /></label></div>
       </div>
       <div style={labelStyle}>Company logo<div>{logo ? <img src={logo} alt="Company logo" style={{ width: 96, height: 64, objectFit: 'contain', border: '1px solid var(--line)', borderRadius: 8 }} /> : <span style={{ color: 'var(--muted)', fontWeight: 400 }}>Add company logo in Settings to include it on invoices.</span>}</div></div>
       <div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}><strong>Line items</strong><button type="button" onClick={() => setItems((current) => [...current, emptyItem(Date.now())])} style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)', padding: '8px 12px', display: 'flex', gap: 6, cursor: 'pointer' }}><Plus size={16} /> Add item</button></div>

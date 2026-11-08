@@ -6,7 +6,7 @@ import {InvoiceGeneratorScreen, type GeneratedInvoice} from '@/components/invoic
 import {openFleetFile} from '@/lib/fleet-files';
 import {createFleetId} from '@/lib/fleet-store';
 import {removeInvoiceFile, uploadInvoiceFile} from '@/lib/invoice-files';
-import {saveInvoice, useInvoices} from '@/lib/invoice-store';
+import {addInvoiceCustomer, saveInvoice, useInvoices} from '@/lib/invoice-store';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
@@ -41,6 +41,6 @@ export default function Screen() {
 
   return <SafeAreaView style={{flex: 1, backgroundColor: theme.canvas}} edges={['bottom']}>
     <Stack.Screen options={{title: 'Invoice Generator'}}/>
-    <InvoiceGeneratorScreen companyLogoUri={logoUri} company={{name: member.company.name, phone: member.company.phone, location: member.company.location}} customers={customers} draftKey={`invoice-generator-draft.${member.company.id}.${member.user.id}`} onAddToInvoices={addToInvoices}/>
+    <InvoiceGeneratorScreen companyLogoUri={logoUri} company={{name: member.company.name, phone: member.company.phone, location: member.company.location}} customers={customers} draftKey={`invoice-generator-draft.${member.company.id}.${member.user.id}`} onAddCustomer={addInvoiceCustomer} onAddToInvoices={addToInvoices}/>
   </SafeAreaView>;
 }
