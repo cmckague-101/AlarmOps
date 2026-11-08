@@ -109,7 +109,7 @@ let selectionVersion = 0;
 const crewDashboardEventTypes: NotificationEventType[] = ['communication_reply', 'training_created', 'qualification_approved', 'payroll_rejected', 'invoice_paid', 'task_due', 'oil_change_due'];
 
 function isCrewRole(role: UserRole | null | undefined) {
-  return role === 'fire_fighter' || role === 'shop_tech';
+  return role === 'fire_fighter' || role === 'shop_tech' || role === 'resource_boss';
 }
 let request: Promise<void> | null = null;
 let requestVersion = -1;

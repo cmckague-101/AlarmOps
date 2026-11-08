@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { commandAlerts, commandCenter, type CommandVehicle } from './command-center';
-import { needsAttentionRows, withNeedsAttentionCard } from './command-attention';
-import type { CrewMember } from './models';
+import { needsAttentionRows, resourceAttentionRows, withNeedsAttentionCard } from './command-attention';
+import type { CrewMember, FleetIssue, InventoryItem } from './models';
 import type { ShopJob } from './shop';
 
 const now = new Date('2026-11-06T12:00:00');
@@ -103,5 +103,38 @@ describe('withNeedsAttentionCard', () => {
     const dueSoon = needsAttentionRows([], [member({ credentials: [{ id: 'r', name: 'Red Card', expirationDate: '2026-11-20', file: { name: 'r.pdf', type: 'application/pdf', dataUrl: '' } }] })], [], now);
     expect(withNeedsAttentionCard(base, dueSoon).find((card) => card.id === 'attention')?.summary).toBe('1 item to review');
     expect(withNeedsAttentionCard(base, []).find((card) => card.id === 'attention')?.summary).toBe('Nothing needs attention');
+  });
+});
+
+describe('resourceAttentionRows', () => {
+  const issue = (overrides: Partial<FleetIssue> = {}): FleetIssue => ({
+    id: 'i1', vehicleId: 'v1', title: 'Pump leak', description: 'Drips at idle', priority: 'Critical', status: 'Open',
+    updates: [], createdBy: 'Crew', createdById: 'u1', createdAt: '2026-11-05T10:00:00Z', ...overrides,
+  });
+  const item = (overrides: Partial<InventoryItem> = {}): InventoryItem => ({
+    id: 'g1', name: 'Radios', quantity: 3, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', checkouts: [], ...overrides,
+  });
+
+  it('lists open critical/high fleet issues first, then overdue gear, then empty stock', () => {
+    const rows = resourceAttentionRows(
+      [issue({ id: 'low', priority: 'Low' }), issue({ id: 'high', priority: 'High' }), issue(), issue({ id: 'done', status: 'Resolved' })],
+      [vehicle()],
+      [
+        item({ id: 'empty', name: 'Shelters', quantity: 0, checkouts: [{ userId: 'u2', userName: 'Maya', quantity: 2, checkedOutAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' }] }),
+        item({ checkouts: [
+          { userId: 'u3', userName: 'Cole', quantity: 1, checkedOutAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' },
+          { userId: 'u4', userName: 'Jo', quantity: 1, checkedOutAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+        ] }),
+      ],
+      now,
+    );
+    expect(rows.map(row => row.id)).toEqual(['attention-issue-i1', 'attention-issue-high', 'attention-gear-g1-u3', 'attention-stock-empty']);
+    expect(rows[0]).toMatchObject({ detail: 'Engine 701 · Critical priority fleet issue', badge: 'Critical', urgent: true, target: { type: 'issue', id: 'i1' } });
+    expect(rows[2]).toMatchObject({ title: 'Radios — Cole', badge: 'Overdue', target: { type: 'inventory', id: 'g1' } });
+    expect(rows[3]).toMatchObject({ title: 'Shelters — out of stock', detail: 'None on hand · 2 checked out', urgent: false });
+  });
+
+  it('is empty when nothing needs attention', () => {
+    expect(resourceAttentionRows([issue({ priority: 'Medium' })], [vehicle()], [item()], now)).toEqual([]);
   });
 });

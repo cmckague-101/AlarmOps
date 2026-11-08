@@ -98,6 +98,8 @@ export function useShop(companyId?:string) {
     clearError:()=>setError(''),
     createJob:(draft:ShopJobDraft)=>run(async()=>shopJobFromRow((await invoke<{job:ShopJobRow}>('shop-job-create',{companyId,...draft})).job)),
     assignToMe:(jobId:string)=>run(()=>invoke('shop-job-assign',{companyId,jobId})),
+    /** Owners, admins and resource bosses assign a job to any shop worker. */
+    assignTech:(jobId:string,techId:string)=>run(()=>invoke('shop-job-assign',{companyId,jobId,techId})),
     addNote:(jobId:string,body:string)=>run(()=>invoke('shop-job-note',{companyId,jobId,body})),
     updateJob:(jobId:string,patch:ShopJobPatch)=>run(async()=>{
       const values:Record<string,unknown> = {};

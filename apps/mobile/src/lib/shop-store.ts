@@ -116,6 +116,12 @@ export async function assignShopJobToMe(jobId: string) {
   await refreshShop();
 }
 
+/** Owners, admins and resource bosses assign a job to any shop worker. */
+export async function assignShopJobTo(jobId: string, techId: string) {
+  await invoke('shop-job-assign', { jobId, techId });
+  await refreshShop();
+}
+
 export async function addShopJobNote(jobId: string, body: string) {
   await invoke('shop-job-note', { jobId, body });
   await refreshShop();

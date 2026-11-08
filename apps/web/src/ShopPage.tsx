@@ -26,6 +26,9 @@ type Props = {
   vehicles:Vehicle[];
   issues:FleetIssue[];
   canWork:boolean;
+  /** Owners, admins and resource bosses may assign jobs to any of these shop workers. */
+  canAssign?:boolean;
+  mechanics?:{id:string;name:string}[];
   demoMode?:boolean;
   onBack:()=>void;
   onResolveLinkedIssue:(issueId:string)=>void;
@@ -48,7 +51,7 @@ function printHtml(html:string) {
   return true;
 }
 
-export default function ShopPage({companyId, user, vehicles, issues, canWork, demoMode=false, onBack, onResolveLinkedIssue, motiveReadingFor, requestedJobId, onJobOpened}:Props) {
+export default function ShopPage({companyId, user, vehicles, issues, canWork, canAssign=false, mechanics=[], demoMode=false, onBack, onResolveLinkedIssue, motiveReadingFor, requestedJobId, onJobOpened}:Props) {
   const shop = useShop(demoMode ? undefined : companyId);
   const [filter, setFilter] = useState<ShopBoardFilter>('open');
   const [query, setQuery] = useState('');
@@ -133,6 +136,8 @@ export default function ShopPage({companyId, user, vehicles, issues, canWork, de
           busy={shop.busy}
           assignedToMe={selected.assignedTechId === user.id}
           onAssign={()=>void shop.assignToMe(selected.id).catch(()=>undefined)}
+          mechanics={canAssign ? mechanics : undefined}
+          onAssignTech={techId=>void shop.assignTech(selected.id, techId).catch(()=>undefined)}
           onPriority={priority=>void shop.updateJob(selected.id, {priority}).catch(()=>undefined)}
           onStatus={value=>void saveStatus(selected, value).catch(()=>undefined)}
           onNote={body=>shop.addNote(selected.id, body).then(()=>true, ()=>false)}
@@ -310,9 +315,9 @@ function BoardCard({icon, photo, critical=false, title, subtitle, count, jobs, o
   );
 }
 
-function JobDetailPanel({job, unit, notes, canWork, busy, assignedToMe, onAssign, onPriority, onStatus, onNote, onDelete}:{
+function JobDetailPanel({job, unit, notes, canWork, busy, assignedToMe, onAssign, mechanics, onAssignTech, onPriority, onStatus, onNote, onDelete}:{
   job:ShopJob;unit?:string;notes:ShopJobNote[];canWork:boolean;busy:boolean;assignedToMe:boolean;
-  onAssign:()=>void;onPriority:(priority:ShopJobPriority)=>void;onStatus:(status:ShopJobStatus)=>void;onNote:(body:string)=>Promise<boolean>;onDelete:()=>void;
+  onAssign:()=>void;mechanics?:{id:string;name:string}[];onAssignTech:(techId:string)=>void;onPriority:(priority:ShopJobPriority)=>void;onStatus:(status:ShopJobStatus)=>void;onNote:(body:string)=>Promise<boolean>;onDelete:()=>void;
 }) {
   const [noteText, setNoteText] = useState('');
   const thread = [...notes].sort((a, b)=>Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -332,6 +337,16 @@ function JobDetailPanel({job, unit, notes, canWork, busy, assignedToMe, onAssign
         ) : null}
       </header>
       <div className="shop-drawer-body">
+        {mechanics && job.status !== 'done' ? (
+          <label>
+            <span>Assigned mechanic</span>
+            <select value={job.assignedTechId ?? ''} disabled={busy} onChange={event=>{if (event.target.value) onAssignTech(event.target.value);}}>
+              {!job.assignedTechId ? <option value="">Unassigned</option> : null}
+              {job.assignedTechId && !mechanics.some(mechanic=>mechanic.id === job.assignedTechId) ? <option value={job.assignedTechId}>{job.assignedTechName ?? 'Assigned'}</option> : null}
+              {mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
+            </select>
+          </label>
+        ) : null}
         {job.description.trim() ? <p className="shop-hint">{job.description}</p> : null}
         {job.blockerReason ? <p className="shop-blocker">{job.blockerReason}</p> : null}
         {canWork && job.status !== 'done' ? (

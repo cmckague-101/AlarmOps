@@ -1,4 +1,4 @@
-import type {CrewMember} from './models';
+import type {CrewMember, FleetIssue, InventoryItem} from './models';
 import {annualQualificationRows, type CommandRow, type CommandVehicle} from './command-center';
 import {nextOilChangeWarning} from './oil-change';
 import {credentialExpiresWithinMonth, crewCredentials} from './rules';
@@ -97,4 +97,65 @@ export function withNeedsAttentionCard<T extends {id:string;description:string;s
       :rows.length?`${rows.length} ${rows.length===1?'item':'items'} to review`:'Nothing needs attention',
     rows,
   });
+}
+
+/** Gear checked out longer than this many days counts as overdue on the Resource Boss Needs Attention list. */
+export const overdueGearDays=14;
+const dayMs=24*60*60*1000;
+
+type AttentionIssue=Pick<FleetIssue,'id'|'vehicleId'|'title'|'description'|'priority'|'status'|'createdAt'>;
+type AttentionInventoryItem=Pick<InventoryItem,'id'|'name'|'quantity'|'checkouts'>;
+
+/**
+ * Resource Boss Needs Attention (crew dashboard): open critical/high fleet issues, items with
+ * nothing left on hand, and gear checked out for more than {@link overdueGearDays} days.
+ */
+export function resourceAttentionRows(
+  issues:readonly AttentionIssue[],
+  vehicles:readonly Pick<CommandVehicle,'id'|'unit'>[],
+  items:readonly AttentionInventoryItem[],
+  now=new Date(),
+):CommandRow[] {
+  const rank:Record<string,number>={Critical:0,High:1};
+  const issueRows=issues
+    .filter(issue=>issue.status==='Open'&&(issue.priority==='Critical'||issue.priority==='High'))
+    .sort((a,b)=>rank[a.priority]-rank[b.priority]||Date.parse(b.createdAt)-Date.parse(a.createdAt))
+    .map(issue=>({
+      id:`attention-issue-${issue.id}`,
+      title:issue.title,
+      detail:`${vehicles.find(vehicle=>vehicle.id===issue.vehicleId)?.unit??'Fleet vehicle'} · ${issue.priority} priority fleet issue`,
+      badge:issue.priority,
+      urgent:true,
+      lines:issue.description?.trim()?[issue.description.trim()]:[],
+      target:{type:'issue' as const,id:issue.id},
+    }));
+  const sortedItems=[...items].sort((a,b)=>a.name.localeCompare(b.name));
+  const stockRows=sortedItems.filter(item=>item.quantity<=0).map(item=>{
+    const out=item.checkouts.reduce((sum,checkout)=>sum+checkout.quantity,0);
+    return {
+      id:`attention-stock-${item.id}`,
+      title:`${item.name} — out of stock`,
+      detail:out?`None on hand · ${out} checked out`:'None on hand',
+      badge:'Out of stock',
+      urgent:false,
+      lines:[],
+      target:{type:'inventory' as const,id:item.id},
+    };
+  });
+  const overdueRows=sortedItems.flatMap(item=>item.checkouts.flatMap(checkout=>{
+    const since=Date.parse(checkout.checkedOutAt);
+    if(Number.isNaN(since))return [];
+    const days=Math.floor((now.getTime()-since)/dayMs);
+    if(days<=overdueGearDays)return [];
+    return [{
+      id:`attention-gear-${item.id}-${checkout.userId}`,
+      title:`${item.name} — ${checkout.userName}`,
+      detail:`${checkout.quantity} checked out ${days} days ago`,
+      badge:'Overdue',
+      urgent:true,
+      lines:[],
+      target:{type:'inventory' as const,id:item.id},
+    }];
+  }));
+  return [...issueRows,...overdueRows,...stockRows];
 }

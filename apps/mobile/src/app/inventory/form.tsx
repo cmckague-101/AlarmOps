@@ -1,3 +1,4 @@
+import { canManageInventory } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -19,7 +20,7 @@ export default function InventoryFormScreen() {
   // Offline, new items and renames are saved on this device; a rename applies only to an unchanged item.
   const { offline, userSync } = useOfflineUserSync(member?.company.id, member?.user.id);
   const intent = useIntentId();
-  const inventory = useInventory(member?.user.role === 'owner' || member?.user.role === 'admin' ? member.company.id : null);
+  const inventory = useInventory(member && canManageInventory(member.user.role) ? member.company.id : null);
   const { loading } = inventory;
   const edits = useInventoryEdits(inventory.items, member, inventory.downloaded?.receiptWatermark);
   const items = edits.items;
@@ -33,7 +34,7 @@ export default function InventoryFormScreen() {
   const quantityValue = quantity ?? (item ? String(item.quantity) : '0');
 
   if (!session || access.status === 'error') return <Redirect href="/" />;
-  if (member && member.user.role !== 'owner' && member.user.role !== 'admin') return <Redirect href="/(tabs)/more" />;
+  if (member && !canManageInventory(member.user.role)) return <Redirect href="/(tabs)/more" />;
 
   const submit = async () => {
     const nextErrors: { name?: string; quantity?: string } = {};

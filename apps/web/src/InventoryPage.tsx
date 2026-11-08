@@ -7,6 +7,8 @@ export type {InventoryItem} from '@fireops/domain';
 
 type Props={
   canManage?:boolean;
+  /** Managers who also check out gear (resource bosses) get the checkout action too. */
+  canCheckout?:boolean;
   items:InventoryItem[];
   error?:string;
   currentUserId:string;
@@ -17,7 +19,7 @@ type Props={
   onCheckin:(item:InventoryItem,userId:string,quantity:number)=>Promise<void>;
 };
 
-export default function InventoryPage({canManage=true,items,error,currentUserId,onCreate,onUpdate,onDelete,onCheckout,onCheckin}:Props){
+export default function InventoryPage({canManage=true,canCheckout=!canManage,items,error,currentUserId,onCreate,onUpdate,onDelete,onCheckout,onCheckin}:Props){
   const [query,setQuery]=useState('');
   const [formOpen,setFormOpen]=useState(false);
   const [deleting,setDeleting]=useState<InventoryItem>();
@@ -68,6 +70,7 @@ export default function InventoryPage({canManage=true,items,error,currentUserId,
             <>
               <QuantityControl item={item} minimum={0} busy={busyId===item.id} onUpdate={quantity=>updateQuantity(item,quantity)}/>
               <button className="stock-delete" disabled={busyId===item.id||itemCheckedOut>0} onClick={()=>setDeleting(item)} aria-label={`Delete ${item.name}`} title={itemCheckedOut?'Check in all units before deleting':undefined}><Trash2/></button>
+              {canCheckout&&<ActionQuantity label={`Check out ${item.name}`} max={available} busy={busyId===item.id} action="Check out" icon={<ShoppingBag/>} onSubmit={async quantity=>{setBusyId(item.id);setRowError('');try{await onCheckout(item,quantity)}catch(checkoutError){setRowError(checkoutError instanceof Error?checkoutError.message:'Item could not be checked out.')}finally{setBusyId('')}}}/>}
             </>
           ):(
             <>

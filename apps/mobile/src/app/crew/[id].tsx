@@ -1,4 +1,4 @@
-import {assignableUserRoles,crewCredentials,formatCalendarDate,isCompanyManager,userRoleLabel,type AssignableUserRole} from '@fireops/domain';
+import {assignableUserRoles,canViewCrewRoster,crewCredentials,formatCalendarDate,isCompanyManager,userRoleLabel,type AssignableUserRole} from '@fireops/domain';
 import {Redirect,Stack,useLocalSearchParams,useRouter} from 'expo-router';
 import {useMemo,useState} from 'react';
 import {Alert,KeyboardAvoidingView,Linking,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
@@ -13,6 +13,7 @@ export default function CrewDetailScreen(){
  const {id}=useLocalSearchParams<{id:string}>();const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);const {session,access}=useSession();const owner=access.value?.kind==='member'?access.value:null;const {crew,loading}=useFleetVehicles(owner?.company.id??null);const member=crew.find(item=>item.id===id);
  const [busyAction,setBusyAction]=useState<''|'role'|'details'|'resend'|'remove'>('');const busy=Boolean(busyAction);const [error,setError]=useState('');const [editing,setEditing]=useState(false);const [details,setDetails]=useState({name:'',email:'',phone:''});
  if(!session||access.status==='error')return <Redirect href="/"/>;
+ if(owner&&!canViewCrewRoster(owner.user.role))return <Redirect href="/(tabs)/more"/>;
  if(loading&&!member)return <SafeAreaView style={styles.safe}><Text style={styles.state}>Loading crew member…</Text></SafeAreaView>;if(!member)return <SafeAreaView style={styles.safe}><Stack.Screen options={{title:'Crew'}}/><Text style={styles.state}>Crew member not found.</Text></SafeAreaView>;
  const canManage=Boolean(owner&&isCompanyManager(owner.user.role));const credentials=crewCredentials(member);
  const resend=async()=>{if(!owner)return;setBusyAction('resend');setError('');try{await resendCrewInvitation(owner.company.id,member.id);Alert.alert('Invitation sent',`A new invitation was sent to ${member.email}.`)}catch(resendError){setError(resendError instanceof Error?resendError.message:'Invitation could not be resent.')}finally{setBusyAction('')}};

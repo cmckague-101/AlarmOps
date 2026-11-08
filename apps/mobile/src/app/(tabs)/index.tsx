@@ -8,7 +8,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { canProcessFinance, type Activity, type FleetIssue } from '@fireops/domain';
+import { canManageInventory, canProcessFinance, isCompanyManager, resourceAttentionRows, type Activity, type CommandTarget, type FleetIssue } from '@fireops/domain';
+import { useInventory } from '@/lib/inventory-store';
 import { AppSymbol } from '@/components/app-symbol';
 import { refreshFleet, useFleetVehicles } from '@/lib/fleet-store';
 import { markInboxNotificationRead, refreshNotificationInbox, type InboxNotification, useNotificationInbox } from '@/lib/notification-inbox-store';
@@ -110,6 +111,13 @@ export default function DashboardScreen() {
               </View>
             ) : null}
 
+            {user && canManageInventory(user.role) && !isCompanyManager(user.role) && preferences.visible('attention') ? (
+              <ResourceAttention companyId={companyId} issues={issues} vehicles={vehicles} styles={styles} theme={theme} onOpen={(target) => {
+                if (target.type === 'inventory') router.push('/inventory' as never);
+                else if (target.type === 'issue') router.push(`/issue/${encodeURIComponent(target.id)}`);
+              }} />
+            ) : null}
+
             {preferences.visible('currentIssues') && openIssues.length > 0 ? (
               <DashboardSection title="Open-issue blockers" count={openIssues.length} styles={styles}>
                 {openIssues.slice(0, 5).map((issue) => (
@@ -206,6 +214,32 @@ export default function DashboardScreen() {
         <CustomizeDashboardButton/>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// Resource Boss Needs Attention: critical/high fleet issues, out-of-stock items and overdue gear.
+// Mounted only for resource bosses, so it alone selects the inventory store's company here.
+function ResourceAttention({ companyId, issues, vehicles, styles, theme, onOpen }: { companyId: string | null; issues: FleetIssue[]; vehicles: { id: string; name: string }[]; styles: ReturnType<typeof createStyles>; theme: FireOpsTheme; onOpen: (target: CommandTarget) => void }) {
+  const { items } = useInventory(companyId);
+  const rows = useMemo(() => resourceAttentionRows(issues, vehicles.map((vehicle) => ({ id: vehicle.id, unit: vehicle.name })), items), [issues, vehicles, items]);
+  return (
+    <DashboardSection title="Needs attention" count={rows.length ? rows.length : ''} styles={styles}>
+      {rows.length ? rows.slice(0, 8).map((row) => (
+        <Pressable
+          key={row.id}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.badge}: ${row.title}`}
+          onPress={() => row.target && onOpen(row.target)}
+          style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+        >
+          <View style={styles.rowCopy}>
+            <Text style={styles.rowTitle} numberOfLines={1}>{row.title}</Text>
+            <Text style={[styles.rowMeta, row.urgent && { color: theme.ember }]} numberOfLines={1}>{row.badge} · {row.detail}</Text>
+          </View>
+          <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
+        </Pressable>
+      )) : <Text style={styles.rowMeta}>No critical fleet issues, empty stock or overdue gear.</Text>}
+    </DashboardSection>
   );
 }
 

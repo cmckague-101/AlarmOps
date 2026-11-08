@@ -3,7 +3,7 @@ import {dotInspectionWarning, inspectionExpirationDate, localDateToday} from './
 import {nextOilChangeWarning} from './oil-change';
 
 export type CommandVehicle = {id:string;unit:string;status:string;assignedTo?:string|null;assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;documents?:{id:string;name:string;inspectionDate?:string}[];nextOilChange?:string;nextOilChangeDue?:string};
-export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll'|'shop';id:string};
+export type CommandTarget = {type:'vehicle'|'crew'|'issue'|'incident'|'payroll'|'shop'|'inventory';id:string};
 export type CommandRow = {id:string;title:string;detail:string;badge:string;urgent?:boolean;lines:string[];target?:CommandTarget};
 export type CommandAlert = CommandRow & {kind:'vehicle'|'payroll'|'crew'};
 export type CommandPayroll = {id:string;createdByName:string;engineNumber:string;incidents:string;status:string};

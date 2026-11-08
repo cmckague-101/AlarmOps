@@ -1,4 +1,4 @@
-import { SHOP_PARTS_BLOCKER, shopBoardStatuses, shopJobPriorities, shopPriorityLabel, shopStatusLabel, type ShopJob, type ShopJobPriority, type ShopJobStatus } from '@fireops/domain';
+import { SHOP_PARTS_BLOCKER, canAssignShopJobs, canWorkShop, shopBoardStatuses, shopJobPriorities, shopPriorityLabel, shopStatusLabel, type ShopJob, type ShopJobPriority, type ShopJobStatus } from '@fireops/domain';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Chip, ShopTag, createShopStyles, useShopMember } from '@/components/shop-ui';
 import { createFleetId, fleetReadVersion, saveFleetRecord, useFleetVehicles } from '@/lib/fleet-store';
-import { addShopJobNote, assignShopJobToMe, deleteShopJob, updateShopJob, useShop } from '@/lib/shop-store';
+import { addShopJobNote, assignShopJobTo, assignShopJobToMe, deleteShopJob, updateShopJob, useShop } from '@/lib/shop-store';
 import { useFireOpsTheme } from '@/theme';
 
 export default function ShopJobScreen() {
@@ -17,7 +17,9 @@ export default function ShopJobScreen() {
   const { session, access, member, allowed } = useShopMember();
   const companyId = allowed ? member!.company.id : null;
   const shop = useShop(companyId);
-  const { vehicles, issues } = useFleetVehicles(companyId);
+  const { vehicles, issues, crew } = useFleetVehicles(companyId);
+  // Owners, admins and resource bosses pick any active shop worker.
+  const mechanics = useMemo(() => member && canAssignShopJobs(member.user.role) ? crew.filter((person) => person.status === 'Active' && canWorkShop(person.role)).sort((a, b) => a.name.localeCompare(b.name)) : [], [crew, member]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +97,14 @@ export default function ShopJobScreen() {
               <Pressable accessibilityRole="button" disabled={busy} style={[styles.primary, busy && styles.disabled]} onPress={() => void run(() => assignShopJobToMe(job.id))}>
                 <Text style={styles.primaryText}>Assign to me</Text>
               </Pressable>
+            ) : null}
+            {mechanics.length ? (
+              <>
+                <Text style={styles.legend}>ASSIGNED MECHANIC</Text>
+                <View style={styles.row}>
+                  {mechanics.map((person) => <Chip key={person.id} label={person.name} selected={job.assignedTechId === person.id} disabled={busy} onPress={() => { if (job.assignedTechId !== person.id) void run(() => assignShopJobTo(job.id, person.id)); }} />)}
+                </View>
+              </>
             ) : null}
             <Text style={styles.legend}>PRIORITY</Text>
             <View style={styles.row}>

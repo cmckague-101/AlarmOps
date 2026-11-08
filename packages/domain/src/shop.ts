@@ -37,9 +37,14 @@ export function shopStatusLabel(status: ShopJobStatus): string {
   return shopJobStatuses.find((item) => item.value === status)?.label ?? status;
 }
 
-/** Shop writers (owners, admins, shop techs) create and work shop jobs and file repairs. */
+/** Shop writers (owners, admins, resource bosses, shop techs) create and work shop jobs and file repairs. */
 export function canWorkShop(role: string): boolean {
-  return role === 'owner' || role === 'admin' || role === 'shop_tech';
+  return role === 'owner' || role === 'admin' || role === 'resource_boss' || role === 'shop_tech';
+}
+
+/** Owners, admins and resource bosses may assign a shop job to any shop worker; shop techs only take jobs themselves. */
+export function canAssignShopJobs(role: string): boolean {
+  return role === 'owner' || role === 'admin' || role === 'resource_boss';
 }
 
 export type ShopJob = {

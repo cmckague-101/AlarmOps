@@ -1,4 +1,4 @@
-import {canWorkShop,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
+import {canViewCrewRoster,canWorkShop,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
 import {Alert,Platform,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
@@ -15,7 +15,7 @@ const sections=[
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
-  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C'},
+  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
   {label:'VIPR DPLs',path:'/dispatch-lists',ios:'list.number',android:'format_list_numbered',color:'#C94321'},
@@ -44,7 +44,7 @@ export default function More(){
   // Quick actions hidden from the dashboard stay reachable here; Inventory and Failed Inspections are already listed.
   const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&action.path!=='/inventory'&&action.path!=='/inspections'):[];
   const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
-  const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
+  const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
   const comingSoonIndex=allowed.findIndex(section=>'comingSoon' in section);
   const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;

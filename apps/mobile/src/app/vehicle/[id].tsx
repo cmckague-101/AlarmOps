@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatCalendarDate, inspectionExpirationDate, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
+import { formatCalendarDate, inspectionExpirationDate, canDispatchFleet, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -193,6 +193,8 @@ export default function VehicleDetailScreen() {
     );
   const activeCrew = crew.filter((member) => member.status === "Active");
   const canManage = user?.role === "owner" || user?.role === "admin";
+  // Owners, admins and resource bosses change status and crew/fire assignment of any vehicle.
+  const canDispatch = Boolean(user && canDispatchFleet(user.role));
   const savedDetailBase=syncState.records.find(record=>record.entityType==='vehicle'&&record.entityId===id&&record.record!==null);
   // Offline, or online while this device still has unsynced changes for the vehicle, status/assignment/fire
   // changes save on the device through the verified detail editor and sync in order when connected.
@@ -308,7 +310,7 @@ export default function VehicleDetailScreen() {
   };
 
   const changeStatus = async (status: VehicleStatus) => {
-    if (!vehicle || !user || !canManage || vehicle.status === status) return;
+    if (!vehicle || !user || !canDispatch || vehicle.status === status) return;
     setSaving(true);
     setSaveError("");
     try {
@@ -406,7 +408,7 @@ export default function VehicleDetailScreen() {
       !user ||
       saving ||
       !vehicle.assignedTo ||
-      (!canManage && vehicle.assignedTo !== user.id)
+      (!canDispatch && vehicle.assignedTo !== user.id)
     ) return;
     if (incident?.id === vehicle.assignedFire?.id) {
       setFirePickerOpen(false);
@@ -699,7 +701,7 @@ export default function VehicleDetailScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Current status</Text>
-              {canManage ? (
+              {canDispatch ? (
                 <View style={styles.choiceList}>
                   {vehicleStatuses.map((status) => {
                     const selected = vehicle.status === status;
@@ -738,7 +740,7 @@ export default function VehicleDetailScreen() {
                 </Text>
               )}
 
-              {canManage ? (
+              {canDispatch ? (
                 <>
                   <Text style={styles.controlLabel}>Assigned crew member</Text>
                   <Pressable
@@ -823,7 +825,7 @@ export default function VehicleDetailScreen() {
               ) : null}
             </View>
 
-            {user && (canManage || vehicle.assignedTo === user.id) ? (
+            {user && (canDispatch || vehicle.assignedTo === user.id) ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Fire assignment</Text>
                 {vehicle.assignedTo ? (

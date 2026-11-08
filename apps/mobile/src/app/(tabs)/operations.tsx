@@ -23,7 +23,7 @@ import { feature } from 'topojson-client';
 import type { Topology } from 'topojson-specification';
 import statesTopology from 'us-atlas/states-10m.json';
 
-import type { NifcIncident } from '@fireops/domain';
+import { canDispatchFleet, type NifcIncident } from '@fireops/domain';
 import { AppleIncidentMap } from '@/components/apple-incident-map';
 import { AppSymbol } from '@/components/app-symbol';
 import { fetchNifcIncidents } from '@/lib/nifc';
@@ -323,7 +323,7 @@ export default function OperationsScreen() {
 
   const motiveVehicles = useMemo(() => vehicles.filter((vehicle) => vehicle.motive), [vehicles]);
   const assignableVehicles = useMemo(
-    () => vehicles.filter((vehicle) => vehicle.assignedTo && (user?.role === 'owner' || user?.role === 'admin' || vehicle.assignedTo === user?.id)),
+    () => vehicles.filter((vehicle) => vehicle.assignedTo && ((user && canDispatchFleet(user.role)) || vehicle.assignedTo === user?.id)),
     [user?.id, user?.role, vehicles],
   );
   const assignVehicleToFire = async (vehicle: FleetVehicle, incident: NifcIncident) => {

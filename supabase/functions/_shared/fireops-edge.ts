@@ -52,10 +52,21 @@ export async function authedAdmin(request: Request) {
   return { ok: true, actor, admin, body } as const;
 }
 
-/** Owners, admins and shop techs work the shop board. */
-export async function requireShopWriter(admin: SupabaseClient, companyId: string, userId: string) {
+const shopWriterRoles = ['owner', 'admin', 'resource_boss', 'shop_tech'];
+/** Roles that may assign a shop job to someone else; shop techs only take jobs themselves. */
+const shopAssignerRoles = ['owner', 'admin', 'resource_boss'];
+
+export async function memberRole(admin: SupabaseClient, companyId: string, userId: string) {
   const { data } = await admin.from('company_members').select('role').eq('company_id', companyId).eq('user_id', userId).maybeSingle();
-  return data?.role === 'owner' || data?.role === 'admin' || data?.role === 'shop_tech';
+  return (data?.role as string | undefined) ?? null;
+}
+
+export const isShopWriterRole = (role: string | null) => role !== null && shopWriterRoles.includes(role);
+export const isShopAssignerRole = (role: string | null) => role !== null && shopAssignerRoles.includes(role);
+
+/** Owners, admins, resource bosses and shop techs work the shop board. */
+export async function requireShopWriter(admin: SupabaseClient, companyId: string, userId: string) {
+  return isShopWriterRole(await memberRole(admin, companyId, userId));
 }
 
 export async function profileName(admin: SupabaseClient, userId: string) {

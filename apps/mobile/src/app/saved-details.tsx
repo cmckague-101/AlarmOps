@@ -19,7 +19,7 @@ export default function SavedDetailsScreen(){
   const {access,session,demoMode}=useSession();const {detailEditor,loading,refresh}=useOfflineSync();const theme=useFireOpsTheme();
   const member=access.status==='ready'&&access.value?.kind==='member'&&access.value.user.id===session?.user.id?access.value:null;
   const manager=member?.user.role==='owner'||member?.user.role==='admin';
-  const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech'||member?.user.role==='accounting';
+  const crew=member?.user.role==='fire_fighter'||member?.user.role==='shop_tech'||member?.user.role==='accounting'||member?.user.role==='resource_boss';
   const valid=(entityType==='vehicle'||entityType==='issue')&&typeof entityId==='string'&&!!entityId;
   if(!(manager||crew)||!valid||!detailEditor||demoMode||Platform.OS==='web')return <SafeAreaView style={[styles.safe,{backgroundColor:theme.canvas}]} edges={['bottom']}>
     <Stack.Screen options={{title:'Saved detail editor'}}/>

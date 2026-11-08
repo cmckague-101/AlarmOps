@@ -2,7 +2,7 @@ import {userRoleLabel,type CrewMember,type UserRole} from './models';
 
 export type RosterSort='name'|'status'|'role';
 export const rosterSortOptions:ReadonlyArray<{value:RosterSort;label:string}>=[{value:'name',label:'Name'},{value:'status',label:'Status'},{value:'role',label:'Role'}];
-const roleOrder:UserRole[]=['owner','admin','accounting','shop_tech','fire_fighter'];
+const roleOrder:UserRole[]=['owner','admin','accounting','resource_boss','shop_tech','fire_fighter'];
 
 // Search matches name, email or role label; status sort puts invited members first.
 export function filterAndSortCrew<T extends Pick<CrewMember,'name'|'email'|'role'|'status'>>(crew:readonly T[],query:string,sort:RosterSort):T[]{

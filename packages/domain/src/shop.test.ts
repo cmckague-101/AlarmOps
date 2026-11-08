@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canWorkShop, filterShopJobs, groupShopJobsByVehicle, rankShopJobs, shopBoardStatus, shopJobFromRow, shopPriorityLabel,
+  canAssignShopJobs, canWorkShop, filterShopJobs, groupShopJobsByVehicle, rankShopJobs, shopBoardStatus, shopJobFromRow, shopPriorityLabel,
   sortShopJobs, validateShopJobBlocker, type ShopJob, type ShopJobRow,
 } from './shop';
 
@@ -39,7 +39,8 @@ describe('shop board ranking', () => {
 
 describe('shop board views', () => {
   it('lets owners, admins and shop techs work the board', () => {
-    expect(['owner', 'admin', 'shop_tech', 'fire_fighter', 'accounting'].map(canWorkShop)).toEqual([true, true, true, false, false]);
+    expect(['owner', 'admin', 'resource_boss', 'shop_tech', 'fire_fighter', 'accounting'].map(canWorkShop)).toEqual([true, true, true, true, false, false]);
+    expect(['owner', 'admin', 'resource_boss', 'shop_tech', 'fire_fighter', 'accounting'].map(canAssignShopJobs)).toEqual([true, true, true, false, false, false]);
   });
 
   it('filters open jobs by status and searches title, number, unit and assignee', () => {

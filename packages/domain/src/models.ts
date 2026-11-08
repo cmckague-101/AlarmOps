@@ -1,8 +1,9 @@
-export type UserRole = 'owner' | 'admin' | 'shop_tech' | 'fire_fighter' | 'accounting';
+export type UserRole = 'owner' | 'admin' | 'shop_tech' | 'fire_fighter' | 'accounting' | 'resource_boss';
 export type AssignableUserRole = Exclude<UserRole, 'owner'>;
 
 export const assignableUserRoles:ReadonlyArray<{value:AssignableUserRole;label:string}> = [
   {value:'admin',label:'Admin'},
+  {value:'resource_boss',label:'Resource Boss'},
   {value:'shop_tech',label:'Shop Tech'},
   {value:'fire_fighter',label:'Fire Fighter'},
   {value:'accounting',label:'Accounting'},
@@ -15,6 +16,21 @@ export function isCompanyManager(role:UserRole):boolean {
 /** Payroll and invoice processing (review, approval, payment, customers) is owner/accounting only. */
 export function canProcessFinance(role:UserRole):boolean {
   return role==='owner'||role==='accounting';
+}
+
+/** Add, edit and delete inventory items and check gear back in for anyone (owner/admin/resource boss). */
+export function canManageInventory(role:UserRole):boolean {
+  return isCompanyManager(role)||role==='resource_boss';
+}
+
+/** Assign vehicles to crew and change vehicle status for any vehicle (owner/admin/resource boss). */
+export function canDispatchFleet(role:UserRole):boolean {
+  return isCompanyManager(role)||role==='resource_boss';
+}
+
+/** The crew roster (names, email, phone) is hidden from resource bosses. */
+export function canViewCrewRoster(role:UserRole):boolean {
+  return role!=='resource_boss';
 }
 
 export function canOpenVehicleIssue(role:UserRole):boolean {

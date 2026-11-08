@@ -1,4 +1,4 @@
-import {canInspectVehicle, isCompanyManager, type UserRole} from './models';
+import {canInspectVehicle, canManageInventory, isCompanyManager, type UserRole} from './models';
 import {canManagePersonalTasks} from './tasks';
 
 export type DashboardItem = 'greeting'|'incidents'|'personnel'|'resources'|'attention'|'currentIssues'|'currentPicture'|'availability'|'tasks'|'inspections'|'inventory'|'payroll'|'receipts'|'invoices'|'nationalFireActivity'|'recentActivity';
@@ -12,7 +12,7 @@ export function dashboardPreferenceGroups(role:UserRole, platform:'web'|'mobile'
   const manager=isCompanyManager(role);
   const item=(id:DashboardItem,label:string)=>({id,label});
   return [
-    {title:'Command Center',items:[item('greeting','Greeting'),...(manager?[item('incidents','Active Incidents'),item('personnel','Assigned Personnel'),item('resources','Assigned Resources'),item('attention','Needs Attention')]:[item('currentIssues','Current issues'),...(platform==='mobile'?[item('currentPicture','Current picture — vehicles needing attention')]:[])])]},
+    {title:'Command Center',items:[item('greeting','Greeting'),...(manager?[item('incidents','Active Incidents'),item('personnel','Assigned Personnel'),item('resources','Assigned Resources'),item('attention','Needs Attention')]:[...(canManageInventory(role)?[item('attention','Needs Attention')]:[]),item('currentIssues','Current issues'),...(platform==='mobile'?[item('currentPicture','Current picture — vehicles needing attention')]:[])])]},
     {title:'Quick Actions',items:[item('availability','Availability'),...(canManagePersonalTasks(role)?[item('tasks','Task list')]:[]),...(canInspectVehicle(role)?[item('inspections','Inspections')]:[]),item('inventory','Check out gear'),item('payroll','Payroll'),item('receipts','Receipts'),item('invoices','Invoices')]},
     {title:'National Fire Activity',items:[item('nationalFireActivity','National fire activity')]},
     ...(!manager?[{title:'Recent Fleet Activity',items:[item('recentActivity','Recent fleet activity')]}]:[]),

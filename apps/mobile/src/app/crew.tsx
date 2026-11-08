@@ -1,4 +1,4 @@
-import {crewCredentials,filterAndSortCrew,isCompanyManager,rosterSortOptions as sortOptions,userRoleLabel,type RosterSort} from '@fireops/domain';
+import {canViewCrewRoster,crewCredentials,filterAndSortCrew,isCompanyManager,rosterSortOptions as sortOptions,userRoleLabel,type RosterSort} from '@fireops/domain';
 import {Redirect,Stack,useRouter} from 'expo-router';
 import {useEffect,useMemo,useState} from 'react';
 import {Pressable,RefreshControl,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
@@ -18,6 +18,7 @@ export default function CrewScreen(){
   const shown=useMemo(()=>filterAndSortCrew(crew,query,sort),[crew,query,sort]);
   useEffect(()=>{if(canManage&&member?.company.id)void loadCrewSeatsUsed(member.company.id).then(setSeatsUsed).catch(()=>setSeatsUsed(null))},[canManage,member?.company.id,crew.length]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
+  if(member&&!canViewCrewRoster(member.user.role))return <Redirect href="/(tabs)/more"/>;
   const limit=member?.company.crewInviteLimit??0;const used=seatsUsed??crew.filter(item=>item.role!=='owner').length;const available=Math.max(0,limit-used);
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Roster'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.commandForeground}/>}>
     <View style={styles.heading}><View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Roster</Text></View>{canManage&&available>0?<Pressable accessibilityRole="button" onPress={()=>router.push('/crew/invite' as never)} style={({pressed})=>[styles.add,pressed&&styles.pressed]}><AppSymbol name="person.badge.plus" color="#fff" size={18}/><Text style={styles.addText}>Add user</Text></Pressable>:null}</View>
