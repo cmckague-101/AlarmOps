@@ -651,11 +651,20 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   };
   const checkoutInventoryItem=async(item:InventoryItem,quantity:number)=>{
     if(onCheckoutInventoryItem){await onCheckoutInventoryItem(item,quantity);return}
-    setInventoryItems(items=>{const next=items.map(entry=>entry.id!==item.id?entry:{...entry,checkouts:[...entry.checkouts.filter(checkout=>checkout.userId!==currentUser.id),{userId:currentUser.id,userName:currentUser.name,quantity:(entry.checkouts.find(checkout=>checkout.userId===currentUser.id)?.quantity??0)+quantity,checkedOutAt:new Date().toISOString(),updatedAt:new Date().toISOString()}]});saveLocal('fireops-inventory',next);return next});
+    setInventoryItems(items=>{const next=items.map(entry=>{
+      if(entry.id!==item.id||!Number.isInteger(quantity)||quantity<1||quantity>entry.quantity)return entry;
+      const now=new Date().toISOString();const prior=entry.checkouts.find(checkout=>checkout.userId===currentUser.id);
+      return {...entry,quantity:entry.quantity-quantity,updatedAt:now,checkouts:[...entry.checkouts.filter(checkout=>checkout.userId!==currentUser.id),{userId:currentUser.id,userName:currentUser.name,quantity:(prior?.quantity??0)+quantity,checkedOutAt:prior?.checkedOutAt??now,updatedAt:now}]};
+    });saveLocal('fireops-inventory',next);return next});
   };
   const checkinInventoryItem=async(item:InventoryItem,userId:string,quantity:number)=>{
     if(onCheckinInventoryItem){await onCheckinInventoryItem(item,userId,quantity);return}
-    setInventoryItems(items=>{const next=items.map(entry=>entry.id!==item.id?entry:{...entry,checkouts:entry.checkouts.flatMap(checkout=>checkout.userId!==userId?[checkout]:checkout.quantity===quantity?[]:[{...checkout,quantity:checkout.quantity-quantity,updatedAt:new Date().toISOString()}])});saveLocal('fireops-inventory',next);return next});
+    setInventoryItems(items=>{const next=items.map(entry=>{
+      const held=entry.id===item.id?entry.checkouts.find(checkout=>checkout.userId===userId):undefined;
+      if(!held||!Number.isInteger(quantity)||quantity<1||quantity>held.quantity)return entry;
+      const now=new Date().toISOString();
+      return {...entry,quantity:entry.quantity+quantity,updatedAt:now,checkouts:entry.checkouts.flatMap(checkout=>checkout.userId!==userId?[checkout]:checkout.quantity===quantity?[]:[{...checkout,quantity:checkout.quantity-quantity,updatedAt:now}])};
+    });saveLocal('fireops-inventory',next);return next});
   };
   const createVehicleType=async(name:string)=>{
     if(!canManageFleet)throw new Error('Company owner access required.');

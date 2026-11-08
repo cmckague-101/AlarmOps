@@ -98,15 +98,18 @@ export function createDemoBackend(companyId=demoCompany.id){
         const quantity=Number(body.checkout_quantity??body.checkin_quantity);
         if(!Number.isInteger(quantity)||quantity<1)return error('Enter a positive whole quantity.');
         if(rpc==='checkout_inventory_item'){
-          const available=item.quantity-rows.filter(row=>row.item_id===item.id).reduce((sum,row)=>sum+row.quantity,0);
-          if(quantity>available)return error('Not enough items available.');
+          // quantity is on-hand stock: checkout lowers it, check-in restores it.
+          if(quantity>item.quantity)return error('Not enough items available.');
+          item.quantity-=quantity;
           if(existing)existing.quantity+=quantity;
           else rows.push({company_id:companyId,item_id:item.id,user_id:userId,user_name:demoUser.name,quantity,checked_out_at:new Date().toISOString(),updated_at:new Date().toISOString()});
         }else{
           if(!existing||existing.quantity<quantity)return error('Check-in exceeds checked-out quantity.');
           existing.quantity-=quantity;
+          item.quantity+=quantity;
         }
         tables.company_inventory_checkouts=rows.filter(row=>row.quantity>0);
+        notify('company_inventory_items');
         notify('company_inventory_checkouts');
         return response(null);
       }

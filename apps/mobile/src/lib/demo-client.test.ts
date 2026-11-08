@@ -131,8 +131,10 @@ describe('native demo client',()=>{
     const {client}=demo();
     expect((await client.rpc('checkout_inventory_item',{target_item_id:'demo-radio',checkout_quantity:2})).error).toBeNull();
     expect((await client.from('company_inventory_checkouts').select('*').single()).data?.quantity).toBe(2);
+    expect((await client.from('company_inventory_items').select('*').eq('id','demo-radio').single()).data?.quantity).toBe(10);
     expect((await client.rpc('checkin_inventory_item',{target_item_id:'demo-radio',borrower_user_id:demoUser.id,checkin_quantity:2})).error).toBeNull();
     expect((await client.from('company_inventory_checkouts').select('*')).data).toEqual([]);
+    expect((await client.from('company_inventory_items').select('*').eq('id','demo-radio').single()).data?.quantity).toBe(12);
     await client.rpc('add_my_crew_credential',{credential:{id:'local',name:'Demo training'}});
     const member=await client.from('fleet_crew').select('*').eq('record_id',demoUser.id).single();
     expect(member.data?.data.credentials).toContainEqual({id:'local',name:'Demo training'});

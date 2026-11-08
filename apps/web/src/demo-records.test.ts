@@ -49,7 +49,9 @@ describe('session-only demo records',()=>{
     expect(Date.parse(data.trainings[0].date)).toBeGreaterThan(now.getTime());
     expect(data.inventory).toHaveLength(4);
     expect(data.inventory.every(item=>item.quantity>0)).toBe(true);
+    expect(data.inventory[0].quantity).toBe(10);
     expect(data.inventory[0].checkouts[0].quantity).toBe(2);
+    expect(data.inventory[0].quantity+data.inventory[0].checkouts[0].quantity).toBe(12);
     expect(data.inspections).toHaveLength(2);
     expect(data.inspections.every(inspection=>inspection.items.some(item=>item.result==='Fail'&&item.defectNotes))).toBe(true);
     expect(data.auditLogs.length).toBeGreaterThan(2);
