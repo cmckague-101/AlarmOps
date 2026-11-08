@@ -5,16 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f7f4" />
     <script>
+      // Mirrors src/theme.ts: a saved Light/Dark choice wins, otherwise follow the device.
       (() => {
+        const STORAGE_KEY = 'fireops-theme';
         const colorScheme = matchMedia('(prefers-color-scheme: dark)');
-        const applySystemTheme = ({ matches }) => {
-          const theme = matches ? 'dark' : 'light';
+        const storedTheme = () => {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored === 'light' || stored === 'dark' ? stored : null;
+          } catch (_) {
+            return null;
+          }
+        };
+        const applyTheme = () => {
+          const theme = storedTheme() || (colorScheme.matches ? 'dark' : 'light');
           document.documentElement.dataset.theme = theme;
           document.documentElement.style.colorScheme = theme;
-          document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0F1317' : '#f7f7f4';
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.content = theme === 'dark' ? '#0F1317' : '#f7f7f4';
         };
-        applySystemTheme(colorScheme);
-        colorScheme.addEventListener('change', applySystemTheme);
+        applyTheme();
+        colorScheme.addEventListener('change', applyTheme);
       })();
     </script>
     <meta name="description" content="FireOps software for wildland crew, fleet, training, and incident operations." />

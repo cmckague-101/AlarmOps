@@ -1,5 +1,9 @@
-import {useColorScheme} from 'react-native';
-import {createContext,createElement,useContext,useMemo,type PropsWithChildren} from 'react';
+import {Appearance,useColorScheme} from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import {createContext,createElement,useCallback,useContext,useEffect,useMemo,useState,type PropsWithChildren} from 'react';
+import {readThemePreference,resolveColorScheme,writeThemePreference,type FireOpsColorScheme,type ThemePreference} from '@/lib/theme-preference';
+
+export type {FireOpsColorScheme,ThemePreference} from '@/lib/theme-preference';
 
 const light={
   canvas:'#F6F7F4',paper:'#FFFFFF',surfaceAlt:'#EEF1ED',ink:'#19201D',secondary:'#5F6963',divider:'#D9DED9',
@@ -13,14 +17,18 @@ const dark={
 };
 
 export type FireOpsTheme=typeof light;
-export type FireOpsColorScheme='light'|'dark';
-type ThemeContextValue={theme:FireOpsTheme;colorScheme:FireOpsColorScheme};
+type ThemeContextValue={theme:FireOpsTheme;colorScheme:FireOpsColorScheme;preference:ThemePreference;setPreference:(preference:ThemePreference)=>void};
 const ThemeContext=createContext<ThemeContextValue|undefined>(undefined);
 
 export function FireOpsThemeProvider({children}:PropsWithChildren){
+  // Read synchronously so the first frame already uses the saved choice.
+  const [preference,setPreferenceState]=useState<ThemePreference>(()=>readThemePreference(SecureStore));
   const systemScheme=useColorScheme();
-  const colorScheme:FireOpsColorScheme=systemScheme==='dark'?'dark':'light';
-  const value=useMemo<ThemeContextValue>(()=>({theme:colorScheme==='dark'?dark:light,colorScheme}),[colorScheme]);
+  // Native chrome (alerts, pickers, keyboard) follows the override too; System clears it.
+  useEffect(()=>{try{Appearance.setColorScheme(preference==='system'?'unspecified':preference)}catch{/* not supported on this platform */}},[preference]);
+  const setPreference=useCallback((next:ThemePreference)=>{writeThemePreference(SecureStore,next);setPreferenceState(next)},[]);
+  const colorScheme=resolveColorScheme(preference,systemScheme);
+  const value=useMemo<ThemeContextValue>(()=>({theme:colorScheme==='dark'?dark:light,colorScheme,preference,setPreference}),[colorScheme,preference,setPreference]);
   return createElement(ThemeContext.Provider,{value},children);
 }
 
@@ -32,3 +40,4 @@ function useThemeContext(){
 
 export function useFireOpsTheme():FireOpsTheme{return useThemeContext().theme}
 export function useFireOpsColorScheme(){const {colorScheme}=useThemeContext();return {colorScheme}}
+export function useThemePreference(){const {preference,setPreference}=useThemeContext();return {preference,setPreference}}
