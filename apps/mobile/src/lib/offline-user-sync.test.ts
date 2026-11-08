@@ -166,6 +166,15 @@ describe('offline user-owned commands (actual SQLite)',()=>{
     expect(entries.every(entry=>entry.status==='synced')).toBe(true);expect(pendingTrainingSignups(entries).size).toBe(0);
     expect(offlineSyncEntryLabel(entries.find(entry=>entry.operation.entityId===full)!)).toContain('course was full');
   });
+  it('queues payroll days with a CTR photo or none, and rejects a malformed CTR',async()=>{
+    const f=await setup();const draft=nextId();const photo={name:'ctr.jpg',mimeType:'image/jpeg',byteSize:2048,storagePath:`${company}/${user}/forms/${draft}/ctr.jpg`};
+    const withPhoto=createPayrollRows('2026-07-01').map((day,index)=>index?day:{...day,hoursWorked:8,ctr:photo});
+    const legacy=withPhoto.map(({ctr:_ctr,...day})=>day) as unknown as PayrollForm['rows'];
+    for(const ctr of [{...photo,mimeType:'application/pdf'},{...photo,byteSize:0},{...photo,extra:true},'ctr.jpg'])
+      await expect(f.sync.savePayrollForm(draft,{rows:withPhoto.map((day,index)=>index?day:{...day,ctr:ctr as never})})).rejects.toThrow();
+    expect((await f.sync.savePayrollForm(draft,{rows:withPhoto})).operation.mutation).toMatchObject({payload:{rows:withPhoto}});
+    expect((await f.sync.savePayrollForm(draft,{rows:legacy})).operation.mutation).toMatchObject({payload:{rows:legacy}});
+  });
   it('queues payroll saves and submission in order, overlays them, and labels refusals without dropping edits',async()=>{
     const f=await setup();const draft=nextId(),sent=nextId();const rows=createPayrollRows('2026-07-01');rows[0]={...rows[0],hoursWorked:9,crewIds:[user]};
     for(const changes of [{},{engineNumber:'x'.repeat(161)},{rows:rows.slice(1)},{rows:rows.map((day,index)=>index?day:{...day,hoursWorked:-1})},{rows:rows.map((day,index)=>index?day:{...day,crewIds:['me']})}])

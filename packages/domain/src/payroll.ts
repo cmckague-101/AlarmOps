@@ -1,17 +1,19 @@
 export type PayrollStatus = 'draft' | 'pending' | 'rejected' | 'approved' | 'paid';
 
-export type PayrollDay = {
-  date: string;
-  hoursWorked: number;
-  crewIds: string[];
-  notes: string;
-};
-
 export type PayrollAttachment = {
   name: string;
   mimeType: string;
   byteSize: number;
   storagePath: string;
+};
+
+export type PayrollDay = {
+  date: string;
+  hoursWorked: number;
+  crewIds: string[];
+  notes: string;
+  /** Per-day crew time report (CTR / shift ticket) photo. */
+  ctr: PayrollAttachment | null;
 };
 
 export type PayrollForm = {
@@ -53,12 +55,29 @@ export function payrollDayName(value: string) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date(year, month - 1, day));
 }
 
+export function normalizePayrollDay(row: Partial<PayrollDay> | null | undefined): PayrollDay {
+  return {
+    date: typeof row?.date === 'string' ? row.date : '',
+    hoursWorked: Math.max(0, Number(row?.hoursWorked) || 0),
+    crewIds: Array.isArray(row?.crewIds) ? row.crewIds.filter((id): id is string => typeof id === 'string') : [],
+    notes: typeof row?.notes === 'string' ? row.notes : '',
+    ctr: row?.ctr ?? null,
+  };
+}
+
+export function normalizePayrollRows(rows: readonly Partial<PayrollDay>[] | null | undefined): PayrollDay[] {
+  const normalized = (rows ?? []).map(normalizePayrollDay);
+  if (normalized.length === 21) return normalized;
+  return createPayrollRows().map((row, index) => normalized[index] ?? row);
+}
+
 export function createPayrollRows(start = ''): PayrollDay[] {
   return Array.from({ length: 21 }, (_, index) => ({
     date: start ? addPayrollDays(start, index) : '',
     hoursWorked: 0,
     crewIds: [],
     notes: '',
+    ctr: null,
   }));
 }
 
@@ -69,6 +88,10 @@ export function updatePayrollDate(rows: PayrollDay[], index: number, date: strin
 export function updatePayrollCrew(rows: PayrollDay[], index: number, crewIds: string[]) {
   const unique = [...new Set(crewIds)];
   return rows.map((row, rowIndex) => rowIndex < index ? row : { ...row, crewIds: unique });
+}
+
+export function payrollCtrAttachments(rows: readonly PayrollDay[]) {
+  return rows.map((row) => normalizePayrollDay(row).ctr).filter((item): item is PayrollAttachment => Boolean(item));
 }
 
 export function payrollTotals(rows: PayrollDay[]) {

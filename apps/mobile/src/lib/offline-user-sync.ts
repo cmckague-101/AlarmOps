@@ -1,4 +1,4 @@
-import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type InvoiceForm,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
+import {createPayrollRows,createSyncPatch,decodeDashboardPreferenceChanges,type InvoiceForm,type PayrollAttachment,type PayrollDay,type PayrollForm,type SyncOperation,type SyncRecord} from '@fireops/domain';
 import type {OfflineOutboxSession,OutboxEntry,OutboxScope} from './offline-outbox';
 import type {OfflineReceiptFiles} from './offline-receipt-files';
 
@@ -158,7 +158,15 @@ export function overlayPayrollForms(forms:readonly PayrollForm[],device:Readonly
   return result;
 }
 const payrollDate=/^(\d{4}-\d{2}-\d{2})?$/;
-const validPayrollRows=(rows:unknown):rows is PayrollDay[]=>Array.isArray(rows)&&rows.length===21&&rows.every(day=>day&&typeof day==='object'&&Object.keys(day).sort().join()==='crewIds,date,hoursWorked,notes'
+const ctrTypes=['image/jpeg','image/png','image/webp','image/heic','image/heif'];
+/** Per-day CTR photo: null, or an uploaded image attachment (the server also checks its storage folder). */
+const validPayrollCtr=(ctr:unknown)=>ctr===null||Boolean(ctr&&typeof ctr==='object'&&Object.keys(ctr).sort().join()==='byteSize,mimeType,name,storagePath'
+  &&typeof (ctr as PayrollAttachment).name==='string'&&(ctr as PayrollAttachment).name.length>=1&&(ctr as PayrollAttachment).name.length<=255
+  &&ctrTypes.includes((ctr as PayrollAttachment).mimeType)&&Number.isFinite((ctr as PayrollAttachment).byteSize)&&(ctr as PayrollAttachment).byteSize>=1&&(ctr as PayrollAttachment).byteSize<=10*1024*1024
+  &&typeof (ctr as PayrollAttachment).storagePath==='string');
+const payrollDayKeys=(day:object)=>Object.keys(day).sort().join();
+const validPayrollRows=(rows:unknown):rows is PayrollDay[]=>Array.isArray(rows)&&rows.length===21&&rows.every(day=>day&&typeof day==='object'
+  &&(payrollDayKeys(day)==='crewIds,date,hoursWorked,notes'||(payrollDayKeys(day)==='crewIds,ctr,date,hoursWorked,notes'&&validPayrollCtr(day.ctr)))
   &&typeof day.date==='string'&&payrollDate.test(day.date)&&typeof day.hoursWorked==='number'&&Number.isFinite(day.hoursWorked)&&day.hoursWorked>=0&&typeof day.notes==='string'&&day.notes.length<=2000
   &&Array.isArray(day.crewIds)&&day.crewIds.length<=200&&day.crewIds.every((id:unknown)=>typeof id==='string'&&uuid.test(id)));
 export const notificationPreferenceKeys=['pushEnabled','communicationReplies','documentAdded','trainingCreated','issueUpdates'] as const;

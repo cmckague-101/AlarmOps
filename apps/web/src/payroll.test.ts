@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createPayrollRows, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate } from '@fireops/domain';
+import { createPayrollRows, normalizePayrollDay, normalizePayrollRows, payrollCtrAttachments, payrollCrewTotals, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate } from '@fireops/domain';
 
 describe('payroll helpers', () => {
   it('leaves dates empty until the first date is selected', () => {
     const emptyRows = createPayrollRows();
-    expect(emptyRows.every(row => row.date === '')).toBe(true);
+    expect(emptyRows.every(row => row.date === '' && row.ctr === null)).toBe(true);
 
     const datedRows = updatePayrollDate(emptyRows, 0, '2026-01-05');
     expect(datedRows[0].date).toBe('2026-01-05');
@@ -48,5 +48,16 @@ describe('payroll helpers', () => {
       { crewId: 'a', totalDays: 5, totalHours: 50, regularHours: 40, overtimeHours: 10 },
       { crewId: 'b', totalDays: 3, totalHours: 30, regularHours: 30, overtimeHours: 0 },
     ]);
+  });
+
+  it('defaults missing CTR fields to null on legacy rows', () => {
+    expect(normalizePayrollDay({date:'2026-01-05',hoursWorked:4,crewIds:[],notes:''}).ctr).toBeNull();
+  });
+
+  it('pads short row lists and collects CTR photos for cleanup', () => {
+    const photo = { name: 'ctr.jpg', mimeType: 'image/jpeg', byteSize: 10, storagePath: 'c/u/forms/f/ctr.jpg' };
+    const rows = normalizePayrollRows([{ date: '2026-01-05', hoursWorked: 8, crewIds: [], notes: '', ctr: photo }]);
+    expect(rows).toHaveLength(21);
+    expect(payrollCtrAttachments(rows)).toEqual([photo]);
   });
 });

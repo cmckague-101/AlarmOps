@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import type { PayrollDay, PayrollForm } from '@fireops/domain';
+import { normalizePayrollRows, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from '@/lib/supabase';
 import { isOffline } from '@/providers/network-provider';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
@@ -8,7 +8,7 @@ import {onAppResume,refreshOnRejoin} from './app-resume';
 
 type Row={id:string;company_id:string;created_by:string;created_by_name:string;engine_number:string;incidents:string;attachment:PayrollForm['attachment'];rows:PayrollDay[];status:PayrollForm['status'];submitted_at:string|null;approved_at:string|null;approved_by:string|null;rejection_notes:string|null;rejected_at:string|null;rejected_by:string|null;created_at:string;updated_at:string};
 const columns='id,company_id,created_by,created_by_name,engine_number,incidents,attachment,rows,status,submitted_at,approved_at,approved_by,rejection_notes,rejected_at,rejected_by,created_at,updated_at';
-const fromRow=(row:Row):PayrollForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,engineNumber:row.engine_number,incidents:row.incidents,attachment:row.attachment,rows:row.rows,status:row.status,submittedAt:row.submitted_at,approvedAt:row.approved_at,approvedBy:row.approved_by,rejectionNotes:row.rejection_notes,rejectedAt:row.rejected_at,rejectedBy:row.rejected_by,createdAt:row.created_at,updatedAt:row.updated_at});
+const fromRow=(row:Row):PayrollForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,engineNumber:row.engine_number,incidents:row.incidents,attachment:row.attachment,rows:normalizePayrollRows(row.rows),status:row.status,submittedAt:row.submitted_at,approvedAt:row.approved_at,approvedBy:row.approved_by,rejectionNotes:row.rejection_notes,rejectedAt:row.rejected_at,rejectedBy:row.rejected_by,createdAt:row.created_at,updatedAt:row.updated_at});
 /** `downloaded`: shown from the verified offline download, not a live read. */
 type Snapshot={forms:PayrollForm[];loading:boolean;refreshing:boolean;error:string|null;downloaded?:DownloadedListInfo|null};
 let snapshot:Snapshot={forms:[],loading:true,refreshing:false,error:null};let company:string|null|undefined;let request:Promise<void>|null=null;let channel:RealtimeChannel|null=null;const listeners=new Set<()=>void>();
