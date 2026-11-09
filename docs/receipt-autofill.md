@@ -3,8 +3,9 @@
 Multi-receipt upload (web and mobile) stages up to 25 receipts per batch as
 cards. For companies with auto-fill turned on, each JPG/PNG photo is read by
 xAI Grok through the `receipt-autofill` edge function, which fills merchant,
-purchase date and amount. The submitter must tick "I checked these details"
-on every auto-filled card before the batch submits. Everyone else (and PDFs,
+purchase date and amount. A high-confidence read of all three is trusted; when
+Grok is less sure or misses a field, the submitter must tick "I checked these
+details" on that card before the batch submits. Everyone else (and PDFs,
 HEIC outside Safari, offline mobile) enters the details by hand.
 
 ## Deploy

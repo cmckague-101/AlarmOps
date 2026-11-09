@@ -28,11 +28,18 @@ describe('receipt drafts',()=>{
   it('is not ready while auto-fill is reading',()=>{
     expect(receiptDraftReady({...newReceiptDraft('a',today,true),merchant:'Fuel',amount:'1'},today)).toBe(false);
   });
-  it('fills empty fields and requires the submitter to confirm',()=>{
+  it('trusts a high-confidence read of all three fields',()=>{
     const filled=applyReceiptAutofill(newReceiptDraft('a',today,true),{merchant:'Shell',purchasedOn:'2026-11-01',amountCents:4599,confidence:'high'},today);
-    expect(filled).toMatchObject({status:'ready',merchant:'Shell',amount:'45.99',purchasedOn:'2026-11-01',autofilled:true,confirmed:false,confidence:'high'});
-    expect(receiptDraftProblems(filled,today)).toEqual({confirm:'Confirm auto-filled details.'});
-    expect(receiptDraftReady({...filled,confirmed:true},today)).toBe(true);
+    expect(filled).toMatchObject({status:'ready',merchant:'Shell',amount:'45.99',purchasedOn:'2026-11-01',autofilled:false,confidence:'high'});
+    expect(receiptDraftReady(filled,today)).toBe(true);
+  });
+  it('requires the submitter to confirm a less certain or incomplete read',()=>{
+    for(const result of [{merchant:'Shell',purchasedOn:'2026-11-01',amountCents:4599,confidence:'medium' as const},{merchant:'Shell',purchasedOn:null,amountCents:4599,confidence:'high' as const},{merchant:'Shell',purchasedOn:'2026-11-01',amountCents:4599}]){
+      const filled=applyReceiptAutofill(newReceiptDraft('a',today,true),result,today);
+      expect(filled).toMatchObject({autofilled:true,confirmed:false});
+      expect(receiptDraftProblems(filled,today).confirm).toBe('Confirm auto-filled details.');
+      expect(receiptDraftReady({...filled,confirmed:true},today)).toBe(true);
+    }
   });
   it('keeps what the person typed while auto-fill was running',()=>{
     const typed={...newReceiptDraft('a',today,true),merchant:'My merchant',purchasedOn:'2026-10-30'};

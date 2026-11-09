@@ -52,7 +52,7 @@ export type ReceiptDraft={
   merchant:string;
   amount:string;
   purchasedOn:string;
-  /** Auto-fill filled at least one field, so the submitter must confirm the card. */
+  /** Auto-fill filled at least one field but was not sure of all three, so the submitter must confirm the card. */
   autofilled:boolean;
   confirmed:boolean;
   confidence:ReceiptAutofillConfidence|null;
@@ -64,13 +64,17 @@ export function newReceiptDraft(key:string,today:string,reading:boolean):Receipt
   return {key,status:reading?'reading':'ready',merchant:'',amount:'',purchasedOn:today,autofilled:false,confirmed:false,confidence:null};
 }
 
-/** Fill only fields the person has not typed into yet; the card then needs confirming. */
+/**
+ * Fill only fields the person has not typed into yet. A high-confidence read of
+ * merchant, date and amount is trusted; anything less needs the submitter to confirm.
+ */
 export function applyReceiptAutofill<Draft extends ReceiptDraft>(draft:Draft,result:ReceiptAutofillResult,today:string):Draft{
   const merchant=!draft.merchant.trim()&&result.merchant?result.merchant.slice(0,160):draft.merchant;
   const amount=!draft.amount.trim()&&result.amountCents?receiptCentsToInput(result.amountCents):draft.amount;
   const purchasedOn=draft.purchasedOn===today&&result.purchasedOn&&/^\d{4}-\d{2}-\d{2}$/.test(result.purchasedOn)&&result.purchasedOn<=today?result.purchasedOn:draft.purchasedOn;
   const filled=merchant!==draft.merchant||amount!==draft.amount||purchasedOn!==draft.purchasedOn;
-  return {...draft,status:'ready',merchant,amount,purchasedOn,autofilled:draft.autofilled||filled,confirmed:false,
+  const trusted=result.confidence==='high'&&!result.notReceipt&&Boolean(result.merchant&&result.amountCents&&result.purchasedOn&&result.purchasedOn<=today);
+  return {...draft,status:'ready',merchant,amount,purchasedOn,autofilled:draft.autofilled||(filled&&!trusted),confirmed:false,
     confidence:result.confidence??null,note:result.notReceipt?'This photo does not look like a receipt. Check it or remove it.':filled?undefined:'Auto-fill could not read this receipt. Enter the details.'};
 }
 
