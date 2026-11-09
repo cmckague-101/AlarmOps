@@ -1,11 +1,13 @@
-import {useMemo,useState} from 'react';
-import {Pressable,RefreshControl,ScrollView,StyleSheet,Text,View} from 'react-native';
+import {useEffect,useMemo,useState} from 'react';
+import {Alert,Pressable,RefreshControl,ScrollView,StyleSheet,Text,View} from 'react-native';
 import {Redirect,Stack,useRouter} from 'expo-router';
 import {canProcessFinance,formatCalendarDate,invoiceDueDate,invoicePaymentState} from '@fireops/domain';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import { DownloadedListNotice } from '@/components/downloaded-list-notice';
 import {AppSymbol} from '@/components/app-symbol';
 import {refreshInvoices,useInvoices} from '@/lib/invoice-store';
+import {loadReceiptAutofillEnabled} from '@/lib/receipts-store';
+import {useNetworkStatus} from '@/providers/network-provider';
 import {useDeviceInvoices} from '@/lib/use-device-forms';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
@@ -23,13 +25,20 @@ export default function Screen(){
   const {customers,loading,refreshing,error}=invoices;
   const {forms,device}=useDeviceInvoices(invoices.forms,member,invoices.downloaded?.receiptWatermark);
   const [paymentFilter,setPaymentFilter]=useState<PaymentFilter>('all');
+  const {isOffline:offline}=useNetworkStatus();
+  const companyId=member?.company.id??null;
+  // Invoice auto-fill shares the receipt auto-fill switch; it needs a connection.
+  const [autofillEnabled,setAutofillEnabled]=useState(false);
+  useEffect(()=>{let active=true;setAutofillEnabled(false);if(companyId&&!offline)void loadReceiptAutofillEnabled(companyId).then(enabled=>{if(active)setAutofillEnabled(enabled)});return()=>{active=false}},[companyId,offline]);
   if(!session||access.status==='error')return <Redirect href="/"/>;
   const draft=forms.find(form=>form.status==='draft'&&form.createdBy===member?.user.id);
   const submittedAll=forms.filter(form=>form.status!=='draft');
   const submitted=submittedAll.filter(form=>paymentFilter==='all'||(paymentFilter==='paid')===(form.status==='paid'));
   const open=(id?:string)=>router.push({pathname:'/invoices/form',params:id?{invoiceId:id}:{}} as never);
+  // The form opens the draft in progress (or a new one) and starts the camera.
+  const scan=()=>{const go=()=>router.push({pathname:'/invoices/form',params:{scan:'1'}} as never);if(draft&&(draft.invoiceNumber.trim()||draft.invoiceAmount>0||draft.customerId||draft.attachment)){Alert.alert('Scan into your invoice in progress?','Details read from the photo replace what is there.',[{text:'Cancel',style:'cancel'},{text:'Scan',onPress:go}]);return}go()};
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Invoices'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInvoices} tintColor={theme.commandForeground}/>}>
-    <View style={styles.heading}><HeroTitle style={styles.title}>Invoices</HeroTitle><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
+    <View style={styles.heading}><HeroTitle style={styles.title}>Invoices</HeroTitle><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}{autofillEnabled&&!offline?<Pressable accessibilityRole="button" accessibilityLabel="Scan invoice" onPress={scan} style={styles.secondary}><AppSymbol name={{ios:'camera',android:'photo_camera'} as never} color={theme.commandForeground} size={17}/><Text style={styles.secondaryText}>Scan invoice</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
     {draft?<Pressable onPress={()=>open(draft.id)} style={styles.draft}><View style={styles.grow}><Text style={styles.rowTitle}>Invoice in progress</Text><Text style={styles.meta}>{device.has(draft.id)?'Saved on this device — syncs when connected':`Saved ${new Date(draft.updatedAt).toLocaleString()}`}</Text></View><Text style={styles.continue}>Continue</Text></Pressable>:null}
     <DownloadedListNotice info={invoices.downloaded}/>
     {submittedAll.length?<View accessibilityRole="radiogroup" style={styles.filterRow}>{paymentFilters.map(option=><Pressable key={option.value} accessibilityRole="radio" accessibilityState={{checked:paymentFilter===option.value}} onPress={()=>setPaymentFilter(option.value)} style={[styles.filterChip,paymentFilter===option.value&&styles.filterChipSelected]}><Text style={[styles.filterText,paymentFilter===option.value&&styles.filterTextSelected]}>{option.label}</Text></Pressable>)}</View>:null}

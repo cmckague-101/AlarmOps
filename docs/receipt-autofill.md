@@ -42,5 +42,7 @@ where u.created_at >= date_trunc('month', now())
 group by c.name order by autofills desc;
 ```
 
+Invoice photos use the same switch and limits; see [invoice-autofill.md](invoice-autofill.md).
+
 Photos are sent to xAI only for reading and are not stored by the function; the
 app uploads the original file to `receipt-files` when the batch is submitted.

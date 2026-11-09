@@ -1,7 +1,8 @@
 import {FileInput} from './demo-uploads';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
-import { canProcessFinance, formatCalendarDate, invoiceDueDate, invoicePaymentState, type FireOpsUser, type InvoiceAttachment, type InvoiceCustomer, type InvoiceForm } from '@fireops/domain';
+import { Camera, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
+import { INVOICE_REVIEW_MESSAGE, applyInvoiceAutofill, canProcessFinance, changedInvoiceFields, formatCalendarDate, invoiceDueDate, invoicePaymentState, type FireOpsUser, type InvoiceAttachment, type InvoiceCustomer, type InvoiceForm, type InvoiceReviewField } from '@fireops/domain';
+import { autofillImage, loadReceiptAutofillEnabled, requestInvoiceAutofill } from './receipt-autofill';
 import { supabase } from './supabase';
 import { InvoiceGenerator } from './InvoiceGenerator';
 import { createId } from './create-id';
@@ -15,6 +16,9 @@ const ADD_CUSTOMER='__add_customer__';
 const fromForm=(row:FormRow):InvoiceForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,invoiceNumber:row.invoice_number,invoiceDate:row.invoice_date??'',invoiceAmount:Number(row.invoice_amount),customerId:row.customer_id??'',attachment:row.attachment,status:row.status,submittedAt:row.submitted_at,dueDate:row.due_date??undefined,paidAt:row.paid_at??null,paidByName:row.paid_by_name??null,createdAt:row.created_at,updatedAt:row.updated_at});
 const fromCustomer=(row:CustomerRow):InvoiceCustomer=>({id:row.id,companyId:row.company_id,name:row.name,createdAt:row.created_at,updatedAt:row.updated_at});
 const accepted=['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
+const scanAccept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
+/** What the last photo scan left to check on one form; kept for the page's lifetime so leaving and reopening the form keeps it. */
+type ScanReview={formId:string;fields:InvoiceReviewField[];newCustomerName?:string;note?:string};
 const limit=10*1024*1024;
 const money=(value:number)=>value.toLocaleString(undefined,{style:'currency',currency:'USD'});
 const safeName=(name:string)=>name.trim().replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'attachment';
@@ -38,6 +42,9 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
   const [error,setError]=useState('');
   const [addingCustomer,setAddingCustomer]=useState(false);
   const [customerName,setCustomerName]=useState('');
+  const [autofillEnabled,setAutofillEnabled]=useState(false);
+  const [scanning,setScanning]=useState(false);
+  const [scanReview,setScanReview]=useState<ScanReview|null>(null);
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const demoCallback=useRef(onDemoChange);demoCallback.current=onDemoChange;
   useEffect(()=>{if(demoData)demoCallback.current?.({invoices:forms,customers})},[forms,customers,Boolean(demoData)]);
@@ -64,11 +71,17 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     return()=>{void client.removeChannel(channel)};
   },[companyId,load]);
   useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current)},[]);
+  useEffect(()=>{
+    let active=true;
+    if(companyId&&!demoData)void loadReceiptAutofillEnabled(companyId).then(enabled=>{if(active)setAutofillEnabled(enabled)});
+    return()=>{active=false};
+  },[companyId,Boolean(demoData)]);
   useEffect(()=>{setAddingCustomer(false);setCustomerName('')},[selected?.id]);
 
   const draft=forms.find(form=>form.status==='draft'&&form.createdBy===user.id);
+  const blankDraft=():InvoiceForm=>({id:createId(),companyId:companyId??'',createdBy:user.id,createdByName:user.name,invoiceNumber:'',invoiceDate:new Date().toISOString().slice(0,10),invoiceAmount:0,customerId:'',attachment:null,status:'draft',submittedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
   function openNew(){
-    setSelected(draft??{id:createId(),companyId:companyId??'',createdBy:user.id,createdByName:user.name,invoiceNumber:'',invoiceDate:new Date().toISOString().slice(0,10),invoiceAmount:0,customerId:'',attachment:null,status:'draft',submittedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    setSelected(draft??blankDraft());
   }
 
   async function save(form:InvoiceForm){
@@ -102,37 +115,74 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
   }
 
   function change(form:InvoiceForm){
+    if(scanning)return;
     if(form.dueDate&&form.invoiceDate&&form.dueDate<form.invoiceDate){setError('Due date cannot be before the invoice date.');return}
     setError('');
+    // Fields the person edits no longer need checking; picking a customer answers the new-customer prompt.
+    if(selected&&scanReview?.formId===form.id){
+      const edited=changedInvoiceFields(selected,form);
+      if(edited.length)setScanReview({...scanReview,fields:scanReview.fields.filter(field=>!edited.includes(field)),newCustomerName:edited.includes('customerId')?undefined:scanReview.newCustomerName});
+    }
     setSelected(form);
     if(timer.current)clearTimeout(timer.current);
     timer.current=setTimeout(()=>void save(form),650);
   }
 
-  async function attach(file:File){
-    if(!selected||saving||!canEditInvoice(selected,user,manager))return;
+  async function attach(file:File,base:InvoiceForm|null=selected):Promise<InvoiceForm|null>{
+    if(!base||saving||!canEditInvoice(base,user,manager))return null;
     const mimeType=fileType(file);
-    if(!accepted.includes(mimeType)||file.size<=0||file.size>limit){setError('Choose a JPG, PNG, WebP, HEIC, or PDF attachment up to 10 MB.');return}
+    if(!accepted.includes(mimeType)||file.size<=0||file.size>limit){setError('Choose a JPG, PNG, WebP, HEIC, or PDF attachment up to 10 MB.');return null}
     if(demoData){
       if(timer.current)clearTimeout(timer.current);
       setSaving(true);setError('');
       try{
         const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result??''));reader.onerror=()=>reject(reader.error??new Error('Could not read file.'));reader.readAsDataURL(file)});
-        await save({...selected,attachment:{name:file.name,mimeType,byteSize:file.size,storagePath:dataUrl}});
-      }catch(failure){setError(`Attachment could not upload. ${(failure as {message?:string}).message??'Try again.'}`)}
+        return await save({...base,attachment:{name:file.name,mimeType,byteSize:file.size,storagePath:dataUrl}});
+      }catch(failure){setError(`Attachment could not upload. ${(failure as {message?:string}).message??'Try again.'}`);return null}
       finally{setSaving(false)}
-      return;
     }
-    if(!supabase||!companyId)return;
+    if(!supabase||!companyId)return null;
     if(timer.current)clearTimeout(timer.current);setSaving(true);
-    const path=`${companyId}/${user.id}/forms/${selected.id}/${createId()}-${safeName(file.name)}`;
+    const path=`${companyId}/${user.id}/forms/${base.id}/${createId()}-${safeName(file.name)}`;
     const {error:uploadError}=await supabase.storage.from('invoice-files').upload(path,file,{contentType:mimeType});
-    if(uploadError){setError(`Attachment could not upload. ${uploadError.message}`);setSaving(false);return}
-    const previous=selected.attachment;
-    const saved=await save({...selected,attachment:{name:file.name,mimeType,byteSize:file.size,storagePath:path}});
+    if(uploadError){setError(`Attachment could not upload. ${uploadError.message}`);setSaving(false);return null}
+    const previous=base.attachment;
+    const saved=await save({...base,attachment:{name:file.name,mimeType,byteSize:file.size,storagePath:path}});
     if(!saved)await supabase.storage.from('invoice-files').remove([path]);
     else if(previous&&!previous.storagePath.startsWith('data:'))await supabase.storage.from('invoice-files').remove([previous.storagePath]);
     setSaving(false);
+    return saved;
+  }
+
+  /** Read an invoice photo into the open form (or the draft in progress / a new draft), then attach the photo. Never submits. */
+  async function scan(file:File){
+    if(scanning||saving||!companyId)return;
+    let base=selected;
+    if(!base){
+      if(draft&&(draft.invoiceNumber.trim()||draft.invoiceAmount>0||draft.customerId||draft.attachment)&&!window.confirm('Scan into your invoice in progress? Details read from the photo replace what is there.'))return;
+      base=draft??blankDraft();
+    }
+    if(!canEditInvoice(base,user,manager))return;
+    const mimeType=fileType(file);
+    if(!accepted.includes(mimeType)||mimeType==='application/pdf'||file.size<=0||file.size>limit){setError('Choose a JPG, PNG, WebP, or HEIC photo up to 10 MB.');return}
+    if(timer.current)clearTimeout(timer.current);
+    setSelected(base);setScanning(true);setError('');
+    let next=base;
+    let review:ScanReview={formId:base.id,fields:[]};
+    try{
+      const photo=await autofillImage(file,mimeType);
+      if(!photo)review.note='This browser cannot read that photo for auto-fill. It is attached; enter the details.';
+      else{
+        const outcome=applyInvoiceAutofill(base,await requestInvoiceAutofill(companyId,photo),customers);
+        next=outcome.form;
+        review={formId:base.id,fields:outcome.review,newCustomerName:outcome.newCustomerName,note:outcome.note};
+      }
+    }catch(failure){review.note=failure instanceof Error?failure.message:'Auto-fill could not read this photo. Enter the details.'}
+    setScanReview(review);
+    try{
+      const saved=await attach(file,next);
+      if(!saved){setSelected(next);await save(next)}
+    }finally{setScanning(false)}
   }
 
   async function removeAttachment(){
@@ -153,6 +203,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
 
   async function submit(){
     if(!selected)return;
+    if(scanReview?.formId===selected.id&&scanReview.fields.length){setError(INVOICE_REVIEW_MESSAGE);return}
     if(!selected.invoiceNumber.trim()||!selected.invoiceDate||selected.invoiceAmount<=0||!selected.customerId){setError('Invoice number, date, positive amount, and customer are required.');return}
     if(timer.current)clearTimeout(timer.current);
     const saved=await save(selected);if(!saved)return;
@@ -220,15 +271,24 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
   if(selected){
     const editable=canEditInvoice(selected,user,manager);
     const customer=customers.find(item=>item.id===selected.customerId);
-    return <div className="page payroll-page invoice-page"><div className="page-heading"><div><button className="back-link" onClick={()=>setSelected(null)}>← Back to invoices</button><h1>{editable?(selected.status==='draft'?'Invoice submission':'Edit invoice'):'Invoice details'}</h1><p>{editable?(saving?'Saving changes…':selected.status==='draft'?'Changes save automatically':'Edits save automatically'):'Paid invoice is view only.'}</p></div>{(editable||(manager&&selected.status==='submitted'))&&selected.status!=='paid'&&<button className="payroll-delete" disabled={saving} onClick={()=>void remove(selected)}><Trash2/>Delete invoice</button>}</div>
+    const review=scanReview?.formId===selected.id?scanReview:null;
+    const unsure=(field:InvoiceReviewField)=>Boolean(editable&&review?.fields.includes(field));
+    const checkTag=(field:InvoiceReviewField)=>unsure(field)?<em className="invoice-check-tag">Check</em>:null;
+    const fieldClass=(field:InvoiceReviewField)=>unsure(field)?'invoice-field-check':undefined;
+    const scanPicker=(label:string)=><label className={`payroll-attachment-picker invoice-scan-picker${scanning||saving?' disabled':''}`}><Camera/><span>{label}</span><FileInput type="file" accept={scanAccept} disabled={scanning||saving} onChange={event=>{const file=event.target.files?.[0];if(file)void scan(file);event.target.value=''}}/></label>;
+    return <div className="page payroll-page invoice-page"><div className="page-heading"><div><button className="back-link" onClick={()=>setSelected(null)}>← Back to invoices</button><h1>{editable?(selected.status==='draft'?'Invoice submission':'Edit invoice'):'Invoice details'}</h1><p>{editable?(scanning?'Reading invoice photo…':saving?'Saving changes…':selected.status==='draft'?'Changes save automatically':'Edits save automatically'):'Paid invoice is view only.'}</p></div>{(editable||(manager&&selected.status==='submitted'))&&selected.status!=='paid'&&<button className="payroll-delete" disabled={saving} onClick={()=>void remove(selected)}><Trash2/>Delete invoice</button>}</div>
       {error&&<p className="receipt-error" role="alert">{error}</p>}
-      <section className="payroll-form-card"><div className="invoice-fields">
-        <label><span>Invoice number</span>{editable?<input value={selected.invoiceNumber} maxLength={160} onChange={event=>change({...selected,invoiceNumber:event.target.value})}/>:<b>{selected.invoiceNumber}</b>}</label>
-        <label><span>Invoice date</span>{editable?<input type="date" value={selected.invoiceDate} onChange={event=>change({...selected,invoiceDate:event.target.value})}/>:<b>{formatCalendarDate(selected.invoiceDate)}</b>}</label>
-        <label><span>Due date</span>{editable?<><input type="date" min={selected.invoiceDate||undefined} value={invoiceDueDate(selected)} onChange={event=>change({...selected,dueDate:event.target.value||undefined})}/>{!selected.dueDate&&<small className="payroll-attachment-help">Defaults to 30 days after the invoice date.</small>}</>:<b>{formatCalendarDate(invoiceDueDate(selected))} {selected.status!=='draft'&&<i className={`invoice-payment ${invoicePaymentState(selected)}`}>{paymentLabel[invoicePaymentState(selected)]}</i>}</b>}{selected.status==='paid'&&selected.paidAt&&<small className="payroll-attachment-help">Paid {new Date(selected.paidAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}{selected.paidByName?` · marked by ${selected.paidByName}`:''}</small>}</label>
-        <label><span>Invoice amount</span>{editable?<input type="number" min="0" step="0.01" value={selected.invoiceAmount||''} onChange={event=>change({...selected,invoiceAmount:Number(event.target.value)||0})}/>:<b>{money(selected.invoiceAmount)}</b>}</label>
-        <label><span>Customer</span>{editable?<select value={addingCustomer?ADD_CUSTOMER:selected.customerId} onChange={event=>{if(event.target.value===ADD_CUSTOMER){setAddingCustomer(true);setCustomerName('');return}setAddingCustomer(false);change({...selected,customerId:event.target.value})}}><option value="">Select customer</option>{customers.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}{manager&&<option value={ADD_CUSTOMER}>Add customer…</option>}</select>:<b>{customer?.name??'Customer unavailable'}</b>}
-          {editable&&manager&&addingCustomer&&<div className="invoice-inline-customer"><input autoFocus value={customerName} maxLength={160} placeholder="Customer name" onChange={event=>setCustomerName(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();void addCustomer().then(created=>{if(created)change({...selected,customerId:created.id})})}}}/><button type="button" className="primary" disabled={!customerName.trim()||saving} onClick={()=>void addCustomer().then(created=>{if(created)change({...selected,customerId:created.id})})}>Add</button><button type="button" className="secondary" onClick={()=>{setAddingCustomer(false);setCustomerName('')}}>Cancel</button></div>}
+      {editable&&scanning&&<p className="invoice-scan-banner" role="status">Reading the invoice photo. Fields fill in when it is done.</p>}
+      {editable&&!scanning&&review?.note&&<p className="invoice-scan-banner" role="status">{review.note}</p>}
+      {editable&&!scanning&&review&&review.fields.length>0&&<div className="invoice-scan-banner review" role="status"><span>Auto-filled from the photo. Check the highlighted fields.</span><button type="button" className="secondary" onClick={()=>setScanReview({...review,fields:[]})}>They are correct</button></div>}
+      <section className="payroll-form-card">{editable&&autofillEnabled&&<div className="invoice-scan-row">{scanPicker(selected.attachment?'Scan a new invoice photo':'Scan invoice to auto-fill')}<small className="payroll-attachment-help">Reads invoice #, dates, amount and customer from a photo. You check them before submitting.</small></div>}<div className="invoice-fields">
+        <label className={fieldClass('invoiceNumber')}><span>Invoice number{checkTag('invoiceNumber')}</span>{editable?<input value={selected.invoiceNumber} maxLength={160} onChange={event=>change({...selected,invoiceNumber:event.target.value})}/>:<b>{selected.invoiceNumber}</b>}</label>
+        <label className={fieldClass('invoiceDate')}><span>Invoice date{checkTag('invoiceDate')}</span>{editable?<input type="date" value={selected.invoiceDate} onChange={event=>change({...selected,invoiceDate:event.target.value})}/>:<b>{formatCalendarDate(selected.invoiceDate)}</b>}</label>
+        <label className={fieldClass('dueDate')}><span>Due date{checkTag('dueDate')}</span>{editable?<><input type="date" min={selected.invoiceDate||undefined} value={invoiceDueDate(selected)} onChange={event=>change({...selected,dueDate:event.target.value||undefined})}/>{!selected.dueDate&&<small className="payroll-attachment-help">Defaults to 30 days after the invoice date.</small>}</>:<b>{formatCalendarDate(invoiceDueDate(selected))} {selected.status!=='draft'&&<i className={`invoice-payment ${invoicePaymentState(selected)}`}>{paymentLabel[invoicePaymentState(selected)]}</i>}</b>}{selected.status==='paid'&&selected.paidAt&&<small className="payroll-attachment-help">Paid {new Date(selected.paidAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}{selected.paidByName?` · marked by ${selected.paidByName}`:''}</small>}</label>
+        <label className={fieldClass('invoiceAmount')}><span>Invoice amount{checkTag('invoiceAmount')}</span>{editable?<input type="number" min="0" step="0.01" value={selected.invoiceAmount||''} onChange={event=>change({...selected,invoiceAmount:Number(event.target.value)||0})}/>:<b>{money(selected.invoiceAmount)}</b>}</label>
+        <label className={fieldClass('customerId')}><span>Customer{checkTag('customerId')}</span>{editable?<select value={addingCustomer?ADD_CUSTOMER:selected.customerId} onChange={event=>{if(event.target.value===ADD_CUSTOMER){setAddingCustomer(true);setCustomerName('');return}setAddingCustomer(false);change({...selected,customerId:event.target.value})}}><option value="">Select customer</option>{customers.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}<option value={ADD_CUSTOMER}>Add customer…</option></select>:<b>{customer?.name??'Customer unavailable'}</b>}
+          {editable&&addingCustomer&&<div className="invoice-inline-customer"><input autoFocus value={customerName} maxLength={160} placeholder="Customer name" onChange={event=>setCustomerName(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();void addCustomer().then(created=>{if(created)change({...selected,customerId:created.id})})}}}/><button type="button" className="primary" disabled={!customerName.trim()||saving} onClick={()=>void addCustomer().then(created=>{if(created)change({...selected,customerId:created.id})})}>Add</button><button type="button" className="secondary" onClick={()=>{setAddingCustomer(false);setCustomerName('')}}>Cancel</button></div>}
+          {editable&&!scanning&&review?.newCustomerName&&<div className="invoice-scan-customer" role="status"><span>“{review.newCustomerName}” from the photo is not in your customer list.</span><button type="button" className="primary" disabled={saving} onClick={event=>{event.preventDefault();const name=review.newCustomerName!;void addCustomer(name).then(created=>{if(created)change({...selected,customerId:created.id})})}}>Add “{review.newCustomerName}”</button><button type="button" className="secondary" onClick={event=>{event.preventDefault();setScanReview({...review,newCustomerName:undefined})}}>Dismiss</button></div>}
         </label>
         <div className="payroll-attachment-field"><span>Attachment</span>{selected.attachment?<div className="payroll-attachment"><FileText/><span><b>{selected.attachment.name}</b><small>{(selected.attachment.byteSize/1024/1024).toFixed(1)} MB</small></span><button onClick={()=>void openAttachment(selected)} aria-label="Open attachment"><ExternalLink/></button>{editable&&<button onClick={()=>void removeAttachment()} aria-label="Remove attachment"><X/></button>}</div>:editable?<label className="payroll-attachment-picker"><Upload/><span>Attach file or image</span><FileInput type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" onChange={event=>{const file=event.target.files?.[0];if(file)void attach(file);event.target.value=''}}/></label>:<span>—</span>}<small className="payroll-attachment-help">JPG, PNG, WebP, HEIC, or PDF · 10 MB max</small></div>
       </div>
@@ -239,7 +299,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
 
   const submittedAll=forms.filter(form=>form.status!=='draft');
   const visible=submittedAll.filter(form=>paymentFilter==='all'||(paymentFilter==='paid')===(form.status==='paid'));
-  return <div className="page payroll-page invoice-page"><div className="page-heading hero-heading"><div><h1>Invoices</h1></div><div className="invoice-heading-actions">{manager&&<button className="secondary" onClick={()=>setGeneratorOpen(true)}><FileText/>Invoice Generator</button>}<button className="primary" onClick={openNew}><Plus/>New Invoice</button></div></div>
+  return <div className="page payroll-page invoice-page"><div className="page-heading hero-heading"><div><h1>Invoices</h1></div><div className="invoice-heading-actions">{manager&&<button className="secondary" onClick={()=>setGeneratorOpen(true)}><FileText/>Invoice Generator</button>}{autofillEnabled&&<label className={`secondary invoice-scan-button${scanning||saving?' disabled':''}`}><Camera/>Scan invoice<FileInput type="file" accept={scanAccept} aria-label="Scan invoice photo" disabled={scanning||saving} onChange={event=>{const file=event.target.files?.[0];if(file)void scan(file);event.target.value=''}}/></label>}<button className="primary" onClick={openNew}><Plus/>New Invoice</button></div></div>
     {draft&&<button className="payroll-draft-card" onClick={()=>setSelected(draft)}><span><b>Invoice in progress</b><small>Last saved {new Date(draft.updatedAt).toLocaleString()}</small></span><strong>Continue</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="receipt-list-card"><div className="receipt-list-heading"><h2>{manager?'Submitted invoices':'Your submitted invoices'}</h2>{submittedAll.length>0&&<div className="roster-sort" role="radiogroup" aria-label="Filter invoices">{(['all','unpaid','paid'] as const).map(value=><button key={value} type="button" role="radio" aria-checked={paymentFilter===value} className={paymentFilter===value?'selected':''} onClick={()=>setPaymentFilter(value)}>{value==='all'?'All':value==='paid'?'Paid':'Unpaid'}</button>)}</div>}</div>

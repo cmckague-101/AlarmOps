@@ -2,7 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useSyncExternalStore } from 'react';
 import * as Sharing from 'expo-sharing';
-import { collectReceiptExportEntries, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type ReceiptAutofillResult, type ReceiptExportEntry } from '@fireops/domain';
+import { collectReceiptExportEntries, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type InvoiceAutofillResult, type ReceiptAutofillResult, type ReceiptExportEntry } from '@fireops/domain';
 
 import type { LocalFleetFile } from '@/lib/fleet-files';
 import { createFleetId } from '@/lib/fleet-store';
@@ -189,7 +189,7 @@ export async function deleteReceipt(companyId: string, receipt: CompanyReceipt) 
   if (storageError) throw new Error(`Receipt was deleted, but its file could not be removed. ${storageError.message}`);
 }
 
-/** Whether this company's subscription includes receipt auto-fill. False when unknown or offline. */
+/** Whether this company's subscription includes auto-fill (receipts and invoices share the switch). False when unknown or offline. */
 export async function loadReceiptAutofillEnabled(companyId: string) {
   if (!supabase || isOffline()) return false;
   try {
@@ -204,15 +204,15 @@ export async function loadReceiptAutofillEnabled(companyId: string) {
 const autofillMaxBytes = 7 * 1024 * 1024;
 export const autofillMimeTypes = ['image/jpeg', 'image/png'];
 
-/** Ask the receipt-autofill edge function to read one JPG/PNG photo. Throws with a message fit to show on the card. */
-export async function requestReceiptAutofill(companyId: string, fileUri: string, mimeType: string): Promise<ReceiptAutofillResult> {
+/** Send one JPG/PNG photo to an auto-fill edge function. Throws with a message fit to show beside the form. */
+async function requestPhotoAutofill<Result>(fn: 'receipt-autofill' | 'invoice-autofill', companyId: string, fileUri: string, mimeType: string): Promise<Result> {
   if (!supabase) throw new Error('Auto-fill is unavailable in this build.');
   if (!autofillMimeTypes.includes(mimeType)) throw new Error('Auto-fill reads JPG and PNG photos. Enter the details.');
   const file = new File(fileUri);
   if (!file.exists) throw new Error('This photo is no longer available.');
   if (file.size > autofillMaxBytes) throw new Error('This photo is too large to auto-fill. Enter the details.');
   const image = await file.base64();
-  const { data, error } = await supabase.functions.invoke<ReceiptAutofillResult & { error?: string }>('receipt-autofill', { body: { companyId, mimeType, image } });
+  const { data, error } = await supabase.functions.invoke<Result & { error?: string }>(fn, { body: { companyId, mimeType, image } });
   if (error) {
     let message = '';
     try { message = (await (error as { context?: Response }).context?.json?.())?.error ?? ''; } catch { /* not JSON */ }
@@ -221,6 +221,12 @@ export async function requestReceiptAutofill(companyId: string, fileUri: string,
   if (!data || data.error) throw new Error(data?.error || 'Auto-fill could not read this photo. Enter the details.');
   return data;
 }
+
+/** Ask the receipt-autofill edge function to read one JPG/PNG photo. Throws with a message fit to show on the card. */
+export const requestReceiptAutofill = (companyId: string, fileUri: string, mimeType: string) => requestPhotoAutofill<ReceiptAutofillResult>('receipt-autofill', companyId, fileUri, mimeType);
+
+/** Ask the invoice-autofill edge function to read one invoice photo (same switch and daily limits as receipts). Never writes the invoice. */
+export const requestInvoiceAutofill = (companyId: string, fileUri: string, mimeType: string) => requestPhotoAutofill<InvoiceAutofillResult>('invoice-autofill', companyId, fileUri, mimeType);
 
 export async function openReceipt(receipt: CompanyReceipt) {
   if (!supabase) throw new Error('Receipt storage is unavailable.');

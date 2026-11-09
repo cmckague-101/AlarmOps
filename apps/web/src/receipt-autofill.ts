@@ -1,10 +1,10 @@
-import type { ReceiptAutofillResult } from '@fireops/domain';
+import type { InvoiceAutofillResult, ReceiptAutofillResult } from '@fireops/domain';
 import { supabase } from './supabase';
 
 /** Longest side of the copy sent for auto-fill; enough for receipt text, far smaller than a phone photo. */
 const AUTOFILL_MAX_SIDE = 1800;
 
-/** Whether this company's subscription includes receipt auto-fill. False when unknown. */
+/** Whether this company's subscription includes auto-fill (receipts and invoices share the switch). False when unknown. */
 export async function loadReceiptAutofillEnabled(companyId: string) {
   if (!supabase) return false;
   try {
@@ -48,10 +48,10 @@ export async function autofillImage(file: File, mimeType: string): Promise<{ ima
   }
 }
 
-/** Ask the receipt-autofill edge function to read one photo. Throws with a message fit to show on the card. */
-export async function requestReceiptAutofill(companyId: string, photo: { image: string; mimeType: string }): Promise<ReceiptAutofillResult> {
+/** Call an auto-fill edge function with one photo. Throws with a message fit to show beside the form. */
+export async function invokeAutofill<Result>(fn: 'receipt-autofill' | 'invoice-autofill', companyId: string, photo: { image: string; mimeType: string }): Promise<Result> {
   if (!supabase) throw new Error('Auto-fill is unavailable in this build.');
-  const { data, error } = await supabase.functions.invoke<ReceiptAutofillResult & { error?: string }>('receipt-autofill', { body: { companyId, ...photo } });
+  const { data, error } = await supabase.functions.invoke<Result & { error?: string }>(fn, { body: { companyId, ...photo } });
   if (error) {
     let message = '';
     try { message = (await (error as { context?: Response }).context?.json?.())?.error ?? ''; } catch { /* not JSON */ }
@@ -60,3 +60,9 @@ export async function requestReceiptAutofill(companyId: string, photo: { image: 
   if (!data || data.error) throw new Error(data?.error || 'Auto-fill could not read this photo. Enter the details.');
   return data;
 }
+
+/** Ask the receipt-autofill edge function to read one photo. Throws with a message fit to show on the card. */
+export const requestReceiptAutofill = (companyId: string, photo: { image: string; mimeType: string }) => invokeAutofill<ReceiptAutofillResult>('receipt-autofill', companyId, photo);
+
+/** Ask the invoice-autofill edge function to read one invoice photo. Never writes the invoice. */
+export const requestInvoiceAutofill = (companyId: string, photo: { image: string; mimeType: string }) => invokeAutofill<InvoiceAutofillResult>('invoice-autofill', companyId, photo);

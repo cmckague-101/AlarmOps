@@ -10,6 +10,7 @@ export * from './receipts';
 export * from './vin';
 export * from './payroll';
 export * from './invoices';
+export * from './invoice-autofill';
 export * from './tasks';
 export * from './hotels';
 export * from './travel';
