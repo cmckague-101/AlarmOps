@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { dotInspectionWarning, formatCalendarDate, nextOilChangeWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
+import { canSendToVipr, dotInspectionWarning, formatCalendarDate, nextOilChangeWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -139,12 +139,20 @@ export default function FleetScreen() {
             <HeroTitle style={styles.pageTitle}>Fleet</HeroTitle>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
-          {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Add vehicle" onPress={() => router.push('/vehicle/form')} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
-              <AppSymbol name="plus" color={theme.commandText} size={18} />
-              <Text style={styles.addButtonLabel}>Add</Text>
-            </Pressable>
-          ) : null}
+          <View style={styles.headingActions}>
+            {currentUser && canSendToVipr(currentUser.role) && vehicles.length ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Send to VIPR" onPress={() => router.push('/send-to-vipr')} style={({ pressed }) => [styles.viprButton, pressed && styles.addButtonPressed]}>
+                <AppSymbol name={{ ios: 'square.and.arrow.up', android: 'upload' } as never} color={theme.ink} size={17} />
+                <Text style={styles.viprButtonLabel}>VIPR</Text>
+              </Pressable>
+            ) : null}
+            {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Add vehicle" onPress={() => router.push('/vehicle/form')} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
+                <AppSymbol name="plus" color={theme.commandText} size={18} />
+                <Text style={styles.addButtonLabel}>Add</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {error ? (
@@ -266,6 +274,9 @@ function createStyles(theme: FireOpsTheme) {
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   headingGroup: { flex: 1, gap: 5 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },
+  headingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  viprButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.paper, borderRadius: 12, paddingHorizontal: 13 },
+  viprButtonLabel: { color: theme.ink, fontSize: 15, fontWeight: '800' },
   addButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.ember, borderRadius: 12, paddingHorizontal: 16 },
   addButtonPressed: { backgroundColor: theme.emberPressed },
   addButtonLabel: { color: theme.commandText, fontSize: 15, fontWeight: '800' },

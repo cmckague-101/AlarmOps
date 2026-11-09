@@ -125,6 +125,8 @@ export type Vehicle = {
   vin:string;plate:string;status:VehicleStatus;photo?:VehicleFile;contract?:VehicleFile;
   viprChecklist?:VehicleFile;registration?:VehicleFile;insurance?:VehicleFile;
   dotInspection?:VehicleFile;documents?:NamedDocument[];notes?:string;nextOilChange?:string;nextOilChangeDue?:string;createdAt:string;assignedTo?:string;
+  /** Send to VIPR fields (owner-set): one VIPR category, NWCG engine type, pump, tank, GVWR and daily rate in USD. */
+  viprCategory?:string;engineType?:string;pumpGpm?:number;pumpPsi?:number;tankGallons?:number;gvwrLbs?:number;dailyRate?:number;
   inspections?:VehicleInspection[];
   assignedFire?:Pick<NifcIncident,'id'|'name'|'state'>;
 };

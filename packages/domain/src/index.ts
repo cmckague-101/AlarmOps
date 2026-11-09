@@ -33,3 +33,4 @@ export * from './attachment-upload';
 export * from './fleet-organize';
 export * from './fleet-sync-fields';
 export * from './receipt-export';
+export * from './vipr';

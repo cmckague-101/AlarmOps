@@ -242,3 +242,6 @@ main{overflow-x:clip}
 /* Tiles respond to presses first; hover tint only on devices that really hover. */
 @media (hover:hover) and (pointer:fine){.command-card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:color-mix(in srgb,var(--accent) 4%,var(--paper))}.command-card.urgent:hover{border-color:color-mix(in srgb,var(--rail) 50%,var(--line))}.quick-action:hover{background:color-mix(in srgb,var(--tile-stripe) 6%,var(--surface-subtle));border-color:color-mix(in srgb,var(--tile-stripe) 30%,var(--line))}.more-app-tile:hover{background:color-mix(in srgb,var(--tile-stripe) 6%,var(--surface-subtle));border-color:color-mix(in srgb,var(--tile-stripe) 30%,var(--line));opacity:1}}
 @media (prefers-reduced-motion:reduce){.command-card,.quick-action,.more-app-tile{transition:none}.command-card:active,.quick-action:active,.more-app-tile:active{transform:none}}
+
+.form-section-help{margin:-8px 0 14px;color:var(--muted);font-size:13px}
+.send-vipr-button{white-space:nowrap}@media(max-width:800px){.send-vipr-button .send-vipr-full{display:none}}
