@@ -5,11 +5,12 @@ import {PGlite} from '@electric-sql/pglite';
 import {loadFleetSyncSchema,migration} from './fixtures/fleet-sync-harness.mjs';
 // Send to VIPR fields (20270114000100): owners set VIPR category, engine type,
 // pump, tank, GVWR and daily rate; values are validated for every writer and
-// other roles still cannot change vehicle details.
+// other roles still cannot change vehicle details. Company admins manage
+// vehicles like owners (is_company_owner covers owner + admin).
 
 const db=new PGlite();
 const company='10000000-0000-4000-8000-000000000001';
-const owner='20000000-0000-4000-8000-000000000001',tech='20000000-0000-4000-8000-000000000002';
+const owner='20000000-0000-4000-8000-000000000001',tech='20000000-0000-4000-8000-000000000002',admin='20000000-0000-4000-8000-000000000003';
 const row=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
 async function actor(user,action){
   await db.exec('begin');
@@ -41,8 +42,8 @@ before(async()=>{
 beforeEach(async()=>{
   await db.exec('truncate public.companies cascade;truncate public.profiles cascade');
   await db.query('insert into public.companies values($1)',[company]);
-  await db.query("insert into public.profiles values($1,'Owner'),($2,'Tech')",[owner,tech]);
-  await db.query("insert into public.company_members values($1,$2,'owner'),($1,$3,'shop_tech')",[company,owner,tech]);
+  await db.query("insert into public.profiles values($1,'Owner'),($2,'Tech'),($3,'Admin')",[owner,tech,admin]);
+  await db.query("insert into public.company_members values($1,$2,'owner'),($1,$3,'shop_tech'),($1,$4,'admin')",[company,owner,tech,admin]);
 });
 after(async()=>{await db.close()});
 
@@ -58,6 +59,18 @@ test('owners set and clear VIPR fields; other roles cannot',async()=>{
   await assert.rejects(patch(tech,id,{viprCategory:'Water Tender'}),/This role cannot make the requested vehicle change/);
   // Unchanged VIPR fields do not get in the way of other allowed changes.
   await patch(tech,id,{nextOilChange:'45,000 mi'});
+});
+
+test('company admins edit vehicle details and VIPR fields, and add and delete vehicles',async()=>{
+  const id=await vehicle();
+  await patch(admin,id,{...valid,unit:'Engine 8',plate:'ADM-1',vin:'1HTMMMML9KH483299'});
+  const saved=await data(id);
+  assert.equal(saved.unit,'Engine 8');assert.equal(saved.plate,'ADM-1');assert.equal(saved.viprCategory,'Engine');
+  await assert.rejects(patch(admin,id,{pumpGpm:0}),/must be a positive number/);
+  const added=randomUUID();
+  await actor(admin,()=>db.query('insert into public.fleet_vehicles(company_id,record_id,data,updated_by) values($1,$2,$3,auth.uid())',[company,added,JSON.stringify({id:added,unit:'Tender 3',status:'Ready'})]));
+  const removed=await actor(admin,()=>db.query('delete from public.fleet_vehicles where record_id=$1',[added]));
+  assert.equal(removed.affectedRows,1);
 });
 
 test('rejects invalid VIPR values from every writer, including owners',async()=>{
