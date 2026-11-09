@@ -2,7 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useSyncExternalStore } from 'react';
 import * as Sharing from 'expo-sharing';
-import { collectReceiptExportEntries, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type ReceiptExportEntry } from '@fireops/domain';
+import { collectReceiptExportEntries, receiptDate, receiptExportEntryName, receiptExportZipName, receiptSingleExportZipName, zipStore, type ReceiptAutofillResult, type ReceiptExportEntry } from '@fireops/domain';
 
 import type { LocalFleetFile } from '@/lib/fleet-files';
 import { createFleetId } from '@/lib/fleet-store';
@@ -30,6 +30,8 @@ export type CompanyReceipt = {
   createdAt: string;
   /** YYYY-MM-DD; missing on receipts saved before purchase dates existed. */
   purchasedOn?: string;
+  /** Free-text project; missing when none was given (and on offline downloads). */
+  project?: string;
 };
 
 type ReceiptRow = {
@@ -44,6 +46,7 @@ type ReceiptRow = {
   uploaded_by_name: string;
   created_at: string;
   purchased_on?: string | null;
+  project?: string | null;
 };
 
 /** `downloaded`: shown from the verified offline download, not a live read. */
@@ -74,6 +77,7 @@ function fromRow(row: ReceiptRow): CompanyReceipt {
     uploadedByName: row.uploaded_by_name,
     createdAt: row.created_at,
     purchasedOn: row.purchased_on ?? undefined,
+    project: row.project ?? undefined,
   };
 }
 
@@ -125,7 +129,7 @@ export function refreshReceipts() {
   return request;
 }
 
-export async function createReceipt(companyId: string, userId: string, userName: string, name: string, amountCents: number, picked: LocalFleetFile, purchasedOn?: string) {
+export async function createReceipt(companyId: string, userId: string, userName: string, name: string, amountCents: number, picked: LocalFleetFile, purchasedOn?: string, project?: string) {
   if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
   const localFile = new File(picked.uri);
   if (!localFile.exists) throw new Error('Selected file is no longer available.');
@@ -149,6 +153,7 @@ export async function createReceipt(companyId: string, userId: string, userName:
     uploaded_by: userId,
     uploaded_by_name: userName,
     ...(purchasedOn ? { purchased_on: purchasedOn } : {}),
+    ...(project ? { project } : {}),
   }).select(receiptColumns).single<ReceiptRow>();
 
   if (error) {
@@ -160,10 +165,11 @@ export async function createReceipt(companyId: string, userId: string, userName:
   return receipt;
 }
 
-export async function updateReceipt(companyId: string, receiptId: string, name: string, amountCents: number, purchasedOn?: string) {
+/** `project`: omit to leave unchanged, null to clear. */
+export async function updateReceipt(companyId: string, receiptId: string, name: string, amountCents: number, purchasedOn?: string, project?: string | null) {
   if (!supabase || activeCompanyId !== companyId) throw new Error('Company receipts are unavailable.');
   const { data, error } = await supabase.from('company_receipts')
-    .update({ name: name.trim(), amount_cents: amountCents, ...(purchasedOn ? { purchased_on: purchasedOn } : {}) })
+    .update({ name: name.trim(), amount_cents: amountCents, ...(purchasedOn ? { purchased_on: purchasedOn } : {}), ...(project !== undefined ? { project } : {}) })
     .eq('company_id', companyId)
     .eq('id', receiptId)
     .select(receiptColumns)
@@ -181,6 +187,39 @@ export async function deleteReceipt(companyId: string, receipt: CompanyReceipt) 
   emit({ ...snapshot, receipts: snapshot.receipts.filter((item) => item.id !== receipt.id) });
   const { error: storageError } = await supabase.storage.from(bucket).remove([receipt.storagePath]);
   if (storageError) throw new Error(`Receipt was deleted, but its file could not be removed. ${storageError.message}`);
+}
+
+/** Whether this company's subscription includes receipt auto-fill. False when unknown or offline. */
+export async function loadReceiptAutofillEnabled(companyId: string) {
+  if (!supabase || isOffline()) return false;
+  try {
+    const { data, error } = await supabase.from('companies').select('receipt_autofill_enabled').eq('id', companyId).maybeSingle<{ receipt_autofill_enabled?: boolean }>();
+    return !error && data?.receipt_autofill_enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Largest photo sent for auto-fill; bigger photos are entered by hand. */
+const autofillMaxBytes = 7 * 1024 * 1024;
+export const autofillMimeTypes = ['image/jpeg', 'image/png'];
+
+/** Ask the receipt-autofill edge function to read one JPG/PNG photo. Throws with a message fit to show on the card. */
+export async function requestReceiptAutofill(companyId: string, fileUri: string, mimeType: string): Promise<ReceiptAutofillResult> {
+  if (!supabase) throw new Error('Auto-fill is unavailable in this build.');
+  if (!autofillMimeTypes.includes(mimeType)) throw new Error('Auto-fill reads JPG and PNG photos. Enter the details.');
+  const file = new File(fileUri);
+  if (!file.exists) throw new Error('This photo is no longer available.');
+  if (file.size > autofillMaxBytes) throw new Error('This photo is too large to auto-fill. Enter the details.');
+  const image = await file.base64();
+  const { data, error } = await supabase.functions.invoke<ReceiptAutofillResult & { error?: string }>('receipt-autofill', { body: { companyId, mimeType, image } });
+  if (error) {
+    let message = '';
+    try { message = (await (error as { context?: Response }).context?.json?.())?.error ?? ''; } catch { /* not JSON */ }
+    throw new Error(message || 'Auto-fill could not read this photo. Enter the details.');
+  }
+  if (!data || data.error) throw new Error(data?.error || 'Auto-fill could not read this photo. Enter the details.');
+  return data;
 }
 
 export async function openReceipt(receipt: CompanyReceipt) {
