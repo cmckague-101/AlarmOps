@@ -62,9 +62,21 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','audit-log','settings']);
     expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
-    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','operations','dispatch','hotels','communications','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','settings']);
+  });
+
+  it('moves Inventory and Failed Inspections into More, except Inventory for Resource Bosses and shop techs',()=>{
+    for(const role of ['owner','admin','fire_fighter','accounting'] as const){
+      expect(navigationLayout(role).desktop).not.toContain('inventory');
+      expect(navigationLayout(role).mobileOverflow).toContain('inventory');
+    }
+    expect(navigationLayout('owner').desktop).not.toContain('inspections');
+    expect(navigationLayout('owner').mobileOverflow).toContain('inspections');
+    expect(navigationLayout('resource_boss').desktop).toContain('inventory');
+    expect(navigationLayout('shop_tech').desktop).toContain('inventory');
+    expect(navigationLayout('shop_tech').desktop).not.toContain('inspections');
   });
 
   it('shows Shop to owners, admins and shop techs only',()=>{

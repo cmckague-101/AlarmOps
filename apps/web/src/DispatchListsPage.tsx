@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {RefreshCw,Truck} from 'lucide-react';
+import {ArrowLeft,RefreshCw,Truck} from 'lucide-react';
 import {supabase} from './supabase';
 import {createDemoDispatchData} from '@fireops/domain';
 
@@ -12,7 +12,7 @@ const sourceUrl='https://www.fs.usda.gov/business/incident/vipr.php';
 const message=(error:unknown)=>error instanceof Error?error.message:'Dispatch data could not be loaded.';
 const {areas:demoAreas,centers:demoCenters,lists:demoLists,entries:demoEntries}=createDemoDispatchData();
 
-export default function DispatchListsPage({demoMode=false}:{demoMode?:boolean}){
+export default function DispatchListsPage({demoMode=false,onBack}:{demoMode?:boolean;onBack:()=>void}){
   const [areas,setAreas]=useState<Area[]>(demoMode?demoAreas:[]);
   const [centers,setCenters]=useState<Center[]>(demoMode?demoCenters:[]);
   const [lists,setLists]=useState<PriorityList[]>(demoMode?demoLists:[]);
@@ -74,6 +74,7 @@ export default function DispatchListsPage({demoMode=false}:{demoMode?:boolean}){
 
   const selectedList=lists.find(item=>String(item.file_id)===listId);
   return <div className="page dispatch-page">
+    <button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>
     <div className="page-heading"><div><h1>VIPR DPLs</h1><p>USFS VIPR rankings with award rates matched by VIN.</p></div><button className="secondary dispatch-refresh" onClick={()=>setRefresh(value=>value+1)} disabled={loading||demoMode}><RefreshCw className={loading?'spin':''}/>Refresh</button></div>
     <section className="dispatch-filters" aria-label="Dispatch list filters">
       <label><span>Geographic area</span><select value={areaId} onChange={event=>setAreaId(event.target.value)} disabled={demoMode||!areas.length}><option value=""></option>{areas.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label>

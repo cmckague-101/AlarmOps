@@ -24,8 +24,17 @@ describe('dashboard customization',()=>{
     for(const role of ['owner','admin','shop_tech','fire_fighter'] as const){
       const keys=ids(role,platform);
       expect(new Set(keys).size).toBe(keys.length);
-      expect(keys).toEqual(expect.arrayContaining(['greeting','availability','inventory','payroll','receipts','invoices','nationalFireActivity']));
+      expect(keys).toEqual(expect.arrayContaining(['greeting','availability','payroll','invoices','incidentMap','nationalFireActivity']));
+      expect(keys).not.toContain('receipts');
     }
+    // Inventory stays a Quick Action only for the roles that keep it in main navigation.
+    expect(ids('shop_tech',platform)).toContain('inventory');
+    expect(ids('resource_boss',platform)).toContain('inventory');
+    for(const role of ['owner','admin','fire_fighter','accounting'] as const)expect(ids(role,platform)).not.toContain('inventory');
+    // Shop follows its role rule; managers no longer get a Failed Inspections tile.
+    expect(ids('shop_tech',platform)).toContain('shop');
+    expect(ids('fire_fighter',platform)).not.toContain('shop');
+    expect(ids('owner',platform)).not.toContain('inspections');
   });
   it('offers current picture only on mobile and recent fleet activity for both member roles',()=>{
     expect(parseDashboardPreferences({currentPicture:false,recentActivity:false})).toEqual({currentPicture:false,recentActivity:false});
@@ -63,7 +72,7 @@ describe('dashboard customization',()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;
     function Probe(){preferences=useDashboardPreferences('visibility-test',true);return null}
     renderToStaticMarkup(<Probe/>);
-    for(const id of ['incidents','personnel','resources','attention','availability','tasks','inventory','payroll','receipts','invoices'] as const)await preferences!.save(id,false);
+    for(const id of ['incidents','personnel','resources','attention','availability','tasks','inventory','payroll','invoices'] as const)await preferences!.save(id,false);
     renderToStaticMarkup(<Probe/>);
     const dashboard=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} onSelect={()=>{}}/>);
     expect(dashboard).not.toContain('Active Incidents');
@@ -73,10 +82,28 @@ describe('dashboard customization',()=>{
     expect(dashboard).toContain('Customize Dashboard');
     const actions=()=>renderToStaticMarkup(<QuickActions demoMode user={{id:'visibility-test',name:'Alex',role:'shop_tech'}} onOpen={()=>{}} onInspect={()=>{}}/>);
     expect(actions()).toContain('Inspect');
+    expect(actions()).toContain('Shop');
     expect(actions()).not.toContain('Availability');
     expect(actions()).not.toContain('Task List');
+    expect(actions()).not.toContain('Inventory');
     await preferences!.save('inspections',false);
+    await preferences!.save('shop',false);
     expect(actions()).toBe('');
+  });
+  it('shows the same Quick Actions order for everyone, filtered only by role rules',()=>{
+    const labels=(role:UserRole)=>[...renderToStaticMarkup(<QuickActions demoMode user={{id:`order-${role}`,name:'Alex',role}} onOpen={()=>{}} onInspect={()=>{}}/>).matchAll(/<strong>([^<]+)<\/strong>/g)].map(match=>match[1]);
+    expect(labels('owner')).toEqual(['Availability','Task List','Shop','Payroll','Invoices']);
+    expect(labels('shop_tech')).toEqual(['Availability','Inspect','Task List','Shop','Inventory','Payroll','Invoices']);
+    expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','Invoices']);
+    expect(labels('fire_fighter')).toEqual(['Availability','Payroll','Invoices']);
+  });
+  it('places the incident map after Quick Actions on the owner dashboard',()=>{
+    let preferences:ReturnType<typeof useDashboardPreferences>;
+    function Probe(){preferences=useDashboardPreferences('map-order-test',true);return null}
+    renderToStaticMarkup(<Probe/>);
+    const html=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} quickActions={<p>QA</p>} incidentMap={<p>MAP</p>} nationalFireActivity={<p>NFA</p>} onSelect={()=>{}}/>);
+    expect(html.indexOf('QA')).toBeLessThan(html.indexOf('MAP'));
+    expect(html.indexOf('MAP')).toBeLessThan(html.indexOf('NFA'));
   });
   it('renders grouped, accessible switches for each user',()=>{
     const html=renderToStaticMarkup(<DashboardCustomization userId="render-test" role="shop_tech" demoMode/>);
@@ -86,5 +113,7 @@ describe('dashboard customization',()=>{
     expect(html).toContain('role="switch"');
     expect(html).toContain('Current issues');
     expect(html).not.toContain('Active Incidents');
+    expect(html).toContain('Incident map');
+    expect(html).not.toContain('Check out gear');
   });
 });

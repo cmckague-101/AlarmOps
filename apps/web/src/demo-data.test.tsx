@@ -46,7 +46,7 @@ describe('shared demo reference data',()=>{
   });
 
   it('renders the existing VIPR demo from the shared fixtures',()=>{
-    const html=renderToStaticMarkup(<DispatchListsPage demoMode/>);
+    const html=renderToStaticMarkup(<DispatchListsPage demoMode onBack={()=>{}}/>);
     expect(html).toContain('North Ridge Wildfire');
     expect(html).toContain('2,840');
     expect(html).toContain('Demo data');

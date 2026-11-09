@@ -1,5 +1,6 @@
 import {QuickActions} from '@/components/quick-actions';
 import {NationalFireActivitySection} from '@/components/national-fire-activity';
+import {DashboardIncidentMap} from '@/components/dashboard-incident-map';
 import {OwnerDashboard} from '@/components/owner-dashboard';
 import {CustomizeDashboardButton} from '@/components/dashboard-customization';
 import {useDashboardPreferences} from '@/lib/use-dashboard-preferences';
@@ -87,6 +88,7 @@ export default function DashboardScreen() {
           <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
         </View>}
         <QuickActions/>
+        {preferences.visible('incidentMap')&&<DashboardIncidentMap/>}
         {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection/>}
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
