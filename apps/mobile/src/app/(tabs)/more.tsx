@@ -12,6 +12,7 @@ import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
+  {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
@@ -41,8 +42,9 @@ export default function More(){
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
   const preferences=useDashboardPreferences(member?.user.id,demoMode);
-  // Quick actions hidden from the dashboard stay reachable here; Inventory and Failed Inspections are already listed.
-  const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&action.path!=='/inventory'&&action.path!=='/inspections'):[];
+  // Quick actions hidden from the dashboard stay reachable here; Inventory, Shop and Failed Inspections are already listed.
+  const listedPaths=new Set<string>(sections.flatMap(section=>'path' in section?[section.path]:[]));
+  const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&!listedPaths.has(action.path)):[];
   const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
   const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
   const comingSoonIndex=allowed.findIndex(section=>'comingSoon' in section);

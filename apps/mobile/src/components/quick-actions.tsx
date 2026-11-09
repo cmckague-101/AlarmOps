@@ -1,4 +1,4 @@
-import {canInspectVehicle,canManagePersonalTasks} from '@fireops/domain';
+import {canInspectVehicle,canManagePersonalTasks,canWorkShop,keepsInventoryInMainNav} from '@fireops/domain';
 import {Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-native';
 import {useRouter} from 'expo-router';
 import {AppSymbol} from './app-symbol';
@@ -15,10 +15,10 @@ export function quickActionItems(role:UserRole,theme:FireOpsTheme):{item:Dashboa
     {item:'availability',path:'/availability',label:'Availability',ios:'circle',android:'radio_button_unchecked',color:theme.green},
     ...(canManagePersonalTasks(role) ? [{item:'tasks' as const,path:'/tasks',label:'Task List',ios:'checklist',android:'checklist',color:'#7041b5'}] : []),
     ...(canInspectVehicle(role) && !manager ? [{item:'inspections' as const,path:'/inspection',label:'Inspect',ios:'checkmark.shield.fill',android:'verified_user',color:'#087e8b'}] : []),
-    ...(manager ? [{item:'inspections' as const,path:'/inspections',label:'Failed Inspections',ios:'checkmark.shield.fill',android:'verified_user',color:'#087e8b'}] : []),
-    {item:'inventory',path:'/inventory',label:manager?'Inventory':'Check Out Gear',ios:'bag.fill',android:'shopping_bag',color:theme.warning},
+    // Same set and order as web: Inventory and Failed Inspections moved to More, Receipts lives on More.
+    ...(canWorkShop(role) ? [{item:'shop' as const,path:'/shop',label:'Shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418'}] : []),
+    ...(keepsInventoryInMainNav(role) ? [{item:'inventory' as const,path:'/inventory',label:'Inventory',ios:'bag.fill',android:'shopping_bag',color:theme.warning}] : []),
     {item:'payroll',path:'/payroll',label:'Payroll',ios:'wallet.bifold.fill',android:'account_balance_wallet',color:'#285f9e'},
-    {item:'receipts',path:'/receipts',label:'Receipts',ios:'receipt',android:'receipt_long',color:theme.ember},
     {item:'invoices',path:'/invoices',label:'Invoices',ios:'doc.text.fill',android:'description',color:'#981d5c'},
   ];
 }

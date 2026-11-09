@@ -12,7 +12,7 @@ async function actor(id,action,role='authenticated'){
 const request=changes=>({schemaVersion:1,requestId:randomUUID(),userId:user,changes,savedAt:'2026-01-01T12:00:00.000Z',connectivity:'online'});
 const send=(body,id=user)=>actor(id,async()=>(await row('select public.set_dashboard_preferences_once($1::jsonb) result',[JSON.stringify(body)])).result);
 const read=(id=user)=>actor(id,async()=>(await row('select public.get_dashboard_preferences() result')).result);
-before(async()=>{await loadUserSyncSchema(db)});
+before(async()=>{await loadUserSyncSchema(db);await db.exec(migration('20270113000100_dashboard_incident_map'))});
 beforeEach(async()=>{
   await db.exec('truncate public.companies cascade;truncate public.profiles cascade');
   await db.query('insert into public.companies values($1)',[company]);await db.query('insert into public.profiles values($1,$2),($3,$4)',[user,'User',other,'Other']);
@@ -33,6 +33,13 @@ test('independent online patches and native commands preserve unrelated layout c
   assert.deepEqual(await send(first),original);assert.deepEqual((await read()).items,{greeting:false,tasks:false,resources:false});
   const audit=await row('select request,previous_items,result,received_at from public.dashboard_preference_receipts where request_id=$1',[first.requestId]);
   assert.deepEqual(audit.request,first);assert.deepEqual(audit.previous_items,{});assert.deepEqual(audit.result,original);assert.ok(audit.received_at);
+});
+test('incident map and shop quick action can be hidden and restored',async()=>{
+  await send(request({incidentMap:false,shop:false}));assert.deepEqual((await read()).items,{incidentMap:false,shop:false});
+  await send(request({incidentMap:null}));assert.deepEqual((await read()).items,{shop:false});
+  const every=Object.fromEntries(['greeting','incidents','personnel','resources','attention','currentIssues','currentPicture','incidentMap','availability','tasks','inspections','shop','inventory','payroll','receipts','invoices','nationalFireActivity','recentActivity'].map(key=>[key,true]));
+  await send(request(every));assert.equal(Object.keys((await read()).items).length,18);
+  await assert.rejects(send(request({...every,unknown:true})),error=>error.code==='22023');
 });
 test('later choices win per key, removals are explicit, and old receipts cannot replay their write',async()=>{
   await send(request({greeting:false,tasks:false}));const old=request({greeting:true});const receipt=await send(old);
