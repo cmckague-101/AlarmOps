@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout} from './App';
+import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, sidebarSplit} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
@@ -89,6 +89,28 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
     expect(navigationLayout('owner').mobileOverflow).toEqual(['dispatch','hotels','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['dispatch','hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+  });
+});
+
+describe('desktop sidebar overflow',()=>{
+  it('shows everything when the window is tall enough and More lists only the More-only pages',()=>{
+    const split=sidebarSplit('owner',Number.POSITIVE_INFINITY);
+    expect(split.shown).toEqual(navigationLayout('owner').desktop.filter(page=>page!=='settings'));
+    expect(split.overflow).toEqual([]);
+    expect(split.more).toEqual(['inventory','inspections']);
+  });
+  it('moves rows that do not fit into More, keeping More and Settings at the bottom',()=>{
+    const split=sidebarSplit('owner',8);
+    expect(split.shown).toEqual(['overview','operations','dispatch','hotels','communications','vehicles']);
+    expect(split.settings).toBe(true);
+    expect(split.more).toEqual(['shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','audit-log','inventory','inspections']);
+    // Nothing is lost: every page is either in the sidebar or in More.
+    expect(new Set([...split.shown,...split.more,'settings'])).toEqual(new Set(navigationLayout('owner').mobileOverflow.concat(navigationLayout('owner').mobilePrimary)));
+  });
+  it('keeps Inventory in the sidebar for shop techs when it fits, and always shows at least one row',()=>{
+    expect(sidebarSplit('shop_tech',Number.POSITIVE_INFINITY).more).toEqual([]);
+    expect(sidebarSplit('shop_tech',Number.POSITIVE_INFINITY).shown).toContain('inventory');
+    expect(sidebarSplit('fire_fighter',1).shown).toEqual(['overview']);
   });
 });
 

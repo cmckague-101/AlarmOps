@@ -9,7 +9,7 @@ import {OwnerDashboard} from './OwnerDashboard';
 import {DashboardCustomization} from './DashboardCustomization';
 import {useDashboardPreferences} from './useDashboardPreferences';
 import {canManagePersonalTasks, dotInspectionWarning, nextOilChangeWarning, filterAndSortCrew, vinError, formatCalendarDate, inspectionExpirationDate, rosterSortOptions, type DashboardItem, type RosterSort} from '@fireops/domain';
-import { Suspense, cloneElement, isValidElement, lazy, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Suspense, cloneElement, isValidElement, lazy, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import OperationsPage, {DashboardIncidentMap, fetchIncidents} from './OperationsPage';
@@ -98,6 +98,34 @@ export function navigationLayout(role:UserRole){
   const mobilePrimary=mobilePrimaryOrder.filter(page=>desktop.includes(page));
   return {desktop,mobilePrimary,mobileOverflow:accessible.filter(page=>!mobilePrimary.includes(page))};
 }
+
+/**
+ * Desktop sidebar split by how many rows fit in the window. More and Settings
+ * always stay at the bottom; items that do not fit move into More, so the
+ * sidebar never scrolls separately from the page.
+ */
+export function sidebarSplit(role:UserRole,capacity:number){
+  const {desktop}=navigationLayout(role);
+  const items=desktop.filter(page=>page!=='settings');
+  const reserved=1+(desktop.includes('settings')?1:0);
+  const fit=Number.isFinite(capacity)?Math.max(1,Math.floor(capacity)-reserved):items.length;
+  const shown=items.slice(0,fit);
+  const overflow=items.slice(fit);
+  const moreOnly=navigationLayout(role).mobileOverflow.filter(page=>!desktop.includes(page));
+  return {shown,overflow,settings:desktop.includes('settings'),more:[...overflow,...moreOnly]};
+}
+
+function useMediaQuery(query:string){
+  const read=()=>typeof window!=='undefined'&&typeof window.matchMedia==='function'&&window.matchMedia(query).matches;
+  const [matches,setMatches]=useState(read);
+  useEffect(()=>{
+    if(typeof window==='undefined'||typeof window.matchMedia!=='function')return;
+    const list=window.matchMedia(query);const update=()=>setMatches(list.matches);update();
+    list.addEventListener('change',update);return()=>list.removeEventListener('change',update);
+  },[query]);
+  return matches;
+}
+const DESKTOP_QUERY='(min-width: 801px)';
 type VehicleDocumentKey = 'contract' | 'viprChecklist' | 'registration' | 'insurance' | 'dotInspection';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type UndoAction = { vehicle: Vehicle; applied:Vehicle; label: string };
@@ -253,6 +281,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [demoRecords,setDemoRecords]=useState(()=>createDemoRecords(user));
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
   const [page, setPage] = useState<Page>(()=>new URLSearchParams(window.location.search).has('motive')?'settings':'overview');
+  const [sidebarCapacity,setSidebarCapacity]=useState(Number.POSITIVE_INFINITY);
+  const desktopLayout=useMediaQuery(DESKTOP_QUERY);
   // Back buttons on pages opened from More (or the sidebar) return to wherever the user came from.
   const [previousPage,setPreviousPage]=useState<Page>('overview');
   const lastPage=useRef(page);
@@ -709,7 +739,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 
   const dashboardMapProps={assignedIncidentIds:[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))],resources:operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined})),motiveEnabled:activeMotiveConnection.connected,assignableVehicles:vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})),onAssignVehicle:(vehicleId:string,fire:{id:string;name:string;state:string})=>updateFireAssignment(vehicleId,fire),onVehicleSelect:(vehicleId:string)=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}};
   return <div className="app-shell">
-    <Sidebar page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
+    <Sidebar capacity={sidebarCapacity} onCapacity={setSidebarCapacity} page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
       <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?filterDismissedNotifications(dashboardInbox.notifications,dismissedNotifications.dismissed).filter(item=>item.unread).length:filterDismissedNotifications(dashboardNotifications(threads,documents,currentUser,5,trainings),dismissedNotifications.dismissed).filter(item=>item.unread).length):undefined} onNotifications={()=>setPage('overview')} onSignOut={leaveWorkspace(onSignOut)} onSwitchCompany={leaveWorkspace(onSwitchCompany)} demoMode={demoMode}/>
       <main>
@@ -743,7 +773,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'dispatch' && <DispatchListsPage demoMode={demoMode} onBack={goBack}/>}
         {page === 'hotels' && <HotelsPage demoMode={demoMode}/>}
         {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} requestedVehicleId={requestedVehicleId} onVehicleOpened={()=>setRequestedVehicleId(null)} {...dashboardMapProps}/>}
-        {page === 'more' && <MorePage demoMode={demoMode} onInspect={()=>setInspectionPickerOpen(true)} user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
+        {page === 'more' && <MorePage desktopItems={desktopLayout?sidebarSplit(currentUser.role,sidebarCapacity).more:undefined} demoMode={demoMode} onInspect={()=>setInspectionPickerOpen(true)} user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} setPage={setPage}/>}
 
         {page === 'audit-log' && canManageFleet && <AuditLogPage key={companyId??'demo'} companyId={demoMode?undefined:companyId} demoEntries={demoMode?demoRecords.auditLogs:undefined} onBack={goBack}/>}
         {page === 'settings' && <SettingsPage myProfile={<MyProfilePanel userId={currentUser.id} name={currentUser.name} role={currentUser.role} demoMode={demoMode}/>} dashboardCustomization={<DashboardCustomization userId={currentUser.id} role={currentUser.role} demoMode={demoMode}/>} company={companyDetails} userId={currentUser.id} owner={crew.find(member=>member.role==='owner')?.name??currentUser.name} invitedCrewCount={invitedCrewCount} canManage={canManageFleet} uploadFile={uploadFile} onUpdateCompany={updateCompany} motiveConnection={activeMotiveConnection} onConnectMotive={onConnectMotive??connectDemoMotive} onDisconnectMotive={onDisconnectMotive??disconnectDemoMotive} onSubmitFeedback={onSubmitFeedback??(async(category,message)=>{const stored=JSON.parse(localStorage.getItem('fireops-app-feedback')??'[]') as unknown[];localStorage.setItem('fireops-app-feedback',JSON.stringify([...stored,{category,message,createdAt:new Date().toISOString()}]))})} demoMode={demoMode}/>}
@@ -770,13 +800,30 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 }
 
 function Brand() { return <div className="brand"><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light-440.webp" width="440" height="154" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps, powered by Fireco"/></div> }
-function Sidebar({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
-  const {desktop}=navigationLayout(user.role);
-  const moreActive=page==='more'||moreOnlyPages.some(target=>target===page&&!desktop.includes(target));
-  return <aside className="sidebar"><Brand/><nav>
-    {desktop.filter(target=>target!=='settings').map(target=>{const {label,Icon}=navigationMeta[target];const count=target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={count} onClick={()=>setPage(target)}/>})}
-    <NavItem icon={<Ellipsis/>} label="More" active={moreActive} onClick={()=>setPage('more')}/>
-    {desktop.includes('settings')&&<NavItem icon={<navigationMeta.settings.Icon/>} label={navigationMeta.settings.label} active={page==='settings'} onClick={()=>setPage('settings')}/>}
+function Sidebar({capacity,onCapacity,page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{capacity:number;onCapacity:(rows:number)=>void;page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
+  const navRef=useRef<HTMLElement>(null);
+  // Count how many rows fit in the visible sidebar; re-measure whenever the window (or text size) changes.
+  useLayoutEffect(()=>{
+    const nav=navRef.current;
+    if(!nav)return;
+    const measure=()=>{
+      const row=nav.querySelector('button');const rowHeight=row?.getBoundingClientRect().height??0;
+      if(!rowHeight||!nav.clientHeight)return;
+      const gap=parseFloat(getComputedStyle(nav).rowGap)||0;
+      onCapacity(Math.max(2,Math.floor((nav.clientHeight+gap)/(rowHeight+gap))));
+    };
+    measure();
+    if(typeof ResizeObserver==='undefined'){window.addEventListener('resize',measure);return()=>window.removeEventListener('resize',measure)}
+    const observer=new ResizeObserver(measure);observer.observe(nav);return()=>observer.disconnect();
+  },[onCapacity]);
+  const {shown,overflow,settings,more}=sidebarSplit(user.role,capacity);
+  const countFor=(target:NavigablePage)=>target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;
+  const moreActive=page==='more'||more.some(target=>target===page);
+  const moreCount=overflow.reduce((total,target)=>total+countFor(target),0);
+  return <aside className="sidebar"><Brand/><nav ref={navRef}>
+    {shown.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={countFor(target)} onClick={()=>setPage(target)}/>})}
+    <NavItem icon={<Ellipsis/>} label="More" active={moreActive} notificationCount={moreCount} onClick={()=>setPage('more')}/>
+    {settings&&<NavItem icon={<navigationMeta.settings.Icon/>} label={navigationMeta.settings.label} active={page==='settings'} onClick={()=>setPage('settings')}/>}
   </nav></aside>
 }
 function NavItem({icon,label,active,notificationCount=0,onClick}:{icon:React.ReactNode;label:string;active:boolean;notificationCount?:number;onClick:()=>void}) {
@@ -799,7 +846,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
   return <div className="page inspections-page"><button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button><div className="page-heading"><div><h1>Failed Inspections</h1></div></div><div className="inspection-layout"><section><div className="inspection-filters"><label>Year<select value={year} onChange={event=>setYear(Number(event.target.value))}>{years.map(value=><option key={value} value={value}>{value}</option>)}</select></label><label>Vehicle<select value={vehicleId} onChange={event=>setVehicleId(event.target.value)}><option value="all">All vehicles</option>{vehicles.slice().sort((a,b)=>a.unit.localeCompare(b.unit)).map(vehicle=><option value={vehicle.id} key={vehicle.id}>{vehicle.unit}</option>)}</select></label></div><div className="inspection-history">{failed.map(({vehicle,inspection})=><article key={inspection.id}><header><span><ClipboardCheck/></span><div><h2>{vehicle.unit}</h2><p>{inspection.assignmentIncident||'No assignment / incident'}</p></div><time>{new Date(inspection.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</time><button className="inspection-delete" aria-label={`Delete failed inspection for ${vehicle.unit} by ${inspection.inspectorName}`} onClick={()=>{if(window.confirm(`Delete the failed inspection for ${vehicle.unit} by ${inspection.inspectorName}? This cannot be undone.`))onDelete(vehicle.id,inspection.id)}}><Trash2/> Delete</button></header><div className="inspection-history-meta">Inspected by {inspection.inspectorName} · {inspection.items.filter(item=>item.result==='Fail').length} failed</div><div className="inspection-failures">{inspection.items.filter(item=>item.result==='Fail').map(item=><div key={item.id}><div><b>{item.label}</b><span>Fail</span></div>{item.defectNotes&&<p>{item.defectNotes}</p>}{item.photo&&<a href={item.photo.dataUrl} target="_blank" rel="noreferrer"><FileImage/> View defect photo</a>}</div>)}</div></article>)}{!failed.length&&<div className="empty"><ClipboardCheck/><h3>No failed inspections</h3><p>No failed inspections match selected filters.</p></div>}</div></section><aside className="inspection-template"><header><h2>Inspection Template</h2><p>Checklist changes apply to future inspections.</p></header>{template.error||templateError?<div className="form-error" role="alert">{templateError||template.error}</div>:null}<div className="inspection-template-add"><input aria-label="New checklist item" value={newItem} onChange={event=>setNewItem(event.target.value)} maxLength={300} placeholder="New checklist item" onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();add()}}}/><button className="primary" disabled={busy||!newItem.trim()} onClick={add}><Plus/> Add</button></div><div className="inspection-template-list">{template.loading?<p>Loading template…</p>:template.items.map(item=><div key={item.id}>{editingId===item.id?<input aria-label={`Edit ${item.label}`} value={editingLabel} onChange={event=>setEditingLabel(event.target.value)} maxLength={300} autoFocus/>:<span>{item.label}</span>}<div>{editingId===item.id?<><button aria-label="Save checklist item" disabled={busy||!editingLabel.trim()} onClick={()=>saveEdit(item)}><Check/></button><button aria-label="Cancel edit" onClick={()=>setEditingId(null)}><X/></button></>:<><button aria-label={`Edit ${item.label}`} onClick={()=>{setEditingId(item.id);setEditingLabel(item.label)}}><Pencil/></button><button aria-label={`Delete ${item.label}`} disabled={busy} onClick={()=>{if(window.confirm(`Delete checklist item “${item.label}”?`))void run(()=>template.remove(item))}}><Trash2/></button></>}</div></div>)}</div></aside></div></div>;
 }
 
-function MorePage({demoMode=false,onInspect,user,unreadDocumentCount,unreadTrainingCount,pendingCardCount,setPage}:{demoMode?:boolean;onInspect:()=>void;user:FireOpsUser;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number;setPage:(page:Page)=>void}) {
+function MorePage({desktopItems,demoMode=false,onInspect,user,unreadDocumentCount,unreadTrainingCount,pendingCardCount,setPage}:{desktopItems?:NavigablePage[];demoMode?:boolean;onInspect:()=>void;user:FireOpsUser;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number;setPage:(page:Page)=>void}) {
   const {visible}=useDashboardPreferences(user.id,demoMode);
   const overflow=navigationLayout(user.role).mobileOverflow;
   const comingSoon=[
@@ -809,9 +856,11 @@ function MorePage({demoMode=false,onInspect,user,unreadDocumentCount,unreadTrain
   const settings=navigationMeta.settings;
   // Quick Action destinations appear here only when their tile is hidden from the Dashboard.
   const dashboardLinks:Page[]=['invoices','payroll','availability'];
-  const links=[...overflow,...(canManagePersonalTasks(user.role)&&!visible('tasks')?['tasks' as const]:[])].filter(target=>target!=='settings'&&(!dashboardLinks.includes(target)||!visible(target as DashboardItem)));
+  const hiddenTasks=canManagePersonalTasks(user.role)&&!visible('tasks')?['tasks' as const]:[];
+  // Desktop lists only what the sidebar could not fit; phone width lists everything past the bottom bar.
+  const links=desktopItems?[...desktopItems,...hiddenTasks]:[...overflow,...hiddenTasks].filter(target=>target!=='settings'&&(!dashboardLinks.includes(target)||!visible(target as DashboardItem)));
   const showInspect=canInspectVehicle(user.role)&&!isCompanyManager(user.role)&&!visible('inspections');
-  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{links.map(target=>{const {label:defaultLabel,description,Icon}=navigationMeta[target];const label=target==='inspections'?'Failed Inspections':defaultLabel;const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} {target==='qualifications'?'pending':'new'}</i>}</b><small>{description}</small></span><ChevronRight/></button>})}{showInspect&&<button onClick={onInspect}><span className="more-icon"><ShieldCheck/></span><span><b>Inspect</b><small>Start a vehicle inspection</small></span><ChevronRight/></button>}{comingSoon.map(({label,description,Icon})=><button key={label} onClick={()=>window.alert('Coming Soon')}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description} · Coming soon</small></span><ChevronRight/></button>)}<button onClick={()=>setPage('settings')}><span className="more-icon"><settings.Icon/></span><span><b>{settings.label}</b><small>{settings.description}</small></span><ChevronRight/></button></div></section></div>;
+  return <div className="page more-page"><div className="page-heading"><div><h1>More</h1></div></div><section className="more-section" aria-labelledby="more-sections-heading"><h2 id="more-sections-heading">Navigation</h2><div className="more-list">{links.map(target=>{const {label:defaultLabel,description,Icon}=navigationMeta[target];const label=target==='inspections'?'Failed Inspections':defaultLabel;const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;return <button key={target} onClick={()=>setPage(target)}><span className="more-icon"><Icon/></span><span><b>{label}{count>0&&<i className="more-notification">{count} {target==='qualifications'?'pending':'new'}</i>}</b><small>{description}</small></span><ChevronRight/></button>})}{showInspect&&<button onClick={onInspect}><span className="more-icon"><ShieldCheck/></span><span><b>Inspect</b><small>Start a vehicle inspection</small></span><ChevronRight/></button>}{comingSoon.map(({label,description,Icon})=><button key={label} onClick={()=>window.alert('Coming Soon')}><span className="more-icon"><Icon/></span><span><b>{label}</b><small>{description} · Coming soon</small></span><ChevronRight/></button>)}{!desktopItems&&<button onClick={()=>setPage('settings')}><span className="more-icon"><settings.Icon/></span><span><b>{settings.label}</b><small>{settings.description}</small></span><ChevronRight/></button>}</div></section></div>;
 }
 
 function QualificationsPage({member,crew,pendingCardCount,setPage,onSelectCredential,onSelectExperience,onOpenCrewMasterRecord}:{member?:CrewMember;crew:CrewMember[];pendingCardCount:number;setPage:(page:Page)=>void;onSelectCredential:(credential:CrewCredential)=>void;onSelectExperience:(experience:CrewExperience)=>void;onOpenCrewMasterRecord:(member:CrewMember)=>void}) {
