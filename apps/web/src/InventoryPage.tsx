@@ -37,7 +37,7 @@ export default function InventoryPage({canManage=true,canCheckout=!canManage,ite
     setBusyId(item.id);setRowError('');
     try{await onUpdate(item,quantity)}catch(updateError){setRowError(updateError instanceof Error?updateError.message:'Quantity could not be updated. Check connection and try again.')}finally{setBusyId('')}
   };
-  return <div className="page stock-page">{onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}<div className="page-heading stock-heading"><div><h1>Inventory</h1></div>{canManage&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button>}</div>
+  return <div className="page stock-page">{onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}<div className="page-heading stock-heading hero-heading"><div><h1>Inventory</h1></div>{canManage&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> Add item</button>}</div>
     {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
     {rowError&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{rowError}</span></div>}
     <section className="stock-panel" aria-label="Inventory items"><header className="stock-panel-toolbar"><label className="stock-search"><Search/><span className="sr-only">Search inventory</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search items"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Clear inventory search"><X/></button>}</label></header>

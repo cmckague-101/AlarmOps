@@ -189,7 +189,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
   return <div className="page dispatch-page hotels-page">
-    <div className="page-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
+    <div className="page-heading hero-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
     <FlightSearchCard prefillTo={flightsTo}/>
     <h2 className="travel-section-title"><BedDouble/>Hotels</h2>
     <section className="dispatch-filters" aria-label="Hotel filters">

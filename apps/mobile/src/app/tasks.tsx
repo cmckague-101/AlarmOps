@@ -8,6 +8,7 @@ import {useSession} from '@/providers/session-provider';
 import {usePersonalTasks} from '@/lib/use-personal-tasks';
 import {FormField} from '@/components/form-field';
 import {useFireOpsTheme} from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 export default function TasksScreen() {
   const {session,access} = useSession();
@@ -43,7 +44,7 @@ export default function TasksScreen() {
   if (!session || access.status==='error') return <Redirect href="/"/>;
   if (!allowed) return <SafeAreaView style={[styles.safe,styles.denied]}><Text style={styles.copy}>Task List is available to owners, admins, and techs.</Text></SafeAreaView>;
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Task List'}}/><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-    <Text accessibilityRole="header" style={styles.title}>Task List</Text><Text style={styles.copy}>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</Text>
+    <HeroTitle style={styles.title}>Task List</HeroTitle><Text style={styles.copy}>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</Text>
     {error&&<View><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" disabled={busy} style={[styles.button,styles.secondary]} onPress={retry}><Text style={styles.secondaryText}>Retry</Text></Pressable></View>}
     {!creating&&<Pressable accessibilityRole="button" disabled={busy||!connected} style={[styles.button,(busy||!connected)&&styles.disabled]} onPress={()=>{const today=new Date();setDueDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);setCreating(true);}}><Text style={styles.buttonText}>New task</Text></Pressable>}
     {creating&&!editingId&&<View style={styles.card}>{form}</View>}

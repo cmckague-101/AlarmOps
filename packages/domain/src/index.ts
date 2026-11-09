@@ -19,6 +19,7 @@ export * from './online-availability';
 
 export * from './command-center';
 export * from './command-attention';
+export * from './tile-accents';
 export * from './dot-inspection';
 export * from './oil-change';
 export * from './shop';

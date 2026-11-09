@@ -13,6 +13,7 @@ import { AppSymbol } from '@/components/app-symbol';
 import { refreshTrainings, useTrainings } from '@/lib/training-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 function datePart(value: string, options: Intl.DateTimeFormatOptions) {
   const date = new Date(value);
@@ -43,7 +44,7 @@ export default function TrainingScreen() {
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshTrainings} tintColor={theme.commandForeground} />}>
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text accessibilityRole="header" style={styles.title}>Training</Text>
+            <HeroTitle style={styles.title}>Training</HeroTitle>
             <Text style={styles.subtitle}>Upcoming courses and crew registration.</Text>
             <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.wildlandfirelearningportal.net/login/index.php')} style={({ pressed }) => [styles.portalLink, pressed && styles.pressed]}>
               <Text style={styles.portalLinkText}>Wildland Training Portal</Text>

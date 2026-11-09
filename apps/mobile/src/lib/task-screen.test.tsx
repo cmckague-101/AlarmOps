@@ -7,6 +7,7 @@ vi.mock('@react-native-community/datetimepicker',()=>({default:'DateTimePicker'}
 vi.mock('react-native-safe-area-context',()=>({SafeAreaView:'SafeAreaView'}));
 vi.mock('@/providers/session-provider',()=>({useSession:()=>({session:{},access:{status:'ready',value:{kind:'member',company:{id:'company'},user:{id:'user',role:'owner'}}}})}));
 vi.mock('@/components/form-field',()=>({FormField:'FormField'}));
+vi.mock('@/components/hero-title',()=>({HeroTitle:'HeroTitle'}));
 vi.mock('@/theme',()=>({useFireOpsTheme:()=>({})}));
 const mocks=vi.hoisted(()=>({save:vi.fn(),remove:vi.fn()}));
 const tasks=[{id:'first',company_id:'company',user_id:'user',subject:'First task',description:'First details',due_date:'2027-01-05',created_at:''},{id:'second',company_id:'company',user_id:'user',subject:'Second task',description:'Second details',due_date:'2027-01-06',created_at:''}];

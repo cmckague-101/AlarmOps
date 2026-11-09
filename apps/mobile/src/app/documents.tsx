@@ -12,6 +12,7 @@ import { deleteCompanyDocument, markCompanyDocumentViewed, refreshDocuments, use
 import { openFleetFile } from '@/lib/fleet-files';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -83,7 +84,7 @@ export default function CompanyDocumentsScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text accessibilityRole="header" adjustsFontSizeToFit numberOfLines={1} style={styles.title}>Company Documents</Text>
+            <HeroTitle adjustsFontSizeToFit numberOfLines={1} style={styles.title}>Company Documents</HeroTitle>
           </View>
           {canManage ? (
             <Pressable

@@ -7,6 +7,7 @@ import {AppSymbol} from '@/components/app-symbol';
 import {loadCrewSeatsUsed,refreshFleet,useFleetVehicles} from '@/lib/fleet-store';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 export default function CrewScreen(){
   const router=useRouter();const theme=useFireOpsTheme();const styles=useMemo(()=>createStyles(theme),[theme]);
@@ -21,7 +22,7 @@ export default function CrewScreen(){
   if(member&&!canViewCrewRoster(member.user.role))return <Redirect href="/(tabs)/more"/>;
   const limit=member?.company.crewInviteLimit??0;const used=seatsUsed??crew.filter(item=>item.role!=='owner').length;const available=Math.max(0,limit-used);
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Roster'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshFleet} tintColor={theme.commandForeground}/>}>
-    <View style={styles.heading}><View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Roster</Text></View>{canManage&&available>0?<Pressable accessibilityRole="button" onPress={()=>router.push('/crew/invite' as never)} style={({pressed})=>[styles.add,pressed&&styles.pressed]}><AppSymbol name="person.badge.plus" color="#fff" size={18}/><Text style={styles.addText}>Add user</Text></Pressable>:null}</View>
+    <View style={styles.heading}><View style={styles.headingCopy}><HeroTitle style={styles.title}>Roster</HeroTitle></View>{canManage&&available>0?<Pressable accessibilityRole="button" onPress={()=>router.push('/crew/invite' as never)} style={({pressed})=>[styles.add,pressed&&styles.pressed]}><AppSymbol name="person.badge.plus" color="#fff" size={18}/><Text style={styles.addText}>Add user</Text></Pressable>:null}</View>
     {canManage?(available===0?<Text style={styles.limit}>{limit===0?'Crew invitations are not enabled for this company.':'Crew invite limit reached. Contact FireOps to add more seats.'}</Text>:<Text style={styles.usage}>{used} of {limit} member seats used · {available} available</Text>):null}
     {error?<View style={styles.error}><Text style={styles.errorTitle}>Crew unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
     <View style={styles.search}><AppSymbol name={{ios:'magnifyingglass',android:'search'} as never} color={theme.secondary} size={18}/><TextInput accessibilityLabel="Search roster" autoCapitalize="none" autoCorrect={false} onChangeText={setQuery} placeholder="Search name, email, or role" placeholderTextColor={theme.secondary} returnKeyType="search" style={styles.searchInput} value={query}/>{query?<Pressable accessibilityRole="button" accessibilityLabel="Clear roster search" onPress={()=>setQuery('')}><AppSymbol name={{ios:'xmark.circle.fill',android:'cancel'} as never} color={theme.secondary} size={18}/></Pressable>:null}</View>

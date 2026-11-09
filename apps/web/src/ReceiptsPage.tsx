@@ -405,7 +405,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const filterCrew = crew.filter((member) => member.status === 'Active' || receipts.some((receipt) => receipt.uploadedBy === member.id));
 
   return <div className="page receipts-page">
-    <div className="page-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1>{!isOwner&&<p>Keep expense records ready for reimbursement and audits.</p>}</div></div>
+    <div className="page-heading hero-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1>{!isOwner&&<p>Keep expense records ready for reimbursement and audits.</p>}</div></div>
 
     <section className="receipt-upload-card" aria-labelledby="add-receipt-heading">
       <div className="receipt-card-heading"><ReceiptText/><div><h2 id="add-receipt-heading">Add receipts</h2><p>{autofillEnabled ? 'Take a photo of each receipt. Auto-fill reads the merchant, date and amount; check each card before submitting.' : 'Take a photo of each receipt or add files, then enter the merchant, date and amount on each card.'}</p></div></div>

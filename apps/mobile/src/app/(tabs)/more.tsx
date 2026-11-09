@@ -1,7 +1,10 @@
-import {canViewCrewRoster,canWorkShop,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
+import {canManagePersonalTasks,canViewCrewRoster,canWorkShop,failedInspectionCount,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
 import {Alert,Platform,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
+import {AccentRail,pressedTileStyle,useReduceMotion,withAlpha} from '@/components/accent-tile';
+import {useFleetVehicles} from '@/lib/fleet-store';
+import {useTaskCount} from '@/lib/use-task-count';
 import {quickActionItems} from '@/components/quick-actions';
 import {SectionScreen} from '@/components/section-screen';
 import {useCompanyDocuments} from '@/lib/documents-store';
@@ -42,6 +45,13 @@ export default function More(){
   const unreadDocuments=member?documents.filter(document=>isDocumentUnread(document,member.user)).length:0;
   const unreadTrainings=member?trainings.filter(training=>isTrainingUnread(training,member.user)).length:0;
   const preferences=useDashboardPreferences(member?.user.id,demoMode);
+  const reduceMotion=useReduceMotion();
+  const manager=member?.user.role==='owner'||member?.user.role==='admin';
+  // Failed inspections and overdue tasks (when the Task List tile is hidden from the Dashboard) get the red urgent rail.
+  const {vehicles}=useFleetVehicles(manager?member!.company.id:null);
+  const failedInspections=manager?failedInspectionCount(vehicles):0;
+  const tasksHidden=!!member&&canManagePersonalTasks(member.user.role)&&!preferences.visible('tasks');
+  const overdueTasks=useTaskCount(tasksHidden?member!.company.id:undefined,tasksHidden?member!.user.id:undefined)?.overdue??0;
   // Quick actions hidden from the dashboard stay reachable here; Inventory, Shop and Failed Inspections are already listed.
   const listedPaths=new Set<string>(sections.flatMap(section=>'path' in section?[section.path]:[]));
   const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&!listedPaths.has(action.path)):[];
@@ -54,13 +64,16 @@ export default function More(){
   return <SectionScreen title="More" showHeader={false}>
     <View style={styles.grid}>{visible.map(section=>{
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
+      const urgent=section.path==='/inspections'?failedInspections>0:section.path==='/tasks'?overdueTasks>0:false;
+      const rail=urgent?theme.danger:section.color;
       return <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${section.label}${section.comingSoon?', coming soon':''}${unread>0?`, ${unread} ${indicatorLabel}`:''}`}
+        accessibilityLabel={`${section.label}${section.comingSoon?', coming soon':''}${unread>0?`, ${unread} ${indicatorLabel}`:''}${urgent?(section.path==='/tasks'?`, ${overdueTasks} overdue`:`, ${failedInspections} this year`):''}`}
         key={section.label}
         onPress={()=>{if(section.comingSoon||!section.path)Alert.alert('Coming Soon');else router.push(section.path as never)}}
-        style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:theme.divider},singleColumn&&styles.fullCard,section.comingSoon&&styles.comingSoon,pressed&&styles.pressed]}
+        style={({pressed})=>[styles.card,{backgroundColor:theme.paper,borderColor:withAlpha(rail,.35)},singleColumn&&styles.fullCard,section.comingSoon&&styles.comingSoon,pressedTileStyle(rail,{pressed,reduceMotion})]}
       >
+        <AccentRail color={rail}/>
         <View style={[styles.icon,{backgroundColor:section.color}]}>
           <AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>
         </View>
@@ -75,12 +88,11 @@ export default function More(){
 
 const styles=StyleSheet.create({
   grid:{flexDirection:'row',flexWrap:'wrap',gap:12,marginTop:16},
-  card:{width:'48%',flexGrow:1,alignItems:'center',justifyContent:'center',gap:8,padding:14,minHeight:118,borderRadius:16,borderWidth:1},
+  card:{width:'48%',flexGrow:1,overflow:'hidden',alignItems:'center',justifyContent:'center',gap:8,padding:14,minHeight:118,borderRadius:16,borderWidth:1},
   fullCard:{width:'100%'},
   icon:{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:12},
   label:{fontSize:15,fontWeight:'800',textAlign:'center'},soon:{fontSize:13,fontWeight:'600'},comingSoon:{opacity:.6},
   badge:{overflow:'hidden',borderRadius:999,paddingHorizontal:8,paddingVertical:4,fontSize:11,fontWeight:'800'},
   signOut:{minHeight:50,borderWidth:1,borderRadius:9,alignItems:'center',justifyContent:'center',marginTop:24},
   signOutLabel:{fontSize:16,fontWeight:'700'},
-  pressed:{opacity:0.65},
 });

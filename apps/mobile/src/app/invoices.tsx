@@ -9,6 +9,7 @@ import {refreshInvoices,useInvoices} from '@/lib/invoice-store';
 import {useDeviceInvoices} from '@/lib/use-device-forms';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 const money=(value:number)=>value.toLocaleString('en-US',{style:'currency',currency:'USD'});
 type PaymentFilter='all'|'unpaid'|'paid';
 const paymentFilters:{value:PaymentFilter;label:string}[]=[{value:'all',label:'All'},{value:'unpaid',label:'Unpaid'},{value:'paid',label:'Paid'}];
@@ -28,7 +29,7 @@ export default function Screen(){
   const submitted=submittedAll.filter(form=>paymentFilter==='all'||(paymentFilter==='paid')===(form.status==='paid'));
   const open=(id?:string)=>router.push({pathname:'/invoices/form',params:id?{invoiceId:id}:{}} as never);
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Invoices'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInvoices} tintColor={theme.commandForeground}/>}>
-    <View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>Invoices</Text><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
+    <View style={styles.heading}><HeroTitle style={styles.title}>Invoices</HeroTitle><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
     {draft?<Pressable onPress={()=>open(draft.id)} style={styles.draft}><View style={styles.grow}><Text style={styles.rowTitle}>Invoice in progress</Text><Text style={styles.meta}>{device.has(draft.id)?'Saved on this device — syncs when connected':`Saved ${new Date(draft.updatedAt).toLocaleString()}`}</Text></View><Text style={styles.continue}>Continue</Text></Pressable>:null}
     <DownloadedListNotice info={invoices.downloaded}/>
     {submittedAll.length?<View accessibilityRole="radiogroup" style={styles.filterRow}>{paymentFilters.map(option=><Pressable key={option.value} accessibilityRole="radio" accessibilityState={{checked:paymentFilter===option.value}} onPress={()=>setPaymentFilter(option.value)} style={[styles.filterChip,paymentFilter===option.value&&styles.filterChipSelected]}><Text style={[styles.filterText,paymentFilter===option.value&&styles.filterTextSelected]}>{option.label}</Text></Pressable>)}</View>:null}

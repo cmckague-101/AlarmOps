@@ -10,6 +10,7 @@ import {useFleetVehicles} from '@/lib/fleet-store';
 import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme,useFireOpsTheme} from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 const qualificationActions=[
   {label:'Add Credentials',path:'/qualifications/add',ios:'plus',android:'add',color:'#C94321'},
@@ -26,7 +27,7 @@ export default function QualificationsScreen(){
   if(!session||access.status==='error')return <Redirect href="/"/>;
   const credentials=member?crewCredentials(member):[];const experiences=member?.experiences??[];const expiring=credentials.filter(item=>credentialExpiresWithinMonth(item));
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Qualifications'}}/><ScrollView contentContainerStyle={styles.content}>
-    <View style={styles.heading}><View style={styles.grow}><Text accessibilityRole="header" style={styles.title}>Qualifications</Text></View></View>
+    <View style={styles.heading}><View style={styles.grow}><HeroTitle style={styles.title}>Qualifications</HeroTitle></View></View>
     {member?<View style={styles.profile}><View style={styles.avatar}><Text style={styles.avatarText}>{member.name.split(' ').map(part=>part[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</Text></View><View style={styles.grow}><Text style={styles.name}>{member.name}</Text><Text style={styles.count}>{credentials.length} {credentials.length===1?'credential':'credentials'} · {experiences.length} {experiences.length===1?'experience':'experiences'}</Text></View></View>:!loading?<Text style={styles.state}>Crew record not found.</Text>:null}
     {expiring.length?<View style={styles.warning}><AppSymbol name="exclamationmark.triangle.fill" color={theme.warning} size={21}/><View style={styles.grow}><Text style={styles.warningTitle}>Expiring within one month</Text>{expiring.map(item=><Text key={item.id} style={styles.warningText}>{item.name} · {formatDate(item.expirationDate!)}</Text>)}</View></View>:null}
     {member&&account&&isCompanyManager(account.user.role)?<CrewReview viewer={member} crew={crew} onOpenMasterRecord={record=>router.push({pathname:'/qualifications/master-record',params:{memberId:record.id}} as never)}/>:null}

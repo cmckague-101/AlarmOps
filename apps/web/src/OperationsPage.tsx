@@ -172,7 +172,7 @@ export default function OperationsPage({assignableVehicles=[],onAssignVehicle,on
   const {visible,loading,latestUpdate,motiveVehicles,fireQuery,setFireQuery,normalizedFireQuery,searchResults,selected,setSelected}=map;
 
   return <div className="page operations-page">
-    <div className="page-heading operations-heading"><div><h1>Operations</h1></div></div>
+    <div className="page-heading operations-heading hero-heading"><div><h1>Operations</h1></div></div>
     <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
       <div className="fire-map-panel">
         <header><div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>

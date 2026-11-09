@@ -150,7 +150,7 @@ export default function ShopPage({companyId, user, vehicles, issues, canWork, ca
   return (
     <div className="page shop-page">
       {!boardFocus ? <button type="button" className="shop-back" onClick={onBack}><ArrowLeft/> Back</button> : null}
-      <div className="page-heading shop-heading">
+      <div className="page-heading shop-heading hero-heading">
         <h1>Shop tasks</h1>
         {canWork && shop.connected ? <button type="button" className="primary" onClick={()=>{setCreating(true);setSelectedId(null);}}><Plus/> New shop task</button> : null}
       </div>

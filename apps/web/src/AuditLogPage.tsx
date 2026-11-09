@@ -41,7 +41,7 @@ export default function AuditLogPage({companyId,demoEntries,onBack}:{companyId?:
   },[companyId,demoEntries,page,reload]);
   return <div className="page audit-log-page">
     <button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>
-    <div className="page-heading"><div><h1>Audit log</h1><p>Company activity from the last 30 days. Latest first.</p></div><button className="secondary" disabled={loading} onClick={()=>{setPage(0);setReload(value=>value+1);}}>Refresh</button></div>
+    <div className="page-heading hero-heading"><div><h1>Audit log</h1><p>Company activity from the last 30 days. Latest first.</p></div><button className="secondary" disabled={loading} onClick={()=>{setPage(0);setReload(value=>value+1);}}>Refresh</button></div>
     {error&&<p role="alert">{error} <button className="secondary" onClick={()=>setReload(value=>value+1)}>Retry</button></p>}
     {entries.length>0&&<div className="audit-log-table-wrap"><table className="audit-log-table"><thead><tr><th scope="col">Date</th><th scope="col">Name</th><th scope="col">Change</th></tr></thead><tbody>{entries.map(entry=><tr key={entry.id}><td><time dateTime={entry.created_at}>{formatAuditTimestamp(entry.created_at)}</time></td><td>{entry.actor_name}</td><td>{formatAuditDescription(entry.description)}</td></tr>)}</tbody></table></div>}
     {loading&&<p role="status">Loading audit log…</p>}

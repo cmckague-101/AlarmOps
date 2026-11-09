@@ -12,6 +12,7 @@ import { AppSymbol } from '@/components/app-symbol';
 import { refreshCommunications, useCommunications } from '@/lib/communications-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 function latestDate(thread: CommunicationThread) {
   return thread.replies[thread.replies.length - 1]?.createdAt ?? thread.createdAt;
@@ -43,7 +44,7 @@ export default function CommunicationsScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text accessibilityRole="header" style={styles.pageTitle}>Communications</Text>
+            <HeroTitle style={styles.pageTitle}>Communications</HeroTitle>
             <View style={styles.headingMeta}>
               <Text style={styles.sectionMeta}>{threads.length} {threads.length === 1 ? 'conversation' : 'conversations'}</Text>
               {unreadCount > 0 ? <Text accessibilityLabel={`${unreadCount} unread`} style={styles.unreadCount}>{unreadCount} unread</Text> : null}

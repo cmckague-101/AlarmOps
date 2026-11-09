@@ -14,6 +14,7 @@ import { useOptionalOfflineSync } from '@/providers/offline-sync-provider';
 import { checkinInventoryItem, checkoutInventoryItem, deleteInventoryItem, refreshInventory, updateInventoryItem, useInventory } from '@/lib/inventory-store';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 export default function InventoryScreen() {
   const router = useRouter();
@@ -101,7 +102,7 @@ export default function InventoryScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInventory} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
-        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>Inventory</Text></View>
+        <View style={styles.headingCopy}><HeroTitle style={styles.title}>Inventory</HeroTitle></View>
         {canManage && <Pressable accessibilityRole="button" accessibilityLabel="Add inventory item" onPress={() => router.push('/inventory/form' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>}
       </View>
       <View style={styles.search}><AppSymbol name={{ ios: 'magnifyingglass', android: 'search' } as never} color={theme.secondary} size={18} /><TextInput accessibilityLabel="Search inventory" autoCapitalize="none" onChangeText={setQuery} placeholder="Search items" placeholderTextColor={theme.secondary} returnKeyType="search" style={styles.searchInput} value={query} />{query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear inventory search" onPress={() => setQuery('')}><AppSymbol name={{ ios: 'xmark.circle.fill', android: 'cancel' } as never} color={theme.secondary} size={18} /></Pressable> : null}</View>

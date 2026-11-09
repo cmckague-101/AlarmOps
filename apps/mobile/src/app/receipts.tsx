@@ -14,6 +14,7 @@ import { useReceiptEdits } from '@/lib/use-offline-edits';
 import { useOfflineUserSync } from '@/lib/use-offline-user-sync';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 type Timespan = '30-days' | 'this-year' | 'last-year' | 'all';
 
@@ -143,7 +144,7 @@ export default function ReceiptsScreen() {
     <Stack.Screen options={{ title: 'Receipts' }} />
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshReceipts} tintColor={theme.commandForeground} />}>
       <View style={styles.heading}>
-        <View style={styles.headingCopy}><Text accessibilityRole="header" style={styles.title}>{isOwner ? 'Receipts' : 'My receipts'}</Text>{!isOwner ? <Text style={styles.subtitle}>Upload expense records and keep them ready for review.</Text> : null}</View>
+        <View style={styles.headingCopy}><HeroTitle style={styles.title}>{isOwner ? 'Receipts' : 'My receipts'}</HeroTitle>{!isOwner ? <Text style={styles.subtitle}>Upload expense records and keep them ready for review.</Text> : null}</View>
         <View style={styles.headingActions}>
           {visible.length ? <Pressable accessibilityRole="button" accessibilityLabel="Export filtered receipts as ZIP" disabled={Boolean(busyId)} onPress={() => void exportVisible()} style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}><AppSymbol name={{ ios: 'square.and.arrow.up', android: 'ios_share' } as never} color={theme.commandForeground} size={17} /><Text style={styles.secondaryText}>{busyId === 'export' ? 'Exporting…' : 'Export ZIP'}</Text></Pressable> : null}
           <Pressable accessibilityRole="button" accessibilityLabel="Add receipt" onPress={() => router.push('/receipt/capture' as never)} style={({ pressed }) => [styles.add, pressed && styles.pressed]}><AppSymbol name={{ ios: 'plus', android: 'add' } as never} color="#FFFFFF" size={18} /><Text style={styles.addText}>Add</Text></Pressable>

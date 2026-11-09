@@ -11,6 +11,7 @@ import {pendingEdits,scopedUserEntries} from '@/lib/offline-user-sync';
 import {useOfflineUserSync} from '@/lib/use-offline-user-sync';
 import {useSession} from '@/providers/session-provider';
 import {FireOpsTheme, useFireOpsTheme} from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 function formatDate(value:string){const date=new Date(value);return Number.isNaN(date.valueOf())?value:new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(date)}
 
@@ -47,7 +48,7 @@ export default function InspectionsScreen(){
     ]);
   };
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Inspections'}}/><ScrollView contentContainerStyle={styles.content}>
-    <View style={styles.heading}><Text accessibilityRole="header" style={styles.title}>Failed Inspections</Text></View>
+    <View style={styles.heading}><HeroTitle style={styles.title}>Failed Inspections</HeroTitle></View>
     <Pressable accessibilityRole="button" onPress={()=>router.push('/inspection/template' as never)} style={styles.manageButton}><AppSymbol name={{ios:'list.bullet.clipboard.fill',android:'edit_note'} as never} color={theme.commandText} size={19}/><Text style={styles.manageLabel}>Edit inspection template</Text></Pressable>
     <View style={styles.filters}><View style={styles.filterField}><Text style={styles.filterTitle}>Year</Text><Pressable accessibilityRole="button" accessibilityLabel={`Year, ${year}`} accessibilityState={{expanded:picker==='year'}} onPress={()=>setPicker('year')} style={styles.selectButton}><Text style={styles.selectValue}>{year}</Text><AppSymbol name="chevron.down" color={theme.secondary} size={17}/></Pressable></View><View style={styles.filterField}><Text style={styles.filterTitle}>Vehicle</Text><Pressable accessibilityRole="button" accessibilityLabel={`Vehicle, ${selectedVehicle?.name??'All vehicles'}`} accessibilityState={{expanded:picker==='vehicle'}} onPress={()=>setPicker('vehicle')} style={styles.selectButton}><Text style={styles.selectValue} numberOfLines={1}>{selectedVehicle?.name??'All vehicles'}</Text><AppSymbol name="chevron.down" color={theme.secondary} size={17}/></Pressable></View></View>
     {loading?<Text style={styles.state}>Loading inspections…</Text>:null}{error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}{photoError?<Text accessibilityRole="alert" style={styles.error}>{photoError}</Text>:null}{deleteError?<Text accessibilityRole="alert" style={styles.error}>{deleteError}</Text>:null}

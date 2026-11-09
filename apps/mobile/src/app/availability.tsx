@@ -8,6 +8,7 @@ import {refreshFleet, useFleetVehicles} from '@/lib/fleet-store';
 import {useAvailability} from '@/lib/use-availability';
 import {useFireOpsTheme} from '@/theme';
 import {AppSymbol} from '@/components/app-symbol';
+import {HeroTitle} from '@/components/hero-title';
 
 export default function AvailabilityScreen() {
   const {session,access} = useSession();
@@ -30,7 +31,7 @@ export default function AvailabilityScreen() {
   const shownCrew = activeCrew.filter(person=>person.name.toLowerCase().includes(query.trim().toLowerCase()));
   const availableCount = activeCrew.filter(person=>statuses[person.id]===true).length;
   const unsetCount = activeCrew.filter(person=>statuses[person.id]===undefined).length;
-  return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Availability'}}/><ScrollView contentContainerStyle={styles.content}><Text accessibilityRole="header" style={styles.title}>{owner?'Crew Availability':'Assignment Availability'}</Text>{!owner ? <Text style={styles.copy}>{offline?'Offline: your selection is saved on this device and shared when connected. If someone changed it meanwhile, their newer value is kept.':'Your selection is saved on this device and shared after server checks.'}</Text> : offline ? <Text style={styles.copy}>Offline: only your own availability can be saved on this device.</Text> : null}
+  return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Availability'}}/><ScrollView contentContainerStyle={styles.content}><HeroTitle style={styles.title}>{owner?'Crew Availability':'Assignment Availability'}</HeroTitle>{!owner ? <Text style={styles.copy}>{offline?'Offline: your selection is saved on this device and shared when connected. If someone changed it meanwhile, their newer value is kept.':'Your selection is saved on this device and shared after server checks.'}</Text> : offline ? <Text style={styles.copy}>Offline: only your own availability can be saved on this device.</Text> : null}
     {pending&&<Text accessibilityRole="alert" style={styles.copy}>Submitted availability for {crew.find(person=>person.id===pending.request.userId)?.name??'the selected member'}: {label(pending.request.available)}. {pending.acknowledged?(pending.keptCurrent?'Server kept a different value; refresh pending.':'Server accepted this choice; refresh pending.'):'Not confirmed. Keep this app open until retry succeeds.'}</Text>}
     {note&&<Text style={styles.copy}>{note}</Text>}
     {(error || (owner && crewError)) && <View><Text accessibilityRole="alert" style={styles.error}>{error || crewError}</Text><Pressable accessibilityRole="button" style={styles.button} disabled={busy} onPress={()=>{void retry();if(owner)void refreshFleet();}}><Text style={styles.name}>{pending?.acknowledged?'Retry refresh':pending?'Retry original choice':'Try again'}</Text></Pressable></View>}

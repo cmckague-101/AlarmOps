@@ -11,6 +11,7 @@ import { FleetVehicle, refreshFleet, useFleetVehicles } from '@/lib/fleet-store'
 import { useFleetFileUrl } from '@/lib/use-fleet-file-url';
 import { useSession } from '@/providers/session-provider';
 import { FireOpsTheme, useFireOpsTheme } from '@/theme';
+import {HeroTitle} from '@/components/hero-title';
 
 function displayStatus(status: string) {
   const value = status.trim().replaceAll('_', ' ').replaceAll('-', ' ').toLowerCase();
@@ -135,7 +136,7 @@ export default function FleetScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingGroup}>
-            <Text accessibilityRole="header" style={styles.pageTitle}>Fleet</Text>
+            <HeroTitle style={styles.pageTitle}>Fleet</HeroTitle>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
           {currentUser?.role === 'owner' || currentUser?.role === 'admin' ? (

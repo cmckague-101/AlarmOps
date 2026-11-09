@@ -7,6 +7,7 @@ FORM: Direct adaptation of approved web information architecture; user-pinned pa
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
 import {DarkTheme,DefaultTheme,router,Stack,ThemeProvider} from 'expo-router';
+import {useFonts} from 'expo-font';
 import {StatusBar} from 'expo-status-bar';
 import {Pressable,StyleSheet,Text,View} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
@@ -17,7 +18,10 @@ import {OfflineSyncNotice} from '@/components/offline-sync-notice';
 import {useSession} from '@/providers/session-provider';
 import {useFireOpsColorScheme,useFireOpsTheme} from '@/theme';
 
-export default function RootLayout(){return <GestureHandlerRootView style={styles.root}><AppProviders><RootNavigator/></AppProviders></GestureHandlerRootView>}
+export default function RootLayout(){
+  // Page titles use Outfit; screens render right away with the system font until it loads.
+  useFonts({'Outfit-Bold':require('../../assets/fonts/Outfit-Bold.ttf')});
+  return <GestureHandlerRootView style={styles.root}><AppProviders><RootNavigator/></AppProviders></GestureHandlerRootView>}
 
 function RootNavigator(){
   const theme=useFireOpsTheme();
