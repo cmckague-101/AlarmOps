@@ -4,7 +4,12 @@ import {createOnlineFleetEditSession,restoreFleetAssignment,type SequencedFleetC
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import {createDemoRecords,demoQualifications} from './demo-records';
 import {QuickActions, AvailabilityPage} from './QuickActions';
-import {TaskListPage} from './TaskListPage';
+import {TaskListPage,type AssistantTaskRequest} from './TaskListPage';
+import type {AssistantInvoiceRequest} from './InvoicesPage';
+import type {AssistantReceiptRequest} from './ReceiptsPage';
+import {loadAssistantEnabled} from './assistant/assistantClient';
+import {loadReceiptAutofillEnabled} from './receipt-autofill';
+import type {AssistantDraft} from '@fireops/domain';
 import {OwnerDashboard} from './OwnerDashboard';
 import {DashboardCustomization} from './DashboardCustomization';
 import {useDashboardPreferences} from './useDashboardPreferences';
@@ -63,6 +68,7 @@ const QualificationCardPage=lazy(()=>import('./QualificationCardPage'));
 const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 const SendToViprFlow=lazy(()=>import('./SendToViprFlow'));
+const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
 type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
 type NavigablePage = Exclude<Page,'more'|'send-vipr'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
@@ -741,6 +747,25 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     setVehicleTypes(items=>{const next=items.filter(item=>item.id!==type.id);if(!onDeleteVehicleType)saveLocal('fireops-vehicle-types',next);return next});
   };
 
+  // FireOps Assistant: a paid add-on per company (companies.assistant_enabled); not in demo mode.
+  const [assistantEnabled,setAssistantEnabled]=useState(false);
+  const [assistantAutofill,setAssistantAutofill]=useState(false);
+  const [assistantInvoice,setAssistantInvoice]=useState<AssistantInvoiceRequest|null>(null);
+  const [assistantReceipts,setAssistantReceipts]=useState<AssistantReceiptRequest|null>(null);
+  const [assistantTask,setAssistantTask]=useState<AssistantTaskRequest|null>(null);
+  useEffect(()=>{
+    let active=true;
+    setAssistantEnabled(false);setAssistantAutofill(false);
+    if(companyId&&!demoMode)void Promise.all([loadAssistantEnabled(companyId),loadReceiptAutofillEnabled(companyId)]).then(([enabled,autofill])=>{if(active){setAssistantEnabled(enabled);setAssistantAutofill(autofill)}});
+    return()=>{active=false};
+  },[companyId,demoMode]);
+  const openAssistantDraft=(draft:AssistantDraft,files?:File[])=>{
+    const id=Date.now();
+    if(draft.kind==='invoice'){setAssistantInvoice({id,file:files?.[0]});setPage('invoices')}
+    else if(draft.kind==='receipt'){if(files?.length){setAssistantReceipts({id,files})}setPage('receipts')}
+    else{setAssistantTask({id,subject:draft.subject,description:draft.description,dueDate:draft.dueDate});setPage('tasks')}
+  };
+
   const dashboardMapProps={assignedIncidentIds:[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))],resources:operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined})),motiveEnabled:activeMotiveConnection.connected,assignableVehicles:vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})),onAssignVehicle:(vehicleId:string,fire:{id:string;name:string;state:string})=>updateFireAssignment(vehicleId,fire),onVehicleSelect:(vehicleId:string)=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}};
   return <div className="app-shell">
     <Sidebar capacity={sidebarCapacity} onCapacity={setSidebarCapacity} page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
@@ -757,11 +782,11 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
-        {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={()=>setPage('overview')}/>}
+        {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={()=>setPage('overview')} assistantRequest={assistantTask} onAssistantRequestDone={()=>setAssistantTask(null)}/>}
         {page === 'availability' && <AvailabilityPage companyId={companyId} user={currentUser} crew={crew}/>}
-        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} company={{name:companyDetails.name,phone:companyDetails.phone,location:companyDetails.location}} companyLogoUrl={companyDetails.logo?.dataUrl} demoData={demoMode?demoRecords:undefined} onDemoChange={records=>setDemoRecords(current=>({...current,...records}))}/>}
+        {page === 'invoices' && <InvoicesPage companyId={companyId} user={currentUser} company={{name:companyDetails.name,phone:companyDetails.phone,location:companyDetails.location}} companyLogoUrl={companyDetails.logo?.dataUrl} demoData={demoMode?demoRecords:undefined} onDemoChange={records=>setDemoRecords(current=>({...current,...records}))} assistantRequest={assistantInvoice} onAssistantRequestDone={()=>setAssistantInvoice(null)}/>}
         {page === 'payroll' && <PayrollPage companyId={companyId} user={currentUser} crew={crew} demoForms={demoMode?demoRecords.payroll:undefined} onDemoChange={payroll=>setDemoRecords(current=>({...current,payroll}))} requestedPayrollId={requestedPayrollId} onPayrollOpened={()=>setRequestedPayrollId(null)}/>}
-        {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew}/>}
+        {page === 'receipts' && <ReceiptsPage companyId={companyId} user={currentUser} crew={crew} assistantRequest={assistantReceipts} onAssistantRequestDone={()=>setAssistantReceipts(null)}/>}
         {page === 'training' && <TrainingPage trainings={trainings} user={currentUser} error={trainingError} onCreate={createTraining} onEdit={updateTraining} onDelete={deleteTraining} onSignup={signupTraining} onCancelSignup={cancelTrainingSignup} onViewed={markTrainingViewed}/>}
         {page === 'shop' && canWorkShop(currentUser.role) && <ShopPage key={companyId??'demo'} companyId={companyId} demoMode={demoMode} user={currentUser} vehicles={vehicles} issues={issues} canWork={canWorkShop(currentUser.role)} canAssign={canAssignShopJobs(currentUser.role)} mechanics={crew.filter(member=>member.status==='Active'&&canWorkShop(member.role)).sort((a,b)=>a.name.localeCompare(b.name)).map(member=>({id:member.id,name:member.name}))} onBack={()=>setPage('overview')} onResolveLinkedIssue={resolveIssueFromShop} motiveReadingFor={shopMotiveReading} requestedJobId={requestedShopJobId} onJobOpened={()=>setRequestedShopJobId(null)}/>}
         {page === 'inventory' && <InventoryPage canManage={canManageInventory(currentUser.role)} canCheckout={!isCompanyManager(currentUser.role)} currentUserId={currentUser.id} items={inventoryItems} error={inventoryError} onCreate={createInventoryItem} onUpdate={updateInventoryItem} onDelete={deleteInventoryItem} onCheckout={checkoutInventoryItem} onCheckin={checkinInventoryItem} onBack={goBack}/>}
@@ -800,6 +825,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
     {selectedIssue && <IssueDetail key={selectedIssue.id} issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
     {selectedCrew && <CrewDetail member={selectedCrew} canManage={canManageFleet} onClose={() => setSelectedCrew(null)} onUpdateRole={selectedCrew.role==='owner'?undefined:role=>updateCrewRole(selectedCrew,role)} onUpdateDetails={details=>updateCrewDetails(selectedCrew,details)} onResend={selectedCrew.status==='Invited'&&onResendCrewInvite?async()=>{await onResendCrewInvite(selectedCrew);showNotice(`Invitation resent to ${selectedCrew.email}`)}:undefined} onDelete={selectedCrew.role==='owner'||selectedCrew.id===currentUser.id?undefined:()=>{setCrewDeleteError('');setCrewDeleteCandidate(selectedCrew);setSelectedCrew(null)}}/>}
+    {assistantEnabled&&companyId&&<Suspense fallback={null}><AssistantPanel key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} autofillEnabled={assistantAutofill} onNavigate={target=>setPage(target as Page)} onDraft={openAssistantDraft}/></Suspense>}
     <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">{notice && <div className="toast"><span><Check size={16}/></span><b>{notice}</b>{undoAction&&<button disabled={!!onDataChange&&onlineEdits.pending} onClick={undoLastAction} aria-label={undoAction.label}>Undo</button>}</div>}</div>
   </div>;
 }

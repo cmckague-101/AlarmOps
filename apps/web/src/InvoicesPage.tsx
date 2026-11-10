@@ -30,7 +30,10 @@ function canEditInvoice(form:InvoiceForm,user:FireOpsUser,manager:boolean){
 }
 
 type DemoInvoices={invoices:InvoiceForm[];customers:InvoiceCustomer[]};
-export default function InvoicesPage({companyId,user,company,companyLogoUrl,demoData,onDemoChange}:{companyId?:string;user:FireOpsUser;company?:{name:string;phone?:string;location?:string};companyLogoUrl?:string|null;demoData?:DemoInvoices;onDemoChange?:(data:DemoInvoices)=>void}){
+/** An invoice draft the FireOps Assistant asked to open: scan this photo, or start a new invoice. Handled once per id. */
+export type AssistantInvoiceRequest={id:number;file?:File};
+
+export default function InvoicesPage({companyId,user,company,companyLogoUrl,demoData,onDemoChange,assistantRequest,onAssistantRequestDone}:{companyId?:string;user:FireOpsUser;company?:{name:string;phone?:string;location?:string};companyLogoUrl?:string|null;demoData?:DemoInvoices;onDemoChange?:(data:DemoInvoices)=>void;assistantRequest?:AssistantInvoiceRequest|null;onAssistantRequestDone?:()=>void}){
   const [generatorOpen,setGeneratorOpen]=useState(false);
   const manager=canProcessFinance(user.role);
   const [paymentFilter,setPaymentFilter]=useState<'all'|'unpaid'|'paid'>('all');
@@ -77,6 +80,15 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     return()=>{active=false};
   },[companyId,Boolean(demoData)]);
   useEffect(()=>{setAddingCustomer(false);setCustomerName('')},[selected?.id]);
+  // From the assistant: once invoices and customers have loaded, scan the picked photo (or open a new invoice). Never submits.
+  const handledAssistant=useRef<number|null>(null);
+  useEffect(()=>{
+    if(!assistantRequest||loading||handledAssistant.current===assistantRequest.id)return;
+    handledAssistant.current=assistantRequest.id;
+    onAssistantRequestDone?.();
+    if(assistantRequest.file)void scan(assistantRequest.file);
+    else openNew();
+  });
 
   const draft=forms.find(form=>form.status==='draft'&&form.createdBy===user.id);
   const blankDraft=():InvoiceForm=>({id:createId(),companyId:companyId??'',createdBy:user.id,createdByName:user.name,invoiceNumber:'',invoiceDate:new Date().toISOString().slice(0,10),invoiceAmount:0,customerId:'',attachment:null,status:'draft',submittedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});

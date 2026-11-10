@@ -1,6 +1,6 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {Redirect, Stack} from 'expo-router';
+import {Redirect, Stack, useLocalSearchParams, useRouter} from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {canManagePersonalTasks, formatCalendarDate, taskDueStatus, type PersonalTask} from '@fireops/domain';
@@ -25,6 +25,17 @@ export default function TasksScreen() {
   const [description,setDescription] = useState('');
   const [dueDate,setDueDate] = useState('');
   const [pickerOpen,setPickerOpen] = useState(false);
+  // Opened by the FireOps Assistant with a drafted task: fill the New task form for the user to check and save.
+  const params = useLocalSearchParams<{assistantDraft?:string;subject?:string;description?:string;dueDate?:string}>();
+  const router = useRouter();
+  useEffect(()=>{
+    if(!params.assistantDraft||!allowed)return;
+    const today=new Date();
+    setEditingId(undefined);setSubject(String(params.subject??'').slice(0,200));setDescription(String(params.description??'').slice(0,5000));
+    setDueDate(/^\d{4}-\d{2}-\d{2}$/.test(String(params.dueDate??''))?String(params.dueDate):`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);
+    setPickerOpen(false);setCreating(true);
+    router.setParams({assistantDraft:undefined,subject:undefined,description:undefined,dueDate:undefined} as never);
+  },[params.assistantDraft,allowed]);
   const styles = StyleSheet.create({safe:{flex:1,backgroundColor:theme.canvas},content:{padding:20,paddingBottom:48,gap:20},title:{color:theme.ink,fontSize:30,fontWeight:'800'},copy:{color:theme.secondary,fontSize:16,lineHeight:23},card:{padding:18,gap:16,borderWidth:1,borderColor:theme.divider,borderRadius:16,backgroundColor:theme.paper},heading:{color:theme.ink,fontSize:20,fontWeight:'800'},body:{color:theme.ink,fontSize:16,lineHeight:24},button:{minHeight:48,padding:13,borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:theme.ember},buttonText:{color:'#fff',fontWeight:'800',fontSize:16},secondary:{backgroundColor:theme.surfaceAlt},secondaryText:{color:theme.ink,fontWeight:'700',fontSize:16},disabled:{opacity:.5},fieldLabel:{color:theme.secondary,fontSize:13,fontWeight:'700'},error:{color:theme.danger,fontSize:16},actions:{gap:10},overdue:{color:theme.danger,fontWeight:'700'},dueToday:{color:theme.warning,fontWeight:'700'},denied:{padding:20}});
   async function submit() {
     if(await save({subject,description,dueDate},editingId)){setSubject('');setDescription('');setDueDate('');setEditingId(undefined);setPickerOpen(false);setCreating(false);}

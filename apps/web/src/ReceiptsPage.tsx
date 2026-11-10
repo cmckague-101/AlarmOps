@@ -95,7 +95,10 @@ function startFor(timespan: Timespan) {
   return null;
 }
 
-export default function ReceiptsPage({ companyId, user, crew }: { companyId?: string; user: FireOpsUser; crew: CrewMember[] }) {
+/** Receipt photos the FireOps Assistant handed over; added to the batch once per id for the user to check and submit. */
+export type AssistantReceiptRequest = { id: number; files: File[] };
+
+export default function ReceiptsPage({ companyId, user, crew, assistantRequest, onAssistantRequestDone }: { companyId?: string; user: FireOpsUser; crew: CrewMember[]; assistantRequest?: AssistantReceiptRequest | null; onAssistantRequestDone?: () => void }) {
   const demoMode=useContext(DemoModeContext);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(Boolean(companyId));
@@ -108,6 +111,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   const [saving, setSaving] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [autofillEnabled, setAutofillEnabled] = useState(false);
+  const [autofillChecked, setAutofillChecked] = useState(false);
   const [timespan, setTimespan] = useState<Timespan>('this-year');
   const [crewId, setCrewId] = useState('all');
   const [projectFilter, setProjectFilter] = useState('');
@@ -130,7 +134,8 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
   useEffect(() => {
     let active = true;
     setAutofillEnabled(false);
-    if (companyId && !demoMode) void loadReceiptAutofillEnabled(companyId).then((enabled) => { if (active) setAutofillEnabled(enabled); });
+    setAutofillChecked(!companyId || demoMode);
+    if (companyId && !demoMode) void loadReceiptAutofillEnabled(companyId).then((enabled) => { if (active) { setAutofillEnabled(enabled); setAutofillChecked(true); } });
     return () => { active = false; };
   }, [companyId, demoMode]);
 
@@ -168,7 +173,7 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
     pumpAutofill();
   }, [pumpAutofill]);
 
-  const appendFiles = (files: FileList | null) => {
+  const appendFiles = (files: FileList | File[] | null) => {
     if (!files?.length) return;
     const room = MAX_RECEIPT_BATCH - cardsRef.current.length;
     const rejected: string[] = [];
@@ -187,6 +192,15 @@ export default function ReceiptsPage({ companyId, user, crew }: { companyId?: st
     setCards(cardsRef.current);
     queueAutofill(created.filter((card) => card.status === 'reading').map((card) => card.key));
   };
+
+  // From the assistant: add its photos once we know whether auto-fill is on, so they are read like any other upload.
+  const handledAssistant = useRef<number | null>(null);
+  useEffect(() => {
+    if (!assistantRequest || !autofillChecked || !uploadsEnabled || handledAssistant.current === assistantRequest.id) return;
+    handledAssistant.current = assistantRequest.id;
+    onAssistantRequestDone?.();
+    appendFiles(assistantRequest.files);
+  });
 
   const removeCard = (key: string) => {
     autofillQueue.current = autofillQueue.current.filter((item) => item !== key);

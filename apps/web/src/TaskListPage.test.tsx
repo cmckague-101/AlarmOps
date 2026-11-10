@@ -49,3 +49,20 @@ describe('inline task editing',()=>{
     expect(nodes(tree).filter(node=>node.type==='article').every(card=>!nodes(card).some(node=>node.type==='form'))).toBe(true);
   });
 });
+
+describe('FireOps Assistant task drafts',()=>{
+  it('opens the New task form filled with the drafted task once, without saving',()=>{
+    const done=vi.fn();
+    const frame=runtime.frame() as unknown as {slots:{effect?:()=>void}[];effects:Set<number>};
+    const render=()=>{runtime.enter(frame as never);return TaskListPage({companyId:'company',user:{id:'user',name:'Alex',role:'owner'},onBack:vi.fn(),assistantRequest:{id:7,subject:'Grease E-4',description:'Front axle',dueDate:'2027-01-09'},onAssistantRequestDone:done})};
+    const flush=()=>{for(const index of frame.effects)frame.slots[index].effect?.();frame.effects.clear()};
+    render();flush();render();flush();
+    const tree=render();
+    const input=(id:string)=>nodes(tree).find(node=>(node.type==='input'||node.type==='textarea')&&node.props.id===id)?.props.value;
+    expect(input('task-subject')).toBe('Grease E-4');
+    expect(input('task-description')).toBe('Front axle');
+    expect(input('task-due-date')).toBe('2027-01-09');
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+});

@@ -1,9 +1,14 @@
-import {useState, type FormEvent} from 'react';
+import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {canManagePersonalTasks, formatCalendarDate, taskDueStatus, type FireOpsUser, type PersonalTask} from '@fireops/domain';
 import {usePersonalTasks} from './usePersonalTasks';
 import './TaskListPage.css';
 
-export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:FireOpsUser;onBack:()=>void}) {
+function todayIso(){const today=new Date();return `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`}
+
+/** A task the FireOps Assistant drafted: opens the New task form filled in for the user to check and save. */
+export type AssistantTaskRequest={id:number;subject:string;description:string;dueDate:string};
+
+export function TaskListPage({companyId,user,onBack,assistantRequest,onAssistantRequestDone}:{companyId?:string;user:FireOpsUser;onBack:()=>void;assistantRequest?:AssistantTaskRequest|null;onAssistantRequestDone?:()=>void}) {
   const allowed = canManagePersonalTasks(user.role);
   const {tasks,loading,busy,error,save,remove,retry,connected} = usePersonalTasks(allowed?companyId:undefined,allowed?user.id:undefined);
   const [creating,setCreating] = useState(false);
@@ -14,6 +19,13 @@ export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:Fir
   const [subject,setSubject] = useState('');
   const [description,setDescription] = useState('');
   const [dueDate,setDueDate] = useState('');
+  const handledAssistant = useRef<number|null>(null);
+  useEffect(()=>{
+    if(!assistantRequest||!allowed||handledAssistant.current===assistantRequest.id)return;
+    handledAssistant.current=assistantRequest.id;
+    onAssistantRequestDone?.();
+    setEditingId(undefined);setSubject(assistantRequest.subject);setDescription(assistantRequest.description);setDueDate(assistantRequest.dueDate||todayIso());setCreating(true);
+  });
   async function submit(event:FormEvent) {
     event.preventDefault();
     if(await save({subject,description,dueDate},editingId)){setSubject('');setDescription('');setDueDate('');setEditingId(undefined);setCreating(false);}
@@ -32,7 +44,7 @@ export function TaskListPage({companyId,user,onBack}:{companyId?:string;user:Fir
   return <div className="page task-page"><button className="secondary" onClick={onBack}>← Dashboard</button><div className="page-heading hero-heading"><div><h1>Task List</h1><p>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</p></div></div>
     {!connected&&<p>Connect a company account to save tasks.</p>}
     {error&&<p role="alert" className="receipt-error">{error} <button className="secondary" disabled={busy} onClick={retry}>Retry</button></p>}
-    {!creating&&<p><button className="primary" disabled={!connected||busy} onClick={()=>{const today=new Date();setDueDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);setCreating(true);}}>New task</button></p>}
+    {!creating&&<p><button className="primary" disabled={!connected||busy} onClick={()=>{setDueDate(todayIso());setCreating(true);}}>New task</button></p>}
     {creating&&!editingId&&form}
     <section className="task-list" aria-label="Your tasks" aria-busy={loading}>{loading?<p>Loading tasks…</p>:<>{tasks.map(task=><article key={task.id}>{editingId===task.id?form:<><h2>{task.subject}</h2><p className={`task-due ${taskDueStatus(task.due_date)}`}>{taskDueStatus(task.due_date)==='overdue'?'Overdue · ':''}{taskDueStatus(task.due_date)==='today'?'Due today':`Due ${formatCalendarDate(task.due_date)}`}</p>{task.description&&<p className="task-description">{task.description}</p>}<div className="task-actions"><button className="secondary" disabled={busy||creating||!connected} onClick={()=>edit(task)} aria-label={`Edit ${task.subject}`}>Edit</button><button className="primary" disabled={busy||creating} onClick={()=>complete(task)} aria-label={`Mark ${task.subject} as completed`}>Mark completed</button></div></>}</article>)}{connected&&!error&&!tasks.length&&<p>No open tasks. Select New task to create one.</p>}</>}</section>
   </div>;
