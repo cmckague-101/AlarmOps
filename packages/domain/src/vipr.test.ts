@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import type {Vehicle} from './models';
 import {
   canSendToVipr,engineTypeFor,guessViprCategory,parseViprForm,parseViprNumber,viprBidPackageFileName,viprBidPackageText,
-  viprCategoryFor,viprExportSummary,viprFieldsFor,viprFormValues,viprSelectableVehicles,
+  viprCategoryFor,viprExportSummary,viprFieldsFor,viprFormValues,viprIntelligenceEntries,viprSelectableVehicles,
 } from './vipr';
 
 const vehicle=(fields:Partial<Vehicle>={}):Vehicle=>({id:'v1',unit:'Engine 701',type:'Type 3 Engine',year:2019,make:'International',model:'HV',vin:'1HTMMMML9KH483201',plate:'CA 8F701',status:'Ready',createdAt:'2025-02-04',...fields});
@@ -97,5 +97,16 @@ describe('VIPR form values',()=>{
     expect(canSendToVipr('admin')).toBe(true);
     expect(canSendToVipr('resource_boss')).toBe(false);
     expect(canSendToVipr('fire_fighter')).toBe(false);
+  });
+});
+
+describe('VIPR Intelligence entries',()=>{
+  it('shows Send to VIPR to owners and admins and VIPR DPLs to everyone',()=>{
+    expect(viprIntelligenceEntries('owner').map(entry=>entry.id)).toEqual(['send-to-vipr','vipr-dpls']);
+    expect(viprIntelligenceEntries('admin').map(entry=>entry.id)).toEqual(['send-to-vipr','vipr-dpls']);
+    for(const role of ['fire_fighter','shop_tech','accounting','resource_boss'] as const){
+      expect(viprIntelligenceEntries(role).map(entry=>entry.id)).toEqual(['vipr-dpls']);
+      expect(canSendToVipr(role)).toBe(false);
+    }
   });
 });

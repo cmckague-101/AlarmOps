@@ -19,6 +19,8 @@ describe('assistant routes',()=>{
     expect(assistantWebPage('dashboard','fire_fighter')).toBe('overview');
     expect(assistantMobileHref('fleet','owner')).toBe('/fleet');
     expect(assistantMobileHref('vipr-dpls','owner')).toBe('/dispatch-lists');
+    expect(assistantWebPage('vipr-intelligence','owner')).toBe('vipr-intelligence');
+    expect(assistantMobileHref('vipr-intelligence','owner')).toBe('/vipr-intelligence');
     for(const id of ASSISTANT_ROUTE_IDS){expect(assistantWebPage(id,'owner')).toBeTruthy();expect(assistantMobileHref(id,'owner')).toMatch(/^\//)}
   });
   it('hides screens the role cannot open and unknown ids',()=>{
@@ -26,6 +28,9 @@ describe('assistant routes',()=>{
     expect(assistantMobileHref('shop','fire_fighter')).toBeNull();
     expect(assistantMobileHref('tasks','accounting')).toBeNull();
     expect(assistantWebPage('send-to-vipr','shop_tech')).toBeNull();
+    // The hub stays open to crew (VIPR DPLs); only Send to VIPR is gated.
+    for(const role of roles)expect(assistantMobileHref('vipr-intelligence',role)).toBe('/vipr-intelligence');
+    expect(assistantMobileHref('send-to-vipr','fire_fighter')).toBeNull();
     expect(assistantWebPage('audit-log','admin')).toBe('audit-log');
     expect(assistantWebPage('javascript:alert(1)','owner')).toBeNull();
     expect(assistantMobileHref(undefined,'owner')).toBeNull();

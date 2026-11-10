@@ -180,3 +180,19 @@ export function parseViprForm(values:ViprFormValues):{fields:{[K in keyof ViprVe
   }
   return {fields,errors};
 }
+
+/** Entries on the VIPR Intelligence hub page (web and phone), in display order. */
+export type ViprIntelligenceEntryId='send-to-vipr'|'vipr-dpls';
+export type ViprIntelligenceEntry={id:ViprIntelligenceEntryId;label:string;description:string};
+const viprIntelligenceEntryList:readonly ViprIntelligenceEntry[]=[
+  {id:'send-to-vipr',label:'Send to VIPR',description:'Pick Fleet units, review their VIPR fields and build a bid package'},
+  {id:'vipr-dpls',label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates'},
+];
+
+/**
+ * VIPR Intelligence entries the role can use. Send to VIPR follows canSendToVipr
+ * (owners and admins); VIPR DPLs stays open to every role, as before the hub.
+ */
+export function viprIntelligenceEntries(role:UserRole):ViprIntelligenceEntry[]{
+  return viprIntelligenceEntryList.filter(entry=>entry.id!=='send-to-vipr'||canSendToVipr(role));
+}

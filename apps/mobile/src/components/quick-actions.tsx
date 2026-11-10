@@ -3,6 +3,7 @@ import {Pressable, StyleSheet, Text, View, useWindowDimensions} from 'react-nati
 import {useRouter} from 'expo-router';
 import {AppSymbol} from './app-symbol';
 import {AccentRail,pressedTileStyle,useReduceMotion,withAlpha} from './accent-tile';
+import {ViprIntelligenceIcon} from './vipr-intelligence-icon';
 import {useSession} from '@/providers/session-provider';
 import {useAvailability} from '@/lib/use-availability';
 import {useTaskCount} from '@/lib/use-task-count';
@@ -24,6 +25,8 @@ export function quickActionItems(role:UserRole,theme:FireOpsTheme):{item:Dashboa
   ];
 }
 
+export const viprIntelligenceColor='#B45309';
+
 export function QuickActions() {
   const router = useRouter();
   const theme = useFireOpsTheme();
@@ -37,11 +40,15 @@ export function QuickActions() {
   const reduceMotion = useReduceMotion();
   const styles = StyleSheet.create({section:{gap:16},title:{fontSize:24,fontWeight:'800',color:theme.ink},grid:{flexDirection:'row',flexWrap:'wrap',gap:12},card:{width:width<360||fontScale>1.3?'100%':'48%',flexGrow:1,overflow:'hidden',alignItems:'center',justifyContent:'center',gap:8,padding:14,minHeight:118,borderRadius:16,borderWidth:1,borderColor:theme.divider,backgroundColor:theme.paper},fullCard:{width:'100%'},count:{position:'absolute',top:-9,right:-12,minWidth:26,minHeight:26,paddingHorizontal:6,paddingVertical:3,borderWidth:2,borderColor:theme.paper,borderRadius:20,backgroundColor:theme.danger,color:'#FFFFFF',textAlign:'center',fontSize:12,fontWeight:'800',fontVariant:['tabular-nums']},icon:{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:12},label:{color:theme.ink,fontSize:15,fontWeight:'800',textAlign:'center'},status:{color:theme.secondary,fontSize:14,textAlign:'center'},pressed:{opacity:.65}});
   const actions = member ? quickActionItems(member.user.role,theme) : [];
-  const visibleActions=actions.filter(action=>visible(action.item));
-  if(!visibleActions.length)return null;
+  const customizable=actions.filter(action=>visible(action.item));
+  if(!customizable.length)return null;
+  // VIPR Intelligence (same place as web: after Payroll) has no Dashboard customization key, so it shows whenever the section does.
+  const vipr={item:null,path:'/vipr-intelligence',label:'VIPR Intelligence',ios:'shield.fill',android:'shield',color:viprIntelligenceColor};
+  const invoicesIndex=customizable.findIndex(action=>action.path==='/invoices');
+  const visibleActions=invoicesIndex<0?[...customizable,vipr]:[...customizable.slice(0,invoicesIndex),vipr,...customizable.slice(invoicesIndex)];
   return <View style={styles.section}><Text accessibilityRole="header" style={styles.title}>Quick Actions</Text><View style={styles.grid}>{visibleActions.map(action=>{
     // Overdue tasks turn the Task List rail red; every other tile keeps its icon color.
     const overdue=action.path==='/tasks'?taskCount?.overdue??0:0;
     const rail=overdue>0?theme.danger:action.color;
-    return <Pressable key={action.path} accessibilityRole="button" accessibilityHint={overdue>0?`${overdue} overdue`:undefined} onPress={()=>router.push(action.path as never)} style={({pressed})=>[styles.card,{borderColor:withAlpha(rail,.35)},action.path==='/availability'&&styles.fullCard,pressedTileStyle(rail,{pressed,reduceMotion})]}><AccentRail color={rail}/><View style={[styles.icon,{backgroundColor:action.color}]}><AppSymbol name={{ios:action.ios,android:action.android} as never} size={23} color="#FFFFFF"/>{action.path==='/tasks'&&!!taskCount?.count&&<Text accessibilityLabel={`${taskCount.count} open tasks`} style={styles.count}>{taskCount.count}</Text>}</View><Text style={styles.label}>{action.label}</Text>{action.path==='/availability' && <Text style={styles.status}>{member?.user.role==='owner'||member?.user.role==='admin'?'Crew readiness':loading?'Loading…':error?'Status unavailable':status===undefined?'Not set':status?'Available':'Unavailable'}</Text>}</Pressable>})}</View></View>;
+    return <Pressable key={action.path} accessibilityRole="button" accessibilityHint={overdue>0?`${overdue} overdue`:undefined} onPress={()=>router.push(action.path as never)} style={({pressed})=>[styles.card,{borderColor:withAlpha(rail,.35)},action.path==='/availability'&&styles.fullCard,pressedTileStyle(rail,{pressed,reduceMotion})]}><AccentRail color={rail}/><View style={[styles.icon,{backgroundColor:action.color}]}>{action.path==='/vipr-intelligence'?<ViprIntelligenceIcon size={25} color="#FFFFFF"/>:<AppSymbol name={{ios:action.ios,android:action.android} as never} size={23} color="#FFFFFF"/>}{action.path==='/tasks'&&!!taskCount?.count&&<Text accessibilityLabel={`${taskCount.count} open tasks`} style={styles.count}>{taskCount.count}</Text>}</View><Text style={styles.label}>{action.label}</Text>{action.path==='/availability' && <Text style={styles.status}>{member?.user.role==='owner'||member?.user.role==='admin'?'Crew readiness':loading?'Loading…':error?'Status unavailable':status===undefined?'Not set':status?'Available':'Unavailable'}</Text>}</Pressable>})}</View></View>;
 }

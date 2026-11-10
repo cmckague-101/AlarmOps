@@ -4,6 +4,7 @@ import {createOnlineFleetEditSession,restoreFleetAssignment,type SequencedFleetC
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import {createDemoRecords,demoQualifications} from './demo-records';
 import {QuickActions, AvailabilityPage} from './QuickActions';
+import {ViprIntelligenceIcon} from './ViprIntelligenceIcon';
 import {TaskListPage,type AssistantTaskRequest} from './TaskListPage';
 import type {AssistantInvoiceRequest} from './InvoicesPage';
 import type {AssistantReceiptRequest} from './ReceiptsPage';
@@ -69,14 +70,17 @@ const QualificationCardPage=lazy(()=>import('./QualificationCardPage'));
 const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 const SendToViprFlow=lazy(()=>import('./SendToViprFlow'));
+const ViprIntelligencePage=lazy(()=>import('./ViprIntelligencePage').then(module=>({default:module.ViprIntelligencePage})));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'operations' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'operations' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
 type NavigablePage = Exclude<Page,'more'|'send-vipr'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
+type NavIcon=React.ComponentType<{className?:string}>;
 const navigationMeta = {
   overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
   operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
+  'vipr-intelligence':{label:'VIPR Intelligence',description:'Send to VIPR and VIPR DPLs',Icon:ViprIntelligenceIcon},
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Communications',description:'Company updates and replies',Icon:MessageSquare},
@@ -95,13 +99,30 @@ const navigationMeta = {
   inspections:{label:'Inspections',description:'Failed vehicle inspection history',Icon:ClipboardCheck},
   'audit-log':{label:'Audit log',description:'Company activity from the last 30 days',Icon:Clock3},
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
-} satisfies Record<NavigablePage,{label:string;description:string;Icon:typeof LayoutDashboard}>;
-const navigationOrder:NavigablePage[]=['overview','operations','dispatch','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+} satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
+// VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
+const navigationOrder:NavigablePage[]=['overview','operations','vipr-intelligence','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
 
 // Inventory and Failed Inspections live under More for every role, except that
 // Resource Bosses and shop techs keep Inventory in their main navigation.
 const moreOnlyPages:NavigablePage[]=['inventory','inspections'];
+// Pages opened from the VIPR Intelligence hub.
+const viprHubChildren:Page[]=['send-vipr','dispatch'];
+/**
+ * Where Back on VIPR Intelligence goes. Entering the hub records the page it came from,
+ * except when coming back from a page the hub itself opened (`from` was entered from the hub).
+ */
+export function viprHubReturnAfter(current:Page,page:Page,from:Page,beforeFrom:Page):Page{
+  if(page!=='vipr-intelligence')return current;
+  if(viprHubChildren.includes(from)&&beforeFrom==='vipr-intelligence')return current;
+  // Fleet's Send to VIPR is a flow, not a place to go back to: return to Fleet instead.
+  return from==='send-vipr'?'vehicles':from;
+}
+/** The navigation item to highlight: VIPR DPLs and hub-opened Send to VIPR belong to VIPR Intelligence; Fleet's Send to VIPR to Fleet. */
+export function navPage(page:Page,sendViprFromHub=false):Page{
+  return page==='dispatch'||(page==='send-vipr'&&sendViprFromHub)?'vipr-intelligence':page==='send-vipr'?'vehicles':page;
+}
 export function navigationLayout(role:UserRole){
   const accessible=navigationOrder.filter(page=>page==='shop'?canWorkShop(role):page==='crew'?canViewCrewRoster(role):(page!=='inspections'&&page!=='audit-log')||isCompanyManager(role));
   const desktop=accessible.filter(page=>!moreOnlyPages.includes(page)||(page==='inventory'&&keepsInventoryInMainNav(role)));
@@ -296,8 +317,11 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   // Back buttons on pages opened from More (or the sidebar) return to wherever the user came from.
   const [previousPage,setPreviousPage]=useState<Page>('overview');
   const lastPage=useRef(page);
-  useEffect(()=>{if(lastPage.current!==page){setPreviousPage(lastPage.current);lastPage.current=page}},[page]);
+  // VIPR Intelligence remembers where it was opened from, so Back still leaves the hub after visiting Send to VIPR or VIPR DPLs.
+  const [viprHubReturn,setViprHubReturn]=useState<Page>('overview');
+  useEffect(()=>{const from=lastPage.current;if(from!==page){setViprHubReturn(current=>viprHubReturnAfter(current,page,from,previousPage));setPreviousPage(from);lastPage.current=page}},[page]);
   const goBack=()=>setPage(previousPage===page?'overview':previousPage);
+  const sendViprFromHub=page==='send-vipr'&&previousPage==='vipr-intelligence';
   const [selectedCredential,setSelectedCredential]=useState<CrewCredential>();
   const [selectedExperience,setSelectedExperience]=useState<CrewExperience>();
   const [masterRecordMemberId,setMasterRecordMemberId]=useState<string>();
@@ -769,7 +793,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 
   const dashboardMapProps={assignedIncidentIds:[...new Set(operationsVehicles.flatMap(vehicle=>vehicle.assignedFire?.id?[vehicle.assignedFire.id]:[]))],resources:operationsVehicles.map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:activeMotiveConnection.connected?motiveSnapshotFor(vehicle,activeMotiveConnection):undefined})),motiveEnabled:activeMotiveConnection.connected,assignableVehicles:vehicles.filter(vehicle=>vehicle.assignedTo&&(canManageFleet||vehicle.assignedTo===currentUser.id)).map(vehicle=>({...vehicle,assignedCrew:crew.find(member=>member.id===vehicle.assignedTo),motive:undefined})),onAssignVehicle:(vehicleId:string,fire:{id:string;name:string;state:string})=>updateFireAssignment(vehicleId,fire),onVehicleSelect:(vehicleId:string)=>{const vehicle=vehicles.find(item=>item.id===vehicleId);if(vehicle)setSelected(vehicle)}};
   return <div className="app-shell">
-    <Sidebar capacity={sidebarCapacity} onCapacity={setSidebarCapacity} page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
+    <Sidebar capacity={sidebarCapacity} onCapacity={setSidebarCapacity} page={navPage(page,sendViprFromHub)} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount}/>
     <div className="app-main">
       <Topbar saveState={saveState} notificationCount={!canManageFleet?(dashboardInbox.notifications?filterDismissedNotifications(dashboardInbox.notifications,dismissedNotifications.dismissed).filter(item=>item.unread).length:filterDismissedNotifications(dashboardNotifications(threads,documents,currentUser,5,trainings),dismissedNotifications.dismissed).filter(item=>item.unread).length):undefined} onNotifications={()=>setPage('overview')} onSignOut={leaveWorkspace(onSignOut)} onSwitchCompany={leaveWorkspace(onSwitchCompany)} demoMode={demoMode}/>
       <main>
@@ -778,7 +802,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
         <div className="page-stage" key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSendToVipr={canSendToVipr(currentUser.role)?()=>setPage('send-vipr'):undefined} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {page === 'send-vipr' && canSendToVipr(currentUser.role) && <SendToViprFlow vehicles={vehicles} companyName={companyDetails.name} onClose={()=>setPage('vehicles')} onEditVehicle={canManageFleet?vehicle=>setEditing(vehicle):undefined}/>}
+        {page === 'send-vipr' && canSendToVipr(currentUser.role) && <SendToViprFlow vehicles={vehicles} companyName={companyDetails.name} onClose={()=>setPage(sendViprFromHub?'vipr-intelligence':'vehicles')} onEditVehicle={canManageFleet?vehicle=>setEditing(vehicle):undefined}/>}
+        {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn)} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<DashboardIncidentMap {...dashboardMapProps} onOpenOperations={()=>setPage('operations')}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
@@ -811,7 +836,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         </div>
         </Suspense>
       </main>
-      <MobileNav page={page} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
+      <MobileNav page={navPage(page,sendViprFromHub)} setPage={setPage} user={currentUser} unreadCount={unreadThreadCount} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount}/>
     </div>
     {formOpen && canManageFleet && <VehicleForm vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => setFormOpen(false)} onSave={addVehicle}/>}
     {editing && canManageFleet && <VehicleForm key={editing.id} vehicle={editing} vehicleTypes={vehicleTypes} vehicleTypeError={vehicleTypeError} vehicles={vehicles} onCreateVehicleType={createVehicleType} onDeleteVehicleType={deleteVehicleType} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={() => {setSelected(vehicles.find(vehicle => vehicle.id === editing.id) ?? editing);setEditing(null)}} onSave={updateVehicle}/>}
@@ -853,7 +878,7 @@ function Sidebar({capacity,onCapacity,page,setPage,user,unreadCount,unreadDocume
   const moreActive=page==='more'||more.some(target=>target===page);
   const moreCount=overflow.reduce((total,target)=>total+countFor(target),0);
   return <aside className="sidebar"><Brand/><nav ref={navRef}>
-    {shown.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target||(target==='vehicles'&&page==='send-vipr')} notificationCount={countFor(target)} onClick={()=>setPage(target)}/>})}
+    {shown.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={countFor(target)} onClick={()=>setPage(target)}/>})}
     <NavItem icon={<Ellipsis/>} label="More" active={moreActive} notificationCount={moreCount} onClick={()=>setPage('more')}/>
     {settings&&<NavItem icon={<navigationMeta.settings.Icon/>} label={navigationMeta.settings.label} active={page==='settings'} onClick={()=>setPage('settings')}/>}
   </nav></aside>
@@ -882,10 +907,10 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 const moreTileColors:Partial<Record<NavigablePage|'inspect'|'workforce'|'marketplace',string>>={
   overview:'#5F6963',operations:'#C94321',communications:'#285F9E',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',shop:'#8A3418',
-  dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
+  'vipr-intelligence':'#B45309',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',workforce:'#34745C',marketplace:'#A95616',
 };
-type MoreTile={key:string;label:string;Icon:typeof LayoutDashboard;color:string;onOpen:()=>void;badge?:string;comingSoon?:boolean;urgentLabel?:string};
+type MoreTile={key:string;label:string;Icon:NavIcon;color:string;onOpen:()=>void;badge?:string;comingSoon?:boolean;urgentLabel?:string};
 
 function MorePage({desktopItems,demoMode=false,onInspect,user,companyId,unreadDocumentCount,unreadTrainingCount,pendingCardCount,failedInspectionCount=0,setPage}:{desktopItems?:NavigablePage[];demoMode?:boolean;onInspect:()=>void;user:FireOpsUser;companyId?:string;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number;failedInspectionCount?:number;setPage:(page:Page)=>void}) {
   const {visible}=useDashboardPreferences(user.id,demoMode);
@@ -1480,5 +1505,5 @@ function MobileNav({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrai
   const {mobilePrimary,mobileOverflow}=navigationLayout(user.role);
   const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} new ${badge===1?'item':'items'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
   const overflowBadge=(mobileOverflow.includes('documents')?unreadDocumentCount:0)+(mobileOverflow.includes('training')?unreadTrainingCount:0);
-  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,label,<Icon/>,page===target||(target==='vehicles'&&page==='send-vipr'),target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
+  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,label,<Icon/>,page===target,target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
 }

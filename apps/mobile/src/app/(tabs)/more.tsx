@@ -7,6 +7,7 @@ import {useFleetVehicles} from '@/lib/fleet-store';
 import {useTaskCount} from '@/lib/use-task-count';
 import {quickActionItems} from '@/components/quick-actions';
 import {SectionScreen} from '@/components/section-screen';
+import {ViprIntelligenceIcon} from '@/components/vipr-intelligence-icon';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
 import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
@@ -22,7 +23,8 @@ const sections=[
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
-  {label:'VIPR DPLs',path:'/dispatch-lists',ios:'list.number',android:'format_list_numbered',color:'#C94321'},
+  // VIPR DPLs moved into VIPR Intelligence (with Send to VIPR for owners and admins).
+  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#B45309',viprIcon:true},
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
@@ -58,7 +60,7 @@ export default function More(){
   const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
   const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
   const comingSoonIndex=allowed.findIndex(section=>'comingSoon' in section);
-  const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
+  const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean;viprIcon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="More" showHeader={false}>
@@ -75,7 +77,7 @@ export default function More(){
       >
         <AccentRail color={rail}/>
         <View style={[styles.icon,{backgroundColor:section.color}]}>
-          <AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>
+          {section.viprIcon?<ViprIntelligenceIcon size={25} color="#FFFFFF"/>:<AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>}
         </View>
         <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
         {section.comingSoon&&<Text style={[styles.soon,{color:theme.secondary}]}>Coming soon</Text>}

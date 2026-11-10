@@ -86,16 +86,18 @@ describe('dashboard customization',()=>{
     expect(actions()).not.toContain('Availability');
     expect(actions()).not.toContain('Task List');
     expect(actions()).not.toContain('Inventory');
+    expect(actions()).toContain('VIPR Intelligence');
     await preferences!.save('inspections',false);
     await preferences!.save('shop',false);
+    // VIPR Intelligence alone does not keep the section on screen once every other action is hidden.
     expect(actions()).toBe('');
   });
   it('shows the same Quick Actions order for everyone, filtered only by role rules',()=>{
     const labels=(role:UserRole)=>[...renderToStaticMarkup(<QuickActions demoMode user={{id:`order-${role}`,name:'Alex',role}} onOpen={()=>{}} onInspect={()=>{}}/>).matchAll(/<strong>([^<]+)<\/strong>/g)].map(match=>match[1]);
-    expect(labels('owner')).toEqual(['Availability','Task List','Shop','Payroll','Invoices']);
-    expect(labels('shop_tech')).toEqual(['Availability','Inspect','Task List','Shop','Inventory','Payroll','Invoices']);
-    expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','Invoices']);
-    expect(labels('fire_fighter')).toEqual(['Availability','Payroll','Invoices']);
+    expect(labels('owner')).toEqual(['Availability','Task List','Shop','Payroll','VIPR Intelligence','Invoices']);
+    expect(labels('shop_tech')).toEqual(['Availability','Inspect','Task List','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
+    expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
+    expect(labels('fire_fighter')).toEqual(['Availability','Payroll','VIPR Intelligence','Invoices']);
   });
   it('places the incident map after Quick Actions on the owner dashboard',()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;

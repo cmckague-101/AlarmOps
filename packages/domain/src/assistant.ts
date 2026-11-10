@@ -10,7 +10,7 @@ import {canSendToVipr} from './vipr';
  * (a test checks both lists and the role rules match).
  */
 export const ASSISTANT_ROUTE_IDS=[
-  'dashboard','operations','fleet','send-to-vipr','vipr-dpls','travel','communications','shop','roster',
+  'dashboard','operations','fleet','vipr-intelligence','send-to-vipr','vipr-dpls','travel','communications','shop','roster',
   'qualifications','documents','receipts','invoices','payroll','tasks','availability','training',
   'inventory','inspections','audit-log','settings','more',
 ] as const;
@@ -18,7 +18,7 @@ export type AssistantRouteId=typeof ASSISTANT_ROUTE_IDS[number];
 
 /** Web App page for each route id (App.tsx `Page`). */
 const WEB_PAGES:Record<AssistantRouteId,string>={
-  dashboard:'overview',operations:'operations',fleet:'vehicles','send-to-vipr':'send-vipr','vipr-dpls':'dispatch',
+  dashboard:'overview',operations:'operations',fleet:'vehicles','vipr-intelligence':'vipr-intelligence','send-to-vipr':'send-vipr','vipr-dpls':'dispatch',
   travel:'hotels',communications:'communications',shop:'shop',roster:'crew',qualifications:'qualifications',
   documents:'documents',receipts:'receipts',invoices:'invoices',payroll:'payroll',tasks:'tasks',
   availability:'availability',training:'training',inventory:'inventory',inspections:'inspections',
@@ -27,7 +27,7 @@ const WEB_PAGES:Record<AssistantRouteId,string>={
 
 /** Expo Router path for each route id. */
 const MOBILE_HREFS:Record<AssistantRouteId,string>={
-  dashboard:'/',operations:'/operations',fleet:'/fleet','send-to-vipr':'/send-to-vipr','vipr-dpls':'/dispatch-lists',
+  dashboard:'/',operations:'/operations',fleet:'/fleet','vipr-intelligence':'/vipr-intelligence','send-to-vipr':'/send-to-vipr','vipr-dpls':'/dispatch-lists',
   travel:'/hotels',communications:'/communications',shop:'/shop',roster:'/crew',qualifications:'/qualifications',
   documents:'/documents',receipts:'/receipts',invoices:'/invoices',payroll:'/payroll',tasks:'/tasks',
   availability:'/availability',training:'/training',inventory:'/inventory',inspections:'/inspections',
@@ -35,7 +35,7 @@ const MOBILE_HREFS:Record<AssistantRouteId,string>={
 };
 
 export const ASSISTANT_ROUTE_LABELS:Record<AssistantRouteId,string>={
-  dashboard:'Dashboard',operations:'Operations',fleet:'Fleet','send-to-vipr':'Send to VIPR','vipr-dpls':'VIPR DPLs',
+  dashboard:'Dashboard',operations:'Operations',fleet:'Fleet','vipr-intelligence':'VIPR Intelligence','send-to-vipr':'Send to VIPR','vipr-dpls':'VIPR DPLs',
   travel:'Travel',communications:'Communications',shop:'Shop',roster:'Roster',qualifications:'Qualifications',
   documents:'Documents',receipts:'Receipts',invoices:'Invoices',payroll:'Payroll',tasks:'Task List',
   availability:'Availability',training:'Training',inventory:'Inventory',inspections:'Failed Inspections',
@@ -51,6 +51,7 @@ export function canOpenAssistantRoute(role:UserRole,id:AssistantRouteId):boolean
   switch(id){
     case 'shop':return canWorkShop(role);
     case 'roster':return canViewCrewRoster(role);
+    // VIPR Intelligence is open to everyone (VIPR DPLs); its Send to VIPR entry is owners and admins only.
     case 'send-to-vipr':return canSendToVipr(role);
     case 'tasks':return canManagePersonalTasks(role);
     case 'inspections':case 'audit-log':return isCompanyManager(role);
