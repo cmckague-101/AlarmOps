@@ -35,7 +35,7 @@ function Sheet({onClose,children}:{onClose:()=>void;children:(titleId:string)=>R
 function Mascot({size}:{size:number}){
   return <picture className="assistant-mascot" style={{width:size,height:size}}>
     <source srcSet="/assistant-mascot.png" media="(prefers-reduced-motion: reduce)"/>
-    <img src="/assistant-mascot.gif" alt="" width={size} height={size}/>
+    <img src="/assistant-mascot-animated.png" alt="" width={size} height={size}/>
   </picture>;
 }
 
