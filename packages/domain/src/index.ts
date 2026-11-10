@@ -23,6 +23,8 @@ export * from './command-attention';
 export * from './tile-accents';
 export * from './dot-inspection';
 export * from './oil-change';
+export * from './fleet-summary';
+export * from './time-of-day-greeting';
 export * from './shop';
 export * from './fleet-repairs';
 export * from './shop-repair-history';

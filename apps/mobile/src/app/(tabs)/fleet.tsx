@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { canSendToVipr, dotInspectionWarning, formatCalendarDate, nextOilChangeWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
+import { canSendToVipr, dotInspectionWarning, fleetSummaryCounts, formatCalendarDate, nextOilChangeWarning, visibleVehicleIssues, type FleetIssue } from '@fireops/domain';
 import { useRouter } from 'expo-router';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -124,6 +124,8 @@ export default function FleetScreen() {
   const organized = useMemo(() => organizeFleet(filteredVehicles, organizeMode), [filteredVehicles, organizeMode]);
   const visibleIssues = currentUser ? visibleVehicleIssues(issues, currentUser) : [];
   const openIssues = visibleIssues.filter((issue) => issue.status === 'Open');
+  const summary = fleetSummaryCounts(vehicles);
+  const attention = summary.needsAttention > 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
@@ -180,6 +182,11 @@ export default function FleetScreen() {
 
         {vehicles.length > 0 ? (
           <>
+            <View style={styles.statsRow}>
+              <View accessible accessibilityLabel={`${summary.total} total vehicles`} style={styles.statCard}><Text style={styles.statValue}>{summary.total}</Text><Text style={styles.statLabel}>Total</Text></View>
+              <View accessible accessibilityLabel={`${summary.ready} ready`} style={styles.statCard}><Text style={styles.statValue}>{summary.ready}</Text><Text style={styles.statLabel}>Ready</Text></View>
+              <View accessible accessibilityLabel={`${summary.needsAttention} need attention`} style={[styles.statCard, attention && styles.statCardAttention]}><Text style={[styles.statValue, attention && styles.statAttention]}>{summary.needsAttention}</Text><Text style={[styles.statLabel, attention && styles.statAttention]} numberOfLines={2}>Needs attention</Text></View>
+            </View>
             <View style={styles.controls}>
               <TextInput
                 accessibilityLabel="Search fleet"
@@ -271,6 +278,12 @@ function createStyles(theme: FireOpsTheme) {
   safeArea: { flex: 1, backgroundColor: theme.canvas },
   content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 26 },
   pageTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: '800', letterSpacing: -0.7 },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: { flex: 1, minWidth: 0, gap: 4, paddingVertical: 14, paddingHorizontal: 12, borderWidth: 1, borderColor: theme.divider, borderRadius: 12, backgroundColor: theme.paper },
+  statCardAttention: { borderColor: theme.warning, backgroundColor: theme.warningSurface },
+  statValue: { color: theme.ink, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statAttention: { color: theme.warning },
+  statLabel: { color: theme.secondary, fontSize: 12, fontWeight: '600' },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   headingGroup: { flex: 1, gap: 5 },
   subtitle: { color: theme.secondary, fontSize: 15, lineHeight: 21, fontVariant: ['tabular-nums'] },

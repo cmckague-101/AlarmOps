@@ -1,7 +1,7 @@
 import {FileInput} from './demo-uploads';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, Check, ChevronDown, CircleDollarSign, CircleX, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Camera, Check, ChevronDown, CircleDollarSign, CircleX, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
 import { createPayrollRows, formatCalendarRange, canProcessFinance, normalizePayrollRows, payrollCrewIds, payrollCrewTotals, payrollCtrAttachments, payrollDayName, payrollTotals, updatePayrollCrew, updatePayrollDate, type CrewMember, type FireOpsUser, type PayrollAttachment, type PayrollDay, type PayrollForm } from '@fireops/domain';
 import { supabase } from './supabase';
 import { useDialogA11y } from './useDialogA11y';
@@ -19,7 +19,7 @@ function safePayrollFileName(name:string){return name.trim().replace(/[^a-zA-Z0-
 function isInlineAttachment(attachment:PayrollAttachment){return /^(data:|blob:|demo:)/i.test(attachment.storagePath)}
 function readFileAsDataUrl(file:File){return new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result??''));reader.onerror=()=>reject(reader.error??new Error('Could not read file.'));reader.readAsDataURL(file)})}
 
-export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened,demoForms,onDemoChange}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void;demoForms?:PayrollForm[];onDemoChange?:(forms:PayrollForm[])=>void}) {
+export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPayrollOpened,demoForms,onDemoChange,onBack}:{companyId?:string;user:FireOpsUser;crew:CrewMember[];requestedPayrollId?:string|null;onPayrollOpened?:()=>void;demoForms?:PayrollForm[];onDemoChange?:(forms:PayrollForm[])=>void;onBack?:()=>void}) {
   const manager = canProcessFinance(user.role);
   const [forms,setForms] = useState<PayrollForm[]>(()=> (demoForms??[]).map(form=>({...form,rows:normalizePayrollRows(form.rows)})));
   const [selected,setSelected] = useState<PayrollForm|null>(null);
@@ -149,7 +149,7 @@ export default function PayrollPage({companyId,user,crew,requestedPayrollId,onPa
   const years=useMemo(()=>[...new Set([currentYear,...forms.map(form=>new Date(form.createdAt).getFullYear())])].sort((a,b)=>b-a),[forms,currentYear]);
   const visible=forms.filter(form=>form.status!=='draft'&&new Date(form.createdAt).getFullYear()===year&&(!manager||crewFilter==='all'||form.createdBy===crewFilter));
   if(selected)return <><PayrollEditor form={selected} crew={formCrew} saving={saving} error={error} onBack={()=>setSelected(null)} onChange={queueSave} onAttach={file=>void attach(file)} onRemoveAttachment={()=>void removeAttachment()} onOpenAttachment={()=>selected.attachment&&void openStoredAttachment(selected.attachment)} onAttachCtr={(index,file)=>void attachCtr(index,file)} onRemoveCtr={index=>void removeCtr(index)} onOpenCtr={attachment=>void openStoredAttachment(attachment)} onDelete={()=>void remove()} onSubmit={()=>void submit()} onApprove={()=>void setManagerStatus(selected,'approved')} onReject={()=>{setError('');setRejecting(selected)}} onMarkPaid={()=>{if(window.confirm('Mark this payroll as paid? This cannot be undone in the app.'))void setManagerStatus(selected,'paid')}} canEdit={selected.createdBy===user.id} canManage={manager}/>{rejecting&&<RejectPayrollDialog saving={saving} error={error} onCancel={()=>setRejecting(null)} onReject={async notes=>{if(await setManagerStatus(rejecting,'rejected',notes))setRejecting(null)}}/>}</>;
-  return <div className="page payroll-page"><div className="page-heading hero-heading"><div><h1>Payroll</h1></div><button className="primary" onClick={newForm}><Plus/>New Payroll Form</button></div>
+  return <div className="page payroll-page">{onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}<div className="page-heading hero-heading"><div><h1>Payroll</h1></div><button className="primary" onClick={newForm}><Plus/>New Payroll Form</button></div>
     {draft&&<button className={`payroll-draft-card${draft.status==='rejected'?' rejected':''}`} onClick={()=>setSelected(draft)}><span><b>{draft.status==='rejected'?'Payroll returned for changes':'Payroll form in progress'}</b><small>{draft.status==='rejected'?draft.rejectionNotes:`Last saved ${new Date(draft.updatedAt).toLocaleString()}`}</small></span><strong>{draft.status==='rejected'?'Review':'Continue'}</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="receipt-list-card"><div className="receipt-list-heading"><h2>{manager?'Payroll forms':'Submitted payroll'}</h2><div className="payroll-filters"><label>Year <select value={year} onChange={event=>setYear(Number(event.target.value))}>{years.map(value=><option key={value}>{value}</option>)}</select></label>{manager&&<label>Crew member <select value={crewFilter} onChange={event=>setCrewFilter(event.target.value)}><option value="all">All Crew</option>{eligibleCrew.map(person=><option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}</div></div>

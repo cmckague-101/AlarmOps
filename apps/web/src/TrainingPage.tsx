@@ -7,7 +7,7 @@ export {isTrainingUnread,trainingStage} from '@fireops/domain';
 export type {Training,TrainingSignup,TrainingStage} from '@fireops/domain';
 
 type Props={
-  trainings:Training[];user:TrainingUser;error?:string;
+  trainings:Training[];user:TrainingUser;error?:string;onBack?:()=>void;
   onCreate:(training:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;
   onEdit:(trainingId:string,values:Omit<Training,'id'|'createdAt'|'updatedAt'|'viewedAt'|'signups'>)=>Promise<Training>;
   onDelete:(training:Training)=>Promise<void>;
@@ -18,7 +18,7 @@ type Props={
 
 const trainingDate=(value:string,options?:Intl.DateTimeFormatOptions)=>new Date(value).toLocaleString('en-US',options??{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
 
-export default function TrainingPage({trainings,user,error,onCreate,onEdit,onDelete,onSignup,onCancelSignup,onViewed}:Props){
+export default function TrainingPage({trainings,user,error,onCreate,onEdit,onDelete,onSignup,onCancelSignup,onViewed,onBack}:Props){
   const [formOpen,setFormOpen]=useState(false);
   const [editing,setEditing]=useState<Training>();
   const [deleting,setDeleting]=useState<Training>();
@@ -31,7 +31,7 @@ export default function TrainingPage({trainings,user,error,onCreate,onEdit,onDel
   const openTraining=(training:Training)=>{setSelected(training);onViewed(training)};
   const currentSelected=selected?(trainings.find(item=>item.id===selected.id)??selected):undefined;
   const currentEditing=editing?(trainings.find(item=>item.id===editing.id)??editing):undefined;
-  return <div className="page training-page"><div className="page-heading training-heading hero-heading"><div><h1>Training</h1><p>Upcoming courses and crew registration.</p><a className="training-portal-link" href="https://www.wildlandfirelearningportal.net/login/index.php" target="_blank" rel="noreferrer">Wildland Training Portal <ExternalLink/></a></div>{isCompanyManager(user.role)&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> New training</button>}</div>
+  return <div className="page training-page">{onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}<div className="page-heading training-heading hero-heading"><div><h1>Training</h1><p>Upcoming courses and crew registration.</p><a className="training-portal-link" href="https://www.wildlandfirelearningportal.net/login/index.php" target="_blank" rel="noreferrer">Wildland Training Portal <ExternalLink/></a></div>{isCompanyManager(user.role)&&<button className="primary" onClick={()=>setFormOpen(true)}><Plus/> New training</button>}</div>
     {error&&<div className="communication-load-error" role="alert"><CircleAlert/><span>{error}</span></div>}
     <section className="training-panel" aria-labelledby="training-list-heading"><header><div><h2 id="training-list-heading">Scheduled courses</h2><p>{scheduled.length} {scheduled.length===1?'course':'courses'}</p></div></header><div className="training-list">{scheduled.map(training=><TrainingListRow key={training.id} training={training} user={user} onClick={()=>openTraining(training)}/>)}{!scheduled.length&&<div className="empty training-empty"><GraduationCap/><h3>No training scheduled</h3><p>{isCompanyManager(user.role)?'Create first course and notify crew.':'New courses will appear here when company manager schedules them.'}</p></div>}</div></section>
     {expired.length>0&&<section className="training-panel expired-training-panel" aria-labelledby="expired-training-heading"><header><div><h2 id="expired-training-heading">Expired</h2><p>Courses remain here for one month</p></div></header><div className="training-list">{expired.map(training=><TrainingListRow key={training.id} training={training} user={user} expired onClick={()=>openTraining(training)}/>)}</div></section>}

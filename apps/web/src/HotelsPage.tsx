@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {BedDouble,ExternalLink,LocateFixed,MapPin,Plane,Search,UtensilsCrossed} from 'lucide-react';
+import {ArrowLeft,BedDouble,ExternalLink,LocateFixed,MapPin,Plane,Search,UtensilsCrossed} from 'lucide-react';
 import {supabase} from './supabase';
 import {airportLabel,searchAirports,type Airport,type AirportRow,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 
@@ -97,7 +97,7 @@ function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}
   </section>;
 }
 
-export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
+export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;onBack?:()=>void}){
   const [regions,setRegions]=useState<FedRoomsRegion[]>(demoMode?sortFedRoomsRegions(demoRegions):[]);
   const [cities,setCities]=useState<FedRoomsCity[]>([]);
   const [hotels,setHotels]=useState<FedRoomsHotel[]>([]);
@@ -189,6 +189,7 @@ export default function HotelsPage({demoMode=false}:{demoMode?:boolean}){
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
   return <div className="page dispatch-page hotels-page">
+    {onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}
     <div className="page-heading hero-heading"><div><h1>Travel</h1><p>Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.</p></div><div className="hotels-heading-actions"><button className="primary dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||!regions.length}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button></div></div>
     <FlightSearchCard prefillTo={flightsTo}/>
     <h2 className="travel-section-title"><BedDouble/>Hotels</h2>

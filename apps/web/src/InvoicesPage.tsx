@@ -1,6 +1,6 @@
 import {FileInput} from './demo-uploads';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Camera, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
 import { INVOICE_REVIEW_MESSAGE, applyInvoiceAutofill, canProcessFinance, qboFieldsFromRow, type QboInvoiceRow, changedInvoiceFields, formatCalendarDate, invoiceDueDate, invoicePaymentState, type FireOpsUser, type InvoiceAttachment, type InvoiceCustomer, type InvoiceForm, type InvoiceReviewField } from '@fireops/domain';
 import { autofillImage, loadReceiptAutofillEnabled, requestInvoiceAutofill } from './receipt-autofill';
 import { supabase } from './supabase';
@@ -35,7 +35,7 @@ type DemoInvoices={invoices:InvoiceForm[];customers:InvoiceCustomer[]};
 /** An invoice draft the FireOps Assistant asked to open: scan this photo, or start a new invoice. Handled once per id. */
 export type AssistantInvoiceRequest={id:number;file?:File};
 
-export default function InvoicesPage({companyId,user,company,companyLogoUrl,demoData,onDemoChange,assistantRequest,onAssistantRequestDone}:{companyId?:string;user:FireOpsUser;company?:{name:string;phone?:string;location?:string};companyLogoUrl?:string|null;demoData?:DemoInvoices;onDemoChange?:(data:DemoInvoices)=>void;assistantRequest?:AssistantInvoiceRequest|null;onAssistantRequestDone?:()=>void}){
+export default function InvoicesPage({companyId,user,company,companyLogoUrl,demoData,onDemoChange,assistantRequest,onAssistantRequestDone,onBack}:{companyId?:string;user:FireOpsUser;company?:{name:string;phone?:string;location?:string};companyLogoUrl?:string|null;demoData?:DemoInvoices;onDemoChange?:(data:DemoInvoices)=>void;assistantRequest?:AssistantInvoiceRequest|null;onAssistantRequestDone?:()=>void;onBack?:()=>void}){
   const [generatorOpen,setGeneratorOpen]=useState(false);
   const manager=canProcessFinance(user.role);
   const [paymentFilter,setPaymentFilter]=useState<'all'|'unpaid'|'paid'>('all');
@@ -336,7 +336,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
 
   const submittedAll=forms.filter(form=>form.status!=='draft');
   const visible=submittedAll.filter(form=>paymentFilter==='all'||(paymentFilter==='paid')===(form.status==='paid'));
-  return <div className="page payroll-page invoice-page"><div className="page-heading hero-heading"><div><h1>Invoices</h1></div><div className="invoice-heading-actions">{manager&&<button className="secondary" onClick={()=>setGeneratorOpen(true)}><FileText/>Invoice Generator</button>}{autofillEnabled&&<label className={`secondary invoice-scan-button${scanning||saving?' disabled':''}`}><Camera/>Scan invoice<FileInput type="file" accept={scanAccept} aria-label="Scan invoice photo" disabled={scanning||saving} onChange={event=>{const file=event.target.files?.[0];if(file)void scan(file);event.target.value=''}}/></label>}<button className="primary" onClick={openNew}><Plus/>New Invoice</button></div></div>
+  return <div className="page payroll-page invoice-page">{onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}<div className="page-heading hero-heading"><div><h1>Invoices</h1></div><div className="invoice-heading-actions">{manager&&<button className="secondary" onClick={()=>setGeneratorOpen(true)}><FileText/>Invoice Generator</button>}{autofillEnabled&&<label className={`secondary invoice-scan-button${scanning||saving?' disabled':''}`}><Camera/>Scan invoice<FileInput type="file" accept={scanAccept} aria-label="Scan invoice photo" disabled={scanning||saving} onChange={event=>{const file=event.target.files?.[0];if(file)void scan(file);event.target.value=''}}/></label>}<button className="primary" onClick={openNew}><Plus/>New Invoice</button></div></div>
     {draft&&<button className="payroll-draft-card" onClick={()=>setSelected(draft)}><span><b>Invoice in progress</b><small>Last saved {new Date(draft.updatedAt).toLocaleString()}</small></span><strong>Continue</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="receipt-list-card"><div className="receipt-list-heading"><h2>{manager?'Submitted invoices':'Your submitted invoices'}</h2>{submittedAll.length>0&&<div className="roster-sort" role="radiogroup" aria-label="Filter invoices">{(['all','unpaid','paid'] as const).map(value=><button key={value} type="button" role="radio" aria-checked={paymentFilter===value} className={paymentFilter===value?'selected':''} onClick={()=>setPaymentFilter(value)}>{value==='all'?'All':value==='paid'?'Paid':'Unpaid'}</button>)}</div>}</div>

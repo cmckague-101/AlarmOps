@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navPage, sidebarSplit, viprHubReturnAfter} from './App';
+import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navigationMeta, navPage, receiptsFirst, sidebarSplit, viprHubReturnAfter} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
@@ -89,6 +89,21 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','operations','vehicles','communications']);
     expect(navigationLayout('owner').mobileOverflow).toEqual(['vipr-intelligence','hotels','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings']);
     expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['vipr-intelligence','hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','settings']);
+  });
+});
+
+describe('small layout changes',()=>{
+  it('labels Communications as Comms in navigation',()=>{
+    expect(navigationMeta.communications.label).toBe('Comms');
+  });
+  it('puts Receipts first on the Tools grid and keeps the rest in order, for every role',()=>{
+    for(const role of ['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const){
+      const overflow=navigationLayout(role).mobileOverflow;
+      const ordered=receiptsFirst(overflow);
+      expect(ordered[0]).toBe('receipts');
+      expect(ordered.slice(1)).toEqual(overflow.filter(page=>page!=='receipts'));
+    }
+    expect(receiptsFirst(['documents','training'])).toEqual(['documents','training']);
   });
 });
 

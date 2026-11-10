@@ -19,6 +19,19 @@ function screen(){
 }
 beforeEach(()=>{vi.clearAllMocks();mocks.save.mockResolvedValue(true)});
 
+describe('Task List back button',()=>{
+  it('shows Back (not Dashboard) and returns to the previous page',()=>{
+    const onBack=vi.fn();runtime.enter(runtime.frame());
+    const tree=TaskListPage({companyId:'company',user:{id:'user',name:'Alex',role:'owner'},onBack});
+    const back=nodes(tree).find(node=>node.type==='button'&&node.props.className==='page-back');
+    expect(back).toBeDefined();
+    expect(back!.props.children).toEqual([expect.anything(),' Back']);
+    expect(JSON.stringify(nodes(tree).map(node=>node.props.children))).not.toContain('← Dashboard');
+    (back!.props.onClick as ()=>void)();
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+});
+
 describe('inline task editing',()=>{
   it('expands only the selected card, with no separate or duplicate task details',()=>{
     const s=screen();s.click(s.render(),'Edit Second task');const tree=s.render();

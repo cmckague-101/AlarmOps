@@ -1,6 +1,6 @@
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Camera, Check, Download, ExternalLink, FileText, Pencil, Plus, ReceiptText, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Camera, Check, Download, ExternalLink, FileText, Pencil, Plus, ReceiptText, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { MAX_RECEIPT_BATCH, MAX_RECEIPT_PROJECT_LENGTH, applyReceiptAutofill, collectReceiptExportEntries, failReceiptAutofill, formatCalendarDate, isCompanyManager, matchesReceiptFilter, newReceiptDraft, normalizeReceiptProject, possibleDuplicateReceiptIds, receiptAmountToCents, receiptDate, receiptDraftProblems, receiptDraftReady, receiptExportEntryName, receiptExportZipName, receiptProjects, receiptSingleExportZipName, zipStore, type CrewMember, type FireOpsUser, type ReceiptDraft } from '@fireops/domain';
 import { supabase } from './supabase';
 import { createId } from './create-id';
@@ -98,7 +98,7 @@ function startFor(timespan: Timespan) {
 /** Receipt photos the FireOps Assistant handed over; added to the batch once per id for the user to check and submit. */
 export type AssistantReceiptRequest = { id: number; files: File[] };
 
-export default function ReceiptsPage({ companyId, user, crew, assistantRequest, onAssistantRequestDone }: { companyId?: string; user: FireOpsUser; crew: CrewMember[]; assistantRequest?: AssistantReceiptRequest | null; onAssistantRequestDone?: () => void }) {
+export default function ReceiptsPage({ companyId, user, crew, assistantRequest, onAssistantRequestDone, onBack }: { companyId?: string; user: FireOpsUser; crew: CrewMember[]; assistantRequest?: AssistantReceiptRequest | null; onAssistantRequestDone?: () => void; onBack?: () => void }) {
   const demoMode=useContext(DemoModeContext);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(Boolean(companyId));
@@ -419,6 +419,7 @@ export default function ReceiptsPage({ companyId, user, crew, assistantRequest, 
   const filterCrew = crew.filter((member) => member.status === 'Active' || receipts.some((receipt) => receipt.uploadedBy === member.id));
 
   return <div className="page receipts-page">
+    {onBack&&<button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button>}
     <div className="page-heading hero-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1>{!isOwner&&<p>Keep expense records ready for reimbursement and audits.</p>}</div></div>
 
     <section className="receipt-upload-card" aria-labelledby="add-receipt-heading">

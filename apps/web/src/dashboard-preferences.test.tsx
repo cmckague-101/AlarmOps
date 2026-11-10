@@ -80,6 +80,8 @@ describe('dashboard customization',()=>{
     expect(dashboard).not.toContain('Assigned Resources');
     expect(dashboard).not.toContain('Needs Attention');
     expect(dashboard).toContain('Customize Dashboard');
+    // Not demo mode: the greeting card shows a time-of-day hello and the first name, like the phone.
+    expect(dashboard).toMatch(/<div class="command-greeting"><span class="command-greeting-hello">Good (Morning|Afternoon|Evening),<\/span><span class="command-greeting-name">Alex!<\/span><\/div>/);
     const actions=()=>renderToStaticMarkup(<QuickActions demoMode user={{id:'visibility-test',name:'Alex',role:'shop_tech'}} onOpen={()=>{}} onInspect={()=>{}}/>);
     expect(actions()).toContain('Inspect');
     expect(actions()).toContain('Shop');

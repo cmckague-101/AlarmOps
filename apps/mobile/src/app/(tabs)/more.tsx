@@ -63,7 +63,7 @@ export default function More(){
   const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean;viprIcon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;
 
-  return <SectionScreen title="More" showHeader={false}>
+  return <SectionScreen title="Tools" showHeader={false}>
     <View style={styles.grid}>{visible.map(section=>{
       const unread=unreadBySection[section.label]??0;const indicatorLabel=section.label==='Qualifications'?'pending':'new';
       const urgent=section.path==='/inspections'?failedInspections>0:section.path==='/tasks'?overdueTasks>0:false;

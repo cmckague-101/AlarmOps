@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {ArrowLeft} from 'lucide-react';
 import {canManagePersonalTasks, formatCalendarDate, taskDueStatus, type FireOpsUser, type PersonalTask} from '@fireops/domain';
 import {usePersonalTasks} from './usePersonalTasks';
 import './TaskListPage.css';
@@ -41,7 +42,7 @@ export function TaskListPage({companyId,user,onBack,assistantRequest,onAssistant
     <div className="task-actions"><button className="primary" type="submit">{busy?'Saving…':'Save task'}</button><button className="secondary" type="button" onClick={()=>{setCreating(false);setEditingId(undefined);setSubject('');setDescription('');setDueDate('');}}>Cancel</button></div>
   </fieldset></form>;
   if (!allowed) return <div className="page"><p>Task List is available to owners, admins, and techs.</p></div>;
-  return <div className="page task-page"><button className="secondary" onClick={onBack}>← Dashboard</button><div className="page-heading hero-heading"><div><h1>Task List</h1><p>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</p></div></div>
+  return <div className="page task-page"><button type="button" className="page-back" onClick={onBack}><ArrowLeft/> Back</button><div className="page-heading hero-heading"><div><h1>Task List</h1><p>Your personal tasks. Reminders are scheduled for 9 AM on the due date in your saved device time zone. Completing a task removes it permanently.</p></div></div>
     {!connected&&<p>Connect a company account to save tasks.</p>}
     {error&&<p role="alert" className="receipt-error">{error} <button className="secondary" disabled={busy} onClick={retry}>Retry</button></p>}
     {!creating&&<p><button className="primary" disabled={!connected||busy} onClick={()=>{setDueDate(todayIso());setCreating(true);}}>New task</button></p>}
