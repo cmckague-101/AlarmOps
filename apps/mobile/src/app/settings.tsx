@@ -110,7 +110,7 @@ export default function SettingsScreen(){
         <PreferenceToggle label="New training" value={preferences.trainingCreated} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({trainingCreated:value})} styles={styles} theme={theme}/>
         {isOwner?<PreferenceToggle label="Issue updates and resolutions" value={preferences.issueUpdates} disabled={savingPreferences||!preferences.pushEnabled} onChange={value=>void saveNotificationPreferences({issueUpdates:value})} styles={styles} theme={theme}/>:null}
       </View>}
-      <Text style={styles.hint}>{member.user.role==='shop_tech'?'Shop Tech alerts include new vehicle notes and failed inspections. ':''}Dashboard notifications remain available when push is off. Critical service notices cannot be disabled.</Text>
+      <Text style={styles.hint}>{member.user.role==='shop_tech'?'Shop Tech alerts include new vehicle notes and failed inspections. ':''}Notifications on Operations remain available when push is off. Critical service notices cannot be disabled.</Text>
       {notificationsError?<Text accessibilityRole="alert" style={styles.error}>{notificationsError}</Text>:null}
     </View>
     <View onLayout={event=>{if(oauthParams.section==='dashboard'&&!dashboardScrolled.current){dashboardScrolled.current=true;const y=event.nativeEvent.layout.y;requestAnimationFrame(()=>settingsScroll.current?.scrollTo({y,animated:false}))}}}><DashboardCustomization/></View>

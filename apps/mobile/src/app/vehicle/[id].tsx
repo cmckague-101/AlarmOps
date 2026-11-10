@@ -712,7 +712,7 @@ export default function VehicleDetailScreen() {
                 </View>
                 </View>
                 {typeof vehicle.motive.latitude === "number" && Number.isFinite(vehicle.motive.latitude) && typeof vehicle.motive.longitude === "number" && Number.isFinite(vehicle.motive.longitude) ? (
-                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} stale={telemetryFreshness(vehicle.motive.updatedAt) === "stale"} onOpen={() => router.push({ pathname: "/(tabs)/operations", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
+                  <VehicleLocationMap latitude={vehicle.motive.latitude} longitude={vehicle.motive.longitude} location={vehicle.motive.location || "Vehicle location"} stale={telemetryFreshness(vehicle.motive.updatedAt) === "stale"} onOpen={() => router.push({ pathname: "/(tabs)", params: { vehicleId: vehicle.id } })} styles={styles} theme={theme} />
                 ) : null}
               </View>
             ) : null}

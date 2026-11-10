@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {
-  ASSISTANT_ROUTE_IDS,assistantHistory,assistantMobileHref,assistantThreadTitle,assistantWebPage,canOpenAssistantRoute,
+  ASSISTANT_ROUTE_IDS,ASSISTANT_ROUTE_LABELS,assistantHistory,assistantMobileHref,assistantThreadTitle,assistantWebPage,canOpenAssistantRoute,
   cleanAssistantThreads,parseAssistantDraft,parseAssistantReply,upsertAssistantThread,type AssistantChatItem,
 } from './assistant';
 import {assignableUserRoles,type UserRole} from './models';
@@ -22,6 +22,14 @@ describe('assistant routes',()=>{
     expect(assistantWebPage('vipr-intelligence','owner')).toBe('vipr-intelligence');
     expect(assistantMobileHref('vipr-intelligence','owner')).toBe('/vipr-intelligence');
     for(const id of ASSISTANT_ROUTE_IDS){expect(assistantWebPage(id,'owner')).toBeTruthy();expect(assistantMobileHref(id,'owner')).toMatch(/^\//)}
+  });
+  it('opens Operations for both the dashboard and operations ids, for every role',()=>{
+    for(const role of roles)for(const id of ['dashboard','operations'] as const){
+      expect(assistantWebPage(id,role),`${role} ${id}`).toBe('overview');
+      expect(assistantMobileHref(id,role),`${role} ${id}`).toBe('/');
+      expect(ASSISTANT_ROUTE_LABELS[id]).toBe('Operations');
+    }
+    expect(Object.values(ASSISTANT_ROUTE_LABELS)).not.toContain('Dashboard');
   });
   it('hides screens the role cannot open and unknown ids',()=>{
     expect(assistantWebPage('roster','resource_boss')).toBeNull();

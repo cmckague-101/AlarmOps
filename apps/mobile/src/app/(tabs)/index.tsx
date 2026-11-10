@@ -1,11 +1,12 @@
 import {QuickActions} from '@/components/quick-actions';
 import {NationalFireActivitySection} from '@/components/national-fire-activity';
-import {DashboardIncidentMap} from '@/components/dashboard-incident-map';
+import {OperationsMap, useOperationsMap} from '@/components/operations-map';
+import {isOperationsLandscape} from '@/lib/operations-layout';
 import {OwnerDashboard} from '@/components/owner-dashboard';
 import {CustomizeDashboardButton} from '@/components/dashboard-customization';
 import {useDashboardPreferences} from '@/lib/use-dashboard-preferences';
 import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,9 +39,13 @@ function formatNotificationDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
-export default function DashboardScreen() {
+/** Operations: the first tab. The operations map sits above the Command Center (managers) or crew dashboard. */
+export default function OperationsScreen() {
   const theme = useFireOpsTheme();
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+  const landscape = isOperationsLandscape(width, height);
+  const operations = useOperationsMap();
   const { access,demoMode } = useSession();
   const companyId = access.value?.kind === 'member' ? access.value.company.id : null;
   const user = access.value?.kind === 'member' ? access.value.user : null;
@@ -73,22 +78,30 @@ export default function DashboardScreen() {
   const refreshDashboard = () => {
     void refreshFleet();
     void refreshNotificationInbox();
+    operations.refreshIncidents();
   };
+  const incidentMap = <OperationsMap ops={operations} landscape={false} />;
 
-  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard name={user.name} vehicles={vehicles} crew={crew} issues={issues} payrolls={canProcessFinance(user.role)?payrolls:[]} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || payrollRefreshing || notificationsRefreshing} error={error}/>;
+  // Turning the phone sideways shows the map full screen; the tab layout hides the header and tab bar.
+  if (landscape) return <View style={styles.landscape}><OperationsMap ops={operations} landscape /></View>;
+
+  if(user?.role==='owner'||user?.role==='admin')return <OwnerDashboard incidentMap={incidentMap} onRefresh={operations.refreshIncidents} name={user.name} vehicles={vehicles} crew={crew} issues={issues} payrolls={canProcessFinance(user.role)?payrolls:[]} notifications={notifications} unreadNotifications={unreadNotifications} loading={loading} refreshing={refreshing || payrollRefreshing || notificationsRefreshing} error={error}/>;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing || notificationsRefreshing} onRefresh={refreshDashboard} tintColor={theme.commandForeground} />}
       >
         {preferences.visible('greeting')&&<View style={styles.greeting}>
           <Text style={styles.hello}>{getTimeOfDayGreeting()},</Text>
           <Text style={styles.name}>{user?.name.trim().split(/\s+/)[0] || 'there'}!</Text>
         </View>}
+        {incidentMap}
         <QuickActions/>
-        {preferences.visible('incidentMap')&&<DashboardIncidentMap/>}
         {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection/>}
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
@@ -260,6 +273,7 @@ function DashboardSection({ title, count, children, styles }: { title: string; c
 function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.canvas },
+    landscape: { flex: 1, backgroundColor: theme.surfaceAlt },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 28 },
     greeting: { backgroundColor: theme.paper, borderWidth: 1, borderColor: theme.divider, borderLeftWidth: 6, borderLeftColor: theme.ember, borderRadius: 24, padding: 22, gap: 4 },
     hello: { color: theme.secondary, fontSize: 20, fontWeight: '700' },

@@ -16,10 +16,10 @@ import {DashboardCustomization} from './DashboardCustomization';
 import {useDashboardPreferences} from './useDashboardPreferences';
 import {useTaskCount} from './useTaskCount';
 import {canManagePersonalTasks, dotInspectionWarning, nextOilChangeWarning, fleetSummaryCounts, filterAndSortCrew, vinError, formatCalendarDate, inspectionExpirationDate, rosterSortOptions, type DashboardItem, type RosterSort} from '@fireops/domain';
-import { Suspense, cloneElement, isValidElement, lazy, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, cloneElement, isValidElement, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
-import OperationsPage, {DashboardIncidentMap, fetchIncidents} from './OperationsPage';
+import {OperationsIncidentMap, fetchIncidents} from './OperationsPage';
 import {useInspectionTemplate} from './inspectionTemplate';
 import NationalFireActivitySection from './NationalFireActivitySection';
 const QuickbooksSettings=lazy(()=>import('./QuickbooksPanels').then(module=>({default:module.QuickbooksSettings})));
@@ -73,13 +73,13 @@ const SendToViprFlow=lazy(()=>import('./SendToViprFlow'));
 const ViprIntelligencePage=lazy(()=>import('./ViprIntelligencePage').then(module=>({default:module.ViprIntelligencePage})));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'operations' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
 type NavigablePage = Exclude<Page,'more'|'send-vipr'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
 export const navigationMeta = {
-  overview:{label:'Dashboard',description:'Readiness and recent activity',Icon:LayoutDashboard},
-  operations:{label:'Operations',description:'Active fires and assigned resources',Icon:MapIcon},
+  // The Dashboard and the Operations map are one page. Its id stays 'overview' so saved preferences and links keep working.
+  overview:{label:'Operations',description:'Active fires and assigned resources',Icon:Flame},
   'vipr-intelligence':{label:'VIPR Intelligence',description:'Send to VIPR and VIPR DPLs',Icon:ViprIntelligenceIcon},
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
@@ -101,8 +101,14 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
-const navigationOrder:NavigablePage[]=['overview','operations','vipr-intelligence','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
-const mobilePrimaryOrder:NavigablePage[]=['overview','operations','vehicles','communications'];
+const navigationOrder:NavigablePage[]=['overview','vipr-intelligence','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications'];
+/** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
+export type LegacyPage='operations';
+/** The page to show for a page id; old 'operations' links and assistant ids open Operations ('overview'). */
+export function resolvePage(page:Page|LegacyPage):Page{
+  return page==='operations'?'overview':page;
+}
 
 // Inventory and Failed Inspections live under More for every role, except that
 // Resource Bosses and shop techs keep Inventory in their main navigation.
@@ -311,7 +317,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [crew, setCrew] = useState<CrewMember[]>(()=>initialData?.crew??(demoMode?seedCrew.map(member=>({...member,...demoQualifications()})):loadCrew()));
   const [demoRecords,setDemoRecords]=useState(()=>createDemoRecords(user));
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
-  const [page, setPage] = useState<Page>(()=>{const params=new URLSearchParams(window.location.search);return params.has('motive')||params.has('quickbooks')?'settings':'overview'});
+  const [page, setPageState] = useState<Page>(()=>{const params=new URLSearchParams(window.location.search);return params.has('motive')||params.has('quickbooks')?'settings':'overview'});
+  const setPage=useCallback((next:Page|LegacyPage)=>setPageState(resolvePage(next)),[]);
   const [sidebarCapacity,setSidebarCapacity]=useState(Number.POSITIVE_INFINITY);
   const desktopLayout=useMediaQuery(DESKTOP_QUERY);
   // Back buttons on pages opened from More (or the sidebar) return to wherever the user came from.
@@ -327,6 +334,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [masterRecordMemberId,setMasterRecordMemberId]=useState<string>();
   const [requestedIncidentId,setRequestedIncidentId]=useState<string|null>(null);
   const [requestedVehicleId,setRequestedVehicleId]=useState<string|null>(null);
+  const clearRequestedIncident=useCallback(()=>setRequestedIncidentId(null),[]);
+  const clearRequestedVehicle=useCallback(()=>setRequestedVehicleId(null),[]);
   const [requestedPayrollId,setRequestedPayrollId]=useState<string|null>(null);
   const [requestedShopJobId,setRequestedShopJobId]=useState<string|null>(null);
   const [threads,setThreads]=useState<CommunicationThread[]>(()=>communicationThreads??(demoMode?demoRecords.threads:loadCommunicationThreads()));
@@ -804,7 +813,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSendToVipr={canSendToVipr(currentUser.role)?()=>setPage('send-vipr'):undefined} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'send-vipr' && canSendToVipr(currentUser.role) && <SendToViprFlow vehicles={vehicles} companyName={companyDetails.name} onClose={()=>setPage(sendViprFromHub?'vipr-intelligence':'vehicles')} onEditVehicle={canManageFleet?vehicle=>setEditing(vehicle):undefined}/>}
         {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn)} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
-        {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<DashboardIncidentMap {...dashboardMapProps} onOpenOperations={()=>setPage('operations')}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('operations')}}/>}
+        {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage onBack={goBack} documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
@@ -828,7 +837,6 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 
         {page === 'dispatch' && <DispatchListsPage demoMode={demoMode} onBack={goBack}/>}
         {page === 'hotels' && <HotelsPage demoMode={demoMode} onBack={goBack}/>}
-        {page === 'operations' && <OperationsPage requestedIncidentId={requestedIncidentId} onIncidentOpened={()=>setRequestedIncidentId(null)} requestedVehicleId={requestedVehicleId} onVehicleOpened={()=>setRequestedVehicleId(null)} {...dashboardMapProps}/>}
         {page === 'more' && <MorePage desktopItems={desktopLayout?sidebarSplit(currentUser.role,sidebarCapacity).more:undefined} demoMode={demoMode} onInspect={()=>setInspectionPickerOpen(true)} user={currentUser} unreadDocumentCount={0} unreadTrainingCount={unreadTrainingCount} pendingCardCount={pendingQualificationCardCount} failedInspectionCount={failedInspections} companyId={companyId} setPage={setPage}/>}
 
         {page === 'audit-log' && canManageFleet && <AuditLogPage key={companyId??'demo'} companyId={demoMode?undefined:companyId} demoEntries={demoMode?demoRecords.auditLogs:undefined} onBack={goBack}/>}
@@ -844,14 +852,14 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     {inspectionPickerOpen && !canManageFleet && canInspectFleet && <VehicleInspectionPicker vehicles={vehicles} onClose={()=>setInspectionPickerOpen(false)} onSelect={vehicle=>{setInspectionPickerOpen(false);setInspectionVehicle(vehicle)}}/>}
     {inspectionVehicle && canInspectFleet && <InspectionForm vehicle={inspectionVehicle} user={currentUser} templateItems={inspectionTemplate.items} uploadFile={uploadFile} onCommitFiles={onCommitFiles} onDiscardFiles={onDiscardFiles} onClose={()=>setInspectionVehicle(null)} onSave={inspection=>addInspection(inspectionVehicle,inspection)}/>}
     {inviteOpen && canInviteCrew && <InviteCrewForm existing={crew} companyName={companyDetails.name} onClose={() => setInviteOpen(false)} onSave={inviteCrew}/>}
-    {selected && <VehicleDetail vehicle={selected} issues={visibleIssues.filter(issue => issue.vehicleId === selected.id)} crew={crew} user={currentUser} canManage={canManageFleet} canDispatch={canDispatch} onPhoto={file=>updateVehiclePhoto(selected,file)} motive={activeMotiveConnection.connected?motiveSnapshotFor(selected,activeMotiveConnection):undefined} motiveMock={Boolean(activeMotiveConnection.mock)} onCaptureMotiveImage={onCaptureMotiveImage} onClose={() => setSelected(null)} onEdit={() => {setEditing(selected);setSelected(null)}} onDelete={() => {setDeleteCandidate(selected);setSelected(null)}} onNewIssue={() => {setIssueVehicleId(selected.id);setSelected(null);setIssueFormOpen(true)}} onInspect={()=>{setInspectionVehicle(selected);setSelected(null)}} onIssue={issue => {setSelected(null);setSelectedIssue(issue)}} onStatus={s => updateStatus(selected.id, s)} onAssignee={memberId => updateAssignment(selected.id,memberId||undefined)} onFire={fire=>updateFireAssignment(selected.id,fire)} onAssign={() => assignToMe(selected.id)} onListNotes={onListVehicleNotes} onSaveNote={onSaveVehicleNote} onDeleteNote={onDeleteVehicleNote} onNextOilChange={patch=>updateNextOilChange(selected.id,patch)} onOpenOperations={()=>{setRequestedVehicleId(selected.id);setSelected(null);setPage('operations')}}/>}
+    {selected && <VehicleDetail vehicle={selected} issues={visibleIssues.filter(issue => issue.vehicleId === selected.id)} crew={crew} user={currentUser} canManage={canManageFleet} canDispatch={canDispatch} onPhoto={file=>updateVehiclePhoto(selected,file)} motive={activeMotiveConnection.connected?motiveSnapshotFor(selected,activeMotiveConnection):undefined} motiveMock={Boolean(activeMotiveConnection.mock)} onCaptureMotiveImage={onCaptureMotiveImage} onClose={() => setSelected(null)} onEdit={() => {setEditing(selected);setSelected(null)}} onDelete={() => {setDeleteCandidate(selected);setSelected(null)}} onNewIssue={() => {setIssueVehicleId(selected.id);setSelected(null);setIssueFormOpen(true)}} onInspect={()=>{setInspectionVehicle(selected);setSelected(null)}} onIssue={issue => {setSelected(null);setSelectedIssue(issue)}} onStatus={s => updateStatus(selected.id, s)} onAssignee={memberId => updateAssignment(selected.id,memberId||undefined)} onFire={fire=>updateFireAssignment(selected.id,fire)} onAssign={() => assignToMe(selected.id)} onListNotes={onListVehicleNotes} onSaveNote={onSaveVehicleNote} onDeleteNote={onDeleteVehicleNote} onNextOilChange={patch=>updateNextOilChange(selected.id,patch)} onOpenOperations={()=>{setRequestedVehicleId(selected.id);setSelected(null);setPage('overview')}}/>}
     {deleteCandidate && canManageFleet && <DeleteVehicleDialog vehicle={deleteCandidate} issueCount={issues.filter(issue=>issue.vehicleId===deleteCandidate.id).length} onCancel={() => {setSelected(deleteCandidate);setDeleteCandidate(null)}} onConfirm={() => deleteVehicle(deleteCandidate)}/>}
     {documentForm!==undefined&&canManageFleet&&<DocumentForm document={documentForm??undefined} uploadFile={uploadFile} onDiscardFiles={onDiscardFiles} onClose={()=>setDocumentForm(undefined)} onSave={saveDocument}/>}
     {documentDeleteCandidate&&canManageFleet&&<DeleteDocumentDialog document={documentDeleteCandidate} onCancel={()=>setDocumentDeleteCandidate(null)} onConfirm={()=>deleteDocument(documentDeleteCandidate)}/>}
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
     {selectedIssue && <IssueDetail key={selectedIssue.id} issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
     {selectedCrew && <CrewDetail member={selectedCrew} canManage={canManageFleet} onClose={() => setSelectedCrew(null)} onUpdateRole={selectedCrew.role==='owner'?undefined:role=>updateCrewRole(selectedCrew,role)} onUpdateDetails={details=>updateCrewDetails(selectedCrew,details)} onResend={selectedCrew.status==='Invited'&&onResendCrewInvite?async()=>{await onResendCrewInvite(selectedCrew);showNotice(`Invitation resent to ${selectedCrew.email}`)}:undefined} onDelete={selectedCrew.role==='owner'||selectedCrew.id===currentUser.id?undefined:()=>{setCrewDeleteError('');setCrewDeleteCandidate(selectedCrew);setSelectedCrew(null)}}/>}
-    {assistantEnabled&&companyId&&<Suspense fallback={null}><AssistantPanel key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} autofillEnabled={assistantAutofill} onNavigate={target=>setPage(target as Page)} onDraft={openAssistantDraft}/></Suspense>}
+    {assistantEnabled&&companyId&&<Suspense fallback={null}><AssistantPanel key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} autofillEnabled={assistantAutofill} onNavigate={target=>setPage(target as Page|LegacyPage)} onDraft={openAssistantDraft}/></Suspense>}
     <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">{notice && <div className="toast"><span><Check size={16}/></span><b>{notice}</b>{undoAction&&<button disabled={!!onDataChange&&onlineEdits.pending} onClick={undoLastAction} aria-label={undoAction.label}>Undo</button>}</div>}</div>
   </div>;
 }
@@ -905,7 +913,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 
 // Tile colors match the phone app's More grid and each Quick Action icon.
 const moreTileColors:Partial<Record<NavigablePage|'inspect'|'workforce'|'marketplace',string>>={
-  overview:'#5F6963',operations:'#C94321',communications:'#285F9E',vehicles:'#2F6A8F',
+  overview:'#C94321',communications:'#285F9E',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',shop:'#8A3418',
   'vipr-intelligence':'#B45309',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',workforce:'#34745C',marketplace:'#A95616',
@@ -923,7 +931,7 @@ function MorePage({desktopItems,demoMode=false,onInspect,user,companyId,unreadDo
   const overdueTaskCount=useTaskCount(showTasks?companyId:undefined,showTasks?user.id:undefined)?.overdue??0;
   const overflow=navigationLayout(user.role).mobileOverflow;
   const settings=navigationMeta.settings;
-  // Quick Action destinations appear here only when their tile is hidden from the Dashboard.
+  // Quick Action destinations appear here only when their tile is hidden from Operations.
   const dashboardLinks:Page[]=['invoices','payroll','availability'];
   const hiddenTasks=showTasks?['tasks' as const]:[];
   // Desktop lists only what the sidebar could not fit; phone width lists everything past the bottom bar.
@@ -1072,17 +1080,17 @@ function MemberNotifications({threads,documents,trainings,inboxNotifications,dis
 function Dashboard({onCustomize,demoMode=false,quickActions,incidentMap,companyId,vehicles,issues,inventoryItems,onOpenInventory,crew,activities,threads,documents,trainings,inboxNotifications,dismissedNotificationIds,onDismissNotification,onClearNotifications,user,onSelectVehicle,onSelectIssue,onSelectCrew,onSelectPayroll,onSelectShopJob,onOpenNotifications,onSelectIncident}:{onCustomize:()=>void;demoMode?:boolean;quickActions:React.ReactNode;incidentMap:React.ReactNode;companyId?:string;vehicles:Vehicle[];issues:FleetIssue[];inventoryItems:InventoryItem[];onOpenInventory:()=>void;crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];inboxNotifications:DashboardNotification[]|null;dismissedNotificationIds:Set<string>;onDismissNotification:(id:string)=>void;onClearNotifications:(ids:Iterable<string>)=>void;user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onSelectPayroll:(id:string)=>void;onSelectShopJob:(id:string)=>void;onOpenNotifications:(page:DashboardNotification['source'],id?:string,vehicleId?:string)=>void;onSelectIncident:(id:string)=>void}) {
   const preferences=useDashboardPreferences(user.id,demoMode);
   const notifications=<MemberNotifications threads={threads} documents={documents} trainings={trainings} inboxNotifications={inboxNotifications} dismissedNotificationIds={dismissedNotificationIds} onDismissNotification={onDismissNotification} onClearNotifications={onClearNotifications} user={user} onOpen={onOpenNotifications}/>;
-  if(isCompanyManager(user.role))return <><OwnerDashboard canProcessPayroll={canProcessFinance(user.role)} preferences={preferences} onCustomize={onCustomize} demoMode={demoMode} name={user.name} quickActions={quickActions} incidentMap={preferences.visible('incidentMap')?incidentMap:null} nationalFireActivity={preferences.visible('nationalFireActivity')?<NationalFireActivitySection demoMode={demoMode}/>:null} companyId={companyId} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='payroll')onSelectPayroll(target.id);if(target.type==='shop')onSelectShopJob(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>{Boolean(filterDismissedNotifications(inboxNotifications??[],dismissedNotificationIds).length)&&<div className="page">{notifications}</div>}</>;
+  if(isCompanyManager(user.role))return <><OwnerDashboard canProcessPayroll={canProcessFinance(user.role)} preferences={preferences} onCustomize={onCustomize} demoMode={demoMode} name={user.name} quickActions={quickActions} incidentMap={incidentMap} nationalFireActivity={preferences.visible('nationalFireActivity')?<NationalFireActivitySection demoMode={demoMode}/>:null} companyId={companyId} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='payroll')onSelectPayroll(target.id);if(target.type==='shop')onSelectShopJob(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>{Boolean(filterDismissedNotifications(inboxNotifications??[],dismissedNotificationIds).length)&&<div className="page">{notifications}</div>}</>;
   const openIssues=issues.filter(issue=>issue.status==='Open');
-  return <div className="page overview-page"><div className="page-heading hero-heading"><div><h1>Dashboard</h1></div>{preferences.visible('greeting')&&<div className="dashboard-user"><span>{user.name}</span></div>}</div>
+  return <div className="page overview-page"><div className="page-heading hero-heading"><div><h1>Operations</h1></div>{preferences.visible('greeting')&&<div className="dashboard-user"><span>{user.name}</span></div>}</div>
+    {incidentMap}
     {quickActions}
     {canManageInventory(user.role)&&preferences.visible('attention')&&<ResourceAttention rows={resourceAttentionRows(openIssues,vehicles,inventoryItems)} onSelect={target=>{if(target.type==='inventory'){onOpenInventory();return}const issue=issues.find(item=>item.id===target.id);if(issue)onSelectIssue(issue)}}/>}
-    {preferences.visible('incidentMap')&&incidentMap}
     {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection demoMode={demoMode}/>}
     {preferences.visible('currentIssues')&&openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="Current issues" id="current-issues"/>}
     {notifications}
     {preferences.visible('recentActivity')&&activities.length>0&&<section className="action-section"><div className="action-heading"><h2>Recent fleet activity</h2></div><div className="notification-list">{[...activities].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,5).map(activity=><div className="notification-row" key={activity.id}><span className="notification-copy"><b>{activity.action}</b><small>{activity.detail} · {new Date(activity.createdAt).toLocaleDateString()}</small></span></div>)}</div></section>}
-    <button className="secondary" onClick={onCustomize}>Customize Dashboard</button>
+    <button className="secondary" onClick={onCustomize}>Customize Operations</button>
   </div>
 }
 

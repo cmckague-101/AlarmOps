@@ -34,8 +34,8 @@ export const canSeeAllCrew = (role: Role) => role !== 'resource_boss';
 
 /** Current app map (after the nav reshuffle): what each screen is for and where to find it on web and phone. */
 const APP_MAP: Record<RouteId, string> = {
-  dashboard: 'Home screen. Command Center, Needs Attention, incident map, notifications and Quick Actions (Availability, Task List, Shop, Payroll, VIPR Intelligence, Invoices). Customize it in Settings.',
-  operations: 'Main tab. Map of active fires and the company resources assigned to them.',
+  dashboard: 'Operations, the home screen and first tab (there is no separate Dashboard anymore). Map of active fires and the company resources and Motive vehicles assigned to them at the top, then Command Center, Needs Attention, notifications and Quick Actions (Availability, Task List, Shop, Payroll, VIPR Intelligence, Invoices). Customize it in Settings.',
+  operations: 'Same screen as dashboard (Operations). Prefer the dashboard id.',
   fleet: 'Main tab. Vehicles with status (Ready, Assigned, Out of service), assignments, issues, inspections, documents and oil changes.',
   'vipr-intelligence': 'VIPR hub. Holds Send to VIPR (owners and admins only) and VIPR DPLs. Web sidebar, More and Quick Actions; More and Quick Actions on phones.',
   'send-to-vipr': 'Send to VIPR button on Fleet, also on VIPR Intelligence. Builds a plain-text VIPR bid package from units; out-of-service units are blocked.',
@@ -55,7 +55,7 @@ const APP_MAP: Record<RouteId, string> = {
   inventory: 'Company supplies and equipment: on-hand counts, check out and check in gear. In More (main navigation for Resource Bosses and Shop Techs).',
   inspections: 'Failed vehicle inspection history. In More.',
   'audit-log': 'Company activity from the last 30 days.',
-  settings: 'Company details, dashboard customization, System/Light/Dark theme and integrations such as Motive.',
+  settings: 'Company details, Operations page customization, System/Light/Dark theme and integrations such as Motive.',
   more: 'More tab: every screen that is not in the main navigation.',
 };
 

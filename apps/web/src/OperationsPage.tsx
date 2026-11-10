@@ -86,7 +86,7 @@ function frameBounds(bounds:[[number,number],[number,number]]){
 
 type IncidentMapProps={requestedIncidentId?:string|null;onIncidentOpened?:()=>void;requestedVehicleId?:string|null;onVehicleOpened?:()=>void;assignedIncidentIds?:string[];resources?:FireResourceVehicle[];motiveEnabled?:boolean;assignableVehicles?:FireResourceVehicle[];onAssignVehicle?:(vehicleId:string,fire:{id:string;name:string;state:string})=>void;onVehicleSelect?:(vehicleId:string)=>void};
 
-/** NIFC incidents, selection and fire search shared by the Operations page and the Dashboard map card. */
+/** NIFC incidents, selection, requested incident/vehicle focus and fire search for the Operations map. */
 function useIncidentMap({requestedIncidentId,onIncidentOpened,requestedVehicleId,onVehicleOpened,resources=[],motiveEnabled=false}:IncidentMapProps){
   const [incidents,setIncidents]=useState<NifcIncident[]>([]);
   const [selected,setSelected]=useState<NifcIncident|null>(null);
@@ -139,12 +139,16 @@ function IncidentMapCanvas({map,onVehicleSelect,scrollZoom}:{map:ReturnType<type
   </div>;
 }
 
-/** Compact incident map card for the Dashboard. Fire search sits in the header; results float over the map. */
-export function DashboardIncidentMap({assignableVehicles=[],onAssignVehicle,onVehicleSelect,onOpenOperations,...props}:IncidentMapProps&{onOpenOperations?:()=>void}){
+/**
+ * The Operations map at the top of the Operations page (page id 'overview'):
+ * NIFC incidents, Motive fleet locations, fire search and assign-vehicle-to-fire.
+ * Fire search sits in the header; results float over the map.
+ */
+export function OperationsIncidentMap({assignableVehicles=[],onAssignVehicle,onVehicleSelect,...props}:IncidentMapProps){
   const map=useIncidentMap(props);
   const {visible,loading,latestUpdate,motiveVehicles,fireQuery,setFireQuery,normalizedFireQuery,searchResults,selected,setSelected}=map;
   return <>
-    <section className="operations-workspace dashboard-incident-map" aria-label="Wildfire incident map">
+    <section className="operations-workspace dashboard-incident-map" aria-label="Wildfire operations map">
       <div className="fire-map-panel">
         <header>
           <div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>
@@ -154,41 +158,19 @@ export function DashboardIncidentMap({assignableVehicles=[],onAssignVehicle,onVe
           </div>
         </header>
         <div className="dashboard-incident-map-stage">
-          {/* Mouse-wheel zoom would hijack page scrolling as the dashboard scrolls past the map. */}
+          {/* Mouse-wheel zoom would hijack page scrolling as the Operations page scrolls past the map. */}
           <IncidentMapCanvas map={map} onVehicleSelect={onVehicleSelect} scrollZoom={false}/>
           {normalizedFireQuery?<div className="operations-search-results" role="region" aria-label="Fire search results">
             <header><h2>Fire search</h2><span>{searchResults.length}</span></header>
             <div className="fire-list">{searchResults.length?searchResults.map((incident,index)=><FireRow key={`${incident.id}-${index}`} incident={incident} onSelect={()=>{setSelected(incident);setFireQuery('')}}/>):<div className="empty compact-empty"><Flame/><h3>No fires found</h3><p>No fire names match “{fireQuery.trim()}”.</p></div>}</div>
           </div>:null}
         </div>
-        <footer><span><i/> Active wildfire</span>{motiveVehicles.length?<span className="vehicle-legend"><i/> Motive fleet</span>:null}{onOpenOperations&&<button type="button" className="dashboard-incident-map-open" onClick={onOpenOperations}>Open Operations <ChevronRight/></button>}<a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
+        <footer><span><i/> Active wildfire</span>{motiveVehicles.length?<span className="vehicle-legend"><i/> Motive fleet</span>:null}<a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
+        {motiveVehicles.length?<section className="motive-operations-section" aria-label="Fleet locations"><header><h2>Fleet locations</h2><span>{motiveVehicles.length}</span></header><div className="motive-vehicle-list">{motiveVehicles.map(vehicle=><button key={vehicle.id} type="button" className="motive-vehicle-row" onClick={()=>onVehicleSelect?.(vehicle.id)} disabled={!onVehicleSelect}><span><Truck/></span><span><b>{vehicle.unit}</b><small><MapPin/>{vehicle.motive?.location}</small><small><Gauge/>{vehicle.motive?.speed} · {vehicle.motive?.updatedAt}</small></span><ChevronRight/></button>)}</div></section>:null}
       </div>
     </section>
     {selected&&createPortal(<IncidentDetail incident={selected} assignableVehicles={assignableVehicles} onAssignVehicle={onAssignVehicle} onClose={()=>setSelected(null)}/>,document.body)}
   </>;
-}
-
-export default function OperationsPage({assignableVehicles=[],onAssignVehicle,onVehicleSelect,...props}:IncidentMapProps){
-  const map=useIncidentMap(props);
-  const {visible,loading,latestUpdate,motiveVehicles,fireQuery,setFireQuery,normalizedFireQuery,searchResults,selected,setSelected}=map;
-
-  return <div className="page operations-page">
-    <div className="page-heading operations-heading hero-heading"><div><h1>Operations</h1></div></div>
-    <section className="operations-workspace" aria-label="Wildfire operations map and incident list">
-      <div className="fire-map-panel">
-        <header><div><b>Incident Map</b><span>{loading?'Updating NIFC data':`${visible.length} ${visible.length===1?'incident':'incidents'}`}</span></div>{latestUpdate&&<small>Updated {formatRelative(latestUpdate)}</small>}</header>
-        <IncidentMapCanvas map={map} onVehicleSelect={onVehicleSelect}/>
-        <footer><span><i/> Active wildfire</span>{motiveVehicles.length?<span className="vehicle-legend"><i/> Motive fleet</span>:null}<a href={NIFC_ITEM} target="_blank" rel="noreferrer">Source: NIFC WFIGS</a></footer>
-      </div>
-      <aside className="fire-list-panel" aria-label="Fire search">
-        <header><h2>Fire search</h2>{normalizedFireQuery&&<span>{searchResults.length}</span>}</header>
-        <div className="operations-fire-search search"><Search/><input value={fireQuery} onChange={event=>setFireQuery(event.target.value)} placeholder="Search fires by name" aria-label="Search fires by name"/>{fireQuery&&<button type="button" onClick={()=>setFireQuery('')} aria-label="Clear fire search"><X/></button>}</div>
-        {normalizedFireQuery?<div className="fire-list">{searchResults.length?searchResults.map((incident,index)=><FireRow key={`${incident.id}-${index}`} incident={incident} onSelect={()=>setSelected(incident)}/>):<div className="empty compact-empty"><Flame/><h3>No fires found</h3><p>No fire names match “{fireQuery.trim()}”.</p></div>}</div>:<div className="empty compact-empty"><Search/><h3>Search active fires</h3><p>Enter a fire name to find and open incident details.</p></div>}
-        {motiveVehicles.length?<section className="motive-operations-section"><header><h2>Fleet locations</h2><span>{motiveVehicles.length}</span></header><div className="motive-vehicle-list">{motiveVehicles.map(vehicle=><button key={vehicle.id} type="button" className="motive-vehicle-row" onClick={()=>onVehicleSelect?.(vehicle.id)} disabled={!onVehicleSelect}><span><Truck/></span><span><b>{vehicle.unit}</b><small><MapPin/>{vehicle.motive?.location}</small><small><Gauge/>{vehicle.motive?.speed} · {vehicle.motive?.updatedAt}</small></span><ChevronRight/></button>)}</div></section>:null}
-      </aside>
-    </section>
-    {selected&&createPortal(<IncidentDetail incident={selected} assignableVehicles={assignableVehicles} onAssignVehicle={onAssignVehicle} onClose={()=>setSelected(null)}/>,document.body)}
-  </div>;
 }
 
 function FireRow({incident,onSelect}:{incident:NifcIncident;onSelect:()=>void}){
@@ -205,7 +187,7 @@ function IncidentDetail({incident,assignableVehicles,onAssignVehicle,onClose}:{i
   const selectedVehicle=assignableVehicles.find(vehicle=>vehicle.id===vehicleId);
   const assign=()=>{if(!vehicleId||!onAssignVehicle)return;onAssignVehicle(vehicleId,{id:incident.id,name:incident.name,state:incident.state});setVehicleId('')};
   return <div className="overlay"><section ref={dialog.ref} className="drawer detail-drawer incident-drawer" role="dialog" aria-modal="true" aria-labelledby={dialog.titleId} tabIndex={-1}>
-    <header><button className="back-mobile" onClick={onClose} aria-label="Back to operations"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{incident.name}</h2><p>{incident.state?`${incident.state} wildfire`:'Wildfire incident'}</p></div><button className="close" onClick={onClose} aria-label="Close incident details"><X/></button></header>
+    <header><button className="back-mobile" onClick={onClose} aria-label="Back to Operations"><ArrowLeft/><span>Back</span></button><div><h2 id={dialog.titleId}>{incident.name}</h2><p>{incident.state?`${incident.state} wildfire`:'Wildfire incident'}</p></div><button className="close" onClick={onClose} aria-label="Close incident details"><X/></button></header>
     <div className="incident-summary"><span className="incident-flame"><Flame/></span><div><span>Active wildfire</span><h3>{incident.name}</h3><p><MapPin/>{incident.state?US_STATE_NAMES[incident.state]??incident.state:'Location not reported'}</p></div></div>
     <IncidentLocationMap incident={incident}/>
     <dl className="incident-metrics"><div><dt>Acres</dt><dd>{formatAcres(incident.acres)}</dd></div><div><dt>Contained</dt><dd>{formatPercent(incident.contained)}</dd></div><div><dt>Personnel</dt><dd>{formatNumber(incident.personnel)}</dd></div></dl>

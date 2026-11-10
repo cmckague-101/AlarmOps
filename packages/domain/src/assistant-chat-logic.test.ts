@@ -20,6 +20,13 @@ describe('assistant-chat prompt and tools',()=>{
     expect(crew).toMatch(/legal, medical or payroll tax advice/);
     expect(systemPrompt({role:'owner',userName:'O',companyName:'C',today})).toContain('- audit-log:');
   });
+  it('describes Dashboard and Operations as one Operations screen',()=>{
+    const prompt=systemPrompt({role:'fire_fighter',userName:'Sam',companyName:'Crew Co',today});
+    expect(prompt).toMatch(/- dashboard: Operations, the home screen and first tab .*Map of active fires/);
+    expect(prompt).toContain('- operations: Same screen as dashboard (Operations).');
+    expect(prompt).not.toContain('Home screen.');
+    expect(prompt).not.toContain('dashboard customization');
+  });
   it('offers task tools and drafts only to task roles',()=>{
     expect(names('shop_tech')).toContain('list_my_tasks');
     expect(names('fire_fighter')).not.toContain('list_my_tasks');

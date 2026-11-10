@@ -8,6 +8,7 @@ export function parseDashboardPreferences(value:unknown):DashboardPreferences {
   if(!value||typeof value!=='object'||Array.isArray(value))return {};
   return Object.fromEntries(Object.entries(value).filter(([key,value])=>dashboardItems.includes(key as DashboardItem)&&typeof value==='boolean'));
 }
+// 'incidentMap' is no longer offered: the Operations map always shows. Saved values are kept and ignored.
 export const dashboardItems:readonly DashboardItem[]=['greeting','incidents','personnel','resources','attention','currentIssues','currentPicture','incidentMap','availability','tasks','inspections','shop','inventory','payroll','receipts','invoices','nationalFireActivity','recentActivity'];
 export function dashboardPreferenceGroups(role:UserRole, platform:'web'|'mobile') {
   const manager=isCompanyManager(role);
@@ -15,7 +16,6 @@ export function dashboardPreferenceGroups(role:UserRole, platform:'web'|'mobile'
   return [
     {title:'Command Center',items:[item('greeting','Greeting'),...(manager?[item('incidents','Active Incidents'),item('personnel','Assigned Personnel'),item('resources','Assigned Resources'),item('attention','Needs Attention')]:[...(canManageInventory(role)?[item('attention','Needs Attention')]:[]),item('currentIssues','Current issues'),...(platform==='mobile'?[item('currentPicture','Current picture — vehicles needing attention')]:[])])]},
     {title:'Quick Actions',items:[item('availability','Availability'),...(canManagePersonalTasks(role)?[item('tasks','Task list')]:[]),...(canInspectVehicle(role)&&!manager?[item('inspections','Inspect')]:[]),...(canWorkShop(role)?[item('shop','Shop')]:[]),...(keepsInventoryInMainNav(role)?[item('inventory','Inventory')]:[]),item('payroll','Payroll'),item('invoices','Invoices')]},
-    {title:'Incident Map',items:[item('incidentMap','Incident map')]},
     {title:'National Fire Activity',items:[item('nationalFireActivity','National fire activity')]},
     ...(!manager?[{title:'Recent Fleet Activity',items:[item('recentActivity','Recent fleet activity')]}]:[]),
   ];
