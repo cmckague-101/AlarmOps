@@ -58,7 +58,7 @@ export default function PrivacyPolicy() {
         <p>Authorized users may provide company details, crew records, training and registration records, inventory, communications, issue reports, activity history, vehicle information, assignments, notes, VINs, license plates, and related operational records.</p>
 
         <h3>Files and media</h3>
-        <p>The Service may store vehicle photos, company documents, vehicle documents, crew credentials, and other files selected by authorized users. On iOS, FireOps requests photo-library access only when you choose a vehicle photo. FireOps does not currently request access to your device’s precise location, contacts, microphone, or camera for general app use.</p>
+        <p>The Service may store vehicle photos, company documents, vehicle documents, crew credentials, and other files selected by authorized users. On iOS, FireOps requests photo-library access only when you choose a vehicle photo. Assistant voice requests microphone and speech recognition permission only when you choose Talk. Web voice audio is sent to our speech provider for transcription and spoken replies; iPhone voice uses on-device speech. Voice stops when you end it, close the panel, or sign out; on iPhone it also stops when the app goes into the background.</p>
 
         <h3>Vehicle telemetry and integrations</h3>
         <p>If an organization connects a supported fleet integration such as Motive, we may process integration credentials and vehicle data made available by that provider, including vehicle location, speed, connection status, timestamps, and camera status or requested vehicle-camera images. Availability depends on the organization’s integration settings and provider permissions.</p>

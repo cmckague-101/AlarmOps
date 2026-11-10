@@ -1,9 +1,11 @@
+import {AppState} from 'react-native';
+import {listenOnce,speakText,releaseVoiceAudio,finishListening} from '@/lib/assistant-voice-session';
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type PropsWithChildren} from 'react';
 import {
   ASSISTANT_OFFLINE,ASSISTANT_WELCOME,createAssistantThreadId,upsertAssistantThread,
   type AssistantChatItem,type AssistantThread,type FireOpsUser,
 } from '@fireops/domain';
-import {askAssistant,loadAssistantEnabled} from '@/lib/assistant-client';
+import {askAssistant,loadAssistantEnabled,loadAssistantVoiceEnabled} from '@/lib/assistant-client';
 import {loadAssistantChats,saveAssistantChats} from '@/lib/assistant-conversation-store';
 import {loadReceiptAutofillEnabled} from '@/lib/receipts-store';
 import {useNetworkStatus} from './network-provider';
@@ -14,6 +16,11 @@ export const assistantWelcome:AssistantChatItem={id:'welcome',role:'assistant',t
 type AssistantContextValue={
   /** The company has the add-on and the user is signed in to it. */
   enabled:boolean;
+  voiceEnabled:boolean;
+  phase:'idle'|'listening'|'thinking'|'speaking';
+  talk:()=>Promise<void>;
+  endVoice:()=>void;
+  finishListening:()=>void;
   offline:boolean;
   autofillEnabled:boolean;
   user:FireOpsUser|null;
@@ -28,7 +35,7 @@ type AssistantContextValue={
   error:string;
   input:string;
   setInput:(value:string)=>void;
-  send:(prompt:string)=>Promise<void>;
+  send:(prompt:string)=>Promise<string|undefined>;
   startNewChat:()=>void;
   openThread:(thread:AssistantThread)=>void;
   removeThread:(id:string)=>void;
@@ -46,6 +53,7 @@ export function AssistantProvider({children}:PropsWithChildren){
   const user=member?.user??null;
   const userId=user?.id??null;
   const [enabled,setEnabled]=useState(false);
+  const [voiceEnabled,setVoiceEnabled]=useState(false);
   const [autofillEnabled,setAutofillEnabled]=useState(false);
   const [open,setOpen]=useState(false);
   const [view,setView]=useState<'chat'|'history'>('chat');
@@ -57,11 +65,24 @@ export function AssistantProvider({children}:PropsWithChildren){
   const [threads,setThreads]=useState<AssistantThread[]>([]);
   const threadsRef=useRef(threads);threadsRef.current=threads;
   const request=useRef(0);
+  const [phase,setPhase]=useState<'idle'|'listening'|'thinking'|'speaking'>('idle');
+  const voice=useRef<AbortController|null>(null);
+  const endVoice=useCallback(()=>{voice.current?.abort();voice.current=null;setPhase('idle');void releaseVoiceAudio().catch(()=>{})},[]);
+  const closeOrOpen=useCallback((next:boolean)=>{if(!next)endVoice();setOpen(next)},[endVoice]);
+  useEffect(()=>{
+    const listener=AppState.addEventListener('change',state=>{if(state==='background')endVoice()});
+    return()=>{listener.remove();endVoice()};
+  },[endVoice]);
+  useEffect(()=>{endVoice()},[userId,companyId,endVoice]);
+  useEffect(()=>{if(offline||!voiceEnabled)endVoice()},[offline,voiceEnabled,endVoice]);
+
 
   // The add-on switch; re-checked when the company changes or the phone reconnects (offline uses the cached answer).
   useEffect(()=>{
     let active=true;
-    if(!companyId){setEnabled(false);setAutofillEnabled(false);return}
+    if(!companyId){setEnabled(false);setVoiceEnabled(false);setAutofillEnabled(false);return}
+    setVoiceEnabled(false);
+    void loadAssistantVoiceEnabled(companyId).then(value=>{if(active)setVoiceEnabled(value)});
     void loadAssistantEnabled(companyId).then(value=>{if(active)setEnabled(value)});
     if(!offline)void loadReceiptAutofillEnabled(companyId).then(value=>{if(active)setAutofillEnabled(value)});
     return()=>{active=false};
@@ -91,7 +112,7 @@ export function AssistantProvider({children}:PropsWithChildren){
   const record=useCallback((id:string,next:AssistantChatItem[])=>{
     setMessages(next);
     persist(upsertAssistantThread(threadsRef.current,id,next),id);
-  },[persist]);
+  },[persist,endVoice]);
 
   const send=useCallback(async(prompt:string)=>{
     const text=prompt.trim();
@@ -106,6 +127,7 @@ export function AssistantProvider({children}:PropsWithChildren){
       const reply=await askAssistant(companyId,user.role,withUser);
       if(ticket!==request.current)return;
       record(id,[...withUser,{id:`a-${Date.now()}`,role:'assistant',text:reply.text,navigate:reply.navigate,draft:reply.draft}]);
+      return reply.text;
     }catch(failure){
       if(ticket===request.current)setError(failure instanceof Error?failure.message:'The assistant could not answer right now. Try again.');
     }finally{
@@ -113,40 +135,59 @@ export function AssistantProvider({children}:PropsWithChildren){
     }
   },[busy,user,companyId,offline,threadId,messages,record]);
 
+  const sendRef=useRef(send);sendRef.current=send;
+  const talk=useCallback(async()=>{
+    if(!voiceEnabled||!enabled)return;
+    if(offline){setError(ASSISTANT_OFFLINE);return}
+    if(voice.current){finishListening();return}
+    if(busy)return;
+    const controller=new AbortController();voice.current=controller;setError('');
+    try{
+      while(!controller.signal.aborted){
+        setPhase('listening');const transcript=await listenOnce(controller.signal);
+        controller.signal.throwIfAborted();setPhase('thinking');
+        const reply=await sendRef.current(transcript);
+        controller.signal.throwIfAborted();if(!reply)break;
+        setPhase('speaking');await speakText(reply,controller.signal);
+      }
+    }catch(failure){if(!controller.signal.aborted)setError(failure instanceof Error?failure.message:'Voice is unavailable. You can still type.')}
+    finally{if(voice.current===controller)endVoice()}
+  },[voiceEnabled,enabled,offline,busy,endVoice]);
+
   const startNewChat=useCallback(()=>{
-    request.current+=1;setBusy(false);
+    endVoice();request.current+=1;setBusy(false);
     const id=createAssistantThreadId();
     setThreadId(id);setMessages([assistantWelcome]);setView('chat');setError('');setInput('');
     persist(threadsRef.current,id);
-  },[persist]);
+  },[persist,endVoice]);
 
   const openThread=useCallback((thread:AssistantThread)=>{
-    request.current+=1;setBusy(false);
+    endVoice();request.current+=1;setBusy(false);
     setThreadId(thread.id);setMessages(thread.messages.length?thread.messages:[assistantWelcome]);setView('chat');setError('');
     persist(threadsRef.current,thread.id);
-  },[persist]);
+  },[persist,endVoice]);
 
   const removeThread=useCallback((id:string)=>{
     const next=threadsRef.current.filter(thread=>thread.id!==id);
     if(id===threadId){
-      request.current+=1;setBusy(false);
+      endVoice();request.current+=1;setBusy(false);
       const fresh=createAssistantThreadId();
       setThreadId(fresh);setMessages([assistantWelcome]);setError('');
       persist(next,fresh);
     }else persist(next,threadId);
-  },[persist,threadId]);
+  },[persist,threadId,endVoice]);
 
   const clearAll=useCallback(()=>{
-    request.current+=1;setBusy(false);
+    endVoice();request.current+=1;setBusy(false);
     const fresh=createAssistantThreadId();
     setThreadId(fresh);setMessages([assistantWelcome]);setError('');setView('chat');
     persist([],null);
-  },[persist]);
+  },[persist,endVoice]);
 
   const value=useMemo<AssistantContextValue>(()=>({
-    enabled:Boolean(enabled&&user&&companyId),offline,autofillEnabled,user,open,setOpen,view,setView,messages,threads,threadId,busy,error,input,setInput,
+    voiceEnabled,phase,talk,endVoice,finishListening,enabled:Boolean(enabled&&user&&companyId),offline,autofillEnabled,user,open,setOpen:closeOrOpen,view,setView,messages,threads,threadId,busy,error,input,setInput,
     send,startNewChat,openThread,removeThread,clearAll,
-  }),[enabled,user,companyId,offline,autofillEnabled,open,view,messages,threads,threadId,busy,error,input,send,startNewChat,openThread,removeThread,clearAll]);
+  }),[voiceEnabled,phase,talk,endVoice,closeOrOpen,enabled,user,companyId,offline,autofillEnabled,open,view,messages,threads,threadId,busy,error,input,send,startNewChat,openThread,removeThread,clearAll]);
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }

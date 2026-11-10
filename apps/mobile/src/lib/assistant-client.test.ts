@@ -4,7 +4,7 @@ vi.mock('./supabase',()=>({
   isDemoActive:()=>mocks.demo,
   supabase:{functions:{invoke:mocks.invoke},from:()=>({select:(columns:string)=>({eq:()=>({maybeSingle:()=>mocks.select(columns)})})})},
 }));
-import {askAssistant,loadAssistantEnabled} from './assistant-client';
+import {askAssistant,loadAssistantEnabled,loadAssistantVoiceEnabled} from './assistant-client';
 
 beforeEach(()=>{vi.clearAllMocks();mocks.demo=false});
 
@@ -26,4 +26,12 @@ describe('mobile assistant client',()=>{
     mocks.invoke.mockResolvedValueOnce({data:null,error:{message:'x',context:{json:async()=>({error:'The FireOps Assistant is not included for this company.'})}}});
     await expect(askAssistant('c1','owner',[{id:'u1',role:'user',text:'hi'}])).rejects.toThrow('not included');
   });
+});
+
+it('voice requires both paid switches and fails closed on errors',async()=>{
+ for(const [chat,voice,expected] of [[false,false,false],[true,false,false],[false,true,false],[true,true,true]]){
+  mocks.select.mockResolvedValue({data:{assistant_enabled:chat,assistant_voice_enabled:voice},error:null});
+  expect(await loadAssistantVoiceEnabled('c1')).toBe(expected);
+ }
+ mocks.select.mockRejectedValue(new Error('offline'));expect(await loadAssistantVoiceEnabled('c1')).toBe(false);
 });

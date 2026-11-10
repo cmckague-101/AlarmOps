@@ -4,7 +4,7 @@ vi.mock('../supabase',()=>({supabase:{
   functions:{invoke:mocks.invoke},
   from:()=>({select:(columns:string)=>({eq:()=>({maybeSingle:()=>mocks.select(columns)})})}),
 }}));
-import {askAssistant,loadAssistantEnabled} from './assistantClient';
+import {askAssistant,loadAssistantEnabled,loadAssistantVoiceEnabled} from './assistantClient';
 import {loadAssistantChats,saveAssistantChats} from './conversationStore';
 
 const store=new Map<string,string>();
@@ -52,4 +52,12 @@ describe('assistant chat history on this device',()=>{
     store.set('fireops-assistant:u1:c1','{oops');
     expect(loadAssistantChats('u1','c1')).toEqual({threads:[],activeId:null});
   });
+});
+
+it('voice requires both paid switches and fails closed on errors',async()=>{
+ for(const [chat,voice,expected] of [[false,false,false],[true,false,false],[false,true,false],[true,true,true]]){
+  mocks.select.mockResolvedValue({data:{assistant_enabled:chat,assistant_voice_enabled:voice},error:null});
+  expect(await loadAssistantVoiceEnabled('c1')).toBe(expected);
+ }
+ mocks.select.mockRejectedValue(new Error('offline'));expect(await loadAssistantVoiceEnabled('c1')).toBe(false);
 });

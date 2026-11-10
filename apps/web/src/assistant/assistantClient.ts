@@ -12,6 +12,15 @@ export async function loadAssistantEnabled(companyId: string) {
   }
 }
 
+/** Voice is a separate paid switch and also requires the chat add-on. */
+export async function loadAssistantVoiceEnabled(companyId: string) {
+  if (!supabase) return false;
+  try {
+    const {data,error} = await supabase.from('companies').select('assistant_enabled,assistant_voice_enabled').eq('id',companyId).maybeSingle<{assistant_enabled?:boolean;assistant_voice_enabled?:boolean}>();
+    return !error && data?.assistant_enabled === true && data?.assistant_voice_enabled === true;
+  } catch { return false; }
+}
+
 const localToday = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

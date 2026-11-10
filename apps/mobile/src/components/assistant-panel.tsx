@@ -43,7 +43,7 @@ export function AssistantHost(){
   const styles=createStyles(theme);
   const scrollRef=useRef<ScrollViewInstance>(null);
   const {
-    enabled,offline,autofillEnabled,user,open,setOpen,view,setView,messages,threads,threadId,busy,error,input,setInput,
+    voiceEnabled,phase,talk,endVoice,finishListening,enabled,offline,autofillEnabled,user,open,setOpen,view,setView,messages,threads,threadId,busy,error,input,setInput,
     send,startNewChat,openThread,removeThread,clearAll,
   }=useAssistant();
   if(!enabled||!user)return null;
@@ -88,7 +88,7 @@ export function AssistantHost(){
               <Text accessibilityRole="header" style={styles.headerTitle}>FireOps Assistant</Text>
               <Text style={styles.headerMeta}>{view==='history'?'Saved on this phone':offline?ASSISTANT_OFFLINE:'Ask about FireOps and your company'}</Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={view==='history'?'Back to chat':'Chat history'} onPress={()=>setView(view==='history'?'chat':'history')} style={styles.headerBtn}>
+            <Pressable accessibilityRole="button" accessibilityLabel={view==='history'?'Back to chat':'Chat history'} disabled={phase!=='idle'} onPress={()=>setView(view==='history'?'chat':'history')} style={styles.headerBtn}>
               <AppSymbol name={{ios:'clock.arrow.circlepath',android:'history'} as never} color="#F7F8F6" size={18}/>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="New chat" onPress={startNewChat} style={styles.headerBtn}>
@@ -119,7 +119,7 @@ export function AssistantHost(){
           </ScrollView>:<ScrollView ref={scrollRef} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" onContentSizeChange={()=>scrollRef.current?.scrollToEnd({animated:true})}>
             {messages.map(bubble)}
             {messages.length<=1&&!offline?<View style={styles.chips}>
-              {ASSISTANT_SUGGESTIONS.map(suggestion=><Pressable key={suggestion} accessibilityRole="button" disabled={busy} onPress={()=>void send(suggestion)} style={styles.chip}>
+              {ASSISTANT_SUGGESTIONS.map(suggestion=><Pressable key={suggestion} accessibilityRole="button" disabled={busy||phase!=='idle'} onPress={()=>void send(suggestion)} style={styles.chip}>
                 <Text style={styles.chipText}>{suggestion}</Text>
               </Pressable>)}
             </View>:null}
@@ -129,13 +129,15 @@ export function AssistantHost(){
 
           {view==='chat'?<View style={styles.composer}>
             {offline?<View style={styles.offline}><AppSymbol name={{ios:'wifi.slash',android:'wifi_off'} as never} color={theme.danger} size={16}/><Text style={styles.offlineText}>{ASSISTANT_OFFLINE}</Text></View>:null}
+            {phase!=='idle'?<View style={styles.row}><Text style={styles.hint}>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</Text><Pressable onPress={endVoice}><Text style={styles.error}>End</Text></Pressable>{phase==='listening'?<Pressable onPress={finishListening}><Text style={styles.hint}>Done talking</Text></Pressable>:null}</View>:null}
             <View style={styles.row}>
+              {voiceEnabled?<Pressable accessibilityRole="button" accessibilityLabel="Talk to assistant" disabled={offline||busy&&phase==='idle'} onPress={()=>void talk()} style={styles.send}><AppSymbol name={{ios:'mic.fill',android:'mic'} as never} color="#fff" size={18}/></Pressable>:null}
               <TextInput
                 value={input}
                 onChangeText={setInput}
                 placeholder={offline?'Needs a network connection':'Ask the assistant…'}
                 placeholderTextColor={theme.secondary}
-                editable={!offline}
+                editable={!offline&&phase==='idle'}
                 maxLength={2000}
                 returnKeyType="send"
                 enablesReturnKeyAutomatically
@@ -143,7 +145,7 @@ export function AssistantHost(){
                 accessibilityLabel="Message the FireOps Assistant"
                 style={styles.input}
               />
-              <Pressable accessibilityRole="button" accessibilityLabel="Send" disabled={busy||offline||!input.trim()} onPress={()=>void send(input)} style={[styles.send,(busy||offline||!input.trim())&&styles.disabled]}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Send" disabled={busy||phase!=='idle'||offline||!input.trim()} onPress={()=>void send(input)} style={[styles.send,(busy||offline||!input.trim())&&styles.disabled]}>
                 <AppSymbol name={{ios:'paperplane.fill',android:'send'} as never} color="#fff" size={18}/>
               </Pressable>
             </View>

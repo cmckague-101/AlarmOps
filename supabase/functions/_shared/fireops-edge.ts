@@ -21,7 +21,7 @@ export function isUuid(value: string) {
 }
 
 /** Verify the caller, then return a service-role client that forwards only the verified identity. */
-export async function authedAdmin(request: Request) {
+export async function authedAdmin(request: Request, suppliedBody?: Record<string, unknown>) {
   if (request.method === 'OPTIONS') return { ok: false, response: new Response('ok', { headers: corsHeaders }) } as const;
   if (request.method !== 'POST') return { ok: false, response: json(405, { error: 'Method not allowed.' }) } as const;
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -43,7 +43,7 @@ export async function authedAdmin(request: Request) {
   });
   let body: Record<string, unknown>;
   try {
-    const parsed = await request.json();
+    const parsed = suppliedBody ?? await request.json();
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
     body = parsed as Record<string, unknown>;
   } catch {

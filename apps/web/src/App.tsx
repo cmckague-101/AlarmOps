@@ -8,7 +8,7 @@ import {ViprIntelligenceIcon} from './ViprIntelligenceIcon';
 import {TaskListPage,type AssistantTaskRequest} from './TaskListPage';
 import type {AssistantInvoiceRequest} from './InvoicesPage';
 import type {AssistantReceiptRequest} from './ReceiptsPage';
-import {loadAssistantEnabled} from './assistant/assistantClient';
+import {loadAssistantEnabled,loadAssistantVoiceEnabled} from './assistant/assistantClient';
 import {loadReceiptAutofillEnabled} from './receipt-autofill';
 import type {AssistantDraft} from '@fireops/domain';
 import {OwnerDashboard} from './OwnerDashboard';
@@ -783,14 +783,15 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
 
   // FireOps Assistant: a paid add-on per company (companies.assistant_enabled); not in demo mode.
   const [assistantEnabled,setAssistantEnabled]=useState(false);
+  const [assistantVoiceEnabled,setAssistantVoiceEnabled]=useState(false);
   const [assistantAutofill,setAssistantAutofill]=useState(false);
   const [assistantInvoice,setAssistantInvoice]=useState<AssistantInvoiceRequest|null>(null);
   const [assistantReceipts,setAssistantReceipts]=useState<AssistantReceiptRequest|null>(null);
   const [assistantTask,setAssistantTask]=useState<AssistantTaskRequest|null>(null);
   useEffect(()=>{
     let active=true;
-    setAssistantEnabled(false);setAssistantAutofill(false);
-    if(companyId&&!demoMode)void Promise.all([loadAssistantEnabled(companyId),loadReceiptAutofillEnabled(companyId)]).then(([enabled,autofill])=>{if(active){setAssistantEnabled(enabled);setAssistantAutofill(autofill)}});
+    setAssistantEnabled(false);setAssistantVoiceEnabled(false);setAssistantAutofill(false);
+    if(companyId&&!demoMode)void Promise.all([loadAssistantEnabled(companyId),loadReceiptAutofillEnabled(companyId),loadAssistantVoiceEnabled(companyId)]).then(([enabled,autofill,voice])=>{if(active){setAssistantEnabled(enabled);setAssistantVoiceEnabled(voice);setAssistantAutofill(autofill)}});
     return()=>{active=false};
   },[companyId,demoMode]);
   const openAssistantDraft=(draft:AssistantDraft,files?:File[])=>{
@@ -859,7 +860,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
     {crewDeleteCandidate && canManageFleet && <DeleteCrewDialog member={crewDeleteCandidate} assignmentCount={vehicles.filter(vehicle=>vehicle.assignedTo===crewDeleteCandidate.id).length} busy={deletingCrew} error={crewDeleteError} onCancel={()=>{if(!deletingCrew){setCrewDeleteCandidate(null);setCrewDeleteError('');setSelectedCrew(crewDeleteCandidate)}}} onConfirm={()=>void deleteCrew(crewDeleteCandidate)}/>}
     {selectedIssue && <IssueDetail key={selectedIssue.id} issue={selectedIssue} vehicle={vehicles.find(v => v.id === selectedIssue.vehicleId)} user={currentUser} canManage={canManageFleet} onClose={() => setSelectedIssue(null)} onSave={updateIssue}/>}
     {selectedCrew && <CrewDetail member={selectedCrew} canManage={canManageFleet} onClose={() => setSelectedCrew(null)} onUpdateRole={selectedCrew.role==='owner'?undefined:role=>updateCrewRole(selectedCrew,role)} onUpdateDetails={details=>updateCrewDetails(selectedCrew,details)} onResend={selectedCrew.status==='Invited'&&onResendCrewInvite?async()=>{await onResendCrewInvite(selectedCrew);showNotice(`Invitation resent to ${selectedCrew.email}`)}:undefined} onDelete={selectedCrew.role==='owner'||selectedCrew.id===currentUser.id?undefined:()=>{setCrewDeleteError('');setCrewDeleteCandidate(selectedCrew);setSelectedCrew(null)}}/>}
-    {assistantEnabled&&companyId&&<Suspense fallback={null}><AssistantPanel key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} autofillEnabled={assistantAutofill} onNavigate={target=>setPage(target as Page|LegacyPage)} onDraft={openAssistantDraft}/></Suspense>}
+    {assistantEnabled&&companyId&&<Suspense fallback={null}><AssistantPanel key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} voiceEnabled={assistantVoiceEnabled} autofillEnabled={assistantAutofill} onNavigate={target=>setPage(target as Page|LegacyPage)} onDraft={openAssistantDraft}/></Suspense>}
     <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">{notice && <div className="toast"><span><Check size={16}/></span><b>{notice}</b>{undoAction&&<button disabled={!!onDataChange&&onlineEdits.pending} onClick={undoLastAction} aria-label={undoAction.label}>Undo</button>}</div>}</div>
   </div>;
 }

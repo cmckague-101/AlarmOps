@@ -12,7 +12,9 @@
       "icon": "./assets/images/fireops-ios-icon.png",
       "bundleIdentifier": "com.tinykings.fireops",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Allow FireOps to listen while you talk to the assistant.",
+        "NSSpeechRecognitionUsageDescription": "Allow FireOps to transcribe your questions for the assistant."
       }
     },
     "android": {
@@ -55,7 +57,7 @@
         {
           "photosPermission": "Allow FireOps to select photos for your company fleet and qualification records.",
           "cameraPermission": "Allow FireOps to photograph licenses and qualification records.",
-          "microphonePermission": false
+          "microphonePermission": "Allow FireOps to listen while you talk to the assistant."
         }
       ],
       "expo-sharing",
@@ -71,7 +73,16 @@
             "extraProguardRules": "-keep class * extends androidx.room.RoomDatabase { <init>(); }"
           }
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow FireOps to listen while you talk to the assistant.",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
+      "expo-speech-recognition"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,10 +1,11 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
-import {History,Plus,Send,Trash2,WifiOff,X} from 'lucide-react';
+import {History,Mic,Plus,Send,Trash2,WifiOff,X} from 'lucide-react';
 import {
   ASSISTANT_OFFLINE,ASSISTANT_ROUTE_LABELS,ASSISTANT_SUGGESTIONS,ASSISTANT_WELCOME,assistantDraftLabel,assistantWebPage,
   createAssistantThreadId,formatAssistantThreadTime,upsertAssistantThread,
   type AssistantChatItem,type AssistantDraft,type AssistantThread,type FireOpsUser,
 } from '@fireops/domain';
+import {listenOnce,transcribe,speakText} from './assistant/voiceTalk';
 import {askAssistant} from './assistant/assistantClient';
 import {loadAssistantChats,saveAssistantChats} from './assistant/conversationStore';
 import {useDialogA11y} from './useDialogA11y';
@@ -40,12 +41,13 @@ function Mascot({size}:{size:number}){
 }
 
 /**
- * FireOps Assistant chat (text). Answers come from the assistant-chat edge
+ * FireOps Assistant chat with optional voice. Answers come from the assistant-chat edge
  * function; it can suggest a screen or a draft, which opens the existing form
  * for the user to review and submit. Chats stay in this browser.
  */
-export default function AssistantPanel({companyId,user,autofillEnabled,onNavigate,onDraft}:{
+export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnabled=false,onNavigate,onDraft}:{
   companyId:string;
+  voiceEnabled?:boolean;
   user:FireOpsUser;
   autofillEnabled:boolean;
   onNavigate:(page:string)=>void;
@@ -66,6 +68,35 @@ export default function AssistantPanel({companyId,user,autofillEnabled,onNavigat
   const [error,setError]=useState('');
   const listRef=useRef<HTMLDivElement>(null);
   const request=useRef(0);
+  const [phase,setPhase]=useState<'idle'|'listening'|'thinking'|'speaking'>('idle');
+  const voice=useRef<AbortController|null>(null);
+  const finishListen=useRef<(()=>void)|null>(null);
+  const sendRef=useRef(send);sendRef.current=send;
+  function endVoice(){voice.current?.abort();voice.current=null;finishListen.current=null;setPhase('idle')}
+  function closePanel(){endVoice();setOpen(false)}
+  useEffect(()=>()=>{voice.current?.abort();request.current+=1},[]);
+  useEffect(()=>{if(!online||!voiceEnabled)endVoice()},[online,voiceEnabled]);
+  async function talk(){
+    if(voice.current){finishListen.current?.();return}
+    if(!online){setError(ASSISTANT_OFFLINE);return}
+    if(busy)return;
+    const controller=new AbortController();voice.current=controller;setError('');
+    try{
+      while(!controller.signal.aborted){
+        setPhase('listening');
+        const recording=await listenOnce(controller.signal,finish=>{finishListen.current=finish});
+        finishListen.current=null;setPhase('thinking');
+        const transcript=await transcribe(companyId,recording,controller.signal);
+        controller.signal.throwIfAborted();
+        const reply=await sendRef.current(transcript);
+        controller.signal.throwIfAborted();
+        if(!reply)break;
+        setPhase('speaking');await speakText(companyId,reply,controller.signal);
+      }
+    }catch(failure){if(!controller.signal.aborted)setError(failure instanceof Error?failure.message:'Voice is unavailable. You can still type.')}
+    finally{if(voice.current===controller)endVoice()}
+  }
+
 
   useEffect(()=>{if(open&&view==='chat')listRef.current?.scrollTo({top:listRef.current.scrollHeight})},[messages,open,view,busy]);
 
@@ -91,6 +122,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,onNavigat
       const reply=await askAssistant(companyId,user.role,withUser);
       if(ticket!==request.current)return;
       record(id,[...withUser,{id:`a-${Date.now()}`,role:'assistant',text:reply.text,navigate:reply.navigate,draft:reply.draft}]);
+      return reply.text;
     }catch(failure){
       if(ticket===request.current)setError(failure instanceof Error?failure.message:'The assistant could not answer right now. Try again.');
     }finally{
@@ -99,13 +131,13 @@ export default function AssistantPanel({companyId,user,autofillEnabled,onNavigat
   }
 
   function startNewChat(){
-    request.current+=1;setBusy(false);
+    endVoice();request.current+=1;setBusy(false);
     const id=createAssistantThreadId();
     setThreadId(id);setMessages([welcome]);setView('chat');setError('');setInput('');
     saveAssistantChats(user.id,companyId,{threads,activeId:id});
   }
   function openThread(thread:AssistantThread){
-    request.current+=1;setBusy(false);
+    endVoice();request.current+=1;setBusy(false);
     setThreadId(thread.id);setMessages(thread.messages.length?thread.messages:[welcome]);setView('chat');setError('');
     saveAssistantChats(user.id,companyId,{threads,activeId:thread.id});
   }
@@ -131,18 +163,23 @@ export default function AssistantPanel({companyId,user,autofillEnabled,onNavigat
   };
 
   return <>
+    {phase!=='idle'&&!open&&<div className="assistant-voice-dock" role="status">
+      <button type="button" onClick={()=>setOpen(true)}><b>Work While You Talk</b><span>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</span></button>
+      {phase==='listening'&&<button type="button" onClick={()=>finishListen.current?.()}>Done talking</button>}
+      <button type="button" onClick={endVoice}>End</button>
+    </div>}
     <button type="button" className={`assistant-fab${online?'':' offline'}`} aria-label={online?'Open FireOps Assistant':'FireOps Assistant (needs a network connection)'} onClick={()=>setOpen(true)}>
       <Mascot size={52}/>
       {!online&&<span className="assistant-fab-offline" aria-hidden="true"><WifiOff/></span>}
     </button>
 
-    {open&&<Sheet onClose={()=>setOpen(false)}>{titleId=><>
+    {open&&<Sheet onClose={closePanel}>{titleId=><>
         <header>
           <Mascot size={38}/>
           <div><h2 id={titleId}>FireOps Assistant</h2><p>{view==='history'?'Saved on this device':online?'Ask about FireOps and your company':ASSISTANT_OFFLINE}</p></div>
-          <button type="button" className="assistant-header-btn" aria-label={view==='history'?'Back to chat':'Chat history'} aria-pressed={view==='history'} onClick={()=>setView(current=>current==='history'?'chat':'history')}><History/></button>
+          <button type="button" className="assistant-header-btn" aria-label={view==='history'?'Back to chat':'Chat history'} aria-pressed={view==='history'} disabled={phase!=='idle'} onClick={()=>setView(current=>current==='history'?'chat':'history')}><History/></button>
           <button type="button" className="assistant-header-btn" aria-label="New chat" onClick={startNewChat}><Plus/></button>
-          <button type="button" className="assistant-header-btn" aria-label="Close assistant" onClick={()=>setOpen(false)}><X/></button>
+          <button type="button" className="assistant-header-btn" aria-label="Close assistant" onClick={closePanel}><X/></button>
         </header>
 
         {view==='history'?<div className="assistant-history">
@@ -169,16 +206,18 @@ export default function AssistantPanel({companyId,user,autofillEnabled,onNavigat
               </div>}
             </div>;
           })}
-          {messages.length<=1&&online&&<div className="assistant-suggestions">{ASSISTANT_SUGGESTIONS.map(suggestion=><button key={suggestion} type="button" disabled={busy} onClick={()=>void send(suggestion)}>{suggestion}</button>)}</div>}
+          {messages.length<=1&&online&&<div className="assistant-suggestions">{ASSISTANT_SUGGESTIONS.map(suggestion=><button key={suggestion} type="button" disabled={busy||phase!=='idle'} onClick={()=>void send(suggestion)}>{suggestion}</button>)}</div>}
           {busy&&<div className="assistant-bubble assistant assistant-thinking" role="status">Thinking…</div>}
           {error&&<p className="assistant-error" role="alert">{error}</p>}
         </div>}
 
         {view==='chat'&&<form className="assistant-composer" onSubmit={event=>{event.preventDefault();void send(input)}}>
+          {phase!=='idle'&&<div className="assistant-voice-controls" role="status"><span>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</span><button type="button" onClick={()=>setOpen(false)}>Work While You Talk</button><button type="button" onClick={endVoice}>End</button></div>}
           {!online&&<p className="assistant-offline" role="status"><WifiOff/> {ASSISTANT_OFFLINE}</p>}
           <div className="assistant-note-row">
-            <input type="text" value={input} onChange={event=>setInput(event.target.value)} maxLength={2000} placeholder={online?'Ask the assistant…':'Needs a network connection'} aria-label="Message the FireOps Assistant" disabled={!online} enterKeyHint="send" autoComplete="off"/>
-            <button type="submit" className="assistant-send-btn" disabled={busy||!online||!input.trim()} aria-label="Send"><Send/></button>
+            {voiceEnabled&&<button type="button" className="assistant-send-btn" aria-label="Talk to assistant" disabled={!online||busy&&phase==='idle'} onClick={()=>void talk()}><Mic/></button>}
+            <input type="text" value={input} onChange={event=>setInput(event.target.value)} maxLength={2000} placeholder={online?'Ask the assistant…':'Needs a network connection'} aria-label="Message the FireOps Assistant" disabled={!online||phase!=='idle'} enterKeyHint="send" autoComplete="off"/>
+            <button type="submit" className="assistant-send-btn" disabled={busy||phase!=='idle'||!online||!input.trim()} aria-label="Send"><Send/></button>
           </div>
           <p className="assistant-hint">The assistant can make mistakes. It never saves or submits anything; you review drafts first.</p>
         </form>}

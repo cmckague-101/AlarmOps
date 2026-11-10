@@ -1,7 +1,8 @@
 # FireOps Assistant (Grok chat)
 
 The flame mascot button opens the FireOps Assistant, a text chat on web and
-mobile (voice comes later). It answers through the `assistant-chat` edge
+mobile. The separate [voice add-on](assistant-voice-setup.md) adds microphone
+input and spoken replies. It answers through the `assistant-chat` edge
 function, which holds `XAI_ASSISTANT_API_KEY`; web and mobile never see the key.
 
 - **Who:** every member of a company that has the add-on
