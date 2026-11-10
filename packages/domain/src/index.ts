@@ -36,3 +36,4 @@ export * from './fleet-sync-fields';
 export * from './receipt-export';
 export * from './vipr';
 export * from './assistant';
+export * from './quickbooks';

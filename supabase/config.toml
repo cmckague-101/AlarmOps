@@ -1,3 +1,11 @@
 [functions.motive-integration]
 # OAuth callback is an unauthenticated browser redirect. POST actions still verify JWTs in function code.
 verify_jwt = false
+
+[functions.quickbooks-integration]
+# OAuth callback is an unauthenticated browser redirect (bound by single-use state). POST actions verify JWTs in function code.
+verify_jwt = false
+
+[functions.quickbooks-webhook]
+# Called by Intuit (intuit-signature HMAC) and the scheduler (x-qbo-cron-secret); no user JWT.
+verify_jwt = false

@@ -1,19 +1,21 @@
 import {FileInput} from './demo-uploads';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, ExternalLink, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
-import { INVOICE_REVIEW_MESSAGE, applyInvoiceAutofill, canProcessFinance, changedInvoiceFields, formatCalendarDate, invoiceDueDate, invoicePaymentState, type FireOpsUser, type InvoiceAttachment, type InvoiceCustomer, type InvoiceForm, type InvoiceReviewField } from '@fireops/domain';
+import { INVOICE_REVIEW_MESSAGE, applyInvoiceAutofill, canProcessFinance, qboFieldsFromRow, type QboInvoiceRow, changedInvoiceFields, formatCalendarDate, invoiceDueDate, invoicePaymentState, type FireOpsUser, type InvoiceAttachment, type InvoiceCustomer, type InvoiceForm, type InvoiceReviewField } from '@fireops/domain';
 import { autofillImage, loadReceiptAutofillEnabled, requestInvoiceAutofill } from './receipt-autofill';
 import { supabase } from './supabase';
 import { InvoiceGenerator } from './InvoiceGenerator';
+import { QboStatusBadge, QuickbooksInvoicePanel } from './QuickbooksPanels';
+import { loadQuickbooksConnected, loadQuickbooksEnabled, quickbooks, type QboInvoiceResult } from './quickbooks';
 import { createId } from './create-id';
 
-type FormRow={id:string;company_id:string;created_by:string;created_by_name:string;invoice_number:string;invoice_date:string|null;invoice_amount:number|string;customer_id:string|null;attachment:InvoiceAttachment|null;status:InvoiceForm['status'];submitted_at:string|null;due_date?:string|null;paid_at?:string|null;paid_by_name?:string|null;created_at:string;updated_at:string};
+type FormRow=QboInvoiceRow&{id:string;company_id:string;created_by:string;created_by_name:string;invoice_number:string;invoice_date:string|null;invoice_amount:number|string;customer_id:string|null;attachment:InvoiceAttachment|null;status:InvoiceForm['status'];submitted_at:string|null;due_date?:string|null;paid_at?:string|null;paid_by_name?:string|null;created_at:string;updated_at:string};
 type CustomerRow={id:string;company_id:string;name:string;created_at:string;updated_at:string};
 const formColumns='*';
 const paymentLabel={draft:'Draft',unpaid:'Unpaid',overdue:'Overdue',paid:'Paid'} as const;
 const customerColumns='id,company_id,name,created_at,updated_at';
 const ADD_CUSTOMER='__add_customer__';
-const fromForm=(row:FormRow):InvoiceForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,invoiceNumber:row.invoice_number,invoiceDate:row.invoice_date??'',invoiceAmount:Number(row.invoice_amount),customerId:row.customer_id??'',attachment:row.attachment,status:row.status,submittedAt:row.submitted_at,dueDate:row.due_date??undefined,paidAt:row.paid_at??null,paidByName:row.paid_by_name??null,createdAt:row.created_at,updatedAt:row.updated_at});
+const fromForm=(row:FormRow):InvoiceForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,invoiceNumber:row.invoice_number,invoiceDate:row.invoice_date??'',invoiceAmount:Number(row.invoice_amount),customerId:row.customer_id??'',attachment:row.attachment,status:row.status,submittedAt:row.submitted_at,dueDate:row.due_date??undefined,paidAt:row.paid_at??null,paidByName:row.paid_by_name??null,...qboFieldsFromRow(row),createdAt:row.created_at,updatedAt:row.updated_at});
 const fromCustomer=(row:CustomerRow):InvoiceCustomer=>({id:row.id,companyId:row.company_id,name:row.name,createdAt:row.created_at,updatedAt:row.updated_at});
 const accepted=['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
 const scanAccept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
@@ -48,6 +50,10 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
   const [autofillEnabled,setAutofillEnabled]=useState(false);
   const [scanning,setScanning]=useState(false);
   const [scanReview,setScanReview]=useState<ScanReview|null>(null);
+  // QuickBooks (paid add-on): anyone's submit may trigger the company's automatic sync; owners and accounting see status and sync.
+  const [qboAddOn,setQboAddOn]=useState(false);
+  const [qboConnected,setQboConnected]=useState(false);
+  const qboVisible=manager&&qboAddOn&&qboConnected&&!demoData;
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const demoCallback=useRef(onDemoChange);demoCallback.current=onDemoChange;
   useEffect(()=>{if(demoData)demoCallback.current?.({invoices:forms,customers})},[forms,customers,Boolean(demoData)]);
@@ -79,6 +85,11 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     if(companyId&&!demoData)void loadReceiptAutofillEnabled(companyId).then(enabled=>{if(active)setAutofillEnabled(enabled)});
     return()=>{active=false};
   },[companyId,Boolean(demoData)]);
+  useEffect(()=>{
+    let active=true;
+    if(companyId&&!demoData)void loadQuickbooksEnabled(companyId).then(async enabled=>{if(!active)return;setQboAddOn(enabled);if(enabled&&manager){const connected=await loadQuickbooksConnected(companyId);if(active)setQboConnected(connected)}});
+    return()=>{active=false};
+  },[companyId,manager,Boolean(demoData)]);
   useEffect(()=>{setAddingCustomer(false);setCustomerName('')},[selected?.id]);
   // From the assistant: once invoices and customers have loaded, scan the picked photo (or open a new invoice). Never submits.
   const handledAssistant=useRef<number|null>(null);
@@ -226,6 +237,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     const submitted=fromForm(data);
     setForms(current=>[submitted,...current.filter(item=>item.id!==submitted.id)]);
     setSelected(null);
+    if(qboAddOn)syncInBackground(submitted,'submitted');
   }
 
   async function addFromGenerator(generated:{invoiceNumber:string;invoiceDate:string;amount:number;customerId:string}){
@@ -246,6 +258,18 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     if(failure){setError(`Invoice could not be marked paid. ${failure.message}`);return}
     const paid=fromForm(data);
     setSelected(paid);setForms(current=>[paid,...current.filter(item=>item.id!==paid.id)]);
+    if(qboVisible&&paid.qboPaymentPending)syncInBackground(paid,'payment');
+  }
+
+  /** Merge a QuickBooks sync result into the list and the open invoice. */
+  function applyQbo(result:QboInvoiceResult){
+    const merge=(form:InvoiceForm):InvoiceForm=>form.id!==result.id?form:{...form,status:result.status,paidAt:result.paid_at,paidByName:result.paid_by_name,...qboFieldsFromRow(result)};
+    setForms(current=>current.map(merge));
+    setSelected(current=>current?merge(current):current);
+  }
+  function syncInBackground(form:InvoiceForm,action:'submitted'|'payment'){
+    if(!companyId||demoData)return;
+    void quickbooks.syncInvoice(companyId,form.id,action).then(result=>applyQbo(result.invoice)).catch(()=>{/* shown as Needs attention / retried by the scheduled sync */});
   }
 
   async function remove(form:InvoiceForm){
@@ -304,6 +328,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
         </label>
         <div className="payroll-attachment-field"><span>Attachment</span>{selected.attachment?<div className="payroll-attachment"><FileText/><span><b>{selected.attachment.name}</b><small>{(selected.attachment.byteSize/1024/1024).toFixed(1)} MB</small></span><button onClick={()=>void openAttachment(selected)} aria-label="Open attachment"><ExternalLink/></button>{editable&&<button onClick={()=>void removeAttachment()} aria-label="Remove attachment"><X/></button>}</div>:editable?<label className="payroll-attachment-picker"><Upload/><span>Attach file or image</span><FileInput type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" onChange={event=>{const file=event.target.files?.[0];if(file)void attach(file);event.target.value=''}}/></label>:<span>—</span>}<small className="payroll-attachment-help">JPG, PNG, WebP, HEIC, or PDF · 10 MB max</small></div>
       </div>
+      {qboVisible&&companyId&&selected.status!=='draft'&&<QuickbooksInvoicePanel companyId={companyId} form={selected} customer={customer} onResult={applyQbo}/>}
       {editable&&selected.status==='draft'&&<button className="primary payroll-submit" disabled={saving} onClick={()=>void submit()}>Submit Invoice</button>}
       {manager&&selected.status==='submitted'&&<button className="primary payroll-submit invoice-mark-paid" disabled={saving} onClick={()=>void markPaid(selected)}>{saving?'Saving…':'Mark as paid'}</button>}
       </section></div>;
@@ -315,6 +340,6 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     {draft&&<button className="payroll-draft-card" onClick={()=>setSelected(draft)}><span><b>Invoice in progress</b><small>Last saved {new Date(draft.updatedAt).toLocaleString()}</small></span><strong>Continue</strong></button>}
     {error&&<p className="receipt-error" role="alert">{error}</p>}
     <section className="receipt-list-card"><div className="receipt-list-heading"><h2>{manager?'Submitted invoices':'Your submitted invoices'}</h2>{submittedAll.length>0&&<div className="roster-sort" role="radiogroup" aria-label="Filter invoices">{(['all','unpaid','paid'] as const).map(value=><button key={value} type="button" role="radio" aria-checked={paymentFilter===value} className={paymentFilter===value?'selected':''} onClick={()=>setPaymentFilter(value)}>{value==='all'?'All':value==='paid'?'Paid':'Unpaid'}</button>)}</div>}</div>
-      {loading?<p className="receipt-state">Loading invoices…</p>:!submittedAll.length?<div className="receipt-empty"><FileText/><h3>No submitted invoices</h3><p>{draft?'Continue your invoice in progress to submit it.':'Select New Invoice to submit your first invoice.'}</p></div>:<div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Invoice</th><th className="receipt-date">Date</th><th>Customer</th><th className="receipt-amount">Amount</th><th>Status</th><th className="invoice-attachment-column">Attachment</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map(form=>{const editable=canEditInvoice(form,user,manager);return <tr key={form.id}><td>{form.invoiceNumber}</td><td className="receipt-date">{formatCalendarDate(form.invoiceDate)}</td><td>{customers.find(item=>item.id===form.customerId)?.name??'—'}</td><td className="receipt-amount">{money(form.invoiceAmount)}</td><td><i className={`invoice-payment ${invoicePaymentState(form)}`}>{paymentLabel[invoicePaymentState(form)]}</i>{form.status!=='paid'&&invoiceDueDate(form)&&<small className="invoice-due">Due {formatCalendarDate(invoiceDueDate(form))}</small>}</td><td className="invoice-attachment-column">{form.attachment?'Yes':'—'}</td><td><button className="receipt-open" onClick={()=>setSelected(form)} aria-label={`${editable?'Edit':'View'} invoice ${form.invoiceNumber}`}><ExternalLink/>{editable?'Edit':'View'}</button></td></tr>})}</tbody></table>{!visible.length&&<p className="receipt-state">No {paymentFilter} invoices.</p>}</div>}
+      {loading?<p className="receipt-state">Loading invoices…</p>:!submittedAll.length?<div className="receipt-empty"><FileText/><h3>No submitted invoices</h3><p>{draft?'Continue your invoice in progress to submit it.':'Select New Invoice to submit your first invoice.'}</p></div>:<div className="receipt-table-wrap"><table className="receipt-table"><thead><tr><th>Invoice</th><th className="receipt-date">Date</th><th>Customer</th><th className="receipt-amount">Amount</th><th>Status</th><th className="invoice-attachment-column">Attachment</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map(form=>{const editable=canEditInvoice(form,user,manager);return <tr key={form.id}><td>{form.invoiceNumber}</td><td className="receipt-date">{formatCalendarDate(form.invoiceDate)}</td><td>{customers.find(item=>item.id===form.customerId)?.name??'—'}</td><td className="receipt-amount">{money(form.invoiceAmount)}</td><td><i className={`invoice-payment ${invoicePaymentState(form)}`}>{paymentLabel[invoicePaymentState(form)]}</i>{form.status!=='paid'&&invoiceDueDate(form)&&<small className="invoice-due">Due {formatCalendarDate(invoiceDueDate(form))}</small>}{qboVisible&&<span className="invoice-qbo-cell" title="QuickBooks"><QboStatusBadge status={form.qboSyncStatus}/></span>}</td><td className="invoice-attachment-column">{form.attachment?'Yes':'—'}</td><td><button className="receipt-open" onClick={()=>setSelected(form)} aria-label={`${editable?'Edit':'View'} invoice ${form.invoiceNumber}`}><ExternalLink/>{editable?'Edit':'View'}</button></td></tr>})}</tbody></table>{!visible.length&&<p className="receipt-state">No {paymentFilter} invoices.</p>}</div>}
     </section></div>;
 }

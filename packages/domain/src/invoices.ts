@@ -31,6 +31,12 @@ export type InvoiceForm = {
   dueDate?: string;
   paidAt?: string | null;
   paidByName?: string | null;
+  /** QuickBooks Online sync (paid add-on); written only by the QuickBooks edge functions. */
+  qboInvoiceId?: string | null;
+  qboSyncStatus?: 'not_synced' | 'synced' | 'out_of_sync' | 'needs_attention';
+  qboSyncedAt?: string | null;
+  qboLastError?: string | null;
+  qboPaymentPending?: boolean;
   createdAt: string;
   updatedAt: string;
 };

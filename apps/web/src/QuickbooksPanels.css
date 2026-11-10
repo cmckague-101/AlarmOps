@@ -1,0 +1,50 @@
+.qbo-badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:11px;font-style:normal;font-weight:800;white-space:nowrap;color:var(--muted);background:var(--surface-subtle,color-mix(in srgb,var(--line) 40%,var(--paper)))}
+.qbo-badge.synced{color:var(--green);background:color-mix(in srgb,var(--green) 10%,var(--paper))}
+.qbo-badge.out_of_sync{color:var(--blue,#2f6a8f);background:color-mix(in srgb,var(--blue,#2f6a8f) 10%,var(--paper))}
+.qbo-badge.needs_attention{color:var(--warning);background:color-mix(in srgb,var(--warning) 12%,var(--paper))}
+.qbo-body{display:grid;gap:14px;padding:20px 22px}
+.qbo-body h3{margin:6px 0 0;font:700 14px Manrope,sans-serif}
+.qbo-help{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.qbo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.qbo-panel .qbo-settings{display:grid;gap:14px;padding:0}
+.qbo-panel .qbo-settings footer{margin-top:4px}
+.qbo-mode{display:grid;gap:8px;margin:0;padding:0;border:0}
+.qbo-mode legend{margin-bottom:6px;color:var(--muted);font-size:11px;font-weight:700}
+.qbo-mode label{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.qbo-mode input{margin-top:3px}
+.qbo-mode span{display:grid;gap:2px}
+.qbo-mode b{font-size:13px}
+.qbo-mode small{color:var(--muted);font-size:11px}
+.qbo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.qbo-field{display:grid;gap:6px}
+.qbo-field>span{color:var(--muted);font-size:11px;font-weight:700}
+.qbo-field select,.qbo-filter,.qbo-search-input{height:44px;width:100%;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+.qbo-field small{color:var(--muted);font-size:11px}
+.qbo-mapping{display:grid;gap:10px;padding-top:6px;border-top:1px solid var(--line)}
+.qbo-customer{display:grid;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.qbo-customer:last-child{border-bottom:0}
+.qbo-customer-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qbo-customer-name{display:grid;gap:3px;min-width:0}
+.qbo-customer-name b{font-size:13px;overflow-wrap:anywhere}
+.qbo-customer-name small{display:inline-flex;align-items:center;gap:5px;color:var(--green);font-size:12px;overflow-wrap:anywhere}
+.qbo-customer-name small svg{width:13px;flex:none}
+.qbo-customer-name small.qbo-unmatched{color:var(--warning)}
+.qbo-customer-actions{display:flex;gap:6px;flex:none}
+.qbo-icon-button{width:40px;height:40px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--danger)}
+.qbo-icon-button svg{width:16px}
+.qbo-search{display:flex;gap:8px}
+.qbo-search-input{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.qbo-search-input svg{width:16px;color:var(--muted);flex:none}
+.qbo-search-input input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:14px}
+.qbo-results{display:grid;gap:4px;margin:0;padding:0;list-style:none;max-height:260px;overflow:auto}
+.qbo-results button{width:100%;display:grid;gap:2px;text-align:left;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+.qbo-results button:hover:not(:disabled){border-color:var(--green)}
+.qbo-results small{color:var(--muted);font-size:11px}
+.qbo-invoice{display:grid;gap:8px;margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.qbo-invoice-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.qbo-invoice-head>span{display:flex;align-items:center;gap:8px}
+.qbo-invoice-head button{display:inline-flex;align-items:center;gap:6px}
+.qbo-invoice-head button svg{width:15px}
+.qbo-invoice .integration-error{max-width:none;margin:0}
+.invoice-qbo-cell{display:block;margin-top:4px}
+@media(max-width:800px){.qbo-body{padding:17px 16px}.qbo-grid{grid-template-columns:1fr}.qbo-field select,.qbo-filter,.qbo-search-input{height:48px;font-size:16px}.qbo-search{flex-direction:column}.qbo-search .primary,.qbo-invoice-head button{min-height:44px;width:100%;justify-content:center}.qbo-customer-row{flex-wrap:wrap}}

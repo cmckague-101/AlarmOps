@@ -1,17 +1,17 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import type { InvoiceCustomer, InvoiceForm } from '@fireops/domain';
+import { qboFieldsFromRow, type InvoiceCustomer, type InvoiceForm, type QboInvoiceRow } from '@fireops/domain';
 import { supabase } from '@/lib/supabase';
 import { isOffline } from '@/providers/network-provider';
 import { downloadedCompanyList, subscribeOfflineCompanyLists, type DownloadedListInfo } from './offline-company-lists';
 import {onAppResume,refreshOnRejoin} from './app-resume';
 
-type FormRow={id:string;company_id:string;created_by:string;created_by_name:string;invoice_number:string;invoice_date:string|null;invoice_amount:number|string;customer_id:string|null;attachment:InvoiceForm['attachment'];status:InvoiceForm['status'];submitted_at:string|null;due_date?:string|null;paid_at?:string|null;paid_by_name?:string|null;created_at:string;updated_at:string};
+type FormRow=QboInvoiceRow&{id:string;company_id:string;created_by:string;created_by_name:string;invoice_number:string;invoice_date:string|null;invoice_amount:number|string;customer_id:string|null;attachment:InvoiceForm['attachment'];status:InvoiceForm['status'];submitted_at:string|null;due_date?:string|null;paid_at?:string|null;paid_by_name?:string|null;created_at:string;updated_at:string};
 type CustomerRow={id:string;company_id:string;name:string;created_at:string;updated_at:string};
 // '*' keeps reads working before and after the due/paid migration is deployed.
 const formColumns='*';
 const customerColumns='id,company_id,name,created_at,updated_at';
-const fromForm=(row:FormRow):InvoiceForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,invoiceNumber:row.invoice_number,invoiceDate:row.invoice_date??'',invoiceAmount:Number(row.invoice_amount),customerId:row.customer_id??'',attachment:row.attachment,status:row.status,submittedAt:row.submitted_at,dueDate:row.due_date??undefined,paidAt:row.paid_at??null,paidByName:row.paid_by_name??null,createdAt:row.created_at,updatedAt:row.updated_at});
+const fromForm=(row:FormRow):InvoiceForm=>({id:row.id,companyId:row.company_id,createdBy:row.created_by,createdByName:row.created_by_name,invoiceNumber:row.invoice_number,invoiceDate:row.invoice_date??'',invoiceAmount:Number(row.invoice_amount),customerId:row.customer_id??'',attachment:row.attachment,status:row.status,submittedAt:row.submitted_at,dueDate:row.due_date??undefined,paidAt:row.paid_at??null,paidByName:row.paid_by_name??null,...qboFieldsFromRow(row),createdAt:row.created_at,updatedAt:row.updated_at});
 const fromCustomer=(row:CustomerRow):InvoiceCustomer=>({id:row.id,companyId:row.company_id,name:row.name,createdAt:row.created_at,updatedAt:row.updated_at});
 /** `downloaded`: shown from the verified offline download, not a live read. */
 type Snapshot={forms:InvoiceForm[];customers:InvoiceCustomer[];loading:boolean;refreshing:boolean;error:string|null;downloaded?:DownloadedListInfo|null};
@@ -39,4 +39,6 @@ export async function markInvoicePaid(form:InvoiceForm){if(!supabase)throw new E
 export async function deleteInvoice(form:InvoiceForm){if(!supabase)throw new Error('Invoices are unavailable.');const {error}=await supabase.from('invoice_forms').delete().eq('company_id',form.companyId).eq('id',form.id);if(error)throw new Error(error.message);emit({...snapshot,forms:snapshot.forms.filter(item=>item.id!==form.id)})}
 export async function addInvoiceCustomer(name:string){if(!supabase||!company)throw new Error('Customers are unavailable.');const {data,error}=await supabase.from('invoice_customers').insert({company_id:company,name:name.trim()}).select(customerColumns).single<CustomerRow>();if(error)throw new Error(error.message);const customer=fromCustomer(data);emit({...snapshot,customers:[...snapshot.customers,customer].sort((a,b)=>a.name.localeCompare(b.name))});return customer}
 export async function deleteInvoiceCustomer(customer:InvoiceCustomer){if(!supabase)throw new Error('Customers are unavailable.');const {error}=await supabase.from('invoice_customers').delete().eq('company_id',customer.companyId).eq('id',customer.id);if(error)throw new Error(error.message);emit({...snapshot,customers:snapshot.customers.filter(item=>item.id!==customer.id)})}
+/** Merge QuickBooks sync results into the cached invoice. */
+export function mergeInvoiceChanges(id:string,changes:Partial<InvoiceForm>){const current=snapshot.forms.find(item=>item.id===id);if(!current)return null;const next={...current,...changes};emit({...snapshot,forms:snapshot.forms.map(item=>item.id===id?next:item)});return next}
 onAppResume(()=>{if(company)void refreshInvoices()});
