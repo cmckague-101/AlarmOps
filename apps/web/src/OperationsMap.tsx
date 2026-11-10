@@ -14,6 +14,8 @@ type Props = {
   onSelect: (incident: NifcIncident) => void;
   onVehicleSelect?: (id: string) => void;
   onReset: () => void;
+  /** Mouse-wheel zoom; defaults to on. Zoom buttons, keyboard and touch pinch still work when off. */
+  scrollZoom?: boolean;
 };
 type Tip = {x: number; y: number; name: string; incident?: NifcIncident};
 
@@ -49,6 +51,7 @@ export default function OperationsMap(props: Props) {
         bounds: NATIONAL_BOUNDS,
         fitBoundsOptions: {padding: 35},
         maxZoom: 18,
+        scrollZoom: props.scrollZoom ?? true,
         attributionControl: {compact: true},
       });
     } catch {

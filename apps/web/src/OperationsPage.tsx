@@ -127,11 +127,11 @@ function useIncidentMap({requestedIncidentId,onIncidentOpened,requestedVehicleId
   return {visible,selected,setSelected,focusedVehicleId,setFocusedVehicleId,fireQuery,setFireQuery,normalizedFireQuery,searchResults,loading,error,retry:()=>setRequest(value=>value+1),motiveVehicles,latestUpdate};
 }
 
-function IncidentMapCanvas({map,onVehicleSelect}:{map:ReturnType<typeof useIncidentMap>;onVehicleSelect?:(vehicleId:string)=>void}){
+function IncidentMapCanvas({map,onVehicleSelect,scrollZoom}:{map:ReturnType<typeof useIncidentMap>;onVehicleSelect?:(vehicleId:string)=>void;scrollZoom?:boolean}){
   const {visible,motiveVehicles,selected,setSelected,focusedVehicleId,setFocusedVehicleId,loading,error,retry}=map;
   return <div className="fire-map" aria-label={`Map showing ${visible.length} wildfire incidents`}>
     <Suspense fallback={<MapState icon={<RefreshCw className="spin"/>} title="Loading map" copy="Preparing the interactive operations map."/>}>
-      <OperationsMap incidents={visible} vehicles={motiveVehicles} selected={selected} focusedVehicleId={focusedVehicleId} onSelect={setSelected} onVehicleSelect={onVehicleSelect} onReset={()=>{setSelected(null);setFocusedVehicleId(null)}}/>
+      <OperationsMap incidents={visible} vehicles={motiveVehicles} selected={selected} focusedVehicleId={focusedVehicleId} onSelect={setSelected} onVehicleSelect={onVehicleSelect} scrollZoom={scrollZoom} onReset={()=>{setSelected(null);setFocusedVehicleId(null)}}/>
     </Suspense>
     {loading&&<MapState icon={<RefreshCw className="spin"/>} title="Loading current fires" copy="Requesting active incident data from NIFC."/>}
     {!loading&&error&&<MapState icon={<Flame/>} title="NIFC data unavailable" copy={error} action={<button className="secondary" onClick={retry}><RefreshCw/> Try again</button>}/>}
@@ -154,7 +154,8 @@ export function DashboardIncidentMap({assignableVehicles=[],onAssignVehicle,onVe
           </div>
         </header>
         <div className="dashboard-incident-map-stage">
-          <IncidentMapCanvas map={map} onVehicleSelect={onVehicleSelect}/>
+          {/* Mouse-wheel zoom would hijack page scrolling as the dashboard scrolls past the map. */}
+          <IncidentMapCanvas map={map} onVehicleSelect={onVehicleSelect} scrollZoom={false}/>
           {normalizedFireQuery?<div className="operations-search-results" role="region" aria-label="Fire search results">
             <header><h2>Fire search</h2><span>{searchResults.length}</span></header>
             <div className="fire-list">{searchResults.length?searchResults.map((incident,index)=><FireRow key={`${incident.id}-${index}`} incident={incident} onSelect={()=>{setSelected(incident);setFireQuery('')}}/>):<div className="empty compact-empty"><Flame/><h3>No fires found</h3><p>No fire names match “{fireQuery.trim()}”.</p></div>}</div>
