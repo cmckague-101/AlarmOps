@@ -52,3 +52,18 @@ it('the actual Supabase SDK preserves the edge audio bytes as a Blob',async()=>{
  const {data,error}=await client.functions.invoke('assistant-voice',{body:{kind:'tts',text:'Hi'}});
  expect(error).toBeNull();expect(data).toBeInstanceOf(Blob);expect(new Uint8Array(await data.arrayBuffer())).toEqual(bytes);
 });
+
+it('plays Helix bytes through the gesture-unlocked output without browser speech',async()=>{
+ const blob=new Blob(['ai voice']);mocks.invoke.mockResolvedValue({data:blob,error:null});
+ const playAudio=vi.fn().mockResolvedValue(undefined),onFallback=vi.fn(),speak=vi.fn();
+ vi.stubGlobal('window',{speechSynthesis:{speak}});
+ await speakText('c','Hello',new AbortController().signal,{playAudio,onFallback});
+ expect(playAudio).toHaveBeenCalledWith(blob);expect(onFallback).not.toHaveBeenCalled();expect(speak).not.toHaveBeenCalled();
+});
+it('reports browser fallback when AI audio playback fails',async()=>{
+ mocks.invoke.mockResolvedValue({data:new Blob(['ai voice']),error:null});
+ const onFallback=vi.fn(),speak=vi.fn(utterance=>queueMicrotask(()=>utterance.onend()));
+ vi.stubGlobal('window',{speechSynthesis:{speak,cancel:vi.fn()}});vi.stubGlobal('SpeechSynthesisUtterance',class{});
+ await speakText('c','Hello',new AbortController().signal,{playAudio:vi.fn().mockRejectedValue(new Error('decode failed')),onFallback});
+ expect(onFallback).toHaveBeenCalledOnce();expect(speak).toHaveBeenCalledOnce();
+});

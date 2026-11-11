@@ -13,6 +13,15 @@ review behavior. Replies use Helix through `assistant-voice`, with browser
 speech synthesis as a fallback on service/playback failure. A 403 or quota
 failure ends voice and displays its message; it does not bypass the switch.
 
+Web initializes and resumes a shared playback AudioContext directly from the
+Talk click, before microphone permissions or network calls. Each Helix reply
+uses that same output session; creating a fresh audio element after the chat
+request can trigger [Safari autoplay restrictions](https://webkit.org/blog/7734/auto-play-policy-changes-for-macos/).
+End/Close/sign-out abort playback, stop the active source, and close the context.
+If service or playback failure requires device speech, the panel and minimized
+dock say that the browser voice is being used. Browser speech is selected by
+the operating system and is not guaranteed to sound like Siri.
+
 Use **Work While You Talk** in the open panel to minimize it and browse with
 the Listening / Thinking / Speaking dock. Tap the dock to reopen the transcript.
 End, Close, sign-out, company change, or loss of network stops voice. All mic
@@ -106,6 +115,11 @@ just like web voice transcripts and typed messages.
    Tap Talk while listening to finish early. Minimize via Work While You Talk,
    navigate, reopen from the dock, then End. Repeat with Close and sign-out;
    confirm the browser mic indicator and audio stop. Check light and dark themes.
+   Repeat on macOS Safari with its normal autoplay settings: Helix should play
+   across multiple turns after the single Talk click. Simulate a playback/decode
+   failure and verify the visible browser-voice fallback notice in both the panel
+   and minimized dock. This playback fix ships with web only; it requires no
+   function redeployment, migration, or native build.
 3. Deny mic permission or use an unsupported browser: confirm an explanatory
    message and usable text chat. Go offline: confirm network feedback and no
    new capture. Simulate a 502 from TTS: confirm device speech fallback. Simulate

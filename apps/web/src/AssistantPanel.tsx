@@ -5,6 +5,7 @@ import {
   createAssistantThreadId,formatAssistantThreadTime,upsertAssistantThread,
   type AssistantChatItem,type AssistantDraft,type AssistantThread,type FireOpsUser,
 } from '@fireops/domain';
+import {createVoicePlayback} from './assistant/voicePlayback';
 import {listenOnce,transcribe,speakText} from './assistant/voiceTalk';
 import {askAssistant} from './assistant/assistantClient';
 import {loadAssistantChats,saveAssistantChats} from './assistant/conversationStore';
@@ -68,11 +69,12 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
   const [error,setError]=useState('');
   const listRef=useRef<HTMLDivElement>(null);
   const request=useRef(0);
+  const [voiceNotice,setVoiceNotice]=useState('');
   const [phase,setPhase]=useState<'idle'|'listening'|'thinking'|'speaking'>('idle');
   const voice=useRef<AbortController|null>(null);
   const finishListen=useRef<(()=>void)|null>(null);
   const sendRef=useRef(send);sendRef.current=send;
-  function endVoice(){voice.current?.abort();voice.current=null;finishListen.current=null;setPhase('idle')}
+  function endVoice(){voice.current?.abort();voice.current=null;finishListen.current=null;setPhase('idle');setVoiceNotice('')}
   function closePanel(){endVoice();setOpen(false)}
   useEffect(()=>()=>{voice.current?.abort();request.current+=1},[]);
   useEffect(()=>{if(!online||!voiceEnabled)endVoice()},[online,voiceEnabled]);
@@ -82,6 +84,9 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
     if(busy)return;
     const controller=new AbortController();voice.current=controller;setError('');
     try{
+      // Resume output during the click itself; Safari blocks new audio players
+      // created only after the STT/chat/TTS network requests have completed.
+      const playback=createVoicePlayback(controller.signal);
       while(!controller.signal.aborted){
         setPhase('listening');
         const recording=await listenOnce(controller.signal,finish=>{finishListen.current=finish});
@@ -91,7 +96,8 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
         const reply=await sendRef.current(transcript);
         controller.signal.throwIfAborted();
         if(!reply)break;
-        setPhase('speaking');await speakText(companyId,reply,controller.signal);
+        setPhase('speaking');setVoiceNotice('');
+        await speakText(companyId,reply,controller.signal,{playAudio:playback.play,onFallback:()=>setVoiceNotice('AI voice is unavailable. Using your browser’s voice for this reply.')});
       }
     }catch(failure){if(!controller.signal.aborted)setError(failure instanceof Error?failure.message:'Voice is unavailable. You can still type.')}
     finally{if(voice.current===controller)endVoice()}
@@ -164,7 +170,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
 
   return <>
     {phase!=='idle'&&!open&&<div className="assistant-voice-dock" role="status">
-      <button type="button" onClick={()=>setOpen(true)}><b>Work While You Talk</b><span>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</span></button>
+      <button type="button" onClick={()=>setOpen(true)}><b>Work While You Talk</b><span>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':voiceNotice?'Speaking (browser voice)':'Speaking'}</span>{voiceNotice&&<small>{voiceNotice}</small>}</button>
       {phase==='listening'&&<button type="button" onClick={()=>finishListen.current?.()}>Done talking</button>}
       <button type="button" onClick={endVoice}>End</button>
     </div>}
@@ -213,6 +219,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
 
         {view==='chat'&&<form className="assistant-composer" onSubmit={event=>{event.preventDefault();void send(input)}}>
           {phase!=='idle'&&<div className="assistant-voice-controls" role="status"><span>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</span><button type="button" onClick={()=>setOpen(false)}>Work While You Talk</button><button type="button" onClick={endVoice}>End</button></div>}
+          {voiceNotice&&<p className="assistant-hint" role="status">{voiceNotice}</p>}
           {!online&&<p className="assistant-offline" role="status"><WifiOff/> {ASSISTANT_OFFLINE}</p>}
           <div className="assistant-note-row">
             {voiceEnabled&&<button type="button" className="assistant-send-btn" aria-label="Talk to assistant" disabled={!online||busy&&phase==='idle'} onClick={()=>void talk()}><Mic/></button>}

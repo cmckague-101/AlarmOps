@@ -64,12 +64,16 @@ export async function transcribe(companyId:string, recording:{audio:Blob;duratio
   return data.text;
 }
 
-export async function speakText(companyId:string,text:string,signal:AbortSignal) {
+export async function speakText(companyId:string,text:string,signal:AbortSignal,options?:{
+  playAudio:(blob:Blob)=>Promise<void>;
+  onFallback:()=>void;
+}) {
   signal.throwIfAborted();
   try {
     const blob = await voiceRequest({companyId,kind:'tts',text:text.slice(0,2000)},signal);
     signal.throwIfAborted();
     if(!(blob instanceof Blob)) throw new Error('Audio response was unreadable.');
+    if(options){await options.playAudio(blob);return;}
     const url = URL.createObjectURL(new Blob([blob],{type:'audio/mpeg'}));
     const audio = new Audio(url);
     let abort:()=>void = ()=>{};
@@ -86,6 +90,7 @@ export async function speakText(companyId:string,text:string,signal:AbortSignal)
     // Limits and switches remain authoritative; only service/playback failures use device TTS.
     if(error instanceof Error && /limit|not included/i.test(error.message)) throw error;
     if(!window.speechSynthesis) throw new Error('Audio playback is unavailable. Your reply is in the chat.');
+    options?.onFallback();
     await new Promise<void>((resolve,reject)=>{
       const utterance = new SpeechSynthesisUtterance(text);
       const abort = ()=>{window.speechSynthesis.cancel();cleanup();reject(new DOMException('Aborted','AbortError'));};
