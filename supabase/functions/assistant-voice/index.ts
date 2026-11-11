@@ -1,5 +1,6 @@
 import { authedAdmin, corsHeaders, isUuid, json, memberRole } from '../_shared/fireops-edge.ts';
-import { claimFailure, MAX_AUDIO_BYTES, VOICE_AUDIO_CONTENT_TYPE, validAudio, validText } from './logic.ts';
+import { claimFailure, MAX_AUDIO_BYTES, VOICE_AUDIO_CONTENT_TYPE, providerFailure, validAudio, validText } from './logic.ts';
+import { transcriptionUpload } from './upstream.ts';
 
 Deno.serve(async request => {
  // Authenticate before parsing an upload. The shared helper normally parses JSON.
@@ -40,13 +41,17 @@ Deno.serve(async request => {
   if (failure) return json(failure.status,{error:failure.error});
   const key = Deno.env.get('XAI_ASSISTANT_API_KEY');
   if (!key) return json(503,{error:'Assistant voice is not configured.'});
-  const upload = new FormData();
-  if (kind === 'stt') { upload.append('file',file as File); upload.append('model','grok-voice-transcribe-2.0'); upload.append('language','en'); }
+  const upload = kind === 'stt' ? transcriptionUpload(file as File) : null;
   const response = await fetch(`https://api.x.ai/v1/${kind}`,{
    method:'POST',headers:{Authorization:`Bearer ${key}`,...(kind === 'tts' ? {'Content-Type':'application/json'} : {})},
    body:kind === 'stt' ? upload : JSON.stringify({text:body.text,voice_id:'helix',language:'en'}),signal:AbortSignal.timeout(45000),
   });
-  if (!response.ok) return json(502,{error:'Assistant voice could not respond. Try again or use text chat.'});
+  if (!response.ok) {
+   // Log only operation/status: provider bodies can contain user audio text.
+   console.error('assistant-voice upstream rejected',{kind,status:response.status});
+   const failure = providerFailure(kind,response.status);
+   return json(failure.status,{error:failure.error});
+  }
   if (kind === 'stt') { const data = await response.json(); return json(200,{text:typeof data.text === 'string' ? data.text.trim().slice(0,2000) : ''}); }
   return new Response(response.body,{headers:{...corsHeaders,'Content-Type':VOICE_AUDIO_CONTENT_TYPE,'Cache-Control':'no-store'}});
  } catch { return json(502,{error:'Assistant voice is unavailable. Check your connection or use text chat.'}); }

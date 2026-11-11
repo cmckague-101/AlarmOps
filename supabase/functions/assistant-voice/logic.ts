@@ -12,3 +12,18 @@ export function claimFailure(claim: unknown): {status: number; error: string} | 
  if (claim === 'limit') return {status:429,error:'Daily assistant voice limit reached. Try again tomorrow, or use text chat.'};
  return {status:403,error:'Assistant voice is not included for this company.'};
 }
+
+/** Keep provider credentials and response bodies out of client errors. */
+export function providerFailure(kind: 'stt'|'tts', status: number) {
+ if (status === 401 || status === 403) return {
+  status:503,error:'Assistant voice access is not configured. Ask your company administrator to check speech access for the assistant API key.',
+ };
+ if (status === 429) return {
+  status:503,error:'Assistant voice is busy. Try again shortly or use text chat.',
+ };
+ return {
+  status:502,error:kind === 'stt'
+   ? 'The recording could not be transcribed. Try recording again or use text chat.'
+   : 'The voice reply could not be played. You can read the reply in chat.',
+ };
+}

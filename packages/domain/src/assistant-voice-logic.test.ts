@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {claimFailure,validAudio,validText,MAX_AUDIO_BYTES} from '../../../supabase/functions/assistant-voice/logic';
+import {claimFailure,providerFailure,validAudio,validText,MAX_AUDIO_BYTES} from '../../../supabase/functions/assistant-voice/logic';
 describe('assistant voice validation and friendly access errors',()=>{
  it('rejects unsupported audio, oversized uploads and recordings over a minute',()=>{
   expect(validAudio('audio/webm;codecs=opus',100,59)).toBe(true);
@@ -12,4 +12,11 @@ describe('assistant voice validation and friendly access errors',()=>{
   expect(claimFailure('disabled')).toMatchObject({status:403});expect(claimFailure(null)).toMatchObject({status:403});
   expect(claimFailure('limit')).toMatchObject({status:429,error:expect.stringContaining('Try again tomorrow')});expect(claimFailure('ok')).toBeNull();
  });
+});
+
+it('distinguishes provider access errors from local company permissions and quotas',()=>{
+ for(const status of [401,403]) expect(providerFailure('stt',status)).toMatchObject({status:503,error:expect.stringContaining('check speech access')});
+ expect(providerFailure('stt',429)).toMatchObject({status:503,error:expect.stringContaining('Try again shortly')});
+ expect(providerFailure('stt',400)).toMatchObject({status:502,error:expect.stringContaining('recording')});
+ expect(providerFailure('tts',500)).toMatchObject({status:502,error:expect.stringContaining('read the reply')});
 });

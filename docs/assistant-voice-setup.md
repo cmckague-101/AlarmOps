@@ -42,6 +42,23 @@ npx supabase secrets set --env-file /secure/path/assistant.env --project-ref PRO
 npx supabase functions deploy assistant-voice --project-ref PROJECT_REF
 ```
 
+If the dedicated assistant API key has restricted endpoint/model access in the
+xAI console, allow speech-to-text (`/v1/stt`, `grok-voice-transcribe-2.0`) and
+text-to-speech (`/v1/tts`) as well as its existing chat access. Changing the
+permissions of the same key does not require replacing the Supabase secret.
+A replacement key must be stored in Supabase, never in web/mobile environment
+variables. This voice implementation uses the STT/TTS endpoints.
+
+For an upstream failure, check the `assistant-voice` function logs for
+`assistant-voice upstream rejected` and its `kind` / HTTP `status`. Provider
+401/403 produces a configuration message in chat, provider 429 asks the user
+to retry shortly, and the separate local daily quota still produces HTTP 429.
+Logs deliberately omit provider response bodies and recording/transcript data.
+The STT proxy sends all options before the audio file, as required by
+[xAI's multipart contract](https://docs.x.ai/developers/model-capabilities/audio/speech-to-text),
+and normalizes the filename from the validated audio MIME type. Existing web
+clients sending `question.audio` are supported by the function-side fix.
+
 No proxy is added to Vite. The key and upstream URLs exist only in edge code.
 The shared authentication helper's source change ships with `assistant-voice`;
 it preserves the default JSON behavior of existing functions, which do not
