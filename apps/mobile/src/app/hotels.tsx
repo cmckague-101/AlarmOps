@@ -110,7 +110,7 @@ export default function HotelsScreen(){
   },[regionValue,city,term]);
 
   const shown=hotels.slice(0,fedRoomsResultLimit);
-  return <SectionScreen scrollRef={scroll} title="Travel" description="Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.">
+  return <SectionScreen scrollRef={scroll} title="Travel Assistant">
     <FlightSearchCard prefillTo={flightsTo}/>
     <View style={styles.sectionTitle}><AppSymbol name={{ios:'bed.double.fill',android:'hotel'}} size={18} color={theme.ember}/><Text accessibilityRole="header" style={styles.sectionTitleText}>Hotels</Text></View>
     <Pressable accessibilityRole="button" accessibilityLabel="Find hotels near me" disabled={locating||!regions.length} onPress={()=>void findNearMe()} style={({pressed})=>[styles.nearMe,pressed&&styles.pressed,(locating||!regions.length)&&styles.disabled]}>{locating?<ActivityIndicator size="small" color="#fff"/>:<AppSymbol name={{ios:'location.fill',android:'my_location'}} size={17} color="#fff"/>}<Text style={styles.nearMeText}>{locating?'Locating…':'Hotels near me'}</Text></Pressable>
