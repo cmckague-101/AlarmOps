@@ -513,33 +513,20 @@ export default function VehicleDetailScreen() {
     }
   };
 
+  // Edit sits at the bottom, above Delete vehicle (matches web).
+  const openEdit = () => {
+    if (!vehicle) return;
+    router.push(offline&&Platform.OS!=='web'&&!demoMode?savedDetailHref({entityType:'vehicle',entityId:vehicle.id}):{
+      pathname: "/vehicle/form",
+      params: { id: vehicle.id },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
       <Stack.Screen
         options={{
           title: vehicle?.name ?? "Vehicle",
-          headerRight:
-            canManage && vehicle
-              ? () => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Edit ${vehicle.name}`}
-                    onPress={() =>
-                      router.push(offline&&Platform.OS!=='web'&&!demoMode?savedDetailHref({entityType:'vehicle',entityId:vehicle.id}):{
-                        pathname: "/vehicle/form",
-                        params: { id: vehicle.id },
-                      })
-                    }
-                    style={({ pressed }) => [
-                      styles.headerEdit,
-                      pressed && styles.headerEditPressed,
-                    ]}
-                  >
-                    <AppSymbol name="pencil" color={theme.ember} size={17} />
-                    <Text style={styles.headerEditLabel}>Edit</Text>
-                  </Pressable>
-                )
-              : undefined,
         }}
       />
       <ScrollView contentContainerStyle={styles.content}>
@@ -1079,6 +1066,18 @@ export default function VehicleDetailScreen() {
             ) : null}
 
             {canManage ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${vehicle.name} details`}
+                onPress={openEdit}
+                style={({ pressed }) => [styles.editDetailsButton, pressed && styles.buttonPressed]}
+              >
+                <AppSymbol name="pencil" color={theme.ember} size={17} />
+                <Text style={styles.editDetailsLabel}>Edit vehicle details</Text>
+              </Pressable>
+            ) : null}
+
+            {canManage ? (
               <View style={styles.dangerSection}>
                 <Text style={styles.dangerTitle}>Delete vehicle</Text>
                 <Text style={styles.dangerCopy}>
@@ -1351,15 +1350,19 @@ function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
     flex: { flex: 1 },
     safeArea: { flex: 1, backgroundColor: theme.canvas },
-    headerEdit: {
-      minHeight: 44,
+    editDetailsButton: {
+      minHeight: 46,
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 8,
+      justifyContent: "center",
+      gap: 7,
+      borderWidth: 1,
+      borderColor: theme.ember,
+      borderRadius: 10,
+      backgroundColor: theme.paper,
+      paddingHorizontal: 15,
     },
-    headerEditPressed: { opacity: 0.55 },
-    headerEditLabel: { color: theme.ember, fontSize: 16, fontWeight: "700" },
+    editDetailsLabel: { color: theme.ember, fontSize: 14, fontWeight: "700" },
     content: {
       flexGrow: 1,
       paddingHorizontal: 20,

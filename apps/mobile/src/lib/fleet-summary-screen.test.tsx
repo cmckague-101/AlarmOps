@@ -32,31 +32,18 @@ function nodes(value:unknown):Node[]{
 }
 const render=(component:()=>unknown)=>{const frame=runtime.frame();runtime.enter(frame);return component()};
 const stat=(tree:unknown,label:string)=>nodes(tree).find(node=>node.type==='View'&&typeof node.props.accessibilityLabel==='string'&&(node.props.accessibilityLabel as string).endsWith(label));
-const flat=(style:unknown)=>[style].flat(Infinity).filter(Boolean);
 beforeEach(()=>{fleet.vehicles=[]});
 
-describe('mobile Fleet summary cards',()=>{
-  it('shows Total, Ready, and Needs attention using the shared domain rule',()=>{
+describe('mobile Fleet header',()=>{
+  it('has no Total, Ready, or Needs attention summary cards (removed to match the client sandbox)',()=>{
     fleet.vehicles=[
       {id:'1',name:'Engine 1',type:'Engine',status:'Ready'},
       {id:'2',name:'Engine 2',type:'Engine',status:'Ready',nextOilChangeDue:'2000-01-01'},
-      {id:'3',name:'Tender',type:'Tender',status:'Assigned'},
-      {id:'4',name:'Dozer',type:'Dozer',status:'Out of service'},
     ];
     const tree=render(FleetScreen);
-    expect(stat(tree,'total vehicles')?.props.accessibilityLabel).toBe('4 total vehicles');
-    expect(stat(tree,'ready')?.props.accessibilityLabel).toBe('2 ready');
-    const attention=stat(tree,'need attention')!;
-    expect(attention.props.accessibilityLabel).toBe('2 need attention');
-    expect(flat(attention.props.style)).toContainEqual(expect.objectContaining({borderColor:'theme.warning'}));
-  });
-  it('does not highlight Needs attention at zero and hides cards for an empty fleet',()=>{
-    fleet.vehicles=[{id:'1',name:'Engine 1',type:'Engine',status:'Ready'}];
-    const attention=stat(render(FleetScreen),'need attention')!;
-    expect(attention.props.accessibilityLabel).toBe('0 need attention');
-    expect(flat(attention.props.style)).not.toContainEqual(expect.objectContaining({borderColor:'theme.warning'}));
-    fleet.vehicles=[];
-    expect(stat(render(FleetScreen),'need attention')).toBeUndefined();
+    expect(stat(tree,'total vehicles')).toBeUndefined();
+    expect(stat(tree,'ready')).toBeUndefined();
+    expect(stat(tree,'need attention')).toBeUndefined();
   });
 });
 
