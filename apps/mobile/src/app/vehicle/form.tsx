@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { engineTypeFor, inspectionExpirationDate, localDateToday, parseViprForm, viprCategories, viprCategoryFor, viprCategoryHasPump, viprCategoryHasTank, viprEngineTypes, viprFormValues, viprNumberFields, vinError, type Vehicle, type VehicleStatus, type ViprFormValues, type ViprNumberField } from '@fireops/domain';
+import { inspectionExpirationDate, localDateToday, parseViprForm, viprCategoryFor, viprCategoryHasPump, viprCategoryHasTank, viprFormValues, viprNumberFields, vinError, type Vehicle, type VehicleStatus, type ViprFormValues, type ViprNumberField } from '@fireops/domain';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -58,7 +58,6 @@ type FormState = {
 };
 
 type FormErrors = Partial<Record<keyof FormState | keyof ViprFormValues, string>>;
-const viprPlaceholders: Record<ViprNumberField, string> = { pumpGpm: '150', pumpPsi: '250', tankGallons: '500', gvwrLbs: '26000', dailyRate: '1850.00' };
 function editableVehicleVersion(vehicle:FleetVehicle|undefined){try{return vehicle?fleetReadVersion(vehicle,'vehicles'):undefined}catch{return undefined}}
 
 export default function VehicleFormScreen() {
@@ -141,17 +140,12 @@ export default function VehicleFormScreen() {
     setForm((current) => ({ ...current, [key]: value }));
     if (errors[key]) setErrors((current) => ({ ...current, [key]: undefined }));
   };
-  const updateVipr = (key: keyof ViprFormValues, value: string) => {
-    setVipr((current) => ({ ...current, [key]: value }));
-    if (errors[key]) setErrors((current) => ({ ...current, [key]: undefined }));
-  };
   // VIPR bid fields: hidden fields (not used by the chosen category) keep their saved values.
   const viprCategory = viprCategoryFor({ type: selectedType, viprCategory: vipr.viprCategory }).category;
   const viprVisible = (field: ViprNumberField) => field === 'pumpGpm' || field === 'pumpPsi' ? viprCategoryHasPump(viprCategory) : field === 'tankGallons' ? viprCategoryHasTank(viprCategory) : true;
   const savedVipr = viprFormValues(vehicle?.source as Partial<Vehicle> | undefined);
   const viprNumberKeys = Object.keys(viprNumberFields) as ViprNumberField[];
   const viprSubmitValues: ViprFormValues = { ...vipr, ...(viprCategory === 'Engine' ? {} : { engineType: savedVipr.engineType }), ...Object.fromEntries(viprNumberKeys.filter((field) => !viprVisible(field)).map((field) => [field, savedVipr[field]])) };
-  const guessedEngineType = engineTypeFor({ type: selectedType }).engineType;
 
   const choosePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 });
@@ -365,25 +359,7 @@ export default function VehicleFormScreen() {
             <Field label="Notes" styles={styles}><TextInput style={[styles.textInput, styles.notesInput]} value={form.notes} onChangeText={(value) => update('notes', value)} placeholder="Anything else to know about this vehicle" placeholderTextColor={theme.secondary} maxLength={2000} multiline textAlignVertical="top" /></Field>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>VIPR bid details</Text>
-            {offlineCreate ? <Text style={styles.sectionHelp}>Add VIPR details after this vehicle syncs. They need a connection.</Text> : <>
-              <Text style={styles.sectionHelp}>Used by Send to VIPR. Leave blank if this unit isn’t bid in VIPR.</Text>
-              <Field label="VIPR category" error={errors.viprCategory} styles={styles}>
-                <View style={styles.choiceGrid}>
-                  <Choice label={`Match type (${viprCategoryFor({ type: selectedType }).category})`} selected={!vipr.viprCategory} onPress={() => updateVipr('viprCategory', '')} styles={styles} />
-                  {viprCategories.map((category) => <Choice key={category} label={category} selected={vipr.viprCategory === category} onPress={() => updateVipr('viprCategory', category)} styles={styles} />)}
-                </View>
-              </Field>
-              {viprCategory === 'Engine' ? <Field label="Engine type" error={errors.engineType} styles={styles}>
-                <View style={styles.choiceGrid}>
-                  <Choice label={guessedEngineType ? `Match type (${guessedEngineType})` : 'Not set'} selected={!vipr.engineType} onPress={() => updateVipr('engineType', '')} styles={styles} />
-                  {viprEngineTypes.map((type) => <Choice key={type} label={type} selected={vipr.engineType === type} onPress={() => updateVipr('engineType', type)} styles={styles} />)}
-                </View>
-              </Field> : null}
-              {viprNumberKeys.filter(viprVisible).map((field) => { const { label, unit, decimals } = viprNumberFields[field]; return <Field key={field} label={`${label} (${unit})`} error={errors[field]} styles={styles}><TextInput accessibilityLabel={`${label} (${unit})`} style={styles.textInput} value={vipr[field]} onChangeText={(value) => updateVipr(field, value)} placeholder={viprPlaceholders[field]} placeholderTextColor={theme.secondary} keyboardType={decimals ? 'decimal-pad' : 'number-pad'} maxLength={12} /></Field>; })}
-            </>}
-          </View>
+          {/* VIPR bid details were removed from this form to match the client sandbox. Saved values are kept on save. */}
 
           {editing ? <View style={styles.section}><Text style={styles.sectionTitle}>Digital Equipment Binder</Text><Text style={styles.sectionHelp}>Upload image or PDF for each document. Registration and DOT Inspection also support photo capture.</Text><View style={styles.binderList}>{binderDocuments.map(({ key, label }) => { const pending = binderFiles[key]; const existing = attachedBinderFile(vehicle, label); const cameraCapable = key === 'registration' || key === 'dotInspection'; return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`${pending || existing ? 'Replace' : 'Upload'} ${label}`} onPress={() => void chooseBinderDocument(key)} style={({ pressed }) => [styles.binderRow, pressed && styles.pressed]}><View style={styles.binderIcon}><AppSymbol name={{ ios: cameraCapable ? 'camera.fill' : 'doc.fill', android: cameraCapable ? 'photo_camera' : 'description' } as never} color={theme.ember} size={18} /></View><View style={styles.uploadCopy}><Text style={styles.binderLabel}>{label}</Text><Text style={styles.uploadName} numberOfLines={1}>{pending?.name ?? existing?.name ?? 'No document attached'}</Text></View><Text style={styles.binderAction}>{pending || existing ? 'Replace' : cameraCapable ? 'Photo / file' : 'Upload'}</Text></Pressable>; })}</View>{(binderFiles.dotInspection || attachedBinderFile(vehicle, 'DOT Inspection')) ? <Field label="DOT inspection date" required styles={styles}><Pressable accessibilityRole="button" accessibilityLabel="Select DOT inspection date" style={styles.binderRow} onPress={() => setDatePickerOpen(open => !open)}><Text style={styles.binderLabel}>{inspectionDate || 'Select inspection date'}</Text></Pressable><Text style={styles.sectionHelp}>Expires {inspectionExpirationDate(inspectionDate) ?? 'one year after inspection'}</Text>{datePickerOpen ? <><DateTimePicker value={inspectionDate ? new Date(`${inspectionDate}T12:00:00`) : new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (Platform.OS !== 'ios') setDatePickerOpen(false); if (event.type === 'set' && date) setInspectionDate(localDateToday(date)); }}/>{Platform.OS === 'ios' ? <Pressable accessibilityRole="button" onPress={() => setDatePickerOpen(false)}><Text style={styles.binderAction}>Done</Text></Pressable> : null}</> : null}</Field> : null}</View> : null}
         </ScrollView>
