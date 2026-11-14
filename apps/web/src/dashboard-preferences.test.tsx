@@ -104,16 +104,16 @@ describe('dashboard customization',()=>{
     expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
     expect(labels('fire_fighter')).toEqual(['Availability','Payroll','VIPR Intelligence','Invoices']);
   });
-  it('puts the Operations map once at the top of the Command Center, before the tiles and Quick Actions',()=>{
+  it('shows the Command Center tiles first, then Quick Actions, then the Operations map once',()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;
     function Probe(){preferences=useDashboardPreferences('map-order-test',true);return null}
     renderToStaticMarkup(<Probe/>);
     const html=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} quickActions={<p>QA</p>} incidentMap={<p>MAP</p>} nationalFireActivity={<p>NFA</p>} onSelect={()=>{}}/>);
     expect(html.match(/MAP/g)).toHaveLength(1);
-    expect(html.indexOf('Command Center')).toBeLessThan(html.indexOf('MAP'));
-    expect(html.indexOf('MAP')).toBeLessThan(html.indexOf('Active Incidents'));
-    expect(html.indexOf('MAP')).toBeLessThan(html.indexOf('QA'));
-    expect(html.indexOf('QA')).toBeLessThan(html.indexOf('NFA'));
+    expect(html.indexOf('Command Center')).toBeLessThan(html.indexOf('Active Incidents'));
+    expect(html.indexOf('Active Incidents')).toBeLessThan(html.indexOf('QA'));
+    expect(html.indexOf('QA')).toBeLessThan(html.indexOf('MAP'));
+    expect(html.indexOf('MAP')).toBeLessThan(html.indexOf('NFA'));
   });
   it('shows the Operations map even when an old saved preference hid the incident map',async()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;
