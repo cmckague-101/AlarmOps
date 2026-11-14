@@ -121,13 +121,37 @@ export default function CommunicationsScreen() {
             })}
           </View>
         ) : null}
+
+        {/* Placeholder until Marketplace is configured: buyer and seller threads will land here. Matches web. */}
+        <View style={styles.marketplace}>
+          <View style={styles.marketplaceHeading}>
+            <View style={styles.headingCopy}>
+              <Text accessibilityRole="header" style={styles.marketplaceTitle}>Marketplace conversations</Text>
+              <Text style={styles.sectionMeta}>Messages with Marketplace buyers and sellers</Text>
+            </View>
+            <Text style={styles.comingSoon}>Coming soon</Text>
+          </View>
+          <View style={styles.marketplaceEmpty}>
+            <AppSymbol name={{ ios: 'storefront', android: 'storefront' } as never} color={marketplaceColor} size={26} />
+            <Text style={styles.marketplaceEmptyTitle}>No marketplace conversations</Text>
+            <Text style={styles.emptyText}>When Marketplace is set up, messages with buyers and sellers show up here.</Text>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+const marketplaceColor = '#A95616';
+
 function createStyles(theme: FireOpsTheme) {
   return StyleSheet.create({
+    marketplace: { overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, borderRadius: 14, backgroundColor: theme.paper },
+    marketplaceHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+    marketplaceTitle: { color: marketplaceColor, fontSize: 16, lineHeight: 21, fontWeight: '800' },
+    comingSoon: { overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: theme.warningSurface, color: marketplaceColor, fontSize: 11, fontWeight: '800' },
+    marketplaceEmpty: { alignItems: 'center', paddingHorizontal: 24, paddingVertical: 30, gap: 8 },
+    marketplaceEmptyTitle: { color: theme.ink, fontSize: 16, lineHeight: 21, fontWeight: '700' },
     safeArea: { flex: 1, backgroundColor: theme.canvas },
     content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 42, gap: 22 },
     pageTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: '800', letterSpacing: -0.7 },
