@@ -175,7 +175,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
       <button type="button" onClick={endVoice}>End</button>
     </div>}
     <button type="button" className={`assistant-fab${online?'':' offline'}`} aria-label={online?'Open FireOps Assistant':'FireOps Assistant (needs a network connection)'} onClick={()=>setOpen(true)}>
-      <Mascot size={104}/>
+      <Mascot size={78}/>
       {!online&&<span className="assistant-fab-offline" aria-hidden="true"><WifiOff/></span>}
     </button>
 
