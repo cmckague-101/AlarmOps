@@ -61,10 +61,11 @@ describe('mobile Fleet summary cards',()=>{
 });
 
 describe('mobile More screen',()=>{
-  it('is titled Tools and lists Receipts first',()=>{
+  it('is titled Tools and lists News Feed first, then Receipts',()=>{
     const tree=render(More) as Node;
     expect(tree.props.title).toBe('Tools');
     const tiles=nodes(tree).filter(node=>node.type==='Pressable'&&typeof node.props.accessibilityLabel==='string');
-    expect(tiles[0].props.accessibilityLabel).toBe('Receipts');
+    expect(tiles[0].props.accessibilityLabel).toBe('News Feed');
+    expect(tiles[1].props.accessibilityLabel).toBe('Receipts');
   });
 });
