@@ -423,7 +423,7 @@ export default function ReceiptsPage({ companyId, user, crew, assistantRequest, 
     <div className="page-heading hero-heading"><div><h1>{isOwner ? 'Receipts' : 'My receipts'}</h1>{!isOwner&&<p>Keep expense records ready for reimbursement and audits.</p>}</div></div>
 
     <section className="receipt-upload-card" aria-labelledby="add-receipt-heading">
-      <div className="receipt-card-heading"><ReceiptText/><div><h2 id="add-receipt-heading">Add receipts</h2><p>{autofillEnabled ? 'Take a photo of each receipt. Auto-fill reads the merchant, date and amount; check each card before submitting.' : 'Take a photo of each receipt or add files, then enter the merchant, date and amount on each card.'}</p></div></div>
+      <div className="receipt-card-heading"><ReceiptText/><div><h2 id="add-receipt-heading">Capture receipts</h2><p>{autofillEnabled ? 'Take a photo of each receipt. Auto-fill reads the merchant, date and amount; check each card before submitting.' : 'Take a photo of each receipt or add files, then enter the merchant, date and amount on each card.'}</p></div></div>
       <form className="receipt-capture-form" onSubmit={(event) => void submit(event)}>
         <label className="receipt-project-field"><span>Project <em>(optional)</em></span><input list="receipt-project-options" maxLength={MAX_RECEIPT_PROJECT_LENGTH} placeholder="Pine Valley Fire" value={project} disabled={saving} onChange={(event) => setProject(event.target.value)}/><datalist id="receipt-project-options">{projects.map((item) => <option key={item} value={item}/>)}</datalist><em className="receipt-field-hint">Applies to every receipt in this batch.</em></label>
 

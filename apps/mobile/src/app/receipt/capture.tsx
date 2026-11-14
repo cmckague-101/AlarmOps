@@ -189,11 +189,11 @@ export default function ReceiptCaptureScreen() {
 
   const full = cards.length >= MAX_RECEIPT_BATCH;
   return <SafeAreaView style={styles.safe} edges={['bottom']}>
-    <Stack.Screen options={{ title: 'Add receipts' }} />
+    <Stack.Screen options={{ title: 'Capture receipts' }} />
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
         <View style={styles.heading}>
-          <Text accessibilityRole="header" style={styles.title}>Add receipts</Text>
+          <Text accessibilityRole="header" style={styles.title}>Capture receipts</Text>
           <Text style={styles.subtitle}>{offline ? 'Offline: receipts are kept on this device and upload when connected.' : autofillOn ? 'Photograph each receipt. Auto-fill reads the merchant, date and amount; check each card before submitting.' : 'Photograph each receipt or choose files, then enter the merchant, date and amount on each card.'}</Text>
         </View>
 
