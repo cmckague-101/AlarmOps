@@ -102,7 +102,8 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
-const navigationOrder:NavigablePage[]=['overview','vipr-intelligence','hotels','communications','news','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+// Fixed order through Training; rows after it spill into More first on short windows.
+const navigationOrder:NavigablePage[]=['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','shop','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';

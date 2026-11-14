@@ -16,18 +16,17 @@ import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
-  // News Feed sits right after Comms (the Messages tab), matching the web sidebar.
-  {label:'News Feed',path:'/news-feed',ios:'newspaper.fill',android:'newspaper',color:'#B45309'},
-  {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
-  {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
-  {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
-  {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
-  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
-  {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
-  {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
-  // VIPR DPLs moved into VIPR Intelligence (with Send to VIPR for owners and admins).
-  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#1F5C48',viprIcon:true},
+  // Same order as the web sidebar (Operations, Fleet and Messages are tabs); VIPR Intelligence follows Training.
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
+  {label:'News Feed',path:'/news-feed',ios:'newspaper.fill',android:'newspaper',color:'#B45309'},
+  {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
+  {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
+  {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
+  {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
+  {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
+  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#1F5C48',viprIcon:true},
+  {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
+  {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
   {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
