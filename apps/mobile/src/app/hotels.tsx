@@ -1,10 +1,11 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ActivityIndicator,Linking,Platform,Pressable,StyleSheet,Text,TextInput,View,type ScrollViewInstance} from 'react-native';
 import * as Location from 'expo-location';
-import {fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,fedRoomsMapsUrl,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
+import {fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsMapsUrl,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 import {AppSymbol} from '@/components/app-symbol';
 import {FilterSelect} from '@/components/filter-select';
 import {FlightSearchCard} from '@/components/flight-search-card';
+import {RestaurantSearchCard} from '@/components/restaurant-search-card';
 import {SectionScreen} from '@/components/section-screen';
 import {supabase} from '@/lib/supabase';
 import {useSession} from '@/providers/session-provider';
@@ -40,6 +41,8 @@ export default function HotelsScreen(){
   const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
   const [nearNote,setNearNote]=useState('');
   const [flightsTo,setFlightsTo]=useState<{value:string;key:number}|null>(null);
+  const [restaurantsNear,setRestaurantsNear]=useState<{value:string;key:number}|null>(null);
+  const restaurantsY=useRef(0);
   const scroll=useRef<ScrollViewInstance>(null);
   const region=regionValue?fedRoomsRegionFromValue(regionValue):null;
   const ready=Boolean(region||term.length>=2);
@@ -129,7 +132,7 @@ export default function HotelsScreen(){
         {fedRoomsAddressLines(hotel).map(line=><Text key={line} style={styles.detail}>{line}</Text>)}
         <View style={styles.actions}>
           <Pressable accessibilityRole="link" accessibilityLabel={`Open ${hotel.name} in Maps`} onPress={()=>void Linking.openURL(fedRoomsMapsUrl(hotel,mapsProvider))} style={({pressed})=>[styles.action,pressed&&styles.pressed]}><AppSymbol name={{ios:'map',android:'map'}} size={15} color={theme.green}/><Text style={styles.actionText}>Map</Text></Pressable>
-          <Pressable accessibilityRole="link" accessibilityLabel={`Find restaurants near ${hotel.name}`} onPress={()=>void Linking.openURL(fedRoomsRestaurantsUrl(hotel,mapsProvider))} style={({pressed})=>[styles.action,pressed&&styles.pressed]}><AppSymbol name={{ios:'fork.knife',android:'restaurant'}} size={15} color={theme.green}/><Text style={styles.actionText}>Restaurants</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Find restaurants near ${hotel.name}`} onPress={()=>{setRestaurantsNear(current=>({value:[hotel.address,hotel.city,hotel.state].filter(Boolean).join(', '),key:(current?.key??0)+1}));scroll.current?.scrollTo({y:restaurantsY.current,animated:true})}} style={({pressed})=>[styles.action,pressed&&styles.pressed]}><AppSymbol name={{ios:'fork.knife',android:'restaurant'}} size={15} color={theme.green}/><Text style={styles.actionText}>Restaurants</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`Search flights to ${fedRoomsHotelDestination(hotel)}`} onPress={()=>{setFlightsTo(current=>({value:fedRoomsHotelDestination(hotel),key:(current?.key??0)+1}));scroll.current?.scrollTo({y:0,animated:true})}} style={({pressed})=>[styles.action,pressed&&styles.pressed]}><AppSymbol name={{ios:'airplane',android:'flight'}} size={15} color={theme.green}/><Text style={styles.actionText}>Flights here</Text></Pressable>
           <Pressable accessibilityRole="link" accessibilityLabel={`Search the web for ${hotel.name}`} onPress={()=>void Linking.openURL(fedRoomsWebSearchUrl(hotel))} style={({pressed})=>[styles.action,pressed&&styles.pressed]}><AppSymbol name={{ios:'safari',android:'travel_explore'}} size={15} color={theme.green}/><Text style={styles.actionText}>Search web</Text></Pressable>
         </View>
@@ -137,6 +140,7 @@ export default function HotelsScreen(){
       {!hotels.length&&!loading?<View style={styles.empty}><Text style={styles.stateTitle}>No hotels match</Text></View>:null}
       <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL(fedRoomsSourceUrl)} style={({pressed})=>[styles.source,pressed&&styles.pressed]}><Text style={styles.sourceText}>{demoMode?'Fictional sample records for demonstration. ':'Source: GSA FedRooms accepted properties. '}Verify official source. Rates and availability are not shown. FireOps is not affiliated with or endorsed by GSA.</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'}} size={16} color={theme.green}/></Pressable>
     </View>:null}
+    <View onLayout={event=>{restaurantsY.current=event.nativeEvent.layout.y}}><RestaurantSearchCard demoMode={demoMode} prefillNear={restaurantsNear}/></View>
   </SectionScreen>;
 }
 

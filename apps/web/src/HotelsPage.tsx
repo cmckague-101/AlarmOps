@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowLeft,BedDouble,ExternalLink,LocateFixed,MapPin,Plane,Search,UtensilsCrossed} from 'lucide-react';
 import {supabase} from './supabase';
-import {airportLabel,searchAirports,type Airport,type AirportRow,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,fedRoomsRestaurantsUrl,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
+import {airportLabel,searchAirports,type Airport,type AirportRow,createDemoFedRoomsData,fedRoomsAddressLines,fedRoomsHotelDestination,filterDemoRestaurants,geocodeTravelPlace,restaurantKind,restaurantMapsUrl,searchRestaurantsNear,type TravelRestaurant,flightSearchProblem,googleFlightsUrl,nearestAirport,fedRoomsMapsUrl,fedRoomsPlaceFromReverseGeocode,fedRoomsPlaceLabel,fedRoomsRegionFromValue,fedRoomsRegionLabel,fedRoomsRegionValue,fedRoomsResultLimit,fedRoomsReverseGeocodeUrl,fedRoomsSearchFilter,fedRoomsSearchTerm,fedRoomsSourceUrl,fedRoomsWebSearchUrl,matchFedRoomsCity,matchFedRoomsRegion,sortFedRoomsRegions,type FedRoomsCity,type FedRoomsPlace,type FedRoomsHotel,type FedRoomsRegion} from '@fireops/domain';
 
 const message=(error:unknown)=>error instanceof Error?error.message:'Hotel data could not be loaded.';
 const {hotels:demoHotels,regions:demoRegions}=createDemoFedRoomsData();
@@ -97,6 +97,71 @@ function FlightSearchCard({prefillTo}:{prefillTo:{value:string;key:number}|null}
   </section>;
 }
 
+/** Restaurants near a city or address (OpenStreetMap). A hotel's Restaurants button fills in its address and searches. */
+function RestaurantSearch({demoMode,prefillNear}:{demoMode:boolean;prefillNear:{value:string;key:number}|null}){
+  const [query,setQuery]=useState('');
+  const [results,setResults]=useState<TravelRestaurant[]>([]);
+  const [placeLabel,setPlaceLabel]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [locating,setLocating]=useState(false);
+  const [error,setError]=useState('');
+  const [searched,setSearched]=useState(false);
+  const section=useRef<HTMLElement>(null);
+  const request=useRef(0);
+
+  useEffect(()=>{
+    if(!prefillNear)return;
+    setQuery(prefillNear.value);
+    section.current?.scrollIntoView({behavior:'smooth',block:'start'});
+    void runSearch(prefillNear.value);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when a hotel asks for restaurants
+  },[prefillNear]);
+
+  async function show(load:()=>Promise<{items:TravelRestaurant[];label:string}>){
+    const id=++request.current;
+    setLoading(true);setError('');setSearched(true);
+    try{const {items,label}=await load();if(id!==request.current)return;setResults(items);setPlaceLabel(label)}
+    catch(failure){if(id!==request.current)return;setResults([]);setPlaceLabel('');setError(failure instanceof Error?failure.message:'Restaurant search failed.')}
+    finally{if(id===request.current)setLoading(false)}
+  }
+
+  function runSearch(raw:string){
+    const term=raw.trim();
+    if(demoMode)return show(async()=>({items:filterDemoRestaurants(term),label:term||'Sample restaurants'}));
+    if(term.length<2){setSearched(true);setResults([]);setError('Enter a city or address, or use Near me.');return Promise.resolve()}
+    return show(async()=>{const place=await geocodeTravelPlace(term);return {items:await searchRestaurantsNear(place.lat,place.lon),label:place.label}});
+  }
+
+  async function findNearMe(){
+    setLocating(true);
+    try{
+      if(demoMode){setQuery('Redding, CA');await runSearch('Redding, CA');return}
+      await show(async()=>{const {coords}=await currentPosition();setQuery('');return {items:await searchRestaurantsNear(coords.latitude,coords.longitude),label:'Near your location'}});
+    }finally{setLocating(false)}
+  }
+
+  return <section ref={section} className="travel-restaurants" aria-labelledby="travel-restaurants-title">
+    <div className="travel-restaurants-heading">
+      <div><h2 id="travel-restaurants-title" className="travel-section-title"><UtensilsCrossed/>Restaurants</h2><p>Restaurants, cafes, and food spots near a city, an address, or your location.</p></div>
+      <button type="button" className="secondary compact dispatch-refresh" onClick={()=>void findNearMe()} disabled={locating||loading}><LocateFixed className={locating?'spin':''}/>{locating?'Locating…':'Near me'}</button>
+    </div>
+    <form className="travel-restaurants-search" aria-label="Restaurant search" onSubmit={event=>{event.preventDefault();void runSearch(query)}}>
+      <label><span>Near</span><div className="hotels-search"><Search/><input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="City or address, e.g. Boise, ID"/></div></label>
+      <button type="submit" className="primary" disabled={loading}><Search/>{loading?'Searching…':'Search'}</button>
+    </form>
+    {error?<div className="dispatch-state error" role="alert"><b>Restaurant search unavailable</b><span>{error}</span></div>:null}
+    {searched&&!error?<section className="dispatch-results" aria-busy={loading}>
+      <header><div><h2>{placeLabel||'Search results'}</h2><p>{loading?'Searching…':`${results.length} ${results.length===1?'place':'places'}`}</p></div>{demoMode?<span className="dispatch-warning">Demo data</span>:null}</header>
+      <ul className="hotels-list">{results.map(item=><li key={item.id}>
+        <div><b>{item.name}</b><span>{restaurantKind(item)}</span>{item.address?<span>{item.address}</span>:null}</div>
+        <div className="hotels-actions"><a className="secondary compact" href={restaurantMapsUrl(item)} target="_blank" rel="noreferrer"><MapPin/>Map</a></div>
+      </li>)}</ul>
+      {!results.length&&!loading?<div className="dispatch-empty"><UtensilsCrossed/><b>No restaurants found</b></div>:null}
+      <footer>{demoMode?'Fictional sample records for product demonstration. ':'Source: OpenStreetMap contributors. '}Coverage varies by area. FireOps is not affiliated with listed businesses.</footer>
+    </section>:null}
+  </section>;
+}
+
 export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;onBack?:()=>void}){
   const [regions,setRegions]=useState<FedRoomsRegion[]>(demoMode?sortFedRoomsRegions(demoRegions):[]);
   const [cities,setCities]=useState<FedRoomsCity[]>([]);
@@ -112,6 +177,7 @@ export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;on
   const [nearMe,setNearMe]=useState<{regionValue:string;place:FedRoomsPlace}|null>(null);
   const [nearNote,setNearNote]=useState('');
   const [flightsTo,setFlightsTo]=useState<{value:string;key:number}|null>(null);
+  const [restaurantsNear,setRestaurantsNear]=useState<{value:string;key:number}|null>(null);
   const region=regionValue?fedRoomsRegionFromValue(regionValue):null;
   const ready=Boolean(region||term.length>=2);
 
@@ -206,10 +272,11 @@ export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;on
       <header><div><h2>{city||(region?fedRoomsRegionLabel({...region,hotel_count:0}):'Search results')}</h2><p>{hotels.length>fedRoomsResultLimit?`First ${fedRoomsResultLimit} matches. Narrow your search to see more.`:`${hotels.length} ${hotels.length===1?'property':'properties'}`}</p></div>{demoMode?<span className="dispatch-warning">Demo data</span>:null}</header>
       <ul className="hotels-list">{shown.map(hotel=><li key={hotel.property_key}>
         <div><b>{hotel.name}</b>{fedRoomsAddressLines(hotel).map(line=><span key={line}>{line}</span>)}</div>
-        <div className="hotels-actions"><a className="secondary compact" href={fedRoomsMapsUrl(hotel)} target="_blank" rel="noreferrer"><MapPin/>Map</a><a className="secondary compact" href={fedRoomsRestaurantsUrl(hotel)} target="_blank" rel="noreferrer"><UtensilsCrossed/>Restaurants</a><button type="button" className="secondary compact" onClick={()=>setFlightsTo(current=>({value:fedRoomsHotelDestination(hotel),key:(current?.key??0)+1}))}><Plane/>Flights here</button><a className="secondary compact" href={fedRoomsWebSearchUrl(hotel)} target="_blank" rel="noreferrer"><ExternalLink/>Search web</a></div>
+        <div className="hotels-actions"><a className="secondary compact" href={fedRoomsMapsUrl(hotel)} target="_blank" rel="noreferrer"><MapPin/>Map</a><button type="button" className="secondary compact" onClick={()=>setRestaurantsNear(current=>({value:[hotel.address,hotel.city,hotel.state].filter(Boolean).join(', '),key:(current?.key??0)+1}))}><UtensilsCrossed/>Restaurants</button><button type="button" className="secondary compact" onClick={()=>setFlightsTo(current=>({value:fedRoomsHotelDestination(hotel),key:(current?.key??0)+1}))}><Plane/>Flights here</button><a className="secondary compact" href={fedRoomsWebSearchUrl(hotel)} target="_blank" rel="noreferrer"><ExternalLink/>Search web</a></div>
       </li>)}</ul>
       {!hotels.length&&!loading?<div className="dispatch-empty"><BedDouble/><b>No hotels match</b></div>:null}
       <footer>{demoMode?'Fictional sample records for product demonstration. ':<>Source: GSA FedRooms accepted properties{updated?`, updated ${new Date(updated).toLocaleDateString()}`:''}. </>}<a href={fedRoomsSourceUrl} target="_blank" rel="noreferrer">Verify official source</a>. Rates and availability are not shown. FireOps is not affiliated with or endorsed by GSA.</footer>
     </section>:null}
+    <RestaurantSearch demoMode={demoMode} prefillNear={restaurantsNear}/>
   </div>;
 }

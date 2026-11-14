@@ -39,3 +39,4 @@ export * from './receipt-export';
 export * from './vipr';
 export * from './assistant';
 export * from './quickbooks';
+export * from './travel-restaurants';
