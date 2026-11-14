@@ -74,7 +74,7 @@ export function AssistantHost(){
       onPress={()=>setOpen(true)}
       style={[styles.fab,{bottom:Math.max(insets.bottom,8)+58},offline&&styles.fabOffline]}
     >
-      <Mascot size={50}/>
+      <Mascot size={100}/>
       {offline?<View style={styles.offlineBadge}><AppSymbol name={{ios:'wifi.slash',android:'wifi_off'} as never} color={theme.danger} size={12}/></View>:null}
     </Pressable>
 
@@ -159,7 +159,7 @@ export function AssistantHost(){
 
 function createStyles(theme:FireOpsTheme){
   return StyleSheet.create({
-    fab:{position:'absolute',right:14,zIndex:40,width:58,height:58,alignItems:'center',justifyContent:'center'},
+    fab:{position:'absolute',right:14,zIndex:40,width:116,height:116,alignItems:'center',justifyContent:'center'},
     fabOffline:{opacity:.7},
     offlineBadge:{position:'absolute',right:2,bottom:2,width:22,height:22,borderRadius:11,alignItems:'center',justifyContent:'center',backgroundColor:theme.paper},
     modalRoot:{flex:1,justifyContent:'flex-end'},
