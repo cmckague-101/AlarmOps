@@ -250,7 +250,6 @@ export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;on
     return()=>{active=false};
   },[regionValue,city,term,demoMode]);
 
-  const total=useMemo(()=>regions.reduce((sum,item)=>sum+item.hotel_count,0),[regions]);
   const updated=useMemo(()=>regions.reduce<string|null>((latest,item)=>item.last_seen_at&&(!latest||item.last_seen_at>latest)?item.last_seen_at:latest,null),[regions]);
   const shown=hotels.slice(0,fedRoomsResultLimit);
 
@@ -267,7 +266,6 @@ export default function HotelsPage({demoMode=false,onBack}:{demoMode?:boolean;on
     {nearNote?<p className="hotels-near-note" role="status">{nearNote}</p>:null}
     {error?<div className="dispatch-state error" role="alert"><b>Hotel data unavailable</b><span>{error}</span></div>:null}
     {!error&&!supabase&&!demoMode?<div className="dispatch-state"><b>Hotel data unavailable</b><span>Connect FireOps to Supabase to browse imported hotels.</span></div>:null}
-    {!error&&(supabase||demoMode)&&!ready?<div className="dispatch-state"><b>{regions.length||loading?'Find a FedRooms hotel':'No hotels imported yet'}</b><span>{regions.length||loading?`Choose a state or country, or search by name. ${total?`${total.toLocaleString()} properties available.`:''}`:'Check again after the scheduled GSA import.'}</span></div>:null}
     {ready&&!error?<section className="dispatch-results" aria-busy={loading}>
       <header><div><h2>{city||(region?fedRoomsRegionLabel({...region,hotel_count:0}):'Search results')}</h2><p>{hotels.length>fedRoomsResultLimit?`First ${fedRoomsResultLimit} matches. Narrow your search to see more.`:`${hotels.length} ${hotels.length===1?'property':'properties'}`}</p></div>{demoMode?<span className="dispatch-warning">Demo data</span>:null}</header>
       <ul className="hotels-list">{shown.map(hotel=><li key={hotel.property_key}>

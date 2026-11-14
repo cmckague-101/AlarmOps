@@ -109,7 +109,6 @@ export default function HotelsScreen(){
     return()=>{active=false};
   },[regionValue,city,term]);
 
-  const total=regions.reduce((sum,item)=>sum+item.hotel_count,0);
   const shown=hotels.slice(0,fedRoomsResultLimit);
   return <SectionScreen scrollRef={scroll} title="Travel" description="Flights, GSA FedRooms hotels, and nearby restaurants. Book through your travel system or directly.">
     <FlightSearchCard prefillTo={flightsTo}/>
@@ -124,7 +123,6 @@ export default function HotelsScreen(){
     {loading?<ActivityIndicator accessibilityLabel="Loading hotels" style={styles.loading} color={theme.green}/>:null}
     {error?<View accessibilityRole="alert" style={[styles.state,styles.errorState]}><Text style={styles.stateTitle}>Hotel data unavailable</Text><Text style={styles.errorText}>{error}</Text></View>:null}
     {!error&&!supabase?<View style={styles.state}><Text style={styles.stateTitle}>Supabase connection required</Text></View>:null}
-    {!error&&supabase&&!ready?<View style={styles.state}><Text style={styles.stateTitle}>{regions.length||loading?'Find a FedRooms hotel':'No hotels imported yet'}</Text><Text style={styles.stateCopy}>{regions.length||loading?`Choose a state or country, or search by name.${total?` ${total.toLocaleString()} properties available.`:''}`:'Check again after the scheduled GSA import.'}</Text></View>:null}
     {ready&&!error&&supabase?<View style={styles.results}>
       <View style={styles.resultsHeader}><View style={styles.headerCopy}><Text style={styles.resultsTitle}>{city||(region?fedRoomsRegionLabel({...region,hotel_count:0}):'Search results')}</Text><Text style={styles.resultsMeta}>{hotels.length>fedRoomsResultLimit?`First ${fedRoomsResultLimit} matches. Narrow your search to see more.`:`${hotels.length} ${hotels.length===1?'property':'properties'}`}</Text></View>{demoMode?<Text style={styles.warning}>Demo data</Text>:null}</View>
       {shown.map(hotel=><View key={hotel.property_key} style={styles.hotel}>
