@@ -16,6 +16,8 @@ import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
+  // News Feed sits right after Comms (the Messages tab), matching the web sidebar.
+  {label:'News Feed',path:'/news-feed',ios:'newspaper.fill',android:'newspaper',color:'#B45309'},
   {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Qualifications',path:'/qualifications',ios:'checkmark.seal.fill',android:'verified',color:'#26765A'},
@@ -24,7 +26,7 @@ const sections=[
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
   // VIPR DPLs moved into VIPR Intelligence (with Send to VIPR for owners and admins).
-  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#B45309',viprIcon:true},
+  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#1F5C48',viprIcon:true},
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
   {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},

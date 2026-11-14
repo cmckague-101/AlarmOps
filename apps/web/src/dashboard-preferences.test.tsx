@@ -24,7 +24,9 @@ describe('dashboard customization',()=>{
     for(const role of ['owner','admin','shop_tech','fire_fighter'] as const){
       const keys=ids(role,platform);
       expect(new Set(keys).size).toBe(keys.length);
-      expect(keys).toEqual(expect.arrayContaining(['greeting','availability','payroll','invoices','nationalFireActivity']));
+      expect(keys).toEqual(expect.arrayContaining(['greeting','availability','payroll','invoices']));
+      // National Fire Activity lives on News Feed now, so it has no Dashboard switch.
+      expect(keys).not.toContain('nationalFireActivity');
       // The Operations map always shows, so there is no Incident map switch.
       expect(keys).not.toContain('incidentMap');
       expect(keys).not.toContain('receipts');
@@ -104,16 +106,17 @@ describe('dashboard customization',()=>{
     expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
     expect(labels('fire_fighter')).toEqual(['Availability','Payroll','VIPR Intelligence','Invoices']);
   });
-  it('shows the Command Center tiles first, then Quick Actions, then the Operations map once',()=>{
+  it('shows the Command Center tiles first, then Quick Actions, then the Operations map once, without National Fire Activity',()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;
     function Probe(){preferences=useDashboardPreferences('map-order-test',true);return null}
     renderToStaticMarkup(<Probe/>);
-    const html=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} quickActions={<p>QA</p>} incidentMap={<p>MAP</p>} nationalFireActivity={<p>NFA</p>} onSelect={()=>{}}/>);
+    const html=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} quickActions={<p>QA</p>} incidentMap={<p>MAP</p>} onSelect={()=>{}}/>);
     expect(html.match(/MAP/g)).toHaveLength(1);
     expect(html.indexOf('Command Center')).toBeLessThan(html.indexOf('Active Incidents'));
     expect(html.indexOf('Active Incidents')).toBeLessThan(html.indexOf('QA'));
     expect(html.indexOf('QA')).toBeLessThan(html.indexOf('MAP'));
-    expect(html.indexOf('MAP')).toBeLessThan(html.indexOf('NFA'));
+    // National Fire Activity moved to the News Feed page.
+    expect(html).not.toContain('National Fire Activity');
   });
   it('shows the Operations map even when an old saved preference hid the incident map',async()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;

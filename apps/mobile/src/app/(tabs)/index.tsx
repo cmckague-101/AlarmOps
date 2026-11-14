@@ -1,5 +1,4 @@
 import {QuickActions} from '@/components/quick-actions';
-import {NationalFireActivitySection} from '@/components/national-fire-activity';
 import {OperationsMap, useOperationsMap} from '@/components/operations-map';
 import {isOperationsLandscape} from '@/lib/operations-layout';
 import {OwnerDashboard} from '@/components/owner-dashboard';
@@ -102,7 +101,6 @@ export default function OperationsScreen() {
         </View>}
         {incidentMap}
         <QuickActions/>
-        {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection/>}
         {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
 
         {error ? (

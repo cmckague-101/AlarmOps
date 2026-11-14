@@ -25,7 +25,7 @@ export function quickActionItems(role:UserRole,theme:FireOpsTheme):{item:Dashboa
   ];
 }
 
-export const viprIntelligenceColor='#B45309';
+export const viprIntelligenceColor='#1F5C48';
 
 export function QuickActions() {
   const router = useRouter();

@@ -51,7 +51,7 @@ export type {
 export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
-  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Package, Pencil, Phone, Plus,
+  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus,
   BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
@@ -73,7 +73,7 @@ const SendToViprFlow=lazy(()=>import('./SendToViprFlow'));
 const ViprIntelligencePage=lazy(()=>import('./ViprIntelligencePage').then(module=>({default:module.ViprIntelligencePage})));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
+type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'news' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
 type NavigablePage = Exclude<Page,'more'|'send-vipr'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
@@ -84,6 +84,7 @@ export const navigationMeta = {
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Comms',description:'Company updates and replies',Icon:MessageSquare},
+  news:{label:'News Feed',description:'National fire activity and industry news',Icon:Newspaper},
   vehicles:{label:'Fleet',description:'Vehicles, assignments, and issues',Icon:Truck},
   shop:{label:'Shop',description:'Shop tasks and fleet repairs',Icon:Wrench},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
@@ -101,7 +102,7 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
-const navigationOrder:NavigablePage[]=['overview','vipr-intelligence','hotels','communications','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','vipr-intelligence','hotels','communications','news','vehicles','shop','crew','qualifications','documents','receipts','invoices','payroll','availability','training','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';
@@ -816,6 +817,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn)} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
+        {page === 'news' && <NewsFeedPage demoMode={demoMode}/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage onBack={goBack} documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={goBack} assistantRequest={assistantTask} onAssistantRequestDone={()=>setAssistantTask(null)}/>}
@@ -914,9 +916,9 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 
 // Tile colors match the phone app's More grid and each Quick Action icon.
 const moreTileColors:Partial<Record<NavigablePage|'inspect'|'workforce'|'marketplace',string>>={
-  overview:'#C94321',communications:'#285F9E',vehicles:'#2F6A8F',
+  overview:'#C94321',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',shop:'#8A3418',
-  'vipr-intelligence':'#B45309',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
+  'vipr-intelligence':'#1F5C48',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',workforce:'#34745C',marketplace:'#A95616',
 };
 type MoreTile={key:string;label:string;Icon:NavIcon;color:string;onOpen:()=>void;badge?:string;comingSoon?:boolean;urgentLabel?:string};
@@ -1078,16 +1080,20 @@ function MemberNotifications({threads,documents,trainings,inboxNotifications,dis
   </section>;
 }
 
+/** News Feed: National Fire Activity for now; more news sources come later. */
+function NewsFeedPage({demoMode}:{demoMode:boolean}) {
+  return <div className="page news-feed-page"><div className="page-heading hero-heading"><div><h1>News Feed</h1></div></div><NationalFireActivitySection demoMode={demoMode}/></div>;
+}
+
 function Dashboard({onCustomize,demoMode=false,quickActions,incidentMap,companyId,vehicles,issues,inventoryItems,onOpenInventory,crew,activities,threads,documents,trainings,inboxNotifications,dismissedNotificationIds,onDismissNotification,onClearNotifications,user,onSelectVehicle,onSelectIssue,onSelectCrew,onSelectPayroll,onSelectShopJob,onOpenNotifications,onSelectIncident}:{onCustomize:()=>void;demoMode?:boolean;quickActions:React.ReactNode;incidentMap:React.ReactNode;companyId?:string;vehicles:Vehicle[];issues:FleetIssue[];inventoryItems:InventoryItem[];onOpenInventory:()=>void;crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];inboxNotifications:DashboardNotification[]|null;dismissedNotificationIds:Set<string>;onDismissNotification:(id:string)=>void;onClearNotifications:(ids:Iterable<string>)=>void;user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onSelectPayroll:(id:string)=>void;onSelectShopJob:(id:string)=>void;onOpenNotifications:(page:DashboardNotification['source'],id?:string,vehicleId?:string)=>void;onSelectIncident:(id:string)=>void}) {
   const preferences=useDashboardPreferences(user.id,demoMode);
   const notifications=<MemberNotifications threads={threads} documents={documents} trainings={trainings} inboxNotifications={inboxNotifications} dismissedNotificationIds={dismissedNotificationIds} onDismissNotification={onDismissNotification} onClearNotifications={onClearNotifications} user={user} onOpen={onOpenNotifications}/>;
-  if(isCompanyManager(user.role))return <><OwnerDashboard canProcessPayroll={canProcessFinance(user.role)} preferences={preferences} onCustomize={onCustomize} demoMode={demoMode} name={user.name} quickActions={quickActions} incidentMap={incidentMap} nationalFireActivity={preferences.visible('nationalFireActivity')?<NationalFireActivitySection demoMode={demoMode}/>:null} companyId={companyId} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='payroll')onSelectPayroll(target.id);if(target.type==='shop')onSelectShopJob(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>{Boolean(filterDismissedNotifications(inboxNotifications??[],dismissedNotificationIds).length)&&<div className="page">{notifications}</div>}</>;
+  if(isCompanyManager(user.role))return <><OwnerDashboard canProcessPayroll={canProcessFinance(user.role)} preferences={preferences} onCustomize={onCustomize} demoMode={demoMode} name={user.name} quickActions={quickActions} incidentMap={incidentMap} companyId={companyId} vehicles={vehicles} crew={crew} issues={issues} onSelect={target=>{if(target.type==='incident')onSelectIncident(target.id);if(target.type==='payroll')onSelectPayroll(target.id);if(target.type==='shop')onSelectShopJob(target.id);if(target.type==='vehicle'){const item=vehicles.find(v=>v.id===target.id);if(item)onSelectVehicle(item)}if(target.type==='crew'){const item=crew.find(v=>v.id===target.id);if(item)onSelectCrew(item)}if(target.type==='issue'){const item=issues.find(v=>v.id===target.id);if(item)onSelectIssue(item)}}}/>{Boolean(filterDismissedNotifications(inboxNotifications??[],dismissedNotificationIds).length)&&<div className="page">{notifications}</div>}</>;
   const openIssues=issues.filter(issue=>issue.status==='Open');
   return <div className="page overview-page"><div className="page-heading hero-heading"><div><h1>Operations</h1></div>{preferences.visible('greeting')&&<div className="dashboard-user"><span>{user.name}</span></div>}</div>
     {incidentMap}
     {quickActions}
     {canManageInventory(user.role)&&preferences.visible('attention')&&<ResourceAttention rows={resourceAttentionRows(openIssues,vehicles,inventoryItems)} onSelect={target=>{if(target.type==='inventory'){onOpenInventory();return}const issue=issues.find(item=>item.id===target.id);if(issue)onSelectIssue(issue)}}/>}
-    {preferences.visible('nationalFireActivity')&&<NationalFireActivitySection demoMode={demoMode}/>}
     {preferences.visible('currentIssues')&&openIssues.length>0&&<FleetIssues issues={openIssues} vehicles={vehicles} onSelect={onSelectIssue} title="Current issues" id="current-issues"/>}
     {notifications}
     {preferences.visible('recentActivity')&&activities.length>0&&<section className="action-section"><div className="action-heading"><h2>Recent fleet activity</h2></div><div className="notification-list">{[...activities].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,5).map(activity=><div className="notification-row" key={activity.id}><span className="notification-copy"><b>{activity.action}</b><small>{activity.detail} · {new Date(activity.createdAt).toLocaleDateString()}</small></span></div>)}</div></section>}
