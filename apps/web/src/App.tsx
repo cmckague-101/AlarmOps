@@ -52,7 +52,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus,
-  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Wrench, X
+  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Video, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
 import ThemeToggle from './ThemeToggle';
@@ -73,7 +73,7 @@ const SendToViprFlow=lazy(()=>import('./SendToViprFlow'));
 const ViprIntelligencePage=lazy(()=>import('./ViprIntelligencePage').then(module=>({default:module.ViprIntelligencePage})));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'news' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
+type Page = 'tasks' | 'overview' | 'meetings' | 'vehicles' | 'shop' | 'crew' | 'communications' | 'news' | 'vipr-intelligence' | 'dispatch' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings' | 'send-vipr';
 type NavigablePage = Exclude<Page,'more'|'send-vipr'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
@@ -81,6 +81,7 @@ export const navigationMeta = {
   // The Dashboard and the Operations map are one page. Its id stays 'overview' so saved preferences and links keep working.
   overview:{label:'Operations',description:'Active fires and assigned resources',Icon:Flame},
   'vipr-intelligence':{label:'VIPR Intelligence',description:'Send to VIPR and VIPR DPLs',Icon:ViprIntelligenceIcon},
+  meetings:{label:'Meetings',description:'Coming soon',Icon:Video},
   dispatch:{label:'VIPR DPLs',description:'USFS rankings and VIN-matched daily rates',Icon:ListOrdered},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Comms',description:'Company updates and replies',Icon:MessageSquare},
@@ -103,7 +104,7 @@ export const navigationMeta = {
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
 // Fixed order through Training; rows after it spill into More first on short windows.
-const navigationOrder:NavigablePage[]=['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','shop','inventory','inspections','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','inventory','inspections','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';
@@ -819,6 +820,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'news' && <NewsFeedPage demoMode={demoMode}/>}
+        {page === 'meetings' && <MeetingsPage/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage onBack={goBack} documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
         {page === 'tasks' && <TaskListPage key={`${companyId}:${currentUser.id}`} companyId={companyId} user={currentUser} onBack={goBack} assistantRequest={assistantTask} onAssistantRequestDone={()=>setAssistantTask(null)}/>}
@@ -919,7 +921,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 const moreTileColors:Partial<Record<NavigablePage|'inspect'|'workforce'|'marketplace',string>>={
   overview:'#C94321',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',shop:'#8A3418',
-  'vipr-intelligence':'#1F5C48',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
+  'vipr-intelligence':'#1F5C48',meetings:'#4F5FB8',dispatch:'#C94321',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',workforce:'#34745C',marketplace:'#A95616',
 };
 type MoreTile={key:string;label:string;Icon:NavIcon;color:string;onOpen:()=>void;badge?:string;comingSoon?:boolean;urgentLabel?:string};
@@ -948,7 +950,7 @@ function MorePage({desktopItems,demoMode=false,onInspect,user,companyId,unreadDo
       const count=target==='documents'?unreadDocumentCount:target==='training'?unreadTrainingCount:target==='qualifications'?pendingCardCount:0;
       // Failed inspections and overdue tasks switch the tile to the red urgent rail.
       const urgentLabel=target==='inspections'&&failedInspectionCount>0?`${failedInspectionCount} this year`:target==='tasks'&&overdueTaskCount>0?`${overdueTaskCount} overdue`:undefined;
-      return {key:target,label:target==='inspections'?'Failed Inspections':defaultLabel,Icon,color:moreTileColors[target]??'#5F6963',onOpen:()=>setPage(target),badge:count>0?`${count} ${target==='qualifications'?'pending':'new'}`:undefined,urgentLabel};
+      return {key:target,label:target==='inspections'?'Failed Inspections':defaultLabel,Icon,color:moreTileColors[target]??'#5F6963',onOpen:()=>setPage(target),badge:count>0?`${count} ${target==='qualifications'?'pending':'new'}`:undefined,urgentLabel,comingSoon:target==='meetings'};
     }),
     ...(showInspect?[{key:'inspect',label:'Inspect',Icon:ShieldCheck,color:moreTileColors.inspect!,onOpen:onInspect}]:[]),
     {key:'workforce',label:'Workforce',Icon:BriefcaseBusiness,color:moreTileColors.workforce!,onOpen:()=>window.alert('Coming Soon'),comingSoon:true},
@@ -1075,6 +1077,11 @@ function MemberNotifications({threads,documents,trainings,inboxNotifications,dis
 }
 
 /** News Feed: National Fire Activity for now; more news sources come later. */
+/** Placeholder until Meetings is built. */
+function MeetingsPage() {
+  return <div className="page meetings-page"><div className="page-heading hero-heading"><div><h1>Meetings</h1></div><span className="coming-soon-badge">Coming soon</span></div><section className="empty meetings-empty"><Video/><h3>Meetings are coming soon</h3><p>Schedule and join crew meetings here once this feature is ready.</p></section></div>;
+}
+
 function NewsFeedPage({demoMode}:{demoMode:boolean}) {
   return <div className="page news-feed-page"><div className="page-heading hero-heading"><div><h1>News Feed</h1></div></div><NationalFireActivitySection demoMode={demoMode}/></div>;
 }

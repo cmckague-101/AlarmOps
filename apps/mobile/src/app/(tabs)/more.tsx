@@ -25,6 +25,7 @@ const sections=[
   {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
   {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#1F5C48',viprIcon:true},
+  {label:'Meetings',ios:'video.fill',android:'videocam',color:'#4F5FB8',comingSoon:true},
   {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
@@ -60,7 +61,8 @@ export default function More(){
   const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&!listedPaths.has(action.path)):[];
   const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
   const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
-  const comingSoonIndex=allowed.findIndex(section=>'comingSoon' in section);
+  // Hidden quick actions go just before Workforce; Meetings keeps its place after VIPR Intelligence.
+  const comingSoonIndex=allowed.findIndex(section=>section.label==='Workforce');
   const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean;viprIcon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
   const singleColumn=width<360||fontScale>1.3;
 

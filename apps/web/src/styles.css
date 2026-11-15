@@ -270,4 +270,5 @@ main{overflow-x:clip}
 .marketplace-thread-panel .thread-panel-heading h2{color:#A95616}
 .coming-soon-badge{flex:none;padding:4px 9px;border-radius:999px;background:color-mix(in srgb,#A95616 13%,var(--paper));color:#A95616;font-size:11px;font-weight:800;letter-spacing:.02em}
 .marketplace-thread-empty{padding-block:40px}
+.meetings-page .page-heading{align-items:center}.meetings-empty{padding-block:56px}.meetings-empty svg{color:#4F5FB8}
 .marketplace-thread-empty svg{color:#A95616}
