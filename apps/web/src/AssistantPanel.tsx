@@ -184,7 +184,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
     {open&&<Sheet onClose={closePanel}>{titleId=><>
         <header>
           <Mascot size={38}/>
-          <div><h2 id={titleId}>FireOps Assistant</h2><p>{view==='history'?'Saved on this device':online?'Ask about FireOps and your company':ASSISTANT_OFFLINE}</p></div>
+          <div><h2 id={titleId}>FireOps Assistant</h2><p>{view==='history'?'Saved on this device':online?'Work While You Talk':ASSISTANT_OFFLINE}</p></div>
           <button type="button" className="assistant-header-btn" aria-label={view==='history'?'Back to chat':'Chat history'} aria-pressed={view==='history'} disabled={phase!=='idle'} onClick={()=>setView(current=>current==='history'?'chat':'history')}><History/></button>
           <button type="button" className="assistant-header-btn" aria-label="New chat" onClick={startNewChat}><Plus/></button>
           <button type="button" className="assistant-header-btn" aria-label="Close assistant" onClick={closePanel}><X/></button>

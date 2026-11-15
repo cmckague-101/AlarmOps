@@ -89,7 +89,7 @@ export function AssistantHost(){
             <Mascot size={36}/>
             <View style={styles.headerCopy}>
               <Text accessibilityRole="header" style={styles.headerTitle}>FireOps Assistant</Text>
-              <Text style={styles.headerMeta}>{view==='history'?'Saved on this phone':offline?ASSISTANT_OFFLINE:'Ask about FireOps and your company'}</Text>
+              <Text style={styles.headerMeta}>{view==='history'?'Saved on this phone':offline?ASSISTANT_OFFLINE:'Work While You Talk'}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel={view==='history'?'Back to chat':'Chat history'} disabled={phase!=='idle'} onPress={()=>setView(view==='history'?'chat':'history')} style={styles.headerBtn}>
               <AppSymbol name={{ios:'clock.arrow.circlepath',android:'history'} as never} color="#F7F8F6" size={18}/>
