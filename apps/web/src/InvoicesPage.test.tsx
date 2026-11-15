@@ -46,10 +46,12 @@ function page(user=crew){
   return {render};
 }
 const photo=new File([new Uint8Array([1,2,3])],'invoice.jpg',{type:'image/jpeg'});
-async function scanFromList(user=crew){
+async function scanFromForm(user=crew){
   const p=page(user);p.render();await flush();
-  const input=nodes(p.render()).find(node=>node.type===FileInput&&node.props['aria-label']==='Scan invoice photo');
-  expect(input,'Scan invoice button').toBeDefined();
+  (nodes(p.render()).find(node=>node.type==='button'&&text(node.props.children)==='New Invoice')!.props.onClick as ()=>void)();
+  for(let i=0;i<5;i++)await flush();
+  const input=nodes(p.render()).find(node=>node.type===FileInput&&node.props.accept!==undefined&&!node.props['aria-label']);
+  expect(input,'In-form scan picker').toBeDefined();
   (input!.props.onChange as (event:unknown)=>void)({target:{files:[photo],value:''}});
   for(let i=0;i<5;i++)await flush();
   return p;
@@ -58,9 +60,14 @@ async function scanFromList(user=crew){
 beforeEach(()=>{calls.upserts.length=0;calls.updates.length=0;calls.uploads.length=0;calls.autofill.mockReset()});
 
 describe('invoice photo auto-fill',()=>{
+  it('has no Scan invoice button on the invoice list',async()=>{
+    const p=page();p.render();await flush();
+    expect(nodes(p.render()).some(node=>node.type===FileInput)).toBe(false);
+  });
+
   it('fills a new draft from a scan, attaches the photo and never submits',async()=>{
     calls.autofill.mockResolvedValue({invoiceNumber:'INV-142',invoiceDate:'2026-10-30',dueDate:'2026-11-29',invoiceAmount:12480.5,customerName:'Sierra Resource Management, Inc.',confidence:{invoiceNumber:'high',invoiceDate:'high',dueDate:'high',invoiceAmount:'high',customerName:'high'}});
-    const p=await scanFromList();
+    const p=await scanFromForm();
     expect(calls.autofill).toHaveBeenCalledWith('c',{image:'aGVsbG8=',mimeType:'image/jpeg'});
     expect(calls.uploads).toHaveLength(1);
     expect(calls.upserts[calls.upserts.length-1]).toMatchObject({invoice_number:'INV-142',invoice_date:'2026-10-30',due_date:'2026-11-29',invoice_amount:12480.5,customer_id:'srm',status:'draft',attachment:{name:'invoice.jpg',mimeType:'image/jpeg'}});
@@ -72,7 +79,7 @@ describe('invoice photo auto-fill',()=>{
 
   it('highlights unsure fields and blocks submit until they are checked',async()=>{
     calls.autofill.mockResolvedValue({invoiceNumber:'INV-9',invoiceDate:'2026-10-30',invoiceAmount:300,customerName:'Sierra Resource Management',confidence:{invoiceNumber:'high',invoiceDate:'high',invoiceAmount:'medium',customerName:'high'}});
-    const p=await scanFromList();
+    const p=await scanFromForm();
     let tree=p.render();
     const tagged=nodes(tree).filter(node=>node.props.className==='invoice-field-check');
     expect(tagged.map(node=>text(node.props.children))).toEqual([expect.stringContaining('Invoice amountCheck')]);
@@ -89,7 +96,7 @@ describe('invoice photo auto-fill',()=>{
 
   it('offers anyone filling the invoice to add a customer that is not in the list',async()=>{
     calls.autofill.mockResolvedValue({invoiceNumber:'A-1',customerName:'Pine Valley Fire District',confidence:{invoiceNumber:'high',customerName:'high'}});
-    const tree=(await scanFromList()).render();
+    const tree=(await scanFromForm()).render();
     const prompt=nodes(tree).find(node=>node.props.className==='invoice-scan-customer');
     expect(text(prompt)).toContain('“Pine Valley Fire District” from the photo is not in your customer list.');
     expect(nodes(prompt).find(node=>node.type==='button'&&text(node.props.children)==='Add “Pine Valley Fire District”')).toBeDefined();
@@ -98,7 +105,7 @@ describe('invoice photo auto-fill',()=>{
 
   it('keeps the photo and lets the person type when auto-fill fails',async()=>{
     calls.autofill.mockRejectedValue(new Error('Daily auto-fill limit reached. Enter details by hand.'));
-    const tree=(await scanFromList()).render();
+    const tree=(await scanFromForm()).render();
     expect(calls.uploads).toHaveLength(1);
     expect(text(nodes(tree).filter(node=>node.props.className==='invoice-scan-banner'))).toContain('Daily auto-fill limit reached');
   });

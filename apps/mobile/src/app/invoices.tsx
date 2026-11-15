@@ -8,7 +8,6 @@ import {AppSymbol} from '@/components/app-symbol';
 import {QuickbooksBadge} from '@/components/quickbooks-invoice-status';
 import {loadQuickbooksAccess} from '@/lib/quickbooks';
 import {refreshInvoices,useInvoices} from '@/lib/invoice-store';
-import {loadReceiptAutofillEnabled} from '@/lib/receipts-store';
 import {useNetworkStatus} from '@/providers/network-provider';
 import {useDeviceInvoices} from '@/lib/use-device-forms';
 import {useSession} from '@/providers/session-provider';
@@ -30,8 +29,6 @@ export default function Screen(){
   const {isOffline:offline}=useNetworkStatus();
   const companyId=member?.company.id??null;
   // Invoice auto-fill shares the receipt auto-fill switch; it needs a connection.
-  const [autofillEnabled,setAutofillEnabled]=useState(false);
-  useEffect(()=>{let active=true;setAutofillEnabled(false);if(companyId&&!offline)void loadReceiptAutofillEnabled(companyId).then(enabled=>{if(active)setAutofillEnabled(enabled)});return()=>{active=false}},[companyId,offline]);
   // QuickBooks status for owners and accounting when the add-on is on and connected.
   const [qboVisible,setQboVisible]=useState(false);
   useEffect(()=>{let active=true;if(companyId&&manager&&!offline)void loadQuickbooksAccess(companyId,true).then(next=>{if(active)setQboVisible(next.enabled&&next.connected)});return()=>{active=false}},[companyId,manager,offline]);
@@ -48,7 +45,7 @@ export default function Screen(){
   const scan=()=>{const go=()=>router.push({pathname:'/invoices/form',params:{scan:'1'}} as never);if(draft&&(draft.invoiceNumber.trim()||draft.invoiceAmount>0||draft.customerId||draft.attachment)){Alert.alert('Scan into your invoice in progress?','Details read from the photo replace what is there.',[{text:'Cancel',style:'cancel'},{text:'Scan',onPress:go}]);return}go()};
   assistantAction.current=()=>{if(assistant==='scan'&&!offline)scan();else open(draft?.id)};
   return <SafeAreaView style={styles.safe} edges={['bottom']}><Stack.Screen options={{title:'Invoices'}}/><ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshInvoices} tintColor={theme.commandForeground}/>}>
-    <View style={styles.heading}><HeroTitle style={styles.title}>Invoices</HeroTitle><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}{autofillEnabled&&!offline?<Pressable accessibilityRole="button" accessibilityLabel="Scan invoice" onPress={scan} style={styles.secondary}><AppSymbol name={{ios:'camera',android:'photo_camera'} as never} color={theme.commandForeground} size={17}/><Text style={styles.secondaryText}>Scan invoice</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
+    <View style={styles.heading}><HeroTitle style={styles.title}>Invoices</HeroTitle><View style={styles.actions}>{manager?<Pressable accessibilityRole="button" onPress={()=>router.push('/invoices/generator' as never)} style={styles.secondary}><Text style={styles.secondaryText}>Invoice Generator</Text></Pressable>:null}<Pressable onPress={()=>open(draft?.id)} style={styles.add}><AppSymbol name={{ios:'plus',android:'add'} as never} color="#fff" size={18}/><Text style={styles.addText}>New Invoice</Text></Pressable></View></View>
     {draft?<Pressable onPress={()=>open(draft.id)} style={styles.draft}><View style={styles.grow}><Text style={styles.rowTitle}>Invoice in progress</Text><Text style={styles.meta}>{device.has(draft.id)?'Saved on this device — syncs when connected':`Saved ${new Date(draft.updatedAt).toLocaleString()}`}</Text></View><Text style={styles.continue}>Continue</Text></Pressable>:null}
     <DownloadedListNotice info={invoices.downloaded}/>
     {submittedAll.length?<View accessibilityRole="radiogroup" style={styles.filterRow}>{paymentFilters.map(option=><Pressable key={option.value} accessibilityRole="radio" accessibilityState={{checked:paymentFilter===option.value}} onPress={()=>setPaymentFilter(option.value)} style={[styles.filterChip,paymentFilter===option.value&&styles.filterChipSelected]}><Text style={[styles.filterText,paymentFilter===option.value&&styles.filterTextSelected]}>{option.label}</Text></Pressable>)}</View>:null}

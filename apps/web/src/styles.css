@@ -245,7 +245,7 @@ main{overflow-x:clip}
 
 .form-section-help{margin:-8px 0 14px;color:var(--muted);font-size:13px}
 /* Invoice photo auto-fill */
-.invoice-scan-button{position:relative;overflow:hidden;cursor:pointer}.invoice-scan-button svg{width:17px}.invoice-scan-button input,.invoice-scan-picker input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.invoice-scan-button.disabled,.invoice-scan-picker.disabled{opacity:.55;pointer-events:none}
+.invoice-scan-picker input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.invoice-scan-picker.disabled{opacity:.55;pointer-events:none}
 .invoice-scan-row{display:grid;gap:6px;margin-bottom:18px}.invoice-scan-picker{border-style:solid!important;border-color:var(--ink)!important;font-weight:700}
 .invoice-scan-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-subtle);color:var(--ink);font-weight:600}.invoice-scan-banner.review{border-color:color-mix(in srgb,var(--warning) 55%,var(--line));background:color-mix(in srgb,var(--warning) 10%,var(--paper))}
 .invoice-field-check input,.invoice-field-check select{border-color:var(--warning)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--warning) 25%,transparent)}

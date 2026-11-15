@@ -30,7 +30,7 @@ useEffect(()=>{let active=true;setAutofillEnabled(false);if(companyId&&!offline)
 const finance=Boolean(member&&canProcessFinance(member.user.role));const [qbo,setQbo]=useState<QuickbooksAccess>({enabled:false,connected:false});
 useEffect(()=>{let active=true;if(companyId&&!offline)void loadQuickbooksAccess(companyId,finance).then(next=>{if(active)setQbo(next)});return()=>{active=false}},[companyId,finance,offline]);
 const qboVisible=finance&&qbo.enabled&&qbo.connected;
-// Opened from the list's Scan invoice button: start the camera once the form is ready.
+// Opened with ?scan=1 (from the FireOps Assistant): start the camera once the form is ready.
 useEffect(()=>{if(scan==='1'&&form&&!loading&&!scanStarted.current){scanStarted.current=true;autoScan.current()}},[scan,form,loading]);
 if(!session||access.status==='error')return <Redirect href="/"/>;if(invoiceId&&!loading&&!existing&&!form)return <Redirect href="/invoices"/>;const manager=Boolean(member&&canProcessFinance(member.user.role));// Offline, and online while this device still has unsynced changes for the invoice, edits queue in
 // order as per-field device commands, so an older queued value can never land after a newer online save.
