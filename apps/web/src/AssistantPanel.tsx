@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
-import {History,Mic,Plus,Send,Trash2,WifiOff,X} from 'lucide-react';
+import {Camera,History,Mic,Paperclip,PhoneOff,Plus,Send,Trash2,WifiOff,X} from 'lucide-react';
 import {
   ASSISTANT_OFFLINE,ASSISTANT_ROUTE_LABELS,ASSISTANT_SUGGESTIONS,ASSISTANT_WELCOME,assistantDraftLabel,assistantWebPage,
   createAssistantThreadId,formatAssistantThreadTime,upsertAssistantThread,
@@ -14,6 +14,7 @@ import './AssistantPanel.css';
 
 const welcome:AssistantChatItem={id:'welcome',role:'assistant',text:ASSISTANT_WELCOME};
 const photoAccept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
+const ASSISTANT_ATTACH_SOON='Sending files and photos to the assistant is coming soon.';
 const receiptAccept=`${photoAccept},application/pdf,.pdf`;
 
 function useOnline(){
@@ -70,6 +71,7 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
   const listRef=useRef<HTMLDivElement>(null);
   const request=useRef(0);
   const [voiceNotice,setVoiceNotice]=useState('');
+  const [attachNotice,setAttachNotice]=useState('');
   const [phase,setPhase]=useState<'idle'|'listening'|'thinking'|'speaking'>('idle');
   const voice=useRef<AbortController|null>(null);
   const finishListen=useRef<(()=>void)|null>(null);
@@ -222,9 +224,17 @@ export default function AssistantPanel({companyId,user,autofillEnabled,voiceEnab
           {voiceNotice&&<p className="assistant-hint" role="status">{voiceNotice}</p>}
           {!online&&<p className="assistant-offline" role="status"><WifiOff/> {ASSISTANT_OFFLINE}</p>}
           <div className="assistant-note-row">
-            {voiceEnabled&&<button type="button" className="assistant-send-btn" aria-label="Talk to assistant" disabled={!online||busy&&phase==='idle'} onClick={()=>void talk()}><Mic/></button>}
-            <input type="text" value={input} onChange={event=>setInput(event.target.value)} maxLength={2000} placeholder={online?'Ask the assistant…':'Needs a network connection'} aria-label="Message the FireOps Assistant" disabled={!online||phase!=='idle'} enterKeyHint="send" autoComplete="off"/>
-            <button type="submit" className="assistant-send-btn" disabled={busy||phase!=='idle'||!online||!input.trim()} aria-label="Send"><Send/></button>
+            <input type="text" value={input} onChange={event=>setInput(event.target.value)} maxLength={2000} placeholder={online?'Type a note to send…':'Needs a network connection'} aria-label="Message the FireOps Assistant" disabled={!online||phase!=='idle'} enterKeyHint="send" autoComplete="off"/>
+            <button type="submit" className="assistant-send-btn" disabled={busy||phase!=='idle'||!online||!input.trim()} aria-label="Send"><Send/><span>Send</span></button>
+          </div>
+          {attachNotice&&<p className="assistant-hint" role="status">{attachNotice}</p>}
+          <div className={`assistant-composer-actions${voiceEnabled?'':' no-voice'}`}>
+            {/* Placeholder: the assistant cannot read files or photos yet. */}
+            <button type="button" className="assistant-side-btn" aria-label="Attach a file (coming soon)" onClick={()=>setAttachNotice(ASSISTANT_ATTACH_SOON)}><Paperclip/><span>File</span></button>
+            {voiceEnabled&&(phase==='idle'
+              ?<button type="button" className="assistant-voice-btn start" aria-label="Start voice chat" disabled={online&&busy} onClick={()=>void talk()}><Mic/>Start voice chat</button>
+              :<button type="button" className="assistant-voice-btn stop" aria-label="Stop voice chat" onClick={endVoice}><PhoneOff/>Stop voice chat</button>)}
+            <button type="button" className="assistant-side-btn" aria-label="Take a photo (coming soon)" onClick={()=>setAttachNotice(ASSISTANT_ATTACH_SOON)}><Camera/><span>Photo</span></button>
           </div>
           <p className="assistant-hint">The assistant can make mistakes. It never saves or submits anything; you review drafts first.</p>
         </form>}

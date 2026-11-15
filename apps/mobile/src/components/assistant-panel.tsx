@@ -1,4 +1,4 @@
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {Alert,Animated,Easing,Image,KeyboardAvoidingView,Modal,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,View,AccessibilityInfo,type ScrollViewInstance} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {router} from 'expo-router';
@@ -37,6 +37,8 @@ function Mascot({size}:{size:number}){
 }
 
 /** Floating FireOps Assistant button and chat sheet, shown on the main tabs when the company has the add-on. */
+const attachSoon='Sending files and photos to the assistant is coming soon.';
+
 export function AssistantHost(){
   const theme=useFireOpsTheme();
   const insets=useSafeAreaInsets();
@@ -46,6 +48,7 @@ export function AssistantHost(){
     voiceEnabled,phase,talk,endVoice,finishListening,enabled,offline,autofillEnabled,user,open,setOpen,view,setView,messages,threads,threadId,busy,error,input,setInput,
     send,startNewChat,openThread,removeThread,clearAll,
   }=useAssistant();
+  const [attachNotice,setAttachNotice]=useState('');
   if(!enabled||!user)return null;
 
   const go=(href:string,params?:Record<string,string>)=>{setOpen(false);router.push((params?{pathname:href,params}:href) as never)};
@@ -131,11 +134,10 @@ export function AssistantHost(){
             {offline?<View style={styles.offline}><AppSymbol name={{ios:'wifi.slash',android:'wifi_off'} as never} color={theme.danger} size={16}/><Text style={styles.offlineText}>{ASSISTANT_OFFLINE}</Text></View>:null}
             {phase!=='idle'?<View style={styles.row}><Text style={styles.hint}>{phase==='listening'?'Listening':phase==='thinking'?'Thinking':'Speaking'}</Text><Pressable onPress={endVoice}><Text style={styles.error}>End</Text></Pressable>{phase==='listening'?<Pressable onPress={finishListening}><Text style={styles.hint}>Done talking</Text></Pressable>:null}</View>:null}
             <View style={styles.row}>
-              {voiceEnabled?<Pressable accessibilityRole="button" accessibilityLabel="Talk to assistant" disabled={offline||busy&&phase==='idle'} onPress={()=>void talk()} style={styles.send}><AppSymbol name={{ios:'mic.fill',android:'mic'} as never} color="#fff" size={18}/></Pressable>:null}
               <TextInput
                 value={input}
                 onChangeText={setInput}
-                placeholder={offline?'Needs a network connection':'Ask the assistant…'}
+                placeholder={offline?'Needs a network connection':'Type a note to send…'}
                 placeholderTextColor={theme.secondary}
                 editable={!offline&&phase==='idle'}
                 maxLength={2000}
@@ -146,7 +148,25 @@ export function AssistantHost(){
                 style={styles.input}
               />
               <Pressable accessibilityRole="button" accessibilityLabel="Send" disabled={busy||phase!=='idle'||offline||!input.trim()} onPress={()=>void send(input)} style={[styles.send,(busy||offline||!input.trim())&&styles.disabled]}>
-                <AppSymbol name={{ios:'paperplane.fill',android:'send'} as never} color="#fff" size={18}/>
+                <AppSymbol name={{ios:'paperplane.fill',android:'send'} as never} color={theme.ember} size={18}/>
+                <Text style={styles.sendText}>Send</Text>
+              </Pressable>
+            </View>
+            {attachNotice?<Text accessibilityLiveRegion="polite" style={styles.hint}>{attachNotice}</Text>:null}
+            <View style={styles.row}>
+              {/* Placeholder: the assistant cannot read files or photos yet. */}
+              <Pressable accessibilityRole="button" accessibilityLabel="Attach a file (coming soon)" onPress={()=>setAttachNotice(attachSoon)} style={({pressed})=>[styles.sideButton,pressed&&styles.pressed]}>
+                <AppSymbol name={{ios:'paperclip',android:'attach_file'} as never} color={theme.ink} size={17}/><Text style={styles.sideText}>File</Text>
+              </Pressable>
+              {voiceEnabled?(phase==='idle'
+                ?<Pressable accessibilityRole="button" accessibilityLabel="Start voice chat" disabled={offline||busy} onPress={()=>void talk()} style={({pressed})=>[styles.voiceButton,pressed&&styles.pressed,(offline||busy)&&styles.disabled]}>
+                  <AppSymbol name={{ios:'mic.fill',android:'mic'} as never} color="#fff" size={17}/><Text style={styles.voiceText}>Start voice chat</Text>
+                </Pressable>
+                :<Pressable accessibilityRole="button" accessibilityLabel="Stop voice chat" onPress={endVoice} style={({pressed})=>[styles.voiceButton,styles.voiceStop,pressed&&styles.pressed]}>
+                  <AppSymbol name={{ios:'phone.down.fill',android:'call_end'} as never} color={theme.ink} size={17}/><Text style={[styles.voiceText,{color:theme.ink}]}>Stop voice chat</Text>
+                </Pressable>):null}
+              <Pressable accessibilityRole="button" accessibilityLabel="Take a photo (coming soon)" onPress={()=>setAttachNotice(attachSoon)} style={({pressed})=>[styles.sideButton,pressed&&styles.pressed]}>
+                <AppSymbol name={{ios:'camera',android:'photo_camera'} as never} color={theme.ink} size={17}/><Text style={styles.sideText}>Photo</Text>
               </Pressable>
             </View>
             <Text style={styles.hint}>The assistant can make mistakes. It never saves or submits anything; you review drafts first.</Text>
@@ -190,7 +210,14 @@ function createStyles(theme:FireOpsTheme){
     offlineText:{color:theme.ink,fontSize:13,fontWeight:'700'},
     row:{flexDirection:'row',gap:8},
     input:{flex:1,minHeight:48,borderWidth:1,borderColor:theme.divider,borderRadius:12,paddingHorizontal:12,paddingVertical:10,color:theme.ink,backgroundColor:theme.canvas,fontSize:16},
-    send:{width:52,minHeight:48,alignItems:'center',justifyContent:'center',borderRadius:12,backgroundColor:theme.ember},
+    send:{minWidth:72,minHeight:48,paddingHorizontal:10,alignItems:'center',justifyContent:'center',gap:2,borderWidth:1,borderColor:theme.ember,borderRadius:12,backgroundColor:theme.canvas},
+    sendText:{color:theme.ink,fontSize:11,fontWeight:'800'},
+    sideButton:{flex:0.85,minHeight:48,paddingHorizontal:8,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,borderWidth:1,borderColor:theme.divider,borderRadius:12,backgroundColor:theme.canvas},
+    sideText:{color:theme.ink,fontSize:12,fontWeight:'800'},
+    voiceButton:{flex:1.5,minHeight:48,paddingHorizontal:10,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,borderRadius:12,backgroundColor:theme.ember},
+    voiceStop:{borderWidth:1,borderColor:theme.danger,backgroundColor:theme.canvas},
+    voiceText:{color:'#fff',fontSize:12,fontWeight:'800'},
+    pressed:{opacity:0.7},
     disabled:{opacity:0.45},
     hint:{color:theme.secondary,fontSize:11,lineHeight:15},
     history:{padding:16,gap:10,paddingBottom:28},

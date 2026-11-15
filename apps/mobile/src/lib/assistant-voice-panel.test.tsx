@@ -13,11 +13,11 @@ type Node={type:unknown;props:Record<string,any>};
 function nodes(value:unknown):Node[]{if(Array.isArray(value))return value.flatMap(nodes);if(!value||typeof value!=='object'||!('props' in value))return [];const node=value as Node;return [node,...nodes(node.props.children)];}
 const render=()=>{runtime.enter(runtime.frame());return nodes(AssistantHost());};
 beforeEach(()=>{state.voiceEnabled=false;state.offline=false;vi.clearAllMocks();});
-it('iPhone hides Talk with voice disabled, even when chat is enabled',()=>{
- expect(render().find(node=>node.props.accessibilityLabel==='Talk to assistant')).toBeUndefined();
+it('iPhone hides Start voice chat with voice disabled, even when chat is enabled',()=>{
+ expect(render().find(node=>node.props.accessibilityLabel==='Start voice chat')).toBeUndefined();
 });
-it('iPhone shows Talk only for the voice add-on and disables it offline',()=>{
+it('iPhone shows Start voice chat only for the voice add-on and disables it offline',()=>{
  state.voiceEnabled=true;
- const mic=render().find(node=>node.props.accessibilityLabel==='Talk to assistant')!;mic.props.onPress();expect(state.talk).toHaveBeenCalled();
- state.offline=true;expect(render().find(node=>node.props.accessibilityLabel==='Talk to assistant')!.props.disabled).toBe(true);
+ const mic=render().find(node=>node.props.accessibilityLabel==='Start voice chat')!;mic.props.onPress();expect(state.talk).toHaveBeenCalled();
+ state.offline=true;expect(render().find(node=>node.props.accessibilityLabel==='Start voice chat')!.props.disabled).toBe(true);
 });

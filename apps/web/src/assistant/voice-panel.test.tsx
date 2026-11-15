@@ -29,7 +29,7 @@ beforeEach(()=>{
 });
 it('hides the microphone with the add-on off',()=>{
  button(render(false),'Open FireOps Assistant').props.onClick();
- expect(button(render(false),'Talk to assistant')).toBeUndefined();
+ expect(button(render(false),'Start voice chat')).toBeUndefined();
 });
 it('runs STT, normal chat with visible transcript, TTS, then listens again; End cancels',async()=>{
  mocks.listen.mockResolvedValueOnce({audio:new Blob(['voice'],{type:'audio/webm'}),duration:2}).mockImplementation((signal:AbortSignal)=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('ended')))));
@@ -38,7 +38,7 @@ it('runs STT, normal chat with visible transcript, TTS, then listens again; End 
   return {data:options.body instanceof FormData?{text:'How many units?'}:new Blob(['audio'],{type:'audio/mpeg'}),error:null};
  });
  button(render(),'Open FireOps Assistant').props.onClick();
- button(render(),'Talk to assistant').props.onClick();
+ button(render(),'Start voice chat').props.onClick();
  for(let i=0;i<30;i++)await Promise.resolve();
  expect(mocks.invoke.mock.calls.map(call=>call[0])).toEqual(['assistant-voice','assistant-chat','assistant-voice']);
  expect(mocks.invoke.mock.calls[1][1].body.messages).toEqual([{role:'user',content:'How many units?'}]);
@@ -58,13 +58,13 @@ it('runs STT, normal chat with visible transcript, TTS, then listens again; End 
 it('shows offline feedback without starting capture',()=>{
  vi.stubGlobal('navigator',{onLine:false});
  button(render(),'FireOps Assistant (needs a network connection)').props.onClick();
- button(render(),'Talk to assistant').props.onClick();
+ button(render(),'Start voice chat').props.onClick();
  expect(mocks.listen).not.toHaveBeenCalled();
  expect(render().some(node=>node.props.role==='alert'&&/network/.test(node.props.children))).toBe(true);
 });
 it('keeps text chat available after microphone denial',async()=>{
  mocks.listen.mockRejectedValue(new Error('Microphone access is required for voice. You can still type.'));
- button(render(),'Open FireOps Assistant').props.onClick();button(render(),'Talk to assistant').props.onClick();
+ button(render(),'Open FireOps Assistant').props.onClick();button(render(),'Start voice chat').props.onClick();
  for(let i=0;i<10;i++)await Promise.resolve();
  const tree=render();expect(tree.some(node=>node.props.role==='alert'&&/Microphone/.test(node.props.children))).toBe(true);
  expect(button(tree,'Message the FireOps Assistant').props.disabled).toBe(false);
@@ -76,7 +76,7 @@ it('shows when browser speech replaces AI playback',async()=>{
  mocks.play.mockRejectedValue(new Error('Decode failed'));
  vi.stubGlobal('SpeechSynthesisUtterance',class{});
  vi.stubGlobal('window',{speechSynthesis:{speak:vi.fn(utterance=>queueMicrotask(()=>utterance.onend())),cancel:vi.fn()}});
- button(render(),'Open FireOps Assistant').props.onClick();button(render(),'Talk to assistant').props.onClick();
+ button(render(),'Open FireOps Assistant').props.onClick();button(render(),'Start voice chat').props.onClick();
  for(let i=0;i<40;i++)await Promise.resolve();
  const tree=render();expect(tree.some(node=>node.props.role==='status'&&/Using your browser/.test(String(node.props.children)))).toBe(true);
  tree.find(node=>node.type==='button'&&node.props.children==='End')!.props.onClick();

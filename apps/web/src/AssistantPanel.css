@@ -57,9 +57,20 @@
 .assistant-note-row input{min-width:0;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;font:500 16px 'DM Sans',sans-serif;background:var(--canvas);color:var(--ink)}
 .assistant-note-row input::placeholder{color:var(--muted);opacity:1}
 .assistant-note-row input:focus{outline:2px solid color-mix(in srgb,var(--orange) 45%,transparent);outline-offset:1px}
-.assistant-send-btn{display:grid;place-items:center;width:52px;min-height:48px;border:0;border-radius:12px;background:var(--orange);color:#fff;cursor:pointer}
-.assistant-send-btn svg{width:18px;height:18px}
+.assistant-send-btn{box-sizing:border-box;min-width:72px;min-height:48px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--orange) 45%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--orange) 16%,var(--canvas));color:var(--ink);font-size:11px;font-weight:800;cursor:pointer}
+.assistant-send-btn svg{width:18px;height:18px;color:var(--orange)}
+.assistant-send-btn:hover:not(:disabled){background:color-mix(in srgb,var(--orange) 24%,var(--canvas))}
 .assistant-send-btn:disabled{opacity:.45;cursor:not-allowed}
+.assistant-composer-actions{display:grid;grid-template-columns:minmax(76px,.85fr) minmax(0,1.5fr) minmax(76px,.85fr);gap:8px}
+.assistant-composer-actions.no-voice{grid-template-columns:1fr 1fr}
+.assistant-side-btn,.assistant-voice-btn{box-sizing:border-box;min-height:48px;display:inline-flex;align-items:center;justify-content:center;gap:7px;margin:0;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;user-select:none}
+.assistant-side-btn{padding:0 10px;border:1px solid var(--line);background:var(--canvas);color:var(--ink)}
+.assistant-side-btn:hover{border-color:color-mix(in srgb,var(--orange) 40%,var(--line))}
+.assistant-side-btn svg,.assistant-voice-btn svg{width:18px;height:18px;flex:none}
+.assistant-voice-btn{width:100%;padding:0 14px;border:0}
+.assistant-voice-btn.start{background:var(--orange);color:#fff}
+.assistant-voice-btn.start:disabled{opacity:.5;cursor:not-allowed}
+.assistant-voice-btn.stop{border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));background:color-mix(in srgb,var(--danger) 18%,var(--canvas));color:var(--ink)}
 .assistant-hint{margin:0;color:var(--muted);font-size:11px;line-height:1.4}
 
 @media(max-width:800px){
