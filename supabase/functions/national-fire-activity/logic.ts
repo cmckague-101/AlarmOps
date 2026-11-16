@@ -16,6 +16,12 @@ function number(value: string) {
   return Number(value.replaceAll(',', ''));
 }
 
+export function activeRedFlagCount(payload:unknown){
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))return null;
+  const features=(payload as {features?:unknown}).features;
+  return Array.isArray(features)?features.length:null;
+}
+
 export function parseNationalFireActivity(text: string, fetchedAt = new Date().toISOString()) {
   const normalized = text.replaceAll('\u00a0', ' ');
   const start = normalized.indexOf('Active Incident Resource Summary');
@@ -39,5 +45,6 @@ export function parseNationalFireActivity(text: string, fetchedAt = new Date().t
 
   const reportDate = normalized.match(/Incident Management Situation Report\s*\n([^\n]+)/)?.[1]?.trim();
   if (!reportDate) throw new Error('Situation report date could not be read.');
-  return {reportDate, fetchedAt, sourceUrl: SOURCE_URL, areas, total};
+  const nationalPreparednessLevel = Number(normalized.match(/National Preparedness Level\s+([1-5])/i)?.[1] ?? '') || null;
+  return {reportDate, fetchedAt, sourceUrl: SOURCE_URL, areas, total,nationalPreparednessLevel,largeFireCount:total.incidents,redFlagCount:null as number|null};
 }

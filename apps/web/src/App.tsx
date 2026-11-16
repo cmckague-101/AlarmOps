@@ -21,7 +21,7 @@ import { createPortal } from 'react-dom';
 import { useDialogA11y } from './useDialogA11y';
 import {OperationsIncidentMap, fetchIncidents} from './OperationsPage';
 import {useInspectionTemplate} from './inspectionTemplate';
-import NationalFireActivitySection from './NationalFireActivitySection';
+import NewsFeedSection from './NewsFeedSection';
 const QuickbooksSettings=lazy(()=>import('./QuickbooksPanels').then(module=>({default:module.QuickbooksSettings})));
 import SignaturePad from './SignaturePad';
 import CrewReview from './CrewReview';
@@ -819,7 +819,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn)} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
-        {page === 'news' && <NewsFeedPage demoMode={demoMode}/>}
+        {page === 'news' && <NewsFeedPage companyId={companyId} demoMode={demoMode}/>}
         {page === 'meetings' && <MeetingsPage/>}
         {page === 'communications' && <CommunicationsPage threads={threads} user={currentUser} error={communicationError} onCreate={createThread} onDelete={deleteThread} onReply={replyToThread} onDeleteReply={deleteReply} onSeen={markThreadSeen}/>}
         {page === 'documents' && <DocumentsPage onBack={goBack} documents={documents} user={currentUser} error={documentError} onAdd={()=>setDocumentForm(null)} onEdit={document=>setDocumentForm(document)} onDelete={setDocumentDeleteCandidate} onView={viewDocument}/>}
@@ -1076,14 +1076,13 @@ function MemberNotifications({threads,documents,trainings,inboxNotifications,dis
   </section>;
 }
 
-/** News Feed: National Fire Activity for now; more news sources come later. */
 /** Placeholder until Meetings is built. */
 function MeetingsPage() {
   return <div className="page meetings-page"><div className="page-heading hero-heading"><div><h1>Meetings</h1></div><span className="coming-soon-badge">Coming soon</span></div><section className="empty meetings-empty"><Video/><h3>Meetings are coming soon</h3><p>Schedule and join crew meetings here once this feature is ready.</p></section></div>;
 }
 
-function NewsFeedPage({demoMode}:{demoMode:boolean}) {
-  return <div className="page news-feed-page"><div className="page-heading hero-heading"><div><h1>News Feed</h1></div></div><NationalFireActivitySection demoMode={demoMode}/></div>;
+function NewsFeedPage({companyId,demoMode}:{companyId?:string;demoMode:boolean}) {
+  return <div className="page news-feed-page"><div className="page-heading hero-heading"><div><h1>News Feed</h1></div></div><NewsFeedSection companyId={companyId} demoMode={demoMode}/></div>;
 }
 
 function Dashboard({onCustomize,demoMode=false,quickActions,incidentMap,companyId,vehicles,issues,inventoryItems,onOpenInventory,crew,activities,threads,documents,trainings,inboxNotifications,dismissedNotificationIds,onDismissNotification,onClearNotifications,user,onSelectVehicle,onSelectIssue,onSelectCrew,onSelectPayroll,onSelectShopJob,onOpenNotifications,onSelectIncident}:{onCustomize:()=>void;demoMode?:boolean;quickActions:React.ReactNode;incidentMap:React.ReactNode;companyId?:string;vehicles:Vehicle[];issues:FleetIssue[];inventoryItems:InventoryItem[];onOpenInventory:()=>void;crew:CrewMember[];activities:Activity[];threads:CommunicationThread[];documents:CompanyDocument[];trainings:Training[];inboxNotifications:DashboardNotification[]|null;dismissedNotificationIds:Set<string>;onDismissNotification:(id:string)=>void;onClearNotifications:(ids:Iterable<string>)=>void;user:FireOpsUser;onSelectVehicle:(v:Vehicle)=>void;onSelectIssue:(issue:FleetIssue)=>void;onSelectCrew:(member:CrewMember)=>void;onSelectPayroll:(id:string)=>void;onSelectShopJob:(id:string)=>void;onOpenNotifications:(page:DashboardNotification['source'],id?:string,vehicleId?:string)=>void;onSelectIncident:(id:string)=>void}) {

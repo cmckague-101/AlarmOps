@@ -1,5 +1,5 @@
 import {assertEquals, assertThrows} from 'jsr:@std/assert@1';
-import {parseNationalFireActivity} from './logic.ts';
+import {activeRedFlagCount,parseNationalFireActivity} from './logic.ts';
 
 const report = `Incident Management Situation Report
 Friday September 11, 2026 – 0730 MDT
@@ -22,6 +22,13 @@ Deno.test('parses first-page active incident resource summary', () => {
   });
   assertEquals(result.total.totalPersonnel, 6021);
   assertEquals(result.total.preparednessLevel, null);
+  assertEquals(result.nationalPreparednessLevel,3);
+  assertEquals(result.largeFireCount,32);
+});
+
+Deno.test('counts active NWS red flag warning features',()=>{
+  assertEquals(activeRedFlagCount({features:[{id:'one'},{id:'two'}]}),2);
+  assertEquals(activeRedFlagCount({features:null}),null);
 });
 
 Deno.test('rejects reports without resource summary', () => {

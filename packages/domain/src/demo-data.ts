@@ -9,7 +9,7 @@ export function createDemoNationalFireActivity():NationalFireActivity{
   ];
   const areas:NationalFireActivityRow[]=samples.map(([gacc,incidents,crews,engines,helicopters,totalPersonnel])=>({gacc,incidents,crews,engines,helicopters,totalPersonnel,preparednessLevel:3,cumulativeAcres:incidents*1250}));
   const total=areas.reduce((sum,area)=>({...sum,incidents:sum.incidents+area.incidents,crews:sum.crews+area.crews,engines:sum.engines+area.engines,helicopters:sum.helicopters+area.helicopters,totalPersonnel:sum.totalPersonnel+area.totalPersonnel,cumulativeAcres:sum.cumulativeAcres+area.cumulativeAcres}),{gacc:'TOTAL',incidents:0,crews:0,engines:0,helicopters:0,totalPersonnel:0,cumulativeAcres:0,preparednessLevel:3});
-  return {reportDate:'June 22, 2026 (Demo)',fetchedAt:'2026-06-22T12:00:00Z',sourceUrl:'',areas,total};
+  return {reportDate:'June 22, 2026 (Demo)',fetchedAt:'2026-06-22T12:00:00Z',sourceUrl:'',areas,total,nationalPreparednessLevel:2,largeFireCount:14,redFlagCount:3};
 }
 
 export type DemoDispatchEntry={rank:number;company_name:string|null;equipment_location:string|null;vin:string|null;cafs:string|null;daily_rate:number|null;rate_status:'matched'|'not_found'|'ambiguous'};

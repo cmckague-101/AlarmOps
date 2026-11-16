@@ -40,3 +40,4 @@ export * from './vipr';
 export * from './assistant';
 export * from './quickbooks';
 export * from './travel-restaurants';
+export * from './news-feed';

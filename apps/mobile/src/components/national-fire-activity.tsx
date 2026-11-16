@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import type {NationalFireActivity} from '@fireops/domain';
+import {createDemoNationalFireActivity,type NationalFireActivity} from '@fireops/domain';
 import {Linking, Pressable, StyleSheet, Text, View} from 'react-native';
 import {AppSymbol} from './app-symbol';
 import {supabase} from '@/lib/supabase';
@@ -32,16 +32,17 @@ export function NationalFireActivitySection(){
   const theme=useFireOpsTheme();
   const {demoMode}=useSession();
   const styles=useMemo(()=>createStyles(theme),[theme]);
-  const [activity,setActivity]=useState<NationalFireActivity|null>(null);
-  const [isLoading,setLoading]=useState(true);
+  const [activity,setActivity]=useState<NationalFireActivity|null>(()=>demoMode?createDemoNationalFireActivity():null);
+  const [isLoading,setLoading]=useState(!demoMode);
   const [error,setError]=useState('');
   const loadActivity=useCallback(async()=>{
+    if(demoMode)return createDemoNationalFireActivity();
     if(!supabase)throw new Error('FireOps data service is not configured.');
     const {data,error:failure}=await supabase.functions.invoke<NationalFireActivity>('national-fire-activity');
     if(failure)throw failure;
     if(!data)throw new Error('NIFC returned no activity data.');
     return data;
-  },[]);
+  },[demoMode]);
   const fetchActivity=useCallback(()=>{void loadActivity().then(setActivity).catch((failure:unknown)=>setError((failure as {message?:string}).message??'National fire activity could not be loaded.')).finally(()=>setLoading(false));},[loadActivity]);
   useEffect(()=>{fetchActivity();},[fetchActivity]);
   const retry=()=>{setLoading(true);setError('');fetchActivity();};

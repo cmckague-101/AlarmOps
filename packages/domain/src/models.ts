@@ -97,6 +97,7 @@ export type NationalFireActivityRow = {
 };
 export type NationalFireActivity = {
   reportDate:string;fetchedAt:string;sourceUrl:string;areas:NationalFireActivityRow[];total:NationalFireActivityRow;
+  nationalPreparednessLevel:number|null;largeFireCount:number|null;redFlagCount:number|null;
 };
 
 export type VehicleInspectionItemKind = 'pass_fail' | 'photo';
