@@ -1,8 +1,16 @@
 # VIPR weekly refresh, daily discovery
 
 Use the systemd service below for unattended runs, including after reboot.
-For manual use, run `bash jobs/usfs-dispatch/viprRun.sh` and supply the database
-URL and monitored contact email (or set `SUPABASE_DB_URL` and `FS_USER_AGENT`).
+For manual use, run `bash jobs/usfs-dispatch/viprRun.sh` and supply connection
+settings and a monitored contact email. The importer supports two write paths:
+
+- HTTPS (default when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set and `SUPABASE_DB_URL` is not): uses Supabase RPC over HTTPS, suitable for hosts with outbound HTTPS only.
+- Direct Postgres (`SUPABASE_DB_URL`): preserves the legacy psycopg path.
+
+Set `FS_USER_AGENT` with a monitored contact. Optional knobs:
+`FS_REQUEST_INTERVAL` (seconds between USDA requests, default 3), `FS_TIMEOUT`
+(USDA timeout, default 90s), `SUPABASE_TIMEOUT`/`SUPABASE_RETRIES` (HTTPS RPC),
+and `FS_WATCHDOG_SECONDS` (overall run timeout; default 6 hours).
 Restart an already-running loop after changing the script. Dependencies are
 installed during setup, not on every service restart.
 
@@ -26,8 +34,8 @@ sudo install -m 600 jobs/usfs-dispatch/systemd/vipr.env.example /etc/fireco/vipr
 sudoedit /etc/fireco/vipr.env
 ```
 
-Replace the database URL and monitored email placeholders before starting.
-Use the Supabase **Postgres session connection URL**, with URL-encoded password
+Replace placeholders before starting. For direct Postgres, use the Supabase
+**Postgres session connection URL**, with URL-encoded password
 characters where needed. Config uses systemd environment-file syntax, not shell
 syntax: no `export`, variable expansion, or command substitution. Keep real
 credentials out of git and command-line arguments. The root-owned config is read
@@ -51,6 +59,21 @@ runner crash (60-second delay). Sync failures are logged and retried on the next
 daily run; they do not trigger rapid repeated USDA requests. Each service start
 runs immediately, then follows the existing 24-hour loop. No missed-day backlog
 is replayed after downtime; normal weekly catch-up handles overdue lists.
+
+## Without systemd (simple daily cron)
+
+On hosts without systemd, install a daily cron to fire a single background run
+that logs to a file. Example:
+
+```bash
+# /etc/cron.d/fireco-vipr
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+0 2 * * * fireco cd /home/fireco/fireco && SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... FS_USER_AGENT="FireOps/1.0 (ops@example.com)" VENV=/home/fireco/.local/share/fireops/usfs-venv nohup bash -lc '"$VENV/bin/python" jobs/usfs-dispatch/sync_supabase.py --weekly --fresh-pdfs --cleanup --retention-days 30 >> /var/log/fireco/vipr-sync.log 2>&1' &
+```
+
+This starts one run at 2am daily and appends logs to `/var/log/fireco/vipr-sync.log`.
 
 Operations:
 

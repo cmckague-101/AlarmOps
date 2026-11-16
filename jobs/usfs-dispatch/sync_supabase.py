@@ -13,7 +13,9 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+import threading
+import uuid
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -25,6 +27,11 @@ from scraper import (  # noqa: E402
     normalize_vin,
     parse_agreement_rates,
     parse_dpl,
+)
+from https_transport import (  # noqa: E402
+    SupabaseHttpClient,
+    HttpSupabaseTransport,
+    LeaseLostError,
 )
 
 
@@ -52,6 +59,12 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--fresh-pdfs", action="store_true", help="Bypass disk cache once per PDF per run")
     parser.add_argument("--cleanup", action="store_true", help="After a successful full catalog discovery and selected sync, prune obsolete data and old cached PDFs")
     parser.add_argument("--retention-days", type=int, default=30, help="Cleanup grace period (default: 30 days)")
+    parser.add_argument(
+        "--transport",
+        choices=("auto", "pg", "https"),
+        default="auto",
+        help="Write path: 'pg' uses psycopg to Postgres; 'https' uses Supabase RPC over HTTPS; default selects https when SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY are set and SUPABASE_DB_URL is not.",
+    )
     return parser.parse_args()
 
 
@@ -258,6 +271,21 @@ def parse_published_at(value: str | None) -> datetime | None:
             pass
     return None
 
+def published_iso_utc(value: str | None) -> Optional[str]:
+    """Convert USDA title timestamp strings to ISO-8601 UTC for timestamptz parsing, or None."""
+    dt = parse_published_at(value)
+    return dt.isoformat().replace("+00:00", "Z") if dt else None
+
+def start_watchdog(seconds: float) -> threading.Event:
+    """Start a background timer that sets and returns an Event after 'seconds'."""
+    fired = threading.Event()
+    if seconds <= 0:
+        return fired
+    def _trip():
+        time.sleep(seconds)
+        fired.set()
+    threading.Thread(target=_trip, name="usfs-watchdog", daemon=True).start()
+    return fired
 
 def write_list(
     connection,
@@ -508,21 +536,53 @@ def main() -> int:
     if not lists:
         raise SystemExit("Empty USDA catalog; refusing reconciliation or cleanup")
 
-    connection = None if args.dry_run else connect_database()
+    # Select transport
+    https_url = os.getenv("SUPABASE_URL")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    pg_url = os.getenv("SUPABASE_DB_URL")
+    chosen = args.transport
+    if chosen == "auto":
+        if https_url and service_key and not pg_url:
+            chosen = "https"
+        elif pg_url:
+            chosen = "pg"
+        else:
+            chosen = "pg"
+
+    connection = None
+    http: Optional[HttpSupabaseTransport] = None
     previous: dict[int, dict[str, Any]] = {}
     agreement_hashes: dict[str, str] = {}
     run_id = None
-    if connection:
+    # Watchdog
+    watchdog_seconds = float(os.getenv("FS_WATCHDOG_SECONDS", "21600"))  # 6 hours default
+    watchdog_fired = start_watchdog(watchdog_seconds)
+
+    if args.dry_run:
+        pass
+    elif chosen == "pg":
+        connection = connect_database()
         acquire_sync_lock(connection)
         if args.weekly:
-            # Fresh mode cannot reuse prior-run PDFs. Also recover disk space
-            # left by older versions or an interrupted run, under the sync lock.
             removed = prune_cache(client.cache_dir, 0)
             print(f"Weekly cache: removed {removed} prior-run files", flush=True)
         previous = existing_lists(connection)
         agreement_hashes = existing_agreements(connection)
         upsert_catalog(connection, areas, centers, lists, deactivate_missing=full_catalog)
         run_id = create_run(connection, len(lists))
+    else:
+        if not https_url or not service_key:
+            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for --transport=https")
+        timeout = float(os.getenv("SUPABASE_TIMEOUT", "30"))
+        retries = int(os.getenv("SUPABASE_RETRIES", "3"))
+        heartbeat_interval = int(os.getenv("SUPABASE_HEARTBEAT_SECONDS", "60"))
+        lease_seconds = int(os.getenv("SUPABASE_LEASE_SECONDS", "1800"))
+        http_client = SupabaseHttpClient(https_url, service_key, timeout=timeout, retries=retries)
+        http = HttpSupabaseTransport(http_client, uuid.uuid4(), lease_seconds=lease_seconds, heartbeat_interval=heartbeat_interval)
+        if args.weekly:
+            removed = prune_cache(client.cache_dir, 0)
+            print(f"Weekly cache: removed {removed} prior-run files", flush=True)
+        previous, agreement_hashes, run_id = http.begin_run(areas, centers, lists, deactivate_missing=full_catalog, parser_version="1")
 
     prioritized_targets = [
         (priority, position, item)
@@ -581,6 +641,12 @@ def main() -> int:
                 print(f"  WARNING: {warning}", flush=True)
             if connection:
                 write_list(connection, item, parsed, dpl_sha, agreements, errors, warnings)
+            elif http:
+                if http._stop_event.is_set():
+                    raise LeaseLostError("Lost sync lease; another runner took over")
+                # Compute ISO published_at for RPC
+                parsed["_published_iso_utc"] = published_iso_utc(parsed.get("published_on"))
+                http.write_list(file_id, parsed, dpl_sha, agreements, errors, warnings)
             else:
                 matched = sum(row["rate_status"] == "matched" for row in parsed["rows"])
                 print(f"  dry-run: {len(parsed['rows'])} rows, {matched} VIN rates matched")
@@ -600,16 +666,32 @@ def main() -> int:
                     )
             total_entries += len(parsed["rows"])
             completed += 1
+        except LeaseLostError as exc:
+            message = f"DPL {file_id}: {exc}"
+            all_errors.append(message)
+            print(f"  ERROR: {message}", file=sys.stderr, flush=True)
+            break
         except Exception as exc:
             if connection:
                 connection.rollback()
                 mark_list_failed(connection, file_id, str(exc))
+            elif http:
+                try:
+                    http.mark_list_failed(file_id, str(exc))
+                except LeaseLostError:
+                    pass
             message = f"DPL {file_id}: {exc}"
             all_errors.append(message)
             print(f"  ERROR: {message}", file=sys.stderr, flush=True)
 
     if args.weekly and connection:
         coverage = weekly_coverage(lists, existing_lists(connection), datetime.now(timezone.utc))
+        print(f"Weekly coverage after: {json.dumps(coverage)}", flush=True)
+        if coverage["overdue"] or coverage["never_successful"]:
+            print("Weekly coverage incomplete: overdue/never-successful lists remain; inspect failures and the next plan.", flush=True)
+    if args.weekly and http:
+        new_state = http.get_state()
+        coverage = weekly_coverage(lists, new_state, datetime.now(timezone.utc))
         print(f"Weekly coverage after: {json.dumps(coverage)}", flush=True)
         if coverage["overdue"] or coverage["never_successful"]:
             print("Weekly coverage incomplete: overdue/never-successful lists remain; inspect failures and the next plan.", flush=True)
@@ -625,6 +707,18 @@ def main() -> int:
                 connection.rollback()
                 all_errors.append(f"Cleanup: {exc}")
                 print(f"  ERROR: cleanup: {exc}", file=sys.stderr, flush=True)
+    if args.cleanup and http:
+        if all_errors:
+            print("Cleanup skipped: errors; retained existing data/files.", flush=True)
+        else:
+            try:
+                counts = http.cleanup(args.retention_days)
+                if args.weekly:
+                    counts["cached_files"] = prune_cache(client.cache_dir, 0)
+                print(f"Cleanup (grace {args.retention_days} days): {json.dumps(counts)}", flush=True)
+            except Exception as exc:
+                all_errors.append(f"Cleanup: {exc}")
+                print(f"  ERROR: cleanup: {exc}", file=sys.stderr, flush=True)
 
     if args.weekly and connection:
         # Cache is disposable, unlike stored rates. Do not let upstream errors
@@ -637,8 +731,20 @@ def main() -> int:
 
     if connection and run_id is not None:
         status = "completed" if not all_errors else "completed_with_errors"
+        if watchdog_fired.is_set() and status == "completed":
+            status = "failed"
+            all_errors.append("Run watchdog limit exceeded; aborting.")
         finish_run(connection, run_id, status, completed, total_entries, all_errors)
         connection.close()
+    if http and http.run_id is not None:
+        status = "completed" if not all_errors else "completed_with_errors"
+        if watchdog_fired.is_set() and status == "completed":
+            status = "failed"
+            all_errors.append("Run watchdog limit exceeded; aborting.")
+        try:
+            http.finish_run(status, completed, total_entries, all_errors)
+        finally:
+            http.stop()
     if args.dry_run:
         print("Dry-run: no database baseline loaded; 'new' means no comparison hash available.")
     for label, changes in (("DPL", dpl_changes), ("Agreement", agreement_changes)):

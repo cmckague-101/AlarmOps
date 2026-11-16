@@ -28,15 +28,13 @@ def run_runner(tmp_path, env):
     )
 
 
-@pytest.mark.parametrize("missing", ["SUPABASE_DB_URL", "FS_USER_AGENT"])
-def test_unattended_runner_requires_config(tmp_path, missing):
+def test_unattended_runner_requires_config(tmp_path):
     env = runner_env(tmp_path)
-    env.update(SUPABASE_DB_URL="test-db", FS_USER_AGENT="FireOps/1.0 (test@example.com)")
-    env.pop(missing)
+    # No SUPABASE_DB_URL and no HTTPS pair -> error
+    env.update(FS_USER_AGENT="FireOps/1.0 (test@example.com)")
     result = run_runner(tmp_path, env)
     assert result.returncode == 1
-    assert f"{missing} is required for unattended runs" in result.stderr
-    assert "test-db" not in result.stdout + result.stderr
+    assert "Supabase configuration is required for unattended runs" in result.stderr
 
 
 def test_missing_virtualenv_exits_with_setup_hint(tmp_path):

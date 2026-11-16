@@ -4,15 +4,21 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-if [[ -z "${SUPABASE_DB_URL:-}" ]]; then
+# Require either direct Postgres (SUPABASE_DB_URL) or HTTPS (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY).
+if [[ -z "${SUPABASE_DB_URL:-}" && ( -z "${SUPABASE_URL:-}" || -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ) ]]; then
   if [[ ! -t 0 ]]; then
-    echo "SUPABASE_DB_URL is required for unattended runs." >&2
+    echo "Supabase configuration is required for unattended runs (either SUPABASE_DB_URL or SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)." >&2
     exit 1
   fi
-  read -rsp "Supabase Postgres session connection URL: " SUPABASE_DB_URL
+  read -rsp "Supabase Postgres session connection URL (leave blank to use HTTPS RPC): " SUPABASE_DB_URL || true
   echo
+  if [[ -z "$SUPABASE_DB_URL" ]]; then
+    read -rp "Supabase project URL (https://xyz.supabase.co): " SUPABASE_URL
+    read -rsp "Supabase service role key: " SUPABASE_SERVICE_ROLE_KEY
+    echo
+  fi
 fi
-export SUPABASE_DB_URL
+export SUPABASE_DB_URL SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY
 
 if [[ -z "${FS_USER_AGENT:-}" ]]; then
   if [[ ! -t 0 ]]; then
