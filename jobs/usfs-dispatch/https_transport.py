@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Any, Optional
 
 
@@ -60,9 +61,24 @@ class SupabaseHttpClient:
             "apikey": service_key,
         }
 
+    @staticmethod
+    def _json_default(value: Any):
+        # Preserve numeric precision for Decimals by serializing as strings, which Postgres
+        # casts to numeric in jsonb_to_recordset columns; avoid float rounding.
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, (datetime, date)):
+            # ISO-8601; add 'Z' for UTC datetimes
+            if isinstance(value, datetime):
+                text = value.isoformat()
+                return text.replace("+00:00", "Z")
+            return value.isoformat()
+        # Fallback: let json module raise for unknown types
+        raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
     def post_rpc(self, name: str, payload: dict[str, Any]) -> Any:
         url = f"{self.base_url}rest/v1/rpc/{name}"
-        resp = self.session.post(url, headers=self._headers, data=json.dumps(payload), timeout=self.timeout)
+        resp = self.session.post(url, headers=self._headers, data=json.dumps(payload, default=self._json_default), timeout=self.timeout)
         content_type = resp.headers.get("content-type", "")
         body = None
         try:

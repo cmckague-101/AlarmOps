@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import sync_supabase as _sync  # noqa: E402,F401
 from https_transport import HttpSupabaseTransport, SupabaseHttpClient, LeaseLostError  # type: ignore
 from sync_supabase import published_iso_utc, start_watchdog  # type: ignore
+from decimal import Decimal
+from datetime import date, datetime, timezone
+import json
 
 
 class FakeClient:
@@ -86,6 +89,34 @@ def test_lease_loss_abort_heartbeat_stops():
     # Permit the heartbeat loop to run at least once
     time.sleep(0.05)
     assert t._stop_event.is_set()
+
+def test_client_serializes_decimals_and_dates(monkeypatch):
+    sent = {}
+    # Build a client and intercept the session.post to capture serialized body
+    client = SupabaseHttpClient("https://example.test", "sk_test", timeout=1, retries=0)
+    class Resp:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        text = "null"
+        def json(self): return None
+    def fake_post(url, headers=None, data=None, timeout=None):
+        sent["url"] = url; sent["headers"] = headers; sent["data"] = data; sent["timeout"] = timeout
+        return Resp()
+    client.session.post = fake_post  # type: ignore
+    payload = {
+        "p_number": Decimal("123.45"),
+        "p_date": date(2026, 7, 15),
+        "p_dt": datetime(2026, 7, 15, 12, 0, 0, tzinfo=timezone.utc),
+        "p_inner": {"amount": Decimal("450.50")},
+    }
+    client.post_rpc("echo", payload)
+    body = json.loads(sent["data"])
+    # Decimal -> string (preserves precision/scale), Postgres numeric casts from string in RPCs
+    assert body["p_number"] == "123.45"
+    assert body["p_inner"]["amount"] == "450.50"
+    # Dates/DateTimes -> ISO-8601
+    assert body["p_date"] == "2026-07-15"
+    assert body["p_dt"].endswith("Z")
 
 
 def test_watchdog_trips_after_interval():
