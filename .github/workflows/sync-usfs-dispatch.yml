@@ -1,24 +1,35 @@
 name: Sync USFS dispatch data
 
 on:
+  schedule:
+    # Daily at 09:00 UTC (1-2am Pacific).
+    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
+      mode:
+        description: weekly runs the scheduled rotation; incremental uses the options below
+        required: false
+        type: choice
+        options:
+          - weekly
+          - incremental
+        default: weekly
       force:
-        description: Reprocess selected lists regardless of current status
+        description: (incremental) Reprocess selected lists regardless of current status
         required: false
         type: boolean
         default: false
       limit:
-        description: Maximum lists to process (blank defaults to 10)
+        description: (incremental) Maximum lists to process (blank defaults to 10)
         required: false
         type: string
       recheck_days:
-        description: Days before rechecking complete lists
+        description: (incremental) Days before rechecking complete lists
         required: false
         type: string
         default: "7"
       incremental_only:
-        description: Skip reconciliation of already-complete lists
+        description: (incremental) Skip reconciliation of already-complete lists
         required: false
         type: boolean
         default: false
@@ -33,7 +44,8 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    # Hard cap on billed minutes per run; private repos get 2,000 free minutes a month.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,18 +55,25 @@ jobs:
           cache-dependency-path: jobs/usfs-dispatch/requirements.txt
       - run: pip install -r jobs/usfs-dispatch/requirements.txt
       - name: Test PDF parser
-        run: pytest jobs/usfs-dispatch/tests
-      - name: Import new, incomplete, and due lists
+        run: pytest jobs/usfs-dispatch/tests -q
+      - name: Sync VIPR lists
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FS_USER_AGENT: ${{ secrets.FS_USER_AGENT }}
           FS_REQUEST_INTERVAL: "3"
+          MODE: ${{ inputs.mode || 'weekly' }}
           FORCE: ${{ inputs.force }}
           LIMIT: ${{ inputs.limit }}
           RECHECK_DAYS: ${{ inputs.recheck_days }}
           INCREMENTAL_ONLY: ${{ inputs.incremental_only }}
         run: |
-          args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
-          if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
-          if [[ "$INCREMENTAL_ONLY" == "true" ]]; then args+=(--incremental-only); fi
+          if [[ "$MODE" == "weekly" ]]; then
+            args=(--weekly --fresh-pdfs --cleanup --retention-days 30)
+          else
+            args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
+            if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
+            if [[ "$INCREMENTAL_ONLY" == "true" ]]; then args+=(--incremental-only); fi
+          fi
           python jobs/usfs-dispatch/sync_supabase.py "${args[@]}"
