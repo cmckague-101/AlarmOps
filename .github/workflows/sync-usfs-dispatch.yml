@@ -2,37 +2,24 @@ name: Sync USFS dispatch data
 
 on:
   schedule:
-    # Daily at 09:00 UTC (1-2am Pacific).
-    - cron: "0 9 * * *"
+    # Mondays at 09:00 UTC (1-2am Pacific).
+    - cron: "0 9 * * 1"
   workflow_dispatch:
     inputs:
       mode:
-        description: weekly runs the scheduled rotation; incremental uses the options below
+        description: "new-only: new, renamed and failed lists; refresh: also recheck oldest lists and clean up; full: reprocess everything"
         required: false
         type: choice
         options:
-          - weekly
-          - incremental
-        default: weekly
-      force:
-        description: (incremental) Reprocess selected lists regardless of current status
-        required: false
-        type: boolean
-        default: false
+          - new-only
+          - refresh
+          - full
+        default: new-only
       limit:
-        description: (incremental) Maximum lists to process (blank defaults to 10)
+        description: (refresh) Maximum lists to process
         required: false
         type: string
-      recheck_days:
-        description: (incremental) Days before rechecking complete lists
-        required: false
-        type: string
-        default: "7"
-      incremental_only:
-        description: (incremental) Skip reconciliation of already-complete lists
-        required: false
-        type: boolean
-        default: false
+        default: "200"
 
 permissions:
   contents: read
@@ -45,7 +32,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     # Hard cap on billed minutes per run; private repos get 2,000 free minutes a month.
-    timeout-minutes: 120
+    timeout-minutes: ${{ inputs.mode == 'full' && 360 || 90 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,17 +50,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FS_USER_AGENT: ${{ secrets.FS_USER_AGENT }}
           FS_REQUEST_INTERVAL: "3"
-          MODE: ${{ inputs.mode || 'weekly' }}
-          FORCE: ${{ inputs.force }}
+          MODE: ${{ inputs.mode || 'new-only' }}
           LIMIT: ${{ inputs.limit }}
-          RECHECK_DAYS: ${{ inputs.recheck_days }}
-          INCREMENTAL_ONLY: ${{ inputs.incremental_only }}
         run: |
-          if [[ "$MODE" == "weekly" ]]; then
-            args=(--weekly --fresh-pdfs --cleanup --retention-days 30)
-          else
-            args=(--limit "${LIMIT:-10}" --recheck-days "${RECHECK_DAYS:-7}")
-            if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
-            if [[ "$INCREMENTAL_ONLY" == "true" ]]; then args+=(--incremental-only); fi
-          fi
+          case "$MODE" in
+            new-only) args=(--incremental-only) ;;
+            refresh) args=(--recheck-days 28 --limit "${LIMIT:-200}" --cleanup --retention-days 30) ;;
+            full) args=(--force --fresh-pdfs --cleanup --retention-days 30) ;;
+            *) echo "Unknown mode: $MODE" >&2; exit 1 ;;
+          esac
           python jobs/usfs-dispatch/sync_supabase.py "${args[@]}"

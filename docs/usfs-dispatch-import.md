@@ -17,9 +17,15 @@ Contact information is not collected or stored. Agreement PIID and CLIN remain i
 
 ## Schedule and reliability
 
-`.github/workflows/sync-usfs-dispatch.yml` runs daily at 09:00 UTC with `--weekly --fresh-pdfs --cleanup --retention-days 30`, the same command as the systemd runner, so do not run both. Each run is capped at 120 minutes to stay within the private-repo Actions allowance (2,000 minutes/month); a run killed by the cap is retried by the next day's rotation. Set repository secrets `FS_USER_AGENT` and either `SUPABASE_DB_URL` or `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Manual runs default to weekly mode; choose `incremental` to use the limit/force/recheck options.
+`.github/workflows/sync-usfs-dispatch.yml` runs Mondays at 09:00 UTC in `new-only` mode (`--incremental-only`). USDA list names carry a revision date, so a republished list appears with a new ID or name and is processed as new; unchanged complete lists are skipped and lists no longer published are marked inactive. Do not also run the systemd/cron runner. Set repository secrets `FS_USER_AGENT` and either `SUPABASE_DB_URL` or `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 
-Incremental mode discovers the full catalog, then processes up to ten lists in this order: new or metadata-changed, partial or failed, then pending. With `--incremental-only`, complete lists are skipped, so historical reconciliation cannot delay new publications.
+Manual runs offer three modes:
+
+- `new-only`: same as the schedule.
+- `refresh`: new lists first, then rechecks lists older than 28 days up to `limit` (default 200), and runs cleanup. Use occasionally to catch PDFs replaced without a name change and to delete long-inactive data.
+- `full`: `--force --fresh-pdfs --cleanup`, reprocessing every list. Allowed up to 6 hours; other modes are capped at 90 minutes to stay within the private-repo Actions allowance (2,000 minutes/month).
+
+Incremental mode discovers the full catalog, then processes lists in this order: new or metadata-changed, partial or failed, then pending, then (without `--incremental-only`) complete lists due for recheck.
 
 List states are `pending`, `complete`, `partial`, or `failed`. Partial and failed lists retry on later runs. A confirmed USDA agreement-PDF 404 is stored as a warning on a complete DPL, with affected rates exposed as `not_found`; it does not consume a retry slot forever. Other upstream, network, and parser errors remain retryable. Unexpected empty parser output fails without replacing existing rows. Agreement rates are normalized and joined at read time, preventing copied rates from becoming stale.
 
