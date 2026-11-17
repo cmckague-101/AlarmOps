@@ -1,17 +1,35 @@
 import {useEffect,useMemo,useState,type ReactNode} from 'react';
-import {createDemoNationalFireActivity,curatedNewsStories,type NationalFireActivity,type NewsFeedCategory,type NewsStory} from '@fireops/domain';
+import {createDemoNationalFireActivity,curatedNewsStories,newsFeedImages,type NationalFireActivity,type NewsFeedCategory,type NewsImageName} from '@fireops/domain';
 import {Image,Linking,Pressable,StyleSheet,Text,View} from 'react-native';
 import {AppSymbol} from './app-symbol';
 import {supabase} from '@/lib/supabase';
 import {useSession} from '@/providers/session-provider';
 import {type FireOpsTheme,useFireOpsTheme} from '@/theme';
 
-const images:Record<NewsStory['image'],number>={
-  nwcg:require('../../assets/news/nwcg-crew.jpg'),
-  fire_science:require('../../assets/news/fire-science.jpg'),
-  outlook:require('../../assets/news/featured-sunset.jpg'),
+// Metro needs a static require() per photo; keep in sync with newsImageNames in @fireops/domain.
+const images:Record<NewsImageName,number>={
+  'airtanker-retardant-ridge':require('../../assets/news/airtanker-retardant-ridge.jpg'),
+  'crew-building-fireline':require('../../assets/news/crew-building-fireline.jpg'),
+  'crew-hose-line':require('../../assets/news/crew-hose-line.jpg'),
+  'crew-on-the-line':require('../../assets/news/crew-on-the-line.jpg'),
+  'dousing-embers':require('../../assets/news/dousing-embers.jpg'),
+  'dozer-fireline-handtools':require('../../assets/news/dozer-fireline-handtools.jpg'),
+  'dozer-line-crew':require('../../assets/news/dozer-line-crew.jpg'),
+  'engine-crew-hose':require('../../assets/news/engine-crew-hose.jpg'),
+  'engine-hose-mop-up':require('../../assets/news/engine-hose-mop-up.jpg'),
+  'firing-operation-dusk':require('../../assets/news/firing-operation-dusk.jpg'),
+  'hand-crew-hiking':require('../../assets/news/hand-crew-hiking.jpg'),
+  'helicopter-bucket-forest':require('../../assets/news/helicopter-bucket-forest.jpg'),
+  'helicopter-bucket-ridge':require('../../assets/news/helicopter-bucket-ridge.jpg'),
+  'helicopter-bucket-slope':require('../../assets/news/helicopter-bucket-slope.jpg'),
+  'helicopter-bucket-valley':require('../../assets/news/helicopter-bucket-valley.jpg'),
+  'incident-briefing':require('../../assets/news/incident-briefing.jpg'),
+  'large-airtanker-drop':require('../../assets/news/large-airtanker-drop.jpg'),
+  'mop-up-crew':require('../../assets/news/mop-up-crew.jpg'),
+  'night-line-construction':require('../../assets/news/night-line-construction.jpg'),
+  'smokejumpers-burned-forest':require('../../assets/news/smokejumpers-burned-forest.jpg'),
+  'smokejumpers-landing':require('../../assets/news/smokejumpers-landing.jpg'),
 };
-const featuredImage=require('../../assets/news/featured-sunset.jpg');
 const categories:{id:NewsFeedCategory;label:string}[]=[{id:'all',label:'All'},{id:'nwcg',label:'NWCG'},{id:'contracting',label:'Contracting'},{id:'fire_science',label:'Fire Science'}];
 
 export function NewsFeedStories({contracting}:{contracting:ReactNode}){
@@ -30,15 +48,17 @@ export function NewsFeedStories({contracting}:{contracting:ReactNode}){
   const pl=activity?.nationalPreparednessLevel;
   const fires=activity?.largeFireCount;
   const headline=pl?`National preparedness level ${pl}${fires===null||fires===undefined?'':` · ${fires} active large ${fires===1?'fire':'fires'}`}`:'Latest national fire activity';
+  const featuredKey=activity?headline:null;
+  const newsImages=useMemo(()=>newsFeedImages(featuredKey),[featuredKey]);
   const stories=filter==='all'?curatedNewsStories:curatedNewsStories.filter(story=>story.category===filter);
   return <>
     <Pressable accessibilityRole="link" onPress={()=>void Linking.openURL('https://www.nifc.gov/fire-information/nfn')} style={({pressed})=>[styles.featured,pressed&&styles.pressed]}>
-      <Image source={featuredImage} style={styles.featuredImage}/><View style={styles.featuredShade}/><View style={styles.featuredCopy}><Text style={styles.featuredBadge}>NIFC</Text><Text style={styles.featuredTitle}>{headline}</Text><View style={styles.openRow}><Text style={styles.featuredMeta}>nifc.gov · Open</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color="#fff" size={14}/></View></View>
+      {newsImages.featured?<Image source={images[newsImages.featured]} style={styles.featuredImage}/>:null}<View style={styles.featuredShade}/><View style={styles.featuredCopy}><Text style={styles.featuredBadge}>NIFC</Text><Text style={styles.featuredTitle}>{headline}</Text><View style={styles.openRow}><Text style={styles.featuredMeta}>nifc.gov · Open</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color="#fff" size={14}/></View></View>
     </Pressable>
     <View accessibilityRole="tablist" style={styles.filters}>{categories.map(category=><Pressable key={category.id} accessibilityRole="tab" accessibilityState={{selected:filter===category.id}} onPress={()=>setFilter(category.id)} style={[styles.filter,filter===category.id&&styles.filterActive]}><Text style={[styles.filterText,filter===category.id&&styles.filterTextActive]}>{category.label}</Text></Pressable>)}</View>
     {filter==='all'||filter==='contracting'?contracting:null}
     {filter!=='contracting'?<View style={styles.cards}>{stories.map(story=><Pressable key={story.id} accessibilityRole="link" onPress={()=>void Linking.openURL(story.href)} style={({pressed})=>[styles.card,pressed&&styles.pressed]}>
-      <Image source={images[story.image]} style={styles.cardImage}/><View style={styles.cardCopy}><Text style={[styles.badge,story.category==='fire_science'&&styles.badgeScience]}>{story.source}</Text><Text style={styles.cardTitle}>{story.headline}</Text><Text style={styles.cardSummary}>{story.summary}</Text><View style={styles.sourceRow}><Text style={styles.sourceText}>Official source</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.ember} size={14}/></View></View>
+      <Image source={images[newsImages.stories[story.id]]} style={styles.cardImage}/><View style={styles.cardCopy}><Text style={[styles.badge,story.category==='fire_science'&&styles.badgeScience]}>{story.source}</Text><Text style={styles.cardTitle}>{story.headline}</Text><Text style={styles.cardSummary}>{story.summary}</Text><View style={styles.sourceRow}><Text style={styles.sourceText}>Official source</Text><AppSymbol name={{ios:'arrow.up.right.square',android:'open_in_new'} as never} color={theme.ember} size={14}/></View></View>
     </Pressable>)}</View>:null}
   </>;
 }

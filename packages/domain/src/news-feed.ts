@@ -1,14 +1,16 @@
+import {assignNewsImages,type NewsImageName} from './news-images';
+
 export type NewsFeedCategory='all'|'nwcg'|'contracting'|'fire_science';
 
 export type NewsStory={
-  id:string;category:Exclude<NewsFeedCategory,'all'|'contracting'>;source:string;headline:string;summary:string;href:string;image:'nwcg'|'fire_science'|'outlook';
+  id:string;category:Exclude<NewsFeedCategory,'all'|'contracting'>;source:string;headline:string;summary:string;href:string;
 };
 
 export const curatedNewsStories:ReadonlyArray<NewsStory>=[
-  {id:'nwcg-announcements',category:'nwcg',source:'NWCG',headline:'Latest NWCG announcements and notices',summary:'Committee updates, safety notices, publications, and wildland fire coordination announcements.',href:'https://www.nwcg.gov/nwcg-alerts',image:'nwcg'},
-  {id:'nifc-outlooks',category:'nwcg',source:'NIFC Outlook',headline:'Significant fire potential outlooks',summary:'Current monthly and seasonal outlooks from NIFC Predictive Services.',href:'https://www.nifc.gov/nicc/predictive-services/outlooks',image:'outlook'},
-  {id:'jfsp-news',category:'fire_science',source:'Fire Science',headline:'Joint Fire Science Program news and research',summary:'Research updates, science partnerships, publications, and learning opportunities.',href:'https://www.firescience.gov/ords/prd/jf_jfsp/jf_jfsp/r/jfspublic/jfsp-newsletter',image:'fire_science'},
-  {id:'wildfire-lessons',category:'fire_science',source:'Wildland Fire Lessons Learned',headline:'Incident learning and operational lessons',summary:'Field learning, incident reviews, and lessons shared across the wildland fire community.',href:'https://www.wildfirelessons.net/',image:'nwcg'},
+  {id:'nwcg-announcements',category:'nwcg',source:'NWCG',headline:'Latest NWCG announcements and notices',summary:'Committee updates, safety notices, publications, and wildland fire coordination announcements.',href:'https://www.nwcg.gov/nwcg-alerts'},
+  {id:'nifc-outlooks',category:'nwcg',source:'NIFC Outlook',headline:'Significant fire potential outlooks',summary:'Current monthly and seasonal outlooks from NIFC Predictive Services.',href:'https://www.nifc.gov/nicc/predictive-services/outlooks'},
+  {id:'jfsp-news',category:'fire_science',source:'Fire Science',headline:'Joint Fire Science Program news and research',summary:'Research updates, science partnerships, publications, and learning opportunities.',href:'https://www.firescience.gov/ords/prd/jf_jfsp/jf_jfsp/r/jfspublic/jfsp-newsletter'},
+  {id:'wildfire-lessons',category:'fire_science',source:'Wildland Fire Lessons Learned',headline:'Incident learning and operational lessons',summary:'Field learning, incident reviews, and lessons shared across the wildland fire community.',href:'https://www.wildfirelessons.net/'},
 ];
 
 export type ContractingOpportunity={
@@ -48,4 +50,15 @@ export function createDemoContractingNewsFeed():ContractingNewsFeed{
       },
     ],
   };
+}
+
+/**
+ * Photos for the news screen. Curated stories go first so their photos never shift when the featured
+ * headline changes. Pass `null` until national activity loads so the featured photo doesn't swap a
+ * moment after the screen opens.
+ */
+export function newsFeedImages(featuredHeadline:string|null):{stories:Record<string,NewsImageName>;featured:NewsImageName|null}{
+  const keys=curatedNewsStories.map(story=>story.id);
+  const images=assignNewsImages(featuredHeadline===null?keys:[...keys,`featured:${featuredHeadline}`]);
+  return {stories:Object.fromEntries(keys.map((key,index)=>[key,images[index]])),featured:featuredHeadline===null?null:images[keys.length]};
 }

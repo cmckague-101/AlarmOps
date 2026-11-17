@@ -1,14 +1,14 @@
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useMemo,useState} from 'react';
 import {ChevronDown,ChevronRight,ExternalLink,RefreshCw,Star} from 'lucide-react';
 import {
-  createDemoContractingNewsFeed,createDemoNationalFireActivity,curatedNewsStories,
-  type ContractingNewsFeed,type NationalFireActivity,type NewsFeedCategory,type NewsStory,
+  createDemoContractingNewsFeed,createDemoNationalFireActivity,curatedNewsStories,newsFeedImages,
+  type ContractingNewsFeed,type NationalFireActivity,type NewsFeedCategory,type NewsImageName,
 } from '@fireops/domain';
 import {supabase} from './supabase';
 import NationalFireActivitySection from './NationalFireActivitySection';
 import './NewsFeedSection.css';
 
-const storyImages:Record<NewsStory['image'],string>={nwcg:'/news/nwcg-crew.jpg',fire_science:'/news/fire-science.jpg',outlook:'/news/featured-sunset.jpg'};
+const newsImageSrc=(name:NewsImageName)=>`/news/${name}.jpg`;
 const categories:{id:NewsFeedCategory;label:string}[]=[{id:'all',label:'All'},{id:'nwcg',label:'NWCG'},{id:'contracting',label:'Contracting'},{id:'fire_science',label:'Fire Science'}];
 
 function NewsFeedMetrics({activity}:{activity:NationalFireActivity|null}){
@@ -20,22 +20,26 @@ function NewsFeedMetrics({activity}:{activity:NationalFireActivity|null}){
   </section>;
 }
 
-function FeaturedStory({activity}:{activity:NationalFireActivity|null}){
+function featuredHeadline(activity:NationalFireActivity|null){
   const pl=activity?.nationalPreparednessLevel;
   const fires=activity?.largeFireCount;
-  const headline=pl?`National preparedness level ${pl}${fires===null||fires===undefined?'':` · ${fires} active large ${fires===1?'fire':'fires'}`}`:'Latest national fire activity';
+  return pl?`National preparedness level ${pl}${fires===null||fires===undefined?'':` · ${fires} active large ${fires===1?'fire':'fires'}`}`:'Latest national fire activity';
+}
+
+function FeaturedStory({activity,image}:{activity:NationalFireActivity|null;image:NewsImageName|null}){
+  const headline=featuredHeadline(activity);
   return <a className="news-featured" href="https://www.nifc.gov/fire-information/nfn" target="_blank" rel="noreferrer">
-    <img src="/news/featured-sunset.jpg" alt=""/>
+    {image&&<img src={newsImageSrc(image)} alt=""/>}
     <span className="news-featured-shade"/>
     <span className="news-featured-copy"><span className="news-source-badge">NIFC</span><h2>{headline}</h2><span>nifc.gov · Open <ExternalLink/></span></span>
   </a>;
 }
 
-function StoryCards({filter}:{filter:NewsFeedCategory}){
+function StoryCards({filter,images}:{filter:NewsFeedCategory;images:Record<string,NewsImageName>}){
   const stories=filter==='all'?curatedNewsStories:curatedNewsStories.filter(story=>story.category===filter);
   if(!stories.length)return null;
   return <ul className="news-story-grid">{stories.map(story=><li key={story.id}><a href={story.href} target="_blank" rel="noreferrer">
-    <span className="news-story-image"><img src={storyImages[story.image]} alt=""/></span>
+    <span className="news-story-image"><img src={newsImageSrc(images[story.id])} alt=""/></span>
     <span className="news-story-copy"><span className={`news-source-badge ${story.category}`}>{story.source}</span><h3>{story.headline}</h3><p>{story.summary}</p><span className="news-story-open">Official source <ExternalLink/></span></span>
   </a></li>)}</ul>;
 }
@@ -77,11 +81,13 @@ export default function NewsFeedSection({companyId,demoMode=false}:{companyId?:s
     finally{setLoading(false)}
   },[companyId,demoMode]);
   useEffect(()=>{void load()},[load]);
+  const featuredKey=activity?featuredHeadline(activity):null;
+  const newsImages=useMemo(()=>newsFeedImages(featuredKey),[featuredKey]);
   const count=feed?.opportunities.length??0;
   const showContracting=filter==='all'||filter==='contracting';
   return <div className="news-feed-content">
     <NewsFeedMetrics activity={activity}/>
-    <FeaturedStory activity={activity}/>
+    <FeaturedStory activity={activity} image={newsImages.featured}/>
     <div className="news-filters" role="tablist" aria-label="News categories">{categories.map(category=><button key={category.id} type="button" role="tab" aria-selected={filter===category.id} className={filter===category.id?'active':''} onClick={()=>{setFilter(category.id);if(category.id==='contracting')setOpen(true)}}>{category.label}</button>)}</div>
     {showContracting&&<section className={`news-alerts${open?' open':''}`} aria-labelledby="news-contracting-title">
       <div className="news-alerts-heading">
@@ -99,7 +105,7 @@ export default function NewsFeedSection({companyId,demoMode=false}:{companyId?:s
         {feed&&!demoMode&&!error&&<footer>Updated {new Date(feed.fetchedAt).toLocaleString()} · <a href={feed.sourceUrl} target="_blank" rel="noreferrer">SAM.gov <ExternalLink/></a></footer>}
       </>}
     </section>}
-    {filter!=='contracting'&&<StoryCards filter={filter}/>}
+    {filter!=='contracting'&&<StoryCards filter={filter} images={newsImages.stories}/>}
     <NationalFireActivitySection demoMode={demoMode}/>
   </div>;
 }
