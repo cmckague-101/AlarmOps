@@ -2,7 +2,7 @@
 
 Status (current code, not deployed): native scoped outbox, verified fleet downloads, repeated edits/rebase, submitter-resolved conflicts with a retained server-side device-history audit, and retry-safe online fleet writers are implemented. Enabled native adapters include owner/admin vehicle/issue details, status/assignments, vehicle documents/file slots, crew vehicle claims/releases and own issue notes, owner/admin/shop-tech inspections with photos and new issue reports, plus private personal tasks, own availability and dashboard layout. Exact role/field restrictions appear in the corresponding sections below. Web remains online-only and has no conflict review or history screens. All-feature offline remains incomplete; other domains, sensitive-file encryption, complete catch-up, compatibility/security hardening and real Supabase/device validation remain outstanding. No migrations or Edge Functions were deployed by this implementation.
 
-Implementation sections below are chronological milestones. Earlier statements such as “not enabled,” older schema versions and historical test counts describe that milestone, not current capability. Read the later adapter sections and `docs/offline-sync-handoff.md` for the current continuation checkpoint.
+Implementation sections below are chronological milestones. Earlier statements such as “not enabled,” older schema versions and historical test counts describe that milestone, not current capability. Read the later adapter sections for the current state.
 
 ## Scope
 
