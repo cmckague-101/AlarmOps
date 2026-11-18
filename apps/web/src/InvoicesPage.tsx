@@ -302,7 +302,7 @@ export default function InvoicesPage({companyId,user,company,companyLogoUrl,demo
     return created;
   }
 
-  if(generatorOpen&&manager)return <InvoiceGenerator companyLogoUrl={companyLogoUrl} company={company??{name:''}} customers={customers} onAddCustomer={async name=>{const created=await addCustomer(name);if(!created)throw new Error('Customer could not be added.');return created}} draftKey={`fireops.invoice-generator.${companyId??'demo'}.${user.id}`} onAddToInvoices={addFromGenerator} onBack={()=>setGeneratorOpen(false)}/>;
+  if(generatorOpen&&manager)return <InvoiceGenerator key={`fireops.invoice-generator.${companyId??'demo'}.${user.id}`} companyLogoUrl={companyLogoUrl} company={company??{name:''}} customers={customers} onAddCustomer={async name=>{const created=await addCustomer(name);if(!created)throw new Error('Customer could not be added.');return created}} draftKey={`fireops.invoice-generator.${companyId??'demo'}.${user.id}`} onAddToInvoices={addFromGenerator} onBack={()=>setGeneratorOpen(false)}/>;
 
   if(selected){
     const editable=canEditInvoice(selected,user,manager);

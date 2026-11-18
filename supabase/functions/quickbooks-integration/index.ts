@@ -3,6 +3,7 @@ import {
   type Admin, type QboConfig, Qbo, type Connection, companyContext, encryptedTokenColumns, memberAccess, qboConfig, requestTokens, serviceClient, decryptValue,
 } from '../_shared/quickbooks.ts';
 import { QBO_AUTHORIZE_URL, QBO_REVOKE_URL, QBO_SCOPE, qboQueryValue } from '../_shared/quickbooks-logic.ts';
+import { allowedReturnUrls, matchesAllowedReturnUrl } from '../_shared/request-security.ts';
 
 // QuickBooks Online connection for a company (paid add-on: companies.quickbooks_enabled).
 // GET  ?code&state&realmId  OAuth callback (unauthenticated browser redirect; bound by state).
@@ -32,8 +33,7 @@ function validReturnTo(value: string, request: Request) {
     const target = new URL(value);
     const origin = request.headers.get('Origin');
     if (origin && (target.protocol === 'https:' || target.protocol === 'http:') && target.origin === origin) return target.toString();
-    const allowed = (Deno.env.get('QBO_ALLOWED_RETURN_URLS') ?? '').split(',').map(item => item.trim()).filter(Boolean);
-    return allowed.some(item => target.toString().startsWith(item)) ? target.toString() : '';
+    return matchesAllowedReturnUrl(target, allowedReturnUrls(Deno.env.get('QBO_ALLOWED_RETURN_URLS'))) ? target.toString() : '';
   } catch {
     return '';
   }

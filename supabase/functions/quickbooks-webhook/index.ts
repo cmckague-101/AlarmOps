@@ -3,6 +3,7 @@ import {
   invoiceSnapshot, paymentSnapshot, qboConfig, serviceClient, syncInvoice,
 } from '../_shared/quickbooks.ts';
 import { cdcSince, parseCdc, parseWebhookChanges, verifyIntuitSignature, type QboWebhookChange } from '../_shared/quickbooks-logic.ts';
+import { timingSafeEqual } from '../_shared/request-security.ts';
 
 // Changes from QuickBooks Online back into FireOps, plus queued FireOps work.
 // POST with `intuit-signature` (Intuit webhook; verified with QBO_WEBHOOK_VERIFIER_TOKEN):
@@ -100,7 +101,7 @@ Deno.serve(async request => {
 
   const cronSecret = Deno.env.get('QBO_CRON_SECRET');
   const supplied = request.headers.get('x-qbo-cron-secret');
-  if (!cronSecret || !supplied || supplied !== cronSecret) return json(401, { error: 'Unauthorized.' });
+  if (!timingSafeEqual(supplied, cronSecret)) return json(401, { error: 'Unauthorized.' });
   const { data: connections, error } = await admin.from('company_qbo_connections').select('company_id');
   if (error) return json(500, { error: 'Connections could not be loaded.' });
   const results = [];

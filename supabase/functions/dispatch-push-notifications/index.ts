@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.115.0';
 import {chunks, isInvalidTokenError, retryDelayMinutes} from './logic.ts';
+import {timingSafeEqual} from '../_shared/request-security.ts';
 
 const EXPO_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
@@ -245,7 +246,7 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return json(405, {error: 'Method not allowed.'});
   const expectedSecret = Deno.env.get('PUSH_DISPATCH_SECRET');
   const suppliedSecret = request.headers.get('x-dispatch-secret') ?? request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  if (!expectedSecret || suppliedSecret !== expectedSecret) return json(401, {error: 'Invalid dispatch credentials.'});
+  if (!timingSafeEqual(suppliedSecret, expectedSecret)) return json(401, {error: 'Invalid dispatch credentials.'});
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

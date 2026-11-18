@@ -56,3 +56,10 @@ supabase/.temp*
 
 # Local mobile build artifacts and release notes from deploy.sh
 /builds/
+
+# Windows download metadata
+*:Zone.Identifier
+
+# Personal notes and client billing documents (kept locally, not in the repo)
+/hours
+docs/*.pdf

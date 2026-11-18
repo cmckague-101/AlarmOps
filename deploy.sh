@@ -4,7 +4,8 @@
 #
 #   Checks:    typecheck, unit/database tests and a web build, before anything ships.
 #   Database:  Supabase migrations (shows what is pending, dry runs, then asks).
-#   Web:       git push -> Vercel deploys main automatically.
+#   Web:       Vercel deploys main when a PR merges. This script never pushes to
+#              main; it pushes a branch and opens a PR instead.
 #   iOS:       EAS (Expo) cloud build + App Store Connect submission.
 #   Android:   EAS (Expo) cloud build (optional Google Play submission).
 #
@@ -110,7 +111,7 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 bold "FireOps production release"
 ((DRY_RUN)) && warn "Dry run: commands are printed, not executed."
 echo "Branch: $BRANCH    Mobile version (app.json): $(app_version)"
-[[ "$BRANCH" != main ]] && warn "You are not on main; Vercel production deploys from main."
+[[ "$BRANCH" != main ]] && warn "You are not on main; Vercel deploys production only after this branch merges into main."
 echo
 
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -149,7 +150,7 @@ fi
 
 DO_DB=0 DO_WEB=0 DO_IOS=0 DO_ANDROID=0
 ask_yn "Apply Supabase database migrations?" y && DO_DB=1
-ask_yn "Deploy web (git push -> Vercel)?" y && DO_WEB=1
+ask_yn "Push this branch and open a PR (Vercel deploys web once it merges)?" y && DO_WEB=1
 ask_yn "Deploy iOS?" y && DO_IOS=1
 ask_yn "Deploy Android?" y && DO_ANDROID=1
 ((DO_DB + DO_WEB + DO_IOS + DO_ANDROID > 0)) || die "Nothing selected."
@@ -237,6 +238,12 @@ if ((DO_IOS || DO_ANDROID)); then
         fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
       ' "$APP_CONFIG" "$NEW_VERSION"
     fi
+    if [[ "$BRANCH" == main ]]; then
+      # Never commit release changes straight onto main; they go out through a PR.
+      BRANCH="release/mobile-$NEW_VERSION"
+      info "Moving the version bump to branch $BRANCH"
+      run git switch -c "$BRANCH"
+    fi
     run git commit -m "chore(mobile): bump version to $NEW_VERSION" -- apps/mobile/app.json
   fi
   VERSION="$(app_version)"
@@ -253,18 +260,36 @@ fi
 
 # ---------- push (web) ----------
 
+# push_branch_with_pr: push the current (non-main) branch and open a PR into main.
+push_branch_with_pr() {
+  if [[ "$BRANCH" == main ]]; then
+    warn "Direct pushes to main are disabled. Commit on a branch and merge a PR to deploy web."
+    return 0
+  fi
+  run git push -u origin "$BRANCH"
+  if command -v gh >/dev/null 2>&1; then
+    if ((DRY_RUN)) || [[ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number' 2>/dev/null)" ]]; then
+      run gh pr create --base main --head "$BRANCH" --fill
+    else
+      echo "A PR for $BRANCH is already open."
+    fi
+  else
+    warn "GitHub CLI (gh) not found; open a PR for $BRANCH into main manually."
+  fi
+}
+
 if ((DO_WEB)); then
   AHEAD="$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo '?')"
-  info "Pushing $BRANCH ($AHEAD commit(s) ahead of origin)"
-  [[ "$BRANCH" == main ]] && echo "Vercel will deploy the web app from this push."
-  if ask_yn "Push $BRANCH to origin now?" y; then
-    run git push origin "$BRANCH"
+  info "Pushing $BRANCH ($AHEAD commit(s) ahead of origin) and opening a PR"
+  echo "Vercel deploys the web app after the PR merges into main."
+  if ask_yn "Push $BRANCH and open a PR now?" y; then
+    push_branch_with_pr
   else
     warn "Skipped push."
   fi
   echo
-elif ((DO_IOS || DO_ANDROID)) && [[ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null)" ]]; then
-  ask_yn "You have unpushed commits. Push $BRANCH too? (this also deploys web)" n && run git push origin "$BRANCH"
+elif ((DO_IOS || DO_ANDROID)) && [[ "$BRANCH" != main ]] && [[ -n "$(git rev-list '@{u}..HEAD' 2>/dev/null || echo new)" ]]; then
+  ask_yn "You have unpushed commits. Push $BRANCH and open a PR too?" n && push_branch_with_pr
   echo
 fi
 

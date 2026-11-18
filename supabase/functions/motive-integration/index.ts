@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.4';
+import { allowedReturnUrls, matchesAllowedReturnUrl } from '../_shared/request-security.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,8 +87,7 @@ function validReturnTo(value: string, request: Request) {
     if (target.protocol === 'fireops:' && target.hostname === 'settings') return target.toString();
     const requestOrigin = request.headers.get('Origin');
     if (requestOrigin && (target.protocol === 'https:' || target.protocol === 'http:') && target.origin === requestOrigin) return target.toString();
-    const allowed = (Deno.env.get('MOTIVE_ALLOWED_RETURN_URLS') ?? '').split(',').map(item => item.trim()).filter(Boolean);
-    return allowed.some(item => target.toString().startsWith(item)) ? target.toString() : '';
+    return matchesAllowedReturnUrl(target, allowedReturnUrls(Deno.env.get('MOTIVE_ALLOWED_RETURN_URLS'))) ? target.toString() : '';
   } catch {
     return '';
   }
@@ -104,26 +104,56 @@ async function companyAccess(admin: AdminClient, companyId: string, userId: stri
   return Boolean(membership || scopedAdmin);
 }
 
+const tokenColumns='encrypted_access_token,access_token_iv,encrypted_refresh_token,refresh_token_iv,token_expires_at';
+
+/** A token another request stored after refreshing past the refresh token this request used, if it is still fresh. */
+async function concurrentlyRefreshedToken(admin:AdminClient,companyId:string,usedRefreshToken:string,encryptionSecret:string){
+  const {data:latest}=await admin.from('company_motive_integrations').select(tokenColumns).eq('company_id',companyId).maybeSingle();
+  if(!latest?.encrypted_access_token||!latest.access_token_iv||latest.encrypted_refresh_token===usedRefreshToken)return null;
+  if(!latest.token_expires_at||Date.parse(latest.token_expires_at)<=Date.now()+60_000)return null;
+  return decryptValue(latest.encrypted_access_token,latest.access_token_iv,encryptionSecret);
+}
+
 async function refreshAccessToken(admin:AdminClient,companyId:string,integration:MotiveIntegration,encryptionSecret:string,redirectUri:string) {
   if (!integration.encrypted_refresh_token || !integration.refresh_token_iv) throw new Error('Motive refresh token is unavailable. Reconnect Motive.');
+  const usedRefreshToken=integration.encrypted_refresh_token;
   const [clientId,clientSecret,refreshToken]=await Promise.all([
     decryptValue(integration.encrypted_client_id,integration.client_id_iv,encryptionSecret),
     decryptValue(integration.encrypted_client_secret,integration.client_secret_iv,encryptionSecret),
-    decryptValue(integration.encrypted_refresh_token,integration.refresh_token_iv,encryptionSecret),
+    decryptValue(usedRefreshToken,integration.refresh_token_iv,encryptionSecret),
   ]);
-  const response=await fetch('https://api.gomotive.com/oauth/token',{
-    method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
-    body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,redirect_uri:redirectUri,client_id:clientId,client_secret:clientSecret}),signal:AbortSignal.timeout(12000),
-  });
+  let response:Response;
+  try {
+    response=await fetch('https://api.gomotive.com/oauth/token',{
+      method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
+      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,redirect_uri:redirectUri,client_id:clientId,client_secret:clientSecret}),signal:AbortSignal.timeout(12000),
+    });
+  } catch {
+    throw new Error('Motive could not be reached. Try again shortly.');
+  }
   const body=await response.json().catch(()=>null) as {access_token?:string;refresh_token?:string;expires_in?:number}|null;
-  if(!response.ok||!body?.access_token)throw new Error('Motive session expired. Reconnect Motive.');
+  if(!response.ok||!body?.access_token){
+    // Refresh tokens rotate: a parallel request may have used this one first and stored the result.
+    const stored=await concurrentlyRefreshedToken(admin,companyId,usedRefreshToken,encryptionSecret);
+    if(stored)return stored;
+    // Only an OAuth rejection means the grant is gone; anything else is transient.
+    if(response.status===400||response.status===401)throw new Error('Motive session expired. Reconnect Motive.');
+    throw new Error('Motive could not refresh the session. Try again shortly.');
+  }
   const access=await encryptValue(body.access_token,encryptionSecret);
   const rotated=body.refresh_token?await encryptValue(body.refresh_token,encryptionSecret):null;
   const expiresAt=new Date(Date.now()+Math.max(60,Number(body.expires_in)||7200)*1000).toISOString();
   const update:Record<string,unknown>={encrypted_access_token:access.encrypted,access_token_iv:access.iv,token_expires_at:expiresAt,last_verified_at:new Date().toISOString()};
   if(rotated){update.encrypted_refresh_token=rotated.encrypted;update.refresh_token_iv=rotated.iv;}
-  const {error}=await admin.from('company_motive_integrations').update(update).eq('company_id',companyId);
+  // Save only if no other request replaced the refresh token meanwhile, so a stale
+  // (already rotated) refresh token never overwrites the newest one.
+  const {data:saved,error}=await admin.from('company_motive_integrations').update(update)
+    .eq('company_id',companyId).eq('encrypted_refresh_token',usedRefreshToken).select('company_id').maybeSingle();
   if(error)throw new Error('Refreshed Motive session could not be saved.');
+  if(!saved){
+    const stored=await concurrentlyRefreshedToken(admin,companyId,usedRefreshToken,encryptionSecret);
+    if(stored)return stored;
+  }
   return body.access_token;
 }
 
