@@ -86,10 +86,13 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('fire_fighter').desktop).not.toContain('shop');
   });
 
-  it('moves only footer overflow into More on mobile',()=>{
-    expect(navigationLayout('owner').mobilePrimary).toEqual(['overview','vehicles','communications']);
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['hotels','news','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','inventory','inspections','audit-log','settings']);
-    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['hotels','news','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','inventory','settings']);
+  it('keeps News Feed primary and moves only footer overflow into Tools on mobile',()=>{
+    for(const role of ['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const){
+      expect(navigationLayout(role).mobilePrimary).toEqual(['overview','vehicles','communications','news']);
+      expect(navigationLayout(role).mobileOverflow).not.toContain('news');
+    }
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','inventory','inspections','audit-log','settings']);
+    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','inventory','settings']);
   });
 });
 

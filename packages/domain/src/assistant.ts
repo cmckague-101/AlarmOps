@@ -41,7 +41,7 @@ export const ASSISTANT_ROUTE_LABELS:Record<AssistantRouteId,string>={
   travel:'Travel',communications:'Communications',shop:'Shop',roster:'Roster',qualifications:'Qualifications',
   documents:'Documents',receipts:'Receipts',invoices:'Invoices',payroll:'Payroll',tasks:'Task List',
   availability:'Availability',training:'Training',inventory:'Inventory',inspections:'Failed Inspections',
-  'audit-log':'Audit log',settings:'Settings',more:'More',
+  'audit-log':'Audit log',settings:'Settings',more:'Tools',
 };
 
 export function isAssistantRouteId(value:unknown):value is AssistantRouteId{

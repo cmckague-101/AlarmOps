@@ -31,6 +31,15 @@ describe('assistant routes',()=>{
     }
     expect(Object.values(ASSISTANT_ROUTE_LABELS)).not.toContain('Dashboard');
   });
+  it('labels Tools consistently without changing existing route ids or paths',()=>{
+    expect(ASSISTANT_ROUTE_LABELS.more).toBe('Tools');
+    expect(assistantWebPage('more','owner')).toBe('more');
+    expect(assistantMobileHref('more','owner')).toBe('/more');
+    const prompt=edge.systemPrompt({role:'owner',userName:'Owner',companyName:'Test crew',today:'2026-11-21'});
+    expect(prompt).toContain('Tools tab:');
+    expect(prompt).toContain('News Feed is a primary navigation item on mobile web');
+    expect(prompt).not.toContain('More');
+  });
   it('hides screens the role cannot open and unknown ids',()=>{
     expect(assistantWebPage('roster','resource_boss')).toBeNull();
     expect(assistantMobileHref('shop','fire_fighter')).toBeNull();

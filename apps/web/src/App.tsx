@@ -52,7 +52,7 @@ export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, ListOrdered, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus,
-  BriefcaseBusiness, CircleDollarSign, Ellipsis, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Video, Wrench, X
+  BriefcaseBusiness, CircleDollarSign, LayoutGrid, Search, Settings as SettingsIcon, ShieldCheck, Store, Trash2, Truck, Upload, UserPlus, Users, Video, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
 import ThemeToggle from './ThemeToggle';
@@ -105,7 +105,7 @@ export const navigationMeta = {
 // VIPR DPLs moved into the VIPR Intelligence hub, which takes its place in the sidebar and More.
 // Fixed order through Training; rows after it spill into More first on short windows.
 const navigationOrder:NavigablePage[]=['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','inventory','inspections','audit-log','settings'];
-const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications'];
+const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications','news'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';
 /** The page to show for a page id; old 'operations' links and assistant ids open Operations ('overview'). */
@@ -893,7 +893,7 @@ function Sidebar({capacity,onCapacity,page,setPage,user,unreadCount,unreadDocume
   const moreCount=overflow.reduce((total,target)=>total+countFor(target),0);
   return <aside className="sidebar"><Brand/><nav ref={navRef}>
     {shown.map(target=>{const {label,Icon}=navigationMeta[target];return <NavItem key={target} icon={<Icon/>} label={label} active={page===target} notificationCount={countFor(target)} onClick={()=>setPage(target)}/>})}
-    <NavItem icon={<Ellipsis/>} label="More" active={moreActive} notificationCount={moreCount} onClick={()=>setPage('more')}/>
+    <NavItem icon={<LayoutGrid/>} label="Tools" active={moreActive} notificationCount={moreCount} onClick={()=>setPage('more')}/>
     {settings&&<NavItem icon={<navigationMeta.settings.Icon/>} label={navigationMeta.settings.label} active={page==='settings'} onClick={()=>setPage('settings')}/>}
   </nav></aside>
 }
@@ -1528,5 +1528,5 @@ function MobileNav({page,setPage,user,unreadCount,unreadDocumentCount,unreadTrai
   const {mobilePrimary,mobileOverflow}=navigationLayout(user.role);
   const item=(target:Page,label:string,icon:React.ReactNode,active=page===target,badge=0)=><button key={target} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>setPage(target)}><span className="mobile-nav-icon">{icon}{badge>0&&<b aria-label={`${badge} new ${badge===1?'item':'items'}`}>{badge>99?'99+':badge}</b>}</span><span>{label}</span></button>;
   const overflowBadge=(mobileOverflow.includes('documents')?unreadDocumentCount:0)+(mobileOverflow.includes('training')?unreadTrainingCount:0);
-  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,label,<Icon/>,page===target,target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','More',<Ellipsis/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
+  return <nav className="mobile-nav" aria-label="Primary">{mobilePrimary.map(target=>{const {label,Icon}=navigationMeta[target];return item(target,label,<Icon/>,page===target,target==='communications'?unreadCount:target==='documents'?unreadDocumentCount:0)})}{item('more','Tools',<LayoutGrid/>,page==='more'||mobileOverflow.some(target=>target===page),overflowBadge)}</nav>;
 }
