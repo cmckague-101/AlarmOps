@@ -89,7 +89,10 @@
 
 /* Motion system: field-command ledger */
 main{overflow-x:clip}
-.page-stage{animation:ledger-page-in 220ms var(--ease-out) both}
+/* iOS-like page slides: push enters from the right; back/leftward tab from the left. */
+.page-stage{animation-duration:280ms;animation-timing-function:var(--ease-out);animation-fill-mode:both;will-change:transform,opacity}
+.page-stage-forward{animation-name:page-slide-forward}
+.page-stage-back{animation-name:page-slide-back}
 .sidebar nav button,.mobile-nav button,.primary,.secondary,.topbar-signout,.close,.back-mobile,.edit-vehicle,.assignment-button,.issue-vehicle-button,.resolve-button,.reopen-button{transition:background-color var(--motion-fast) ease,color var(--motion-fast) ease,border-color var(--motion-fast) ease,transform 120ms ease}
 .vehicle-card,.issue-card,.action-row,.notification-row,.crew-row,.vehicle-issues>button,.document-preview{transition:background-color var(--motion-fast) ease,border-color var(--motion-fast) ease}
 .card-arrow,.action-row>svg,.notification-row>svg,.vehicle-issues>button>svg{transition:transform var(--motion-fast) var(--ease-out),color var(--motion-fast) ease}
@@ -104,7 +107,8 @@ main{overflow-x:clip}
 .toast span svg :is(path,polyline){stroke-dasharray:28;animation:confirm-stroke 360ms 100ms var(--ease-out) both}
 .status i{transition:transform var(--motion-fast) var(--ease-out),background-color var(--motion-fast) ease}
 
-@keyframes ledger-page-in{from{opacity:.88;transform:translateX(8px)}to{opacity:1;transform:none}}
+@keyframes page-slide-forward{from{opacity:.94;transform:translateX(100%)}to{opacity:1;transform:none}}
+@keyframes page-slide-back{from{opacity:.94;transform:translateX(-36%)}to{opacity:1;transform:none}}
 @keyframes command-veil-in{from{opacity:0;backdrop-filter:blur(0)}to{opacity:1;backdrop-filter:blur(2px)}}
 @keyframes command-sheet-in{from{transform:translateX(34px);clip-path:inset(0 0 0 12%);box-shadow:0 0 0 rgba(0,0,0,0)}to{transform:none;clip-path:inset(0);box-shadow:-20px 0 60px rgba(0,0,0,.18)}}
 @keyframes command-heading-in{from{opacity:.65;transform:translateX(10px)}to{opacity:1;transform:none}}
@@ -113,7 +117,7 @@ main{overflow-x:clip}
 @keyframes confirm-stroke{from{stroke-dashoffset:28}to{stroke-dashoffset:0}}
 
 @media(prefers-reduced-motion:reduce){
-  .page-stage,.drawer,.drawer>header>*,.confirm-dialog,.toast,.toast span,.toast span svg :is(path,polyline){animation:none}
+  .page-stage,.page-stage-forward,.page-stage-back,.drawer,.drawer>header>*,.confirm-dialog,.toast,.toast span,.toast span svg :is(path,polyline){animation:none}
   .overlay{animation:reduced-veil-in 120ms ease-out both}
   :where(.primary,.secondary,.topbar-signout,.close,.back-mobile,.edit-vehicle,.assignment-button,.issue-vehicle-button,.resolve-button,.reopen-button,.sidebar nav button,.mobile-nav button):active:not(:disabled){transform:none}
   .card-arrow,.action-row>svg,.notification-row>svg,.vehicle-issues>button>svg{transition:color var(--motion-fast) ease}

@@ -12,6 +12,7 @@ import {StatusBar} from 'expo-status-bar';
 import {Pressable,StyleSheet,Text,View} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useReduceMotion} from '@/components/accent-tile';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppProviders} from '@/providers/app-providers';
 import {OfflineSyncNotice} from '@/components/offline-sync-notice';
@@ -28,6 +29,9 @@ function RootNavigator(){
   const {colorScheme}=useFireOpsColorScheme();
   const {demoMode,signOut}=useSession();
   const insets=useSafeAreaInsets();
+  const reduceMotion=useReduceMotion();
+  // iOS-like push/pop for stack screens; fade when the user prefers reduced motion.
+  const stackAnimation=reduceMotion?'fade':'slide_from_right';
   return <ThemeProvider value={colorScheme==='dark'?DarkTheme:DefaultTheme}>
     <View style={styles.root}>
       <StatusBar style={colorScheme==='dark'?'light':'dark'}/>
@@ -36,7 +40,7 @@ function RootNavigator(){
         <Pressable accessibilityRole="button" accessibilityLabel="Exit demo and discard changes" onPress={()=>void signOut().then(()=>{router.dismissAll();router.replace('/sign-in')})} style={styles.exitDemo}><Text style={{color:theme.ember,fontWeight:'700'}}>Exit demo</Text></Pressable>
       </View>:null}
       <OfflineSyncNotice topInset={!demoMode?insets.top:0}/>
-      <Stack screenOptions={{headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
+      <Stack screenOptions={{animation:stackAnimation,headerBackButtonDisplayMode:'minimal',headerTintColor:theme.ink,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},contentStyle:{backgroundColor:theme.canvas}}}>
         <Stack.Screen name="index"/>
         <Stack.Screen name="sign-in"/>
         <Stack.Screen name="forgot-password" options={{title:'Reset password'}}/>
