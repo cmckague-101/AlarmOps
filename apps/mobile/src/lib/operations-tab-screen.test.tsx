@@ -4,8 +4,9 @@ const state=vi.hoisted(()=>({role:'owner',pathname:'/',width:390,height:844,para
 vi.mock('react',async importOriginal=>({...await importOriginal<typeof import('react')>(),...runtime.hooks}));
 vi.mock('react-native',()=>({Platform:{OS:'ios'},Pressable:'Pressable',RefreshControl:'RefreshControl',ScrollView:'ScrollView',StyleSheet:{create:(value:unknown)=>value,hairlineWidth:1},Text:'Text',View:'View',useWindowDimensions:()=>({width:state.width,height:state.height})}));
 vi.mock('react-native-safe-area-context',()=>({SafeAreaView:'SafeAreaView'}));
-vi.mock('expo-router',()=>({Redirect:'Redirect',Tabs:Object.assign(function Tabs(){return null},{Screen:'TabsScreen'}),usePathname:()=>state.pathname,useRouter:()=>({push:vi.fn(),setParams:vi.fn()}),useLocalSearchParams:()=>state.params}));
+vi.mock('expo-router',()=>({Redirect:'Redirect',Tabs:Object.assign(function Tabs(props:Record<string,unknown>){return props.children},{Screen:'TabsScreen'}),usePathname:()=>state.pathname,useRouter:()=>({push:vi.fn(),setParams:vi.fn()}),useLocalSearchParams:()=>state.params}));
 vi.mock('@/providers/session-provider',()=>({useSession:()=>({session:{},demoMode:false,access:{status:'ready',value:{kind:'member',company:{id:'company'},user:{id:'user',name:'Alex Rivera',role:state.role}}}})}));
+vi.mock('@/components/accent-tile',()=>({useReduceMotion:()=>false}));
 vi.mock('@/components/app-header-brand',()=>({AppHeaderBrand:'AppHeaderBrand'}));
 vi.mock('@/components/app-symbol',()=>({AppSymbol:'AppSymbol'}));
 vi.mock('@/components/assistant-panel',()=>({AssistantHost:'AssistantHost'}));
@@ -82,6 +83,11 @@ describe('Operations tab (Dashboard and Operations combined)',()=>{
     expect(tabsOptions().headerShown).toBe(true);
     state.pathname='/';state.width=390;state.height=844;
     expect(tabsOptions().headerShown).toBe(true);
+  });
+  it('uses a horizontal shift animation between tabs',()=>{
+    expect(tabsOptions()).toMatchObject({animation:'shift'});
+    const tabs=nodes(render(TabLayout)).find(node=>typeof node.type==='function'&&(node.type as {name?:string}).name==='Tabs');
+    expect(tabs?.props.detachInactiveScreens).toBe(false);
   });
 });
 

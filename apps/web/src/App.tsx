@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { createId } from './create-id';
 import ThemeToggle from './ThemeToggle';
+import {pageSlideDirection,pageStageClassName,type PageSlideDirection} from './page-transition';
 
 // Pages most people open rarely load on first visit instead of with the workspace.
 const AuditLogPage=lazy(()=>import('./AuditLogPage'));
@@ -322,16 +323,23 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const [demoRecords,setDemoRecords]=useState(()=>createDemoRecords(user));
   const [activities, setActivities] = useState<Activity[]>(()=>initialData?.activities??loadActivities());
   const [page, setPageState] = useState<Page>(()=>{const params=new URLSearchParams(window.location.search);return params.has('motive')||params.has('quickbooks')?'settings':'overview'});
-  const setPage=useCallback((next:Page|LegacyPage)=>setPageState(resolvePage(next)),[]);
+  const lastPage=useRef(page);
+  // Horizontal slide enter direction for .page-stage (forward = from right, back = from left).
+  const [pageSlide,setPageSlide]=useState<PageSlideDirection>('forward');
+  const setPage=useCallback((next:Page|LegacyPage,direction?:PageSlideDirection)=>{
+    const resolved=resolvePage(next);
+    setPageSlide(direction??pageSlideDirection(lastPage.current,resolved));
+    setPageState(resolved);
+  },[]);
   const [sidebarCapacity,setSidebarCapacity]=useState(Number.POSITIVE_INFINITY);
   const desktopLayout=useMediaQuery(DESKTOP_QUERY);
   // Back buttons on pages opened from More (or the sidebar) return to wherever the user came from.
   const [previousPage,setPreviousPage]=useState<Page>('overview');
-  const lastPage=useRef(page);
   // VIPR Intelligence remembers where it was opened from, so Back still leaves the hub after visiting Send to VIPR or VIPR DPLs.
   const [viprHubReturn,setViprHubReturn]=useState<Page>('overview');
   useEffect(()=>{const from=lastPage.current;if(from!==page){setViprHubReturn(current=>viprHubReturnAfter(current,page,from,previousPage));setPreviousPage(from);lastPage.current=page}},[page]);
-  const goBack=()=>setPage(previousPage===page?'overview':previousPage);
+  // Explicit back so the enter animation is always from the left, even if the prior page is later in tab order.
+  const goBack=()=>setPage(previousPage===page?'overview':previousPage,'back');
   const sendViprFromHub=page==='send-vipr'&&previousPage==='vipr-intelligence';
   const [selectedCredential,setSelectedCredential]=useState<CrewCredential>();
   const [selectedExperience,setSelectedExperience]=useState<CrewExperience>();
@@ -814,10 +822,10 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         {demoMode&&<div className="demo-mode-banner" role="status"><b>Demo mode</b><span>Explore freely. Changes stay in this session and disappear when you exit.</span><a className="demo-pricing-link" href="/?info=1#pricing" target="_blank" rel="noopener noreferrer">See Pricing</a></div>}
         {storageError&&<div className="storage-error" role="alert"><span><b>Changes could not be saved.</b> {storageError}</span><button onClick={()=>setSaveAttempt(attempt=>attempt+1)}>{onDataChange?'Retry original save':'Retry save'}</button></div>}
         <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
-        <div className="page-stage" key={page}>
+        <div className={pageStageClassName(pageSlide)} key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {page === 'send-vipr' && canSendToVipr(currentUser.role) && <SendToViprFlow vehicles={vehicles} companyName={companyDetails.name} onClose={()=>setPage(sendViprFromHub?'vipr-intelligence':'vehicles')} onEditVehicle={canManageFleet?vehicle=>setEditing(vehicle):undefined}/>}
-        {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn)} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
+        {page === 'vipr-intelligence' && <ViprIntelligencePage role={currentUser.role} onBack={()=>setPage(viprHubReturn==='vipr-intelligence'?'overview':viprHubReturn,'back')} onOpen={entry=>setPage(entry==='send-to-vipr'?'send-vipr':'dispatch')}/>}
         {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onSelectShopJob={id=>{setRequestedShopJobId(id);setPage('shop')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'news' && <NewsFeedPage companyId={companyId} demoMode={demoMode}/>}
