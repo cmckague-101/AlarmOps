@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FireOps",
-    "slug": "fireops",
+    "name": "AlarmOps",
+    "slug": "alarmops",
     "version": "1.0.13",
     "orientation": "default",
     "icon": "./assets/images/fireops-icon.png",
-    "scheme": "fireops",
+    "scheme": "alarmops",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -91,9 +91,8 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "87cec740-d031-4aa2-9c0a-cf8151395d9e"
+        "projectId": ""
       }
-    },
-    "owner": "ryan.inslee"
+    }
   }
 }

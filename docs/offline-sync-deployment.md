@@ -1,6 +1,6 @@
 # Offline sync deployment runbook
 
-Deploys the offline sync migrations (`20261109000100` … `20261222000100`, 44 files) and the Edge Functions they need to the linked production project (`pkfwlhtihudagxxyqyyg`). Nothing here was run by the implementation. The ordered list with per-migration notes is in `docs/mobile-offline-sync.md` → *Deployment checkpoint*.
+Deploys the offline sync migrations (`20261109000100` … `20261222000100`, 44 files) and the Edge Functions they need to the linked production project (`YOUR_PROJECT_REF`). Nothing here was run by the implementation. The ordered list with per-migration notes is in `docs/mobile-offline-sync.md` → *Deployment checkpoint*.
 
 Commands use `npx supabase` (no global CLI needed). Run them from the repository root.
 
@@ -30,7 +30,7 @@ Commands use `npx supabase` (no global CLI needed). Run them from the repository
 
 ```sh
 npx supabase login
-npx supabase link --project-ref pkfwlhtihudagxxyqyyg
+npx supabase link --project-ref YOUR_PROJECT_REF
 ```
 
 ## 2. Back up production

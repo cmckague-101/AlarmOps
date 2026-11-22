@@ -45,8 +45,8 @@ Paid add-on. FireOps sends submitted invoices to QuickBooks Online and keeps pai
 1. At https://developer.intuit.com, create an app on the QuickBooks Online and Payments platform.
 2. Scope: `com.intuit.quickbooks.accounting` (no other scopes).
 3. Redirect URI, for both Development and Production keys:
-   `https://pkfwlhtihudagxxyqyyg.supabase.co/functions/v1/quickbooks-integration`
-4. Webhooks: endpoint `https://pkfwlhtihudagxxyqyyg.supabase.co/functions/v1/quickbooks-webhook`, with events for **Invoice** (Create, Update, Delete, Void) and **Payment** (Create, Update, Delete, Void). Copy the Verifier Token.
+   `https://YOUR_PROJECT_REF.supabase.co/functions/v1/quickbooks-integration`
+4. Webhooks: endpoint `https://YOUR_PROJECT_REF.supabase.co/functions/v1/quickbooks-webhook`, with events for **Invoice** (Create, Update, Delete, Void) and **Payment** (Create, Update, Delete, Void). Copy the Verifier Token.
 5. Production keys need Intuit's app assessment (privacy policy, EULA, host domain, and so on).
 
 ## Secrets
@@ -55,7 +55,7 @@ Paid add-on. FireOps sends submitted invoices to QuickBooks Online and keeps pai
 npx supabase secrets set \
   QBO_CLIENT_ID=... \
   QBO_CLIENT_SECRET=... \
-  QBO_REDIRECT_URI=https://pkfwlhtihudagxxyqyyg.supabase.co/functions/v1/quickbooks-integration \
+  QBO_REDIRECT_URI=https://YOUR_PROJECT_REF.supabase.co/functions/v1/quickbooks-integration \
   QBO_ENVIRONMENT=sandbox \
   QBO_WEBHOOK_VERIFIER_TOKEN=... \
   QBO_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
@@ -81,7 +81,7 @@ Schedule the backup poll every 5 minutes with Supabase Cron (pg_cron + pg_net), 
 select vault.create_secret('<QBO_CRON_SECRET>', 'qbo_cron_secret');
 select cron.schedule('quickbooks-poll', '*/5 * * * *', $$
   select net.http_post(
-    url := 'https://pkfwlhtihudagxxyqyyg.supabase.co/functions/v1/quickbooks-webhook',
+    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/quickbooks-webhook',
     headers := jsonb_build_object('Content-Type', 'application/json',
       'x-qbo-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'qbo_cron_secret')),
     body := '{}'::jsonb,
@@ -114,7 +114,7 @@ update public.companies set quickbooks_enabled = true where id = '<company id>';
 Webhooks need a public URL; the deployed function works. To exercise the poll without waiting, call it by hand:
 
 ```bash
-curl -X POST https://pkfwlhtihudagxxyqyyg.supabase.co/functions/v1/quickbooks-webhook \
+curl -X POST https://YOUR_PROJECT_REF.supabase.co/functions/v1/quickbooks-webhook \
   -H "x-qbo-cron-secret: $QBO_CRON_SECRET" -H 'Content-Type: application/json' -d '{}'
 ```
 

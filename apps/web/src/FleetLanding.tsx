@@ -159,7 +159,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             <li><Check aria-hidden="true"/> Open company documents and training</li>
             <li><BellRing aria-hidden="true"/> Get notified when your crew has an update</li>
           </ul>
-          <a href="https://apps.apple.com/app/id6808795667" target="_blank" rel="noreferrer" aria-label="Download FireOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
+          <a href="#" target="_blank" rel="noreferrer" aria-label="Download FireOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
         </div>
         <div className="login-mobile-device" aria-hidden="true">
           <div className="login-mobile-phone">

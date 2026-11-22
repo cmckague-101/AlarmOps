@@ -85,8 +85,8 @@ Registered app details:
 ```text
 App Store name: FireOps Fleet
 Bundle ID:      com.tinykings.fireops
-Apple app ID:   6808795667
-Expo project:   @ryan.inslee/fireops
+Apple app ID:   YOUR_ASC_APP_ID
+Expo project:   @YOUR_EXPO_ACCOUNT/alarmops
 ```
 
 Use this existing App Store Connect record for every update. Never create another app record for a new version.
@@ -277,7 +277,7 @@ npx eas-cli env:list --environment production
 npx eas-cli build --platform ios --profile production --auto-submit
 ```
 
-Expected account is `ryan.inslee`. Confirm production environment lists both Supabase variables. EAS reuses managed Apple distribution certificate and provisioning profile; Apple login is not normally required for each build.
+Expected account is `YOUR_EXPO_ACCOUNT`. Confirm production environment lists both Supabase variables. EAS reuses managed Apple distribution certificate and provisioning profile; Apple login is not normally required for each build.
 
 Build and submission run in Expo cloud. Terminal can be closed after jobs are accepted. Track them with:
 

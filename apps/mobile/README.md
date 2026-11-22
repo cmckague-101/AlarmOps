@@ -1,4 +1,4 @@
-# FireOps mobile
+# AlarmOps mobile
 
 Expo/React Native client for iOS and Android.
 
