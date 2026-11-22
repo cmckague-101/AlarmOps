@@ -105,7 +105,7 @@ export function viprFieldsFor(vehicle:Vehicle):ViprMappedField[]{
   return fields;
 }
 
-/** Out-of-service units can't be bid until they are fixed in Fleet. */
+/** Out-of-service units can't be bid until they are fixed in Resources. */
 export const isViprBlocked=(vehicle:Pick<Vehicle,'status'>)=>vehicle.status==='Out of service';
 export function viprSelectableVehicles<T extends Pick<Vehicle,'status'>>(vehicles:readonly T[]){
   return {selectable:vehicles.filter(vehicle=>!isViprBlocked(vehicle)),blocked:vehicles.filter(isViprBlocked)};
@@ -139,7 +139,7 @@ export function viprBidPackageText(vehicles:readonly Vehicle[],options:{companyN
       const fields=viprFieldsFor(vehicle);
       return [
         `=== ${vehicle.unit} · ${viprCategoryFor(vehicle).category} ===`,
-        ...fields.map(field=>`${field.vipr}: ${field.value}${field.status==='missing'?' (missing — fill in Fleet)':field.status==='check'?' (check)':''}`),
+        ...fields.map(field=>`${field.vipr}: ${field.value}${field.status==='missing'?' (missing — fill in Resources)':field.status==='check'?' (check)':''}`),
         '',
       ];
     }),

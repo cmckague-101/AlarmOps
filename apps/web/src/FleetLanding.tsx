@@ -125,7 +125,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             </div>
           </article>
           <article className="login-feature-card login-feature-card--fleet">
-            <div className="login-feature-copy"><span><Truck aria-hidden="true"/> Fleet</span><h3>Know what can roll</h3><p>Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.</p></div>
+            <div className="login-feature-copy"><span><Truck aria-hidden="true"/> Resources</span><h3>Know what can roll</h3><p>Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.</p></div>
             <figure><img src="/landing/fleet.webp" width="874" height="1183" loading="lazy" decoding="async" alt="FireOps fleet screen showing ready vehicles and current issues"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--training">
@@ -170,7 +170,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
               <div className="login-mobile-stats"><span><b>6</b>Vehicles</span><span><b>1</b>Open issue</span></div>
               <div className="login-mobile-card"><span><Truck/></span><div><b>Engine 702</b><small>Ready · Assigned to you</small></div><i/></div>
               <div className="login-mobile-card"><span><MapPinned/></span><div><b>Operations</b><small>2 assigned incidents</small></div><i/></div>
-              <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><MapPinned/>Operations</span><span className="active"><Truck/>Fleet</span></div>
+              <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><MapPinned/>Operations</span><span className="active"><Truck/>Resources</span></div>
             </div>
           </div>
         </div>

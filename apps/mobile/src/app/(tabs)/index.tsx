@@ -101,11 +101,11 @@ export default function OperationsScreen() {
         </View>}
         {incidentMap}
         <QuickActions/>
-        {loading ? <Text style={styles.stateText}>Loading fleet status…</Text> : null}
+        {loading ? <Text style={styles.stateText}>Loading resources status…</Text> : null}
 
         {error ? (
           <View style={styles.errorBlock}>
-            <Text style={styles.errorTitle}>Fleet data unavailable</Text>
+            <Text style={styles.errorTitle}>Resources data unavailable</Text>
             <Text style={styles.errorText}>{error}</Text>
             <Pressable accessibilityRole="button" onPress={() => void refreshFleet()} style={styles.retryButton}>
               <Text style={styles.retryLabel}>Try again</Text>
@@ -199,7 +199,7 @@ export default function OperationsScreen() {
             ) : null}
 
             {preferences.visible('recentActivity') && recentActivities.length > 0 ? (
-              <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
+              <DashboardSection title="Recent resources activity" count={activities.length} styles={styles}>
                 {recentActivities.map((activity) => {
                   const canOpen = activity.targetType === 'issue' || activity.targetType === 'vehicle';
                   return (
@@ -251,7 +251,7 @@ function ResourceAttention({ companyId, issues, vehicles, styles, theme, onOpen 
           </View>
           <AppSymbol name={{ ios: 'chevron.right', android: 'chevron_right' }} size={17} color={theme.secondary} />
         </Pressable>
-      )) : <Text style={styles.rowMeta}>No critical fleet issues, empty stock or overdue gear.</Text>}
+      )) : <Text style={styles.rowMeta}>No critical resource issues, empty stock or overdue gear.</Text>}
     </DashboardSection>
   );
 }

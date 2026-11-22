@@ -45,7 +45,7 @@ function StoryCards({filter,images}:{filter:NewsFeedCategory;images:Record<strin
 }
 
 function opportunityDetail(item:ContractingNewsFeed['opportunities'][number]){
-  if(item.matchedFleetCategories.length)return `${item.matchedFleetCategories.join(' / ')} matched to your Fleet`;
+  if(item.matchedFleetCategories.length)return `${item.matchedFleetCategories.join(' / ')} matched to your Resources`;
   if(item.responseDeadline){
     const date=new Date(item.responseDeadline.length===10?`${item.responseDeadline}T12:00:00`:item.responseDeadline);
     return `Closes ${Number.isNaN(date.getTime())?item.responseDeadline:date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
@@ -93,14 +93,14 @@ export default function NewsFeedSection({companyId,demoMode=false}:{companyId?:s
       <div className="news-alerts-heading">
         <button type="button" className="news-alerts-toggle" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
           <span className="news-alerts-icon"><Star/></span>
-          <span className="news-alerts-copy"><b id="news-contracting-title">{loading&&!feed?'Checking contracting alerts…':`${count} contracting ${count===1?'alert':'alerts'}`}</b><small>{demoMode?'Demo samples · matched to your Fleet categories':'Live SAM.gov notices matched to your Fleet categories'}</small></span>
+          <span className="news-alerts-copy"><b id="news-contracting-title">{loading&&!feed?'Checking contracting alerts…':`${count} contracting ${count===1?'alert':'alerts'}`}</b><small>{demoMode?'Demo samples · matched to your Resources categories':'Live SAM.gov notices matched to your Resources categories'}</small></span>
           <ChevronDown className="news-alerts-chevron"/>
         </button>
         <button type="button" className="news-alerts-refresh" aria-label="Refresh contracting alerts" onClick={()=>void load()} disabled={loading}><RefreshCw className={loading?'spin':''}/></button>
       </div>
       {open&&<>
         {error&&<div className="news-alerts-state" role="alert"><span><b>Contracting feed unavailable</b><small>{error}</small></span><button type="button" onClick={()=>void load()}>Try again</button></div>}
-        {feed&&!error&&count===0&&<div className="news-alerts-state"><span><b>No matching opportunities</b><small>No active Forest Service notices match your current Fleet.</small></span></div>}
+        {feed&&!error&&count===0&&<div className="news-alerts-state"><span><b>No matching opportunities</b><small>No active Forest Service notices match your current Resources.</small></span></div>}
         {feed&&!error&&count>0&&<ul className="news-alerts-list">{feed.opportunities.map(item=><li key={item.id}>{demoMode?<div className="news-alert-row"><span><b>{item.title}</b><small>{opportunityDetail(item)}</small></span><ChevronRight/></div>:<a className="news-alert-row" href={item.sourceUrl} target="_blank" rel="noreferrer"><span><b>{item.title}</b><small>{opportunityDetail(item)}</small></span><ChevronRight/></a>}</li>)}</ul>}
         {feed&&!demoMode&&!error&&<footer>Updated {new Date(feed.fetchedAt).toLocaleString()} · <a href={feed.sourceUrl} target="_blank" rel="noreferrer">SAM.gov <ExternalLink/></a></footer>}
       </>}

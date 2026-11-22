@@ -131,7 +131,7 @@ describe('dashboard customization',()=>{
     const html=renderToStaticMarkup(<DashboardCustomization userId="render-test" role="shop_tech" demoMode/>);
     expect(html).toContain('Command Center');
     expect(html).toContain('Quick Actions');
-    expect(html).toContain('Recent Fleet Activity');
+    expect(html).toContain('Recent Resources Activity');
     expect(html).toContain('role="switch"');
     expect(html).toContain('Current issues');
     expect(html).not.toContain('Active Incidents');

@@ -368,11 +368,11 @@ function detailTargets(records:readonly {collection:FleetCollection;record:{id:s
   });
 }
 async function guardFleetWrite(targets:DetailTarget[],version:number){
-  if(!activeCompanyId||!activeUserId)throw new Error('Company fleet is unavailable.');
+  if(!activeCompanyId||!activeUserId)throw new Error('Company resources are unavailable.');
   const scope={companyId:activeCompanyId,userId:activeUserId};
   const release=await guardOfflineFleetWrite(scope,targets,createFleetId());
   try{
-    if(version!==companyVersion)throw new Error('Fleet account changed. Reopen this screen.');
+    if(version!==companyVersion)throw new Error('Resources account changed. Reopen this screen.');
     const local=getOfflineFleet(scope);
     for(const target of targets){
       const cached=local?.records.find(row=>fleetDetailKey(row)===fleetDetailKey(target));
@@ -384,11 +384,11 @@ async function guardFleetWrite(targets:DetailTarget[],version:number){
   }catch(error){release();throw error}
 }
 async function applyFleetChanges(companyId:string,changes:unknown[],version:number){
-  const client=supabase;if(!client)throw new Error('Company fleet is unavailable.');
+  const client=supabase;if(!client)throw new Error('Company resources are unavailable.');
   let token:string|undefined;
   if(!isDemoActive()){
     const {data,error}=await client.auth.getSession();
-    if(error||!data.session||data.session.user.id!==activeUserId||version!==companyVersion)throw new Error('Fleet account changed. Reopen this screen.');
+    if(error||!data.session||data.session.user.id!==activeUserId||version!==companyVersion)throw new Error('Resources account changed. Reopen this screen.');
     token=data.session.access_token;
   }
   const request=client.rpc('apply_fleet_changes',{target_company_id:companyId,changes});
@@ -398,14 +398,14 @@ export function assertFleetRecordVersion(collection:FleetCollection,id:string,ve
   if(version===undefined||!Number.isSafeInteger(version)||versions[collection].get(id)!==version)throw new Error('Record changed while this form was open. Reopen the editor before saving.');
 }
 async function saveFleetRecords(records: { collection: FleetCollection; record: { id: string }; expectedVersion?:number }[]) {
-  if (!supabase || !activeCompanyId)throw new Error('Company fleet is unavailable.');
+  if (!supabase || !activeCompanyId)throw new Error('Company resources are unavailable.');
   const companyId=activeCompanyId;const version=companyVersion;
   const release=await guardFleetWrite(detailTargets(records),version);
   try{
     const changes=records.map(item=>{const {collection,record}=item;const captured='expectedVersion' in item;const expectedVersion=captured?item.expectedVersion:versions[collection].get(record.id);if(captured&&(expectedVersion===undefined||!Number.isSafeInteger(expectedVersion)))throw new Error('Record changed while this form was open. Reopen the editor before saving.');return {collection,event:expectedVersion===undefined?'insert':'update',recordId:record.id,data:record,...(expectedVersion===undefined?{}:{expectedVersion})}});
     const {data,error}=await applyFleetChanges(companyId,changes,version);
     if(error){
-      if(error.code==='40001'||error.code==='PT409'){await refreshFleet({showIndicator:false});throw new Error('Record changed elsewhere. Latest fleet data was loaded; reopen the editor before saving.')}
+      if(error.code==='40001'||error.code==='PT409'){await refreshFleet({showIndicator:false});throw new Error('Record changed elsewhere. Latest resources data was loaded; reopen the editor before saving.')}
       throw new Error(error.message);
     }
     if(version!==companyVersion)throw new Error('Account changed while saving. Check the original account before retrying.');
@@ -416,7 +416,7 @@ async function saveFleetRecords(records: { collection: FleetCollection; record: 
 }
 
 type CapturedFleetVersion={version:number|undefined;companyId:string|null;userId:string|null};
-function assertCapturedScope(captured:CapturedFleetVersion|undefined){if(captured&&(captured.companyId!==activeCompanyId||captured.userId!==activeUserId))throw new Error('Fleet account changed. Reopen this screen.')}
+function assertCapturedScope(captured:CapturedFleetVersion|undefined){if(captured&&(captured.companyId!==activeCompanyId||captured.userId!==activeUserId))throw new Error('Resources account changed. Reopen this screen.')}
 export async function saveFleetRecord<T extends { id: string }>(
   collection: FleetCollection,
   record: T,
@@ -625,7 +625,7 @@ export async function deleteFleetVehicle(
   user: FireOpsUser,
 ) {
   if (!supabase || !activeCompanyId)
-    throw new Error("Company fleet is unavailable.");
+    throw new Error("Company resources are unavailable.");
   const version=companyVersion;
   const vehicleVersion = fleetReadVersion(vehicle,'vehicles');
   if (vehicleVersion === undefined)
@@ -675,7 +675,7 @@ export async function deleteFleetVehicle(
   if (error) {
     if (error.code === "40001" || error.code === "PT409") {
       await refreshFleet({ showIndicator: false });
-      throw new Error("Fleet changed elsewhere. Latest fleet data was loaded; try again.");
+      throw new Error("Resources changed elsewhere. Latest resources data was loaded; try again.");
     }
     throw new Error(error.message);
   }
@@ -922,7 +922,7 @@ export function refreshFleet(
         loading: false,
         refreshing: false,
         error:
-          "Fleet could not load. Supabase is not configured for this build.",
+          "Resources could not load. Supabase is not configured for this build.",
       });
       return;
     }
@@ -959,7 +959,7 @@ export function refreshFleet(
           ...snapshot,
           loading: false,
           refreshing: false,
-          error: `Fleet could not load. ${message}`,
+          error: `Resources could not load. ${message}`,
         });
       }
       return;
@@ -978,7 +978,7 @@ export function refreshFleet(
         ...snapshot,
         loading: false,
         refreshing: false,
-        error: `Fleet could not load. ${failed.error.message}`,
+        error: `Resources could not load. ${failed.error.message}`,
       });
       return;
     }

@@ -32,7 +32,7 @@ export default function TabLayout(){
     <Tabs.Screen name="index" options={{title:'Operations',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('flame.fill','local_fire_department')}}/>
     {/* Old /operations links and pushes redirect to the Operations tab (index). */}
     <Tabs.Screen name="operations" options={{href:null}}/>
-    <Tabs.Screen name="fleet" options={{title:'Fleet',tabBarIcon:icon('truck.box.fill','local_shipping')}}/>
+    <Tabs.Screen name="fleet" options={{title:'Resources',tabBarIcon:icon('truck.box.fill','local_shipping')}}/>
     <Tabs.Screen name="communications" options={{title:'Communications',tabBarLabel:'Messages',tabBarBadge:unreadCommunications||undefined,tabBarIcon:icon('bubble.left.and.bubble.right.fill','forum')}}/>
     <Tabs.Screen name="more" options={{title:'Tools',tabBarBadge:unreadDocuments+unreadTrainings||undefined,tabBarIcon:icon('square.grid.2x2.fill','apps')}}/>
   </Tabs>{operationsLandscape?null:<AssistantHost/>}</>;

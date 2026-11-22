@@ -17,7 +17,7 @@ export function dashboardPreferenceGroups(role:UserRole, platform:'web'|'mobile'
   return [
     {title:'Command Center',items:[item('greeting','Greeting'),...(manager?[item('incidents','Active Incidents'),item('personnel','Assigned Personnel'),item('resources','Assigned Resources'),item('attention','Needs Attention')]:[...(canManageInventory(role)?[item('attention','Needs Attention')]:[]),item('currentIssues','Current issues'),...(platform==='mobile'?[item('currentPicture','Current picture — vehicles needing attention')]:[])])]},
     {title:'Quick Actions',items:[item('availability','Availability'),...(canManagePersonalTasks(role)?[item('tasks','Task list')]:[]),...(canInspectVehicle(role)&&!manager?[item('inspections','Inspect')]:[]),...(canWorkShop(role)?[item('shop','Shop')]:[]),...(keepsInventoryInMainNav(role)?[item('inventory','Inventory')]:[]),item('payroll','Payroll'),item('invoices','Invoices')]},
-    ...(!manager?[{title:'Recent Fleet Activity',items:[item('recentActivity','Recent fleet activity')]}]:[]),
+    ...(!manager?[{title:'Recent Resources Activity',items:[item('recentActivity','Recent resources activity')]}]:[]),
   ];
 }
 

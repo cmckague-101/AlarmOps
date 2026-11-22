@@ -71,7 +71,7 @@ describe('VIPR bid package',()=>{
     expect(text).toContain('Generated: 2027-01-05');
     expect(text).toContain('=== Engine 701 · Engine ===');
     expect(text).toContain('Pump capacity: 150 gpm @ 250 psi\n');
-    expect(text).toContain('Tank capacity: — (missing — fill in Fleet)');
+    expect(text).toContain('Tank capacity: — (missing — fill in Resources)');
     expect(text.indexOf('Resource ID')).toBeLessThan(text.indexOf('VIN:'));
     expect(viprBidPackageFileName(new Date(2027,0,5))).toBe('fireops-vipr-bid-package-2027-01-05.txt');
   });

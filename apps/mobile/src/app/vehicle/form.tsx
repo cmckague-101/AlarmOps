@@ -314,7 +314,7 @@ export default function VehicleFormScreen() {
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.content} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}>
             <Text style={styles.title}>{editing ? 'Edit vehicle' : 'Add vehicle'}</Text>
-            <Text style={styles.subtitle}>{editing ? 'Keep fleet identity and readiness details current.' : 'Create a vehicle record for your company fleet.'}</Text>
+            <Text style={styles.subtitle}>{editing ? 'Keep vehicle identity and readiness details current.' : 'Create a vehicle record for your company resources.'}</Text>
           </View>
 
           {saveError ? <View style={styles.errorBanner}><Text style={styles.errorBannerTitle}>Couldn’t save vehicle</Text><Text style={styles.errorBannerText}>{saveError}</Text></View> : null}
