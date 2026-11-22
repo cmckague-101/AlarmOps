@@ -14,7 +14,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
     const previousThemeColor=themeColor?.content;
     if(themeColor)themeColor.content='#101815';
     const previousTitle=document.title;
-    document.title='FireOps | Crew, fleet and incident operations for wildland fire';
+    document.title='AlarmOps | Crew, fleet and incident operations for wildland fire';
     return()=>{if(themeColor&&previousThemeColor)themeColor.content=previousThemeColor;document.title=previousTitle};
   },[]);
   const [email,setEmail]=useState('');
@@ -31,7 +31,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       const {error:signInError}=await supabase.auth.signInWithPassword({email:email.trim(),password});
       if(signInError)setError(signInError.message);
     }catch{
-      setError('FireOps could not be reached. Check your connection and try again.');
+      setError('AlarmOps could not be reached. Check your connection and try again.');
     }finally{setBusy(false)}
   };
   const requestEmail=async(event:React.FormEvent<HTMLFormElement>)=>{
@@ -48,26 +48,26 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       if(requestError&&requestError.status!==400&&requestError.status!==422)setError(requestError.status===429?'Too many requests. Wait a minute, then try again.':requestError.message);
       else setSentMethod(method);
     }catch{
-      setError('FireOps could not be reached. Check your connection and try again.');
+      setError('AlarmOps could not be reached. Check your connection and try again.');
     }finally{setBusy(false)}
   };
   if(resetMode)return <div className="admin-auth"><form onSubmit={requestEmail}><h1>Reset your password</h1>{sentMethod?<div className="admin-success" role="status">If an account exists for {email.trim()}, {sentMethod==='magic'?'a secure sign-in link':'a password reset link'} is on its way. Check your inbox and spam folder.</div>:<><p>Enter your account email. Reset your password or receive a secure link to sign in without changing it.</p><input type="email" autoComplete="email" aria-label="Email" placeholder="Email" required value={email} onChange={event=>setEmail(event.target.value)}/><button type="submit" value="reset" disabled={busy}>{busy?'Sending...':'Send reset link'}</button><button type="submit" value="magic" className="admin-secondary" disabled={busy}>Email me a sign-in link</button>{error&&<div className="admin-error" role="alert">{error}</div>}</>}<button type="button" className="admin-text-action" onClick={()=>{setResetMode(false);setSentMethod(null)}}>Back to sign in</button></form></div>;
   return <div className="admin-auth admin-login-page">
     <main>
       <section className="login-hero" aria-labelledby="login-title">
-        <div className="login-logo-wrap"><img className="login-hero-logo" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a><a className="login-nav-signin" href="#sign-in">Sign in</a></nav></div>
+        <div className="login-logo-wrap"><img className="login-hero-logo" src="/alarmops-wordmark-440.webp" width="440" height="147" alt="AlarmOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a><a className="login-nav-signin" href="#sign-in">Sign in</a></nav></div>
         <div className="login-intro">
           <p className="login-eyebrow">Wildland operations, connected</p>
           <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
-          <p className="login-lede">FireOps brings people, equipment, training, and field intelligence into one clear operational picture.</p>
-          <a className="login-discover" href="#features">See what FireOps covers <ArrowDown aria-hidden="true"/></a>
+          <p className="login-lede">AlarmOps brings people, equipment, training, and field intelligence into one clear operational picture.</p>
+          <a className="login-discover" href="#features">See what AlarmOps covers <ArrowDown aria-hidden="true"/></a>
         </div>
 
         <form className="login-form" id="sign-in" onSubmit={submit} aria-labelledby="login-form-title" aria-busy={busy}>
           <div className="login-form-heading">
             <span>Secure workspace</span>
             <h2 id="login-form-title">Welcome back</h2>
-            <p>Sign in to your FireOps account.</p>
+            <p>Sign in to your AlarmOps account.</p>
           </div>
           <div className="login-field">
             <label htmlFor="login-email">Work email</label>
@@ -79,7 +79,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             <button type="button" className="admin-text-action admin-forgot-password" onClick={()=>{setResetMode(true);setError('')}}>Forgot password?</button>
           </div>
           {error&&<div className="admin-error" role="alert">{error}</div>}
-          <button className="login-submit" disabled={busy}>{busy?'Signing in...':'Sign in to FireOps'}</button>
+          <button className="login-submit" disabled={busy}>{busy?'Signing in...':'Sign in to AlarmOps'}</button>
           <div className="login-demo-divider"><span>or</span></div>
           <button type="button" className="login-demo" disabled={busy} onClick={onDemo}><Gauge aria-hidden="true"/> Explore demo</button>
           <p className="login-demo-note">No account required. Changes disappear when demo ends.</p>
@@ -88,7 +88,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
 
       <section className="login-features" id="features" aria-labelledby="features-title">
         <div className="login-section-heading">
-          <p className="login-section-kicker">Inside FireOps</p>
+          <p className="login-section-kicker">Inside AlarmOps</p>
           <h2 id="features-title">One view of your whole operation.</h2>
           <p>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</p>
         </div>
@@ -150,7 +150,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
 
       <section className="login-mobile" aria-labelledby="mobile-title">
         <div className="login-mobile-copy">
-          <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> FireOps mobile</p>
+          <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> AlarmOps mobile</p>
           <h2 id="mobile-title">Your operation goes with you.</h2>
           <p>FireOps is available for iPhone and iPad. Sign in with your existing account to work from the same live company records used on the web.</p>
           <ul>
@@ -159,13 +159,13 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             <li><Check aria-hidden="true"/> Open company documents and training</li>
             <li><BellRing aria-hidden="true"/> Get notified when your crew has an update</li>
           </ul>
-          <a href="#" target="_blank" rel="noreferrer" aria-label="Download FireOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
+          <a href="#" target="_blank" rel="noreferrer" aria-label="Download AlarmOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
         </div>
         <div className="login-mobile-device" aria-hidden="true">
           <div className="login-mobile-phone">
             <div className="login-mobile-speaker"/>
             <div className="login-mobile-screen">
-              <div className="login-mobile-appbar"><img src="/fireops-icon-64.webp" width="64" height="64" alt=""/><span>FireOps</span><i>3</i></div>
+              <div className="login-mobile-appbar"><img src="/alarmops-icon-64.webp" width="64" height="64" alt=""/><span>AlarmOps</span><i>3</i></div>
               <p>Good morning</p>
               <h3>Ready for assignment</h3>
               <div className="login-mobile-stats"><span><b>6</b>Vehicles</span><span><b>1</b>Open issue</span></div>
@@ -193,8 +193,8 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       </section>
 
       <section className="login-contact" id="contact" aria-labelledby="contact-title">
-        <p className="login-section-kicker">Talk with the FireOps team</p>
-        <h2 id="contact-title">Want to learn how FireOps can support your operation?</h2>
+        <p className="login-section-kicker">Talk with the AlarmOps team</p>
+        <h2 id="contact-title">Want to learn how AlarmOps can support your operation?</h2>
         <div className="contact-card">
           <a href="tel:+12088617464"><Phone aria-hidden="true"/> 208-861-7464</a>
           <a href="mailto:Clint@firecollc.com"><Mail aria-hidden="true"/> Clint@firecollc.com</a>
@@ -203,10 +203,10 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
 
       <section className="login-mission">
         <h2>Less time managing systems. More time supporting crews.</h2>
-        <p>FireOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</p>
+        <p>AlarmOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</p>
       </section>
     </main>
 
-    <footer className="login-footer"><span>© {new Date().getFullYear()} FireOps</span><a href="/privacy">Privacy Policy</a><span>Built for teams who answer the call.</span></footer>
+    <footer className="login-footer"><span>© {new Date().getFullYear()} AlarmOps</span><a href="/privacy">Privacy Policy</a><span>Built for teams who answer the call.</span></footer>
   </div>;
 }

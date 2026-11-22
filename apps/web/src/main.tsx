@@ -18,7 +18,7 @@ const Root = path.startsWith('/accept-invite')
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Suspense fallback={<div className="route-loading" role="status">Loading FireOps...</div>}>
+    <Suspense fallback={<div className="route-loading" role="status">Loading AlarmOps...</div>}>
       <Root />
     </Suspense>
   </StrictMode>

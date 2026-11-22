@@ -27,7 +27,7 @@ It is configured in `app.json` and registered in App Store Connect. Bundle ident
 
 ### 3. Production app icon
 
-The dedicated iOS icon is `assets/images/fireops-ios-icon.png`, generated from approved source artwork. It is configured in `app.json` and meets upload requirements:
+The dedicated iOS icon is `assets/images/alarmops-ios-icon.png`, generated from approved source artwork. It is configured in `app.json` and meets upload requirements:
 
 - 1024 x 1024 PNG
 - RGB with no alpha/transparency

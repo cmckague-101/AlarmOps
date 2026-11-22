@@ -50,7 +50,7 @@ export default function FleetRoot() {
     window.history.replaceState(null,'',url);
     setDemoMode(false);
   };
-  const loading=<FleetMessage text="Loading FireOps..."/>;
+  const loading=<FleetMessage text="Loading AlarmOps..."/>;
   if(demoMode)return <Suspense fallback={loading}><App demoMode onSignOut={exitDemo}/></Suspense>;
   if(loginPreview||new URLSearchParams(window.location.search).get('info')==='1')return <FleetLogin onDemo={enterDemo}/>;
   if(!supabaseConfigured)return import.meta.env.VITE_DEMO_MODE==='true'

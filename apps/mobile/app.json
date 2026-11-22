@@ -4,23 +4,23 @@
     "slug": "alarmops",
     "version": "1.0.13",
     "orientation": "default",
-    "icon": "./assets/images/fireops-icon.png",
+    "icon": "./assets/images/alarmops-icon.png",
     "scheme": "alarmops",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/images/fireops-ios-icon.png",
+      "icon": "./assets/images/alarmops-ios-icon.png",
       "bundleIdentifier": "com.tinykings.fireops",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "Allow FireOps to listen while you talk to the assistant.",
-        "NSSpeechRecognitionUsageDescription": "Allow FireOps to transcribe your questions for the assistant."
+        "NSMicrophoneUsageDescription": "Allow AlarmOps to listen while you talk to the assistant.",
+        "NSSpeechRecognitionUsageDescription": "Allow AlarmOps to transcribe your questions for the assistant."
       }
     },
     "android": {
       "versionCode": 1,
       "package": "com.tinykings.fireops",
-      "icon": "./assets/images/fireops-icon.png",
+      "icon": "./assets/images/alarmops-icon.png",
       "predictiveBackGestureEnabled": true,
       "softwareKeyboardLayoutMode": "resize"
     },
@@ -49,15 +49,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow FireOps to use your location to find nearby FedRooms hotels."
+          "locationWhenInUsePermission": "Allow AlarmOps to use your location to find nearby FedRooms hotels."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow FireOps to select photos for your company fleet and qualification records.",
-          "cameraPermission": "Allow FireOps to photograph licenses and qualification records.",
-          "microphonePermission": "Allow FireOps to listen while you talk to the assistant."
+          "photosPermission": "Allow AlarmOps to select photos for your company fleet and qualification records.",
+          "cameraPermission": "Allow AlarmOps to photograph licenses and qualification records.",
+          "microphonePermission": "Allow AlarmOps to listen while you talk to the assistant."
         }
       ],
       "expo-sharing",
@@ -77,7 +77,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow FireOps to listen while you talk to the assistant.",
+          "microphonePermission": "Allow AlarmOps to listen while you talk to the assistant.",
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
         }
