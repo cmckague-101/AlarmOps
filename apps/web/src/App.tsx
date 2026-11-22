@@ -4,6 +4,7 @@ import {createOnlineFleetEditSession,restoreFleetAssignment,type SequencedFleetC
 import {DemoModeContext, FileInput, UploadButton} from './demo-uploads';
 import {createDemoRecords,demoQualifications} from './demo-records';
 import {QuickActions, AvailabilityPage} from './QuickActions';
+import {ResourcesIcon} from './ResourcesIcon';
 import {ViprIntelligenceIcon} from './ViprIntelligenceIcon';
 import {TaskListPage,type AssistantTaskRequest} from './TaskListPage';
 import type {AssistantInvoiceRequest} from './InvoicesPage';
@@ -86,7 +87,7 @@ export const navigationMeta = {
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Comms',description:'Company updates and replies',Icon:MessageSquare},
   news:{label:'News Feed',description:'National fire activity and industry news',Icon:Newspaper},
-  vehicles:{label:'Resources',description:'Vehicles, assignments, and issues',Icon:Truck},
+  vehicles:{label:'Resources',description:'Vehicles, assignments, and issues',Icon:ResourcesIcon},
   shop:{label:'Shop',description:'Shop tasks and fleet repairs',Icon:Wrench},
   crew:{label:'Roster',description:'View crew details and qualifications',Icon:Users},
   qualifications:{label:'Qualifications',description:'Credentials, licenses, and expiration dates',Icon:ShieldCheck},

@@ -9,6 +9,7 @@ vi.mock('@/providers/session-provider',()=>({useSession:()=>({session:{},demoMod
 vi.mock('@/components/app-header-brand',()=>({AppHeaderBrand:'AppHeaderBrand'}));
 vi.mock('@/components/app-symbol',()=>({AppSymbol:'AppSymbol'}));
 vi.mock('@/components/assistant-panel',()=>({AssistantHost:'AssistantHost'}));
+vi.mock('@/components/resources-icon',()=>({ResourcesIcon:'ResourcesIcon'}));
 vi.mock('@/components/quick-actions',()=>({QuickActions:'QuickActions'}));
 vi.mock('@/components/national-fire-activity',()=>({NationalFireActivitySection:'NationalFireActivitySection'}));
 vi.mock('@/components/operations-map',()=>({OperationsMap:'OperationsMap',useOperationsMap:()=>state.ops}));
@@ -55,6 +56,13 @@ describe('Operations tab (Dashboard and Operations combined)',()=>{
   it('hides the old operations tab but keeps its route',()=>{
     expect(screen('operations')).toEqual({href:null});
     expect(screens().filter(node=>(node.props.options as {href?:unknown}).href!==null).map(node=>node.props.name)).toEqual(['index','fleet','communications','more']);
+  });
+  it('labels the fleet route Resources and uses the Resources outline mark',()=>{
+    const fleet=screen('fleet');
+    expect(fleet.title).toBe('Resources');
+    const icon=(fleet.tabBarIcon as (props:{color:string;size:number})=>Node)({color:'red',size:24});
+    expect(icon.type).toBe('ResourcesIcon');
+    expect(icon.props).toMatchObject({color:'red',size:24});
   });
   it('redirects /operations to the Operations tab and keeps the incident or vehicle to focus',()=>{
     state.params={incidentId:'fire-1'};
