@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, BellRing, Boxes, Check, Download, Gauge, GraduationCap, ListOrdered, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, Smartphone, Truck, Users } from 'lucide-react';
+import { ArrowDown, BellRing, Boxes, Check, Download, Gauge, GraduationCap, ListOrdered, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, Shield, Smartphone, Truck, Users, Wrench } from 'lucide-react';
 import {FleetIcon} from './FleetIcon';
 import { supabase } from './supabase';
 import './auth.css';
@@ -12,9 +12,9 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
     // Match the browser bar to the dark hero while the landing page is shown.
     const themeColor=document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const previousThemeColor=themeColor?.content;
-    if(themeColor)themeColor.content='#101815';
+    if(themeColor)themeColor.content='#0a0e12';
     const previousTitle=document.title;
-    document.title='AlarmOps | Crew, fleet and incident operations for wildland fire';
+    document.title='AlarmOps | Monitoring, response, and operations for fire alarm & security companies';
     return()=>{if(themeColor&&previousThemeColor)themeColor.content=previousThemeColor;document.title=previousTitle};
   },[]);
   const [email,setEmail]=useState('');
@@ -57,9 +57,9 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       <section className="login-hero" aria-labelledby="login-title">
         <div className="login-logo-wrap"><img className="login-hero-logo" src="/alarmops-wordmark-440.webp" width="440" height="147" alt="AlarmOps"/><nav aria-label="Landing page"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a><a className="login-nav-signin" href="#sign-in">Sign in</a></nav></div>
         <div className="login-intro">
-          <p className="login-eyebrow">Wildland operations, connected</p>
-          <h1 id="login-title">Keep your crew ready. Keep operations moving.</h1>
-          <p className="login-lede">AlarmOps brings people, equipment, training, and field intelligence into one clear operational picture.</p>
+          <p className="login-eyebrow">Fire alarm &amp; security operations</p>
+          <h1 id="login-title">Monitor. Respond. Stay ahead.</h1>
+          <p className="login-lede">AlarmOps keeps monitoring, dispatch, technicians, and field work in one clear operating picture for fire alarm and security companies.</p>
           <a className="login-discover" href="#features">See what AlarmOps covers <ArrowDown aria-hidden="true"/></a>
         </div>
 
@@ -90,60 +90,60 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
         <div className="login-section-heading">
           <p className="login-section-kicker">Inside AlarmOps</p>
           <h2 id="features-title">One view of your whole operation.</h2>
-          <p>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</p>
+          <p>Technician readiness, service fleet status, alarm response, and work orders stay in one company workspace.</p>
         </div>
         <div className="login-feature-list">
           <article className="login-feature-card login-feature-card--dashboard">
-            <div className="login-feature-copy"><span><Gauge aria-hidden="true"/> Dashboard</span><h3>Readiness at a glance</h3><p>See fleet blockers and recent company activity as soon as you sign in.</p></div>
-            <figure><img src="/landing/dashboard.webp" width="1305" height="1205" loading="lazy" decoding="async" alt="FireOps dashboard showing fleet readiness, issues, and recent actions"/></figure>
+            <div className="login-feature-copy"><span><Gauge aria-hidden="true"/> Dashboard</span><h3>Readiness at a glance</h3><p>See open tickets, fleet blockers, and recent company activity as soon as you sign in.</p></div>
+            <figure><img src="/landing/dashboard.webp" width="1305" height="1205" loading="lazy" decoding="async" alt="AlarmOps dashboard showing operational readiness, issues, and recent actions"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--operations">
-            <div className="login-feature-copy"><span><MapPinned aria-hidden="true"/> Operations</span><h3>Active fires on one map</h3><p>Review NIFC incidents by location, then connect crews and vehicles to assignments.</p></div>
-            <figure><img src="/landing/operations.webp" width="1600" height="996" loading="lazy" decoding="async" alt="FireOps operations map showing active wildfire incidents across the United States"/></figure>
+            <div className="login-feature-copy"><span><MapPinned aria-hidden="true"/> Operations</span><h3>Active calls on one map</h3><p>Track service and alarm response jobs by location, then connect technicians and vehicles to assignments.</p></div>
+            <figure><img src="/landing/operations.webp" width="1600" height="996" loading="lazy" decoding="async" alt="AlarmOps operations map showing active service and response jobs"/></figure>
           </article>
           <article className="login-feature-card">
             <div className="login-feature-copy">
-              <span><Users aria-hidden="true"/> Crew management</span>
-              <h3>Know who’s ready to deploy</h3>
-              <p>Keep personnel, roles, qualifications, and resource assignments connected to your operation.</p>
+              <span><Users aria-hidden="true"/> Team management</span>
+              <h3>Know who’s ready to respond</h3>
+              <p>Keep technicians, roles, certifications, and resource assignments connected to your operation.</p>
               <ul className="login-feature-highlights">
-                <li><Check aria-hidden="true"/> Crew profiles and company roles</li>
-                <li><Check aria-hidden="true"/> Qualifications and certificates</li>
+                <li><Check aria-hidden="true"/> Technician profiles and company roles</li>
+                <li><Check aria-hidden="true"/> Certifications and credentials</li>
                 <li><Check aria-hidden="true"/> Crew-to-resource assignments</li>
               </ul>
             </div>
           </article>
           <article className="login-feature-card">
             <div className="login-feature-copy">
-              <span><ListOrdered aria-hidden="true"/> VIPR DPLs</span>
-              <h3>See where resources rank</h3>
-              <p>Browse USFS VIPR dispatch priority lists with award rates matched by VIN.</p>
+              <span><ListOrdered aria-hidden="true"/> Dispatch queue</span>
+              <h3>Prioritize the next call</h3>
+              <p>Browse active and pending work with clear priority so dispatchers know what moves next.</p>
               <ul className="login-feature-highlights">
-                <li><Check aria-hidden="true"/> Filter by geographic area and dispatch center</li>
-                <li><Check aria-hidden="true"/> Review resource rankings and daily rates</li>
-                <li><Check aria-hidden="true"/> Verify records against official USFS sources</li>
+                <li><Check aria-hidden="true"/> Filter by site, zone, and urgency</li>
+                <li><Check aria-hidden="true"/> Review rankings and response targets</li>
+                <li><Check aria-hidden="true"/> Keep assignment history with each job</li>
               </ul>
             </div>
           </article>
           <article className="login-feature-card login-feature-card--fleet">
             <div className="login-feature-copy"><span><FleetIcon aria-hidden="true"/> Fleet</span><h3>Know what can roll</h3><p>Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.</p></div>
-            <figure><img src="/landing/fleet.webp" width="874" height="1183" loading="lazy" decoding="async" alt="FireOps fleet screen showing ready vehicles and current issues"/></figure>
+            <figure><img src="/landing/fleet.webp" width="874" height="1183" loading="lazy" decoding="async" alt="AlarmOps fleet screen showing ready vehicles and current issues"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--training">
-            <div className="login-feature-copy"><span><GraduationCap aria-hidden="true"/> Training</span><h3>Keep qualifications moving</h3><p>Publish courses, monitor capacity, and manage crew registration.</p></div>
-            <figure><img src="/landing/training.webp" width="1448" height="1086" loading="lazy" decoding="async" alt="FireOps training screen showing scheduled courses and registration counts"/></figure>
+            <div className="login-feature-copy"><span><GraduationCap aria-hidden="true"/> Training</span><h3>Keep certifications current</h3><p>Publish courses, monitor capacity, and manage technician registration.</p></div>
+            <figure><img src="/landing/training.webp" width="1448" height="1086" loading="lazy" decoding="async" alt="AlarmOps training screen showing scheduled courses and registration counts"/></figure>
           </article>
           <article className="login-feature-card">
-            <div className="login-feature-copy"><span><Boxes aria-hidden="true"/> Inventory</span><h3>Count field supplies</h3><p>Update equipment quantities as stock moves in or out.</p></div>
-            <figure><img src="/landing/inventory.webp" width="1522" height="1033" loading="lazy" decoding="async" alt="FireOps inventory screen showing equipment and supply counts"/></figure>
+            <div className="login-feature-copy"><span><Boxes aria-hidden="true"/> Inventory</span><h3>Count devices and parts</h3><p>Update equipment and panel-component quantities as stock moves in or out.</p></div>
+            <figure><img src="/landing/inventory.webp" width="1522" height="1033" loading="lazy" decoding="async" alt="AlarmOps inventory screen showing equipment and supply counts"/></figure>
           </article>
           <article className="login-feature-card">
-            <div className="login-feature-copy"><span><MessageSquareText aria-hidden="true"/> Communications</span><h3>Keep updates with your crew</h3><p>Post company threads and keep replies tied to each operational update.</p></div>
-            <figure><img src="/landing/communications.webp" width="1387" height="1134" loading="lazy" decoding="async" alt="FireOps communications screen showing company threads and crew replies"/></figure>
+            <div className="login-feature-copy"><span><MessageSquareText aria-hidden="true"/> Communications</span><h3>Keep updates with your team</h3><p>Post company threads and keep replies tied to each operational update.</p></div>
+            <figure><img src="/landing/communications.webp" width="1387" height="1134" loading="lazy" decoding="async" alt="AlarmOps communications screen showing company threads and team replies"/></figure>
           </article>
           <article className="login-feature-card login-feature-card--receipts">
-            <div className="login-feature-copy"><span><ReceiptText aria-hidden="true"/> Receipts</span><h3>Review field expenses</h3><p>Crew can upload receipts while owners filter, review, and maintain expense records.</p></div>
-            <figure><img src="/landing/receipts.webp" width="1540" height="1021" loading="lazy" decoding="async" alt="FireOps receipts screen showing uploaded crew expenses"/></figure>
+            <div className="login-feature-copy"><span><ReceiptText aria-hidden="true"/> Receipts</span><h3>Review field expenses</h3><p>Technicians can upload receipts while owners filter, review, and maintain expense records.</p></div>
+            <figure><img src="/landing/receipts.webp" width="1540" height="1021" loading="lazy" decoding="async" alt="AlarmOps receipts screen showing uploaded field expenses"/></figure>
           </article>
         </div>
       </section>
@@ -152,12 +152,12 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
         <div className="login-mobile-copy">
           <p className="login-mobile-kicker"><Smartphone aria-hidden="true"/> AlarmOps mobile</p>
           <h2 id="mobile-title">Your operation goes with you.</h2>
-          <p>FireOps is available for iPhone and iPad. Sign in with your existing account to work from the same live company records used on the web.</p>
+          <p>AlarmOps is available for iPhone and iPad. Sign in with your existing account to work from the same live company records used on the web.</p>
           <ul>
             <li><Check aria-hidden="true"/> Check fleet status and report issues</li>
-            <li><Check aria-hidden="true"/> Review assigned resources and active fires</li>
+            <li><Check aria-hidden="true"/> Review assigned jobs and active calls</li>
             <li><Check aria-hidden="true"/> Open company documents and training</li>
-            <li><BellRing aria-hidden="true"/> Get notified when your crew has an update</li>
+            <li><BellRing aria-hidden="true"/> Get notified when your team has an update</li>
           </ul>
           <a href="#" target="_blank" rel="noreferrer" aria-label="Download AlarmOps on the App Store"><Download aria-hidden="true"/><span><small>Available on the</small>App Store</span></a>
         </div>
@@ -167,11 +167,11 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
             <div className="login-mobile-screen">
               <div className="login-mobile-appbar"><img src="/alarmops-icon-64.webp" width="64" height="64" alt=""/><span>AlarmOps</span><i>3</i></div>
               <p>Good morning</p>
-              <h3>Ready for assignment</h3>
+              <h3>Ready for dispatch</h3>
               <div className="login-mobile-stats"><span><b>6</b>Vehicles</span><span><b>1</b>Open issue</span></div>
-              <div className="login-mobile-card"><span><Truck/></span><div><b>Engine 702</b><small>Ready · Assigned to you</small></div><i/></div>
-              <div className="login-mobile-card"><span><MapPinned/></span><div><b>Operations</b><small>2 assigned incidents</small></div><i/></div>
-              <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><MapPinned/>Operations</span><span className="active"><FleetIcon/>Fleet</span></div>
+              <div className="login-mobile-card"><span><Truck/></span><div><b>Van 12</b><small>Ready · Assigned to you</small></div><i/></div>
+              <div className="login-mobile-card"><span><Shield/></span><div><b>Operations</b><small>2 active service calls</small></div><i/></div>
+              <div className="login-mobile-tabs"><span><Boxes/>Home</span><span><Wrench/>Jobs</span><span className="active"><FleetIcon/>Fleet</span></div>
             </div>
           </div>
         </div>
@@ -180,14 +180,14 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       <section className="login-pricing" id="pricing" aria-labelledby="pricing-title">
         <div className="login-section-heading">
           <p className="login-section-kicker">Plans for every operation</p>
-          <h2 id="pricing-title">Start lean. Scale when fire season demands it.</h2>
+          <h2 id="pricing-title">Start lean. Scale as your book grows.</h2>
           <p>Choose individual career tools or a shared operating workspace for your company.</p>
         </div>
         <div className="pricing-grid">
-          <article className="pricing-card"><span>Individual</span><h3>Firefighter Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal qualifications, certificates, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
-          <article className="pricing-card"><span>Small contractor</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, fleet inspections, records, and basic operations.</p><em>For one- or two-engine companies.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
-          <article className="pricing-card pricing-card--featured"><span>Growing contractor</span><i>Most popular</i><h3>FireOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, incident operations, maintenance, and reporting.</p><em>Built for multiple resources and seasonal crews.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
-          <article className="pricing-card"><span>Large contractor</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card"><span>Individual</span><h3>Technician Pro</h3><p className="pricing-price"><b>$6</b><small>/ month</small></p><p>Personal certifications, credentials, employment profile, and career tools.</p><em>Free basic account; Pro is optional.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card"><span>Small company</span><h3>Starter</h3><p className="pricing-price"><b>$99</b><small>/ month</small></p><p>Up to 10 personnel, 5 resources, vehicle inspections, records, and basic operations.</p><em>For lean service teams.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card pricing-card--featured"><span>Growing company</span><i>Most popular</i><h3>AlarmOps Professional</h3><p className="pricing-price"><b>$249</b><small>/ month</small></p><p>Up to 40 personnel and 25 resources, with advanced workforce management, dispatch operations, maintenance, and reporting.</p><em>Built for multi-truck shops and expanding accounts.</em><a className="pricing-cta" href="#contact">Talk to us</a></article>
+          <article className="pricing-card"><span>Large company</span><h3>Business</h3><p className="pricing-price"><b>$499</b><small>/ month</small></p><p>Up to 100 personnel, 75 resources, advanced analytics, integrations, and multi-division operations.</p><a className="pricing-cta" href="#contact">Talk to us</a></article>
           <article className="pricing-card"><span>Enterprise</span><h3>Custom</h3><p className="pricing-price"><b>$799+</b><small>/ month</small></p><p>Large fleets, multiple operating companies, custom integrations, and dedicated onboarding.</p><a className="pricing-cta" href="#contact">Contact sales</a></article>
         </div>
       </section>
@@ -202,8 +202,8 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
       </section>
 
       <section className="login-mission">
-        <h2>Less time managing systems. More time supporting crews.</h2>
-        <p>AlarmOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</p>
+        <h2>Less time managing systems. More time protecting sites.</h2>
+        <p>AlarmOps keeps core workflows together, giving leaders confidence in the details and technicians confidence that information will be there when needed.</p>
       </section>
     </main>
 

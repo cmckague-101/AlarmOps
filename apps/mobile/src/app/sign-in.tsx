@@ -29,7 +29,7 @@ export default function SignIn(){
   };
   return <SignInLanding>
     <Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>Sign in</Text>
-    <Text style={[styles.intro,{color:theme.secondary}]}>Use your invited FireOps account.</Text>
+    <Text style={[styles.intro,{color:theme.secondary}]}>Use your invited AlarmOps account.</Text>
     <View style={styles.fields}>
       <FormField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" autoComplete="email" returnKeyType="next"/>
       <FormField label="Password" value={password} onChangeText={setPassword} secureTextEntry textContentType="password" autoComplete="current-password" returnKeyType="go" onSubmitEditing={()=>void submit()}/>
