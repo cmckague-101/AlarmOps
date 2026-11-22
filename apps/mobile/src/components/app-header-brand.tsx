@@ -3,9 +3,9 @@ import {useFireOpsTheme} from '@/theme';
 
 export function AppHeaderBrand(){
   const theme=useFireOpsTheme();
-  return <View accessible accessibilityRole="header" accessibilityLabel="FireOps" style={styles.brand}>
+  return <View accessible accessibilityRole="header" accessibilityLabel="AlarmOps" style={styles.brand}>
     <Image accessible={false} resizeMode="contain" source={require('../../assets/images/header.png')} style={styles.logo}/>
-    <Text style={[styles.name,{color:theme.ink}]}>FireOps</Text>
+    <Text style={[styles.name,{color:theme.ink}]}>AlarmOps</Text>
   </View>;
 }
 

@@ -12,7 +12,7 @@ html:has(.admin-login-page){scroll-behavior:smooth;scrollbar-color:#65716a #1018
 .login-hero::after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(90deg,rgba(7,14,12,.91) 0%,rgba(10,18,15,.73) 46%,rgba(10,17,14,.58) 72%,rgba(7,13,11,.74) 100%),linear-gradient(180deg,rgba(10,17,14,.42) 0%,rgba(10,17,14,.05) 42%,rgba(8,14,12,.7) 100%)}
 .login-logo-wrap{grid-area:logo;align-self:start;display:flex;align-items:center;justify-content:space-between;gap:30px}
 .login-logo-wrap nav{display:flex;align-items:center;gap:12px}.login-logo-wrap nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 8px;color:#eef1ee;font-size:13px;font-weight:750;text-decoration:none}.login-logo-wrap nav a:hover{color:#f4a58f}.login-logo-wrap nav a.login-nav-signin{margin-left:4px;padding:0 16px;border:1px solid rgba(255,255,255,.4);border-radius:9px}.login-logo-wrap nav a.login-nav-signin:hover{border-color:#f4a58f}.login-form{scroll-margin-top:24px}
-.login-hero-logo{display:block;width:210px;height:auto;aspect-ratio:2117/743;object-fit:contain;flex:none;filter:drop-shadow(0 2px 12px rgba(0,0,0,.2))}
+.login-hero-logo{display:block;width:210px;height:auto;aspect-ratio:2172/724;object-fit:contain;flex:none;filter:drop-shadow(0 2px 12px rgba(0,0,0,.2))}
 .login-intro{grid-area:intro;max-width:690px;align-self:center;padding-bottom:5vh}
 .admin-auth .login-eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 18px;color:#f4a58f;font-size:11px;font-weight:800;letter-spacing:.16em;line-height:1.2;text-transform:uppercase}
 .login-eyebrow::before{content:"";width:32px;height:2px;border-radius:2px;background:#e45a37}

@@ -879,7 +879,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   </div>;
 }
 
-function Brand() { return <div className="brand"><img className="brand-mark theme-logo-light" src="/fireops-wordmark-light-440.webp" width="440" height="154" alt="FireOps, powered by Fireco"/><img className="brand-mark theme-logo-dark" src="/fireops-wordmark-440.webp" width="440" height="154" alt="FireOps, powered by Fireco"/></div> }
+function Brand() { return <div className="brand"><img className="brand-mark theme-logo-light" src="/alarmops-wordmark-light-440.webp" width="440" height="147" alt="AlarmOps"/><img className="brand-mark theme-logo-dark" src="/alarmops-wordmark-440.webp" width="440" height="147" alt="AlarmOps"/></div> }
 function Sidebar({capacity,onCapacity,page,setPage,user,unreadCount,unreadDocumentCount,unreadTrainingCount,pendingCardCount}:{capacity:number;onCapacity:(rows:number)=>void;page:Page;setPage:(p:Page)=>void;user:FireOpsUser;unreadCount:number;unreadDocumentCount:number;unreadTrainingCount:number;pendingCardCount:number}) {
   const navRef=useRef<HTMLElement>(null);
   // Count how many rows fit in the visible sidebar; re-measure whenever the window (or text size) changes.

@@ -10,8 +10,8 @@ export default function PrivacyPolicy() {
     const previousTitle = document.title;
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     const previousDescription = description?.content;
-    document.title = 'Privacy Policy | FireOps';
-    if (description) description.content = 'Privacy Policy for FireOps.';
+    document.title = 'Privacy Policy | AlarmOps';
+    if (description) description.content = 'Privacy Policy for AlarmOps.';
     return () => {
       document.title = previousTitle;
       if (description && previousDescription) description.content = previousDescription;
@@ -20,15 +20,15 @@ export default function PrivacyPolicy() {
 
   return <div className="privacy-page">
     <header className="privacy-header">
-      <a className="privacy-brand" href="/" aria-label="FireOps home">
-        <img src="/fireops-wordmark-light-440.webp" width="440" height="154" alt="FireOps" />
+      <a className="privacy-brand" href="/" aria-label="AlarmOps home">
+        <img src="/alarmops-wordmark-light-440.webp" width="440" height="147" alt="AlarmOps" />
       </a>
-      <a className="privacy-home" href="/">Return to FireOps</a>
+      <a className="privacy-home" href="/">Return to AlarmOps</a>
     </header>
 
     <main className="privacy-main">
       <div className="privacy-intro">
-        <p className="privacy-eyebrow">FireOps</p>
+        <p className="privacy-eyebrow">AlarmOps</p>
         <h1>Privacy Policy</h1>
         <p className="privacy-effective">Effective September 4, 2026</p>
         <p>This Privacy Policy explains how FireOps (“FireOps,” “we,” “us,” or “our”) collects, uses, stores, and shares information when you use our website, iOS application, and related services (collectively, the “Service”).</p>

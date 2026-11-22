@@ -45,14 +45,14 @@ export function SignInLanding({children}:PropsWithChildren){
             <BrandWordmark/>
             <View style={[styles.panel,card]}>{children}</View>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="See FireOps features, pricing, and contact information" accessibilityHint="Scrolls down to the feature list" onPress={()=>scroll.current?.scrollTo({y:featuresY,animated:true})} style={styles.discover}>
-            <Text style={[styles.discoverLabel,{color:theme.commandForeground}]}>See what FireOps covers</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="See AlarmOps features, pricing, and contact information" accessibilityHint="Scrolls down to the feature list" onPress={()=>scroll.current?.scrollTo({y:featuresY,animated:true})} style={styles.discover}>
+            <Text style={[styles.discoverLabel,{color:theme.commandForeground}]}>See what AlarmOps covers</Text>
             <Text accessible={false} style={[styles.arrow,{color:theme.ember}]}>↓</Text>
             <Text style={[styles.small,copy]}>Tap or scroll down</Text>
           </Pressable>
         </View>
         <View onLayout={event=>setFeaturesY(event.nativeEvent.layout.y)} style={styles.section}>
-          <Text style={[styles.kicker,{color:theme.green}]}>Inside FireOps</Text>
+          <Text style={[styles.kicker,{color:theme.green}]}>Inside AlarmOps</Text>
           <Text accessibilityRole="header" style={[styles.title,heading]}>One view of your whole operation.</Text>
           <Text style={[styles.body,copy]}>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</Text>
           {features.map(feature=><View key={feature.name} style={[styles.card,card]}>
@@ -76,16 +76,16 @@ export function SignInLanding({children}:PropsWithChildren){
           </View>)}
         </View>
         <View style={styles.section}>
-          <Text style={[styles.kicker,{color:theme.green}]}>Talk with the FireOps team</Text>
-          <Text accessibilityRole="header" style={[styles.title,heading]}>Want to learn how FireOps can support your operation?</Text>
+          <Text style={[styles.kicker,{color:theme.green}]}>Talk with the AlarmOps team</Text>
+          <Text accessibilityRole="header" style={[styles.title,heading]}>Want to learn how AlarmOps can support your operation?</Text>
           <View style={[styles.card,card]}>
             <Pressable accessibilityRole="link" onPress={()=>void open('tel:+12088617464')} style={styles.contact}><Text style={[styles.contactLabel,{color:theme.ember}]}>208-861-7464</Text></Pressable>
             <Pressable accessibilityRole="link" onPress={()=>void open('mailto:Clint@firecollc.com')} style={styles.contact}><Text style={[styles.contactLabel,{color:theme.ember}]}>Clint@firecollc.com</Text></Pressable>
             {linkError&&<Text accessibilityRole="alert" style={{color:theme.danger}}>{linkError}</Text>}
           </View>
           <Text accessibilityRole="header" style={[styles.cardTitle,heading]}>Less time managing systems. More time supporting crews.</Text>
-          <Text style={[styles.body,copy]}>FireOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</Text>
-          <Text style={[styles.footer,copy]}>© {new Date().getFullYear()} FireOps · Built for teams who answer the call.</Text>
+          <Text style={[styles.body,copy]}>AlarmOps keeps core workflows together, giving leaders confidence in the details and crews confidence that information will be there when needed.</Text>
+          <Text style={[styles.footer,copy]}>© {new Date().getFullYear()} AlarmOps · Built for teams who answer the call.</Text>
         </View>
       </ScrollView>
       {showBackToTop&&<Pressable accessibilityRole="button" accessibilityLabel="Back to top" accessibilityHint="Returns to the sign-in form" onPress={()=>scroll.current?.scrollTo({y:0,animated:true})} style={({pressed})=>[styles.backToTop,{backgroundColor:pressed?theme.emberPressed:theme.ember}]}>
