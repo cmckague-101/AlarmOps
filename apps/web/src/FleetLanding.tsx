@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, BellRing, Boxes, Check, Download, Gauge, GraduationCap, ListOrdered, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, Smartphone, Truck, Users } from 'lucide-react';
+import { ArrowDown, BellRing, Boxes, Check, Download, Gauge, GraduationCap, Mail, MapPinned, MessageSquareText, Phone, ReceiptText, Smartphone, Truck, Users } from 'lucide-react';
 import {ResourcesIcon} from './ResourcesIcon';
 import { supabase } from './supabase';
 import './auth.css';
@@ -90,7 +90,7 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
         <div className="login-section-heading">
           <p className="login-section-kicker">Inside AlarmOps</p>
           <h2 id="features-title">One view of your whole operation.</h2>
-          <p>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</p>
+          <p>Crew readiness, fleet inspections, and incident assignments stay in one company workspace.</p>
         </div>
         <div className="login-feature-list">
           <article className="login-feature-card login-feature-card--dashboard">
@@ -110,18 +110,6 @@ export default function FleetLogin({onDemo}:{onDemo:()=>void}){
                 <li><Check aria-hidden="true"/> Crew profiles and company roles</li>
                 <li><Check aria-hidden="true"/> Qualifications and certificates</li>
                 <li><Check aria-hidden="true"/> Crew-to-resource assignments</li>
-              </ul>
-            </div>
-          </article>
-          <article className="login-feature-card">
-            <div className="login-feature-copy">
-              <span><ListOrdered aria-hidden="true"/> VIPR DPLs</span>
-              <h3>See where resources rank</h3>
-              <p>Browse USFS VIPR dispatch priority lists with award rates matched by VIN.</p>
-              <ul className="login-feature-highlights">
-                <li><Check aria-hidden="true"/> Filter by geographic area and dispatch center</li>
-                <li><Check aria-hidden="true"/> Review resource rankings and daily rates</li>
-                <li><Check aria-hidden="true"/> Verify records against official USFS sources</li>
               </ul>
             </div>
           </article>

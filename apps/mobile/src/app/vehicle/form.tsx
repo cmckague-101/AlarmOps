@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { inspectionExpirationDate, localDateToday, parseViprForm, viprCategoryFor, viprCategoryHasPump, viprCategoryHasTank, viprFormValues, viprNumberFields, vinError, type Vehicle, type VehicleStatus, type ViprFormValues, type ViprNumberField } from '@fireops/domain';
+import { inspectionExpirationDate, localDateToday, vinError, type Vehicle, type VehicleStatus } from '@fireops/domain';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -57,7 +57,7 @@ type FormState = {
   notes: string;
 };
 
-type FormErrors = Partial<Record<keyof FormState | keyof ViprFormValues, string>>;
+type FormErrors = Partial<Record<keyof FormState, string>>;
 function editableVehicleVersion(vehicle:FleetVehicle|undefined){try{return vehicle?fleetReadVersion(vehicle,'vehicles'):undefined}catch{return undefined}}
 
 export default function VehicleFormScreen() {
@@ -83,7 +83,6 @@ export default function VehicleFormScreen() {
     status: statuses.includes(vehicle?.status as VehicleStatus) ? vehicle?.status as VehicleStatus : 'Ready',
     notes: vehicle?.notes ?? '',
   }));
-  const [vipr, setVipr] = useState<ViprFormValues>(() => viprFormValues(vehicle?.source as Partial<Vehicle> | undefined));
   const hydratedIdRef = useRef(vehicle?.id ?? null);
   const baseVersionRef=useRef(editableVehicleVersion(vehicle));
   const scopeKey=user&&session?.user.id===user.id?`${user.id}:${companyId}:${user.role}`:null;
@@ -117,7 +116,6 @@ export default function VehicleFormScreen() {
     hydratedIdRef.current = vehicle.id;
     baseVersionRef.current=editableVehicleVersion(vehicle);
     setInspectionDate(vehicle.documents.find(document => document.id === 'dotInspection' || document.name.toLowerCase() === 'dot inspection')?.inspectionDate ?? '');
-    setVipr(viprFormValues(vehicle.source as Partial<Vehicle>));
     setForm({
       unit: vehicle.name,
       type: vehicle.type,
@@ -140,13 +138,6 @@ export default function VehicleFormScreen() {
     setForm((current) => ({ ...current, [key]: value }));
     if (errors[key]) setErrors((current) => ({ ...current, [key]: undefined }));
   };
-  // VIPR bid fields: hidden fields (not used by the chosen category) keep their saved values.
-  const viprCategory = viprCategoryFor({ type: selectedType, viprCategory: vipr.viprCategory }).category;
-  const viprVisible = (field: ViprNumberField) => field === 'pumpGpm' || field === 'pumpPsi' ? viprCategoryHasPump(viprCategory) : field === 'tankGallons' ? viprCategoryHasTank(viprCategory) : true;
-  const savedVipr = viprFormValues(vehicle?.source as Partial<Vehicle> | undefined);
-  const viprNumberKeys = Object.keys(viprNumberFields) as ViprNumberField[];
-  const viprSubmitValues: ViprFormValues = { ...vipr, ...(viprCategory === 'Engine' ? {} : { engineType: savedVipr.engineType }), ...Object.fromEntries(viprNumberKeys.filter((field) => !viprVisible(field)).map((field) => [field, savedVipr[field]])) };
-
   const choosePhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 });
     if (result.canceled) return;
@@ -214,8 +205,6 @@ export default function VehicleFormScreen() {
     if (!Number.isInteger(year) || year < 1950 || year > currentYear + 1) nextErrors.year = `Enter a year from 1950 to ${currentYear + 1}.`;
     // Only a changed VIN is checked, so older records with odd VINs can still be edited.
     if (form.vin.trim().toUpperCase() !== (vehicle?.vin ?? '').trim().toUpperCase() && vinError(form.vin)) nextErrors.vin = vinError(form.vin);
-    const viprParsed = parseViprForm(viprSubmitValues);
-    if (!offlineCreate) Object.assign(nextErrors, viprParsed.errors);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -286,7 +275,6 @@ export default function VehicleFormScreen() {
         assignedTo: form.status === 'Assigned' ? vehicle?.assignedTo : undefined,
         assignedFire: form.status === 'Assigned' ? vehicle?.assignedFire : undefined,
         notes: form.notes.trim(),
-        ...viprParsed.fields,
         ...(!editing && uploadedPhoto ? { photo: uploadedPhoto } : {}),
         ...(editing ? { documents, contract: null, viprChecklist: null, registration: null, insurance: null, dotInspection: null } : {}),
         createdAt: typeof vehicle?.source.createdAt === 'string' ? vehicle.source.createdAt : new Date().toISOString(),

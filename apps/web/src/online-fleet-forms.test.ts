@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {describe,expect,it,vi} from 'vitest';
-import {normalizeVehicle,parseViprForm,viprFormValues,type FleetIssue,type FleetSnapshot,type Vehicle} from '@fireops/domain';
+import {normalizeVehicle,type FleetIssue,type FleetSnapshot,type Vehicle} from '@fireops/domain';
 import {createOnlineFleetEditSession} from './online-fleet-edit-session';
 
 const source=readFileSync(new URL('./App.tsx',import.meta.url),'utf8');
@@ -21,13 +21,12 @@ describe('production web edit/save callbacks without mounting UI',()=>{
     const onSave=vi.fn().mockReturnValue(accept);const onCommitFiles=vi.fn();const setErrors=vi.fn();
     const submit=handler('  const submit=(e:React.FormEvent<HTMLFormElement>)=>','  if(managingTypes)',{
       documents:{},inspectionExpirationDate:()=> '2027-01-01',form,selectedType:'Engine',setErrors,focusFirstInvalid:vi.fn(),onSave,onCommitFiles,vehicle:original,photo:undefined,documentList:[],vehicleDocumentOptions:[{key:'insurance',label:'Insurance'}],
-      parseViprForm,viprSubmitValues:{...viprFormValues(original),pumpPsi:'250',dailyRate:'1,850.50'},
     },'submit',source.indexOf('function VehicleForm(')) as (event:unknown)=>void;
     return {submit,onSave,onCommitFiles,setErrors,original,form,custom};
   }
   it('preserves non-edited vehicle fields and custom documents in the actual submitted record',()=>{
     const f=vehicleForm();f.submit({preventDefault:vi.fn(),currentTarget:{}});
-    expect(f.onSave).toHaveBeenCalledWith(expect.objectContaining({unit:'Typed unit',notes:'Typed notes',inspections:[],documents:[f.custom],viprCategory:'Engine',pumpGpm:150,pumpPsi:250,dailyRate:1850.5,tankGallons:undefined}));expect(f.onCommitFiles).toHaveBeenCalledOnce();
+    expect(f.onSave).toHaveBeenCalledWith(expect.objectContaining({unit:'Typed unit',notes:'Typed notes',inspections:[],documents:[f.custom],viprCategory:'Engine',pumpGpm:150}));expect(f.onCommitFiles).toHaveBeenCalledOnce();
   });
   it('keeps stale/rejected vehicle inputs and uploaded-file ownership instead of committing them',()=>{
     const f=vehicleForm(false);f.submit({preventDefault:vi.fn(),currentTarget:{}});

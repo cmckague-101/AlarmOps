@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatCalendarDate, inspectionExpirationDate, canDispatchFleet, canInspectVehicle, canOpenVehicleIssue, engineTypeFor, formatViprMoney, viprCategoryFor, type NifcIncident, type VehicleStatus } from "@fireops/domain";
+import { formatCalendarDate, inspectionExpirationDate, canDispatchFleet, canInspectVehicle, canOpenVehicleIssue, type NifcIncident, type VehicleStatus } from "@fireops/domain";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -35,7 +35,6 @@ import { readFireList, saveFireList } from "@/lib/offline-fire-list";
 import { createDetailChangeActions } from "@/lib/offline-attachment-actions";
 import { offlineVehicleChange, offlineVehicleChangeKey, type OfflineVehicleChange } from "@/lib/offline-vehicle-changes";
 import { useFleetFileUrl } from "@/lib/use-fleet-file-url";
-import { viprVehicle } from "@/lib/vipr-export";
 import { useSession } from "@/providers/session-provider";
 import { useOfflineSync } from "@/providers/offline-sync-provider";
 import {savedDetailHref} from '@/lib/offline-detail-form';
@@ -142,21 +141,6 @@ function VehicleLocationMap({ latitude, longitude, location, stale, onOpen, styl
   );
 }
 
-function ViprDetailRows({ vehicle, styles }: { vehicle: FleetVehicle; styles: DetailStyles }) {
-  const source = viprVehicle(vehicle);
-  const { category, guessed } = viprCategoryFor(source);
-  const engine = category === "Engine" ? engineTypeFor(source).engineType : undefined;
-  const number = (value?: number) => (value ? value.toLocaleString("en-US") : null);
-  return (
-    <>
-      <DetailRow label="VIPR category" value={`${category}${engine ? ` · ${engine}` : ""}${guessed ? " (from type)" : ""}`} styles={styles} />
-      <DetailRow label="Pump" value={source.pumpGpm && source.pumpPsi ? `${number(source.pumpGpm)} gpm @ ${number(source.pumpPsi)} psi` : null} styles={styles} />
-      <DetailRow label="Tank" value={source.tankGallons ? `${number(source.tankGallons)} gal` : null} styles={styles} />
-      <DetailRow label="GVWR" value={source.gvwrLbs ? `${number(source.gvwrLbs)} lbs` : null} styles={styles} />
-      <DetailRow label="Daily rate" value={source.dailyRate ? formatViprMoney(source.dailyRate) : null} styles={styles} />
-    </>
-  );
-}
 
 function DetailRow({
   label,
@@ -995,7 +979,6 @@ export default function VehicleDetailScreen() {
                 <DetailRow label="Model" value={vehicle.model} styles={styles} />
                 <DetailRow label="VIN" value={vehicle.vin} styles={styles} />
                 <DetailRow label="Plate" value={vehicle.plate} styles={styles} />
-                <ViprDetailRows vehicle={vehicle} styles={styles} />
               </View>
             </View>
 

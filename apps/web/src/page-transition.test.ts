@@ -17,17 +17,14 @@ describe('pageSlideDirection',()=>{
   it('treats nested drill-ins as push and returns as pop',()=>{
     expect(pageSlideDirection('qualifications','add-credential')).toBe('forward');
     expect(pageSlideDirection('add-credential','qualifications')).toBe('back');
-    expect(pageSlideDirection('vehicles','send-vipr')).toBe('forward');
-    expect(pageSlideDirection('send-vipr','vehicles')).toBe('back');
-    expect(pageSlideDirection('vipr-intelligence','dispatch')).toBe('forward');
-    expect(pageSlideDirection('dispatch','vipr-intelligence')).toBe('back');
-    expect(pageSlideDirection('send-vipr','vipr-intelligence')).toBe('back');
+    expect(pageSlideDirection('qualifications','credential-detail')).toBe('forward');
+    expect(pageSlideDirection('credential-detail','qualifications')).toBe('back');
   });
 
   it('exposes nested helpers used by the direction rules',()=>{
     expect(isNestedPush('qualifications','credential-detail')).toBe(true);
     expect(isNestedReturn('credential-detail','qualifications')).toBe(true);
-    expect(isNestedReturn('dispatch','vehicles')).toBe(false);
+    expect(isNestedReturn('add-credential','vehicles')).toBe(false);
   });
 
   it('maps direction to the page-stage class names',()=>{

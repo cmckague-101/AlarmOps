@@ -11,7 +11,7 @@ const ROLE_LABELS: Record<Role, string> = {
 
 /** Keep in sync with ASSISTANT_ROUTE_IDS in packages/domain/src/assistant.ts (a test checks both). */
 export const ASSISTANT_ROUTE_IDS = [
-  'dashboard', 'operations', 'fleet', 'vipr-intelligence', 'send-to-vipr', 'vipr-dpls', 'travel', 'communications', 'shop', 'roster',
+  'dashboard', 'operations', 'fleet', 'travel', 'communications', 'roster',
   'qualifications', 'documents', 'receipts', 'invoices', 'payroll', 'tasks', 'availability', 'training',
   'inventory', 'inspections', 'audit-log', 'settings', 'more',
 ] as const;
@@ -19,13 +19,9 @@ export type RouteId = typeof ASSISTANT_ROUTE_IDS[number];
 
 const managers: Role[] = ['owner', 'admin'];
 const taskRoles: Role[] = ['owner', 'admin', 'shop_tech'];
-const shopRoles: Role[] = ['owner', 'admin', 'resource_boss', 'shop_tech'];
-
 export function canOpenRoute(role: Role, id: RouteId) {
-  if (id === 'shop') return shopRoles.includes(role);
   if (id === 'roster') return role !== 'resource_boss';
-  // vipr-intelligence is open to every role; only its Send to VIPR entry is gated.
-  if (id === 'send-to-vipr' || id === 'inspections' || id === 'audit-log') return managers.includes(role);
+  if (id === 'inspections' || id === 'audit-log') return managers.includes(role);
   if (id === 'tasks') return taskRoles.includes(role);
   return true;
 }
@@ -34,15 +30,11 @@ export const canSeeAllCrew = (role: Role) => role !== 'resource_boss';
 
 /** Current app map (after the nav reshuffle): what each screen is for and where to find it on web and phone. */
 const APP_MAP: Record<RouteId, string> = {
-  dashboard: 'Operations, the home screen and first tab (there is no separate Dashboard anymore). Map of active fires and the company resources and Motive vehicles assigned to them at the top, then Command Center, Needs Attention, notifications and Quick Actions (Availability, Task List, Shop, Payroll, VIPR Intelligence, Invoices). Customize it in Settings.',
+  dashboard: 'Operations, the home screen and first tab (there is no separate Dashboard anymore). Map of active fires and the company resources and Motive vehicles assigned to them at the top, then Command Center, Needs Attention, notifications and Quick Actions (Availability, Task List, Payroll, Invoices). Customize it in Settings.',
   operations: 'Same screen as dashboard (Operations). Prefer the dashboard id.',
   fleet: 'Main tab. Vehicles with status (Ready, Assigned, Out of service), assignments, issues, inspections, documents and oil changes.',
-  'vipr-intelligence': 'VIPR hub. Holds Send to VIPR (owners and admins only) and VIPR DPLs. Web sidebar, Tools and Quick Actions; Tools and Quick Actions on phones.',
-  'send-to-vipr': 'Send to VIPR button on Fleet, also on VIPR Intelligence. Builds a plain-text VIPR bid package from units; out-of-service units are blocked.',
-  'vipr-dpls': 'VIPR DPL rankings and VIN-matched daily rates. Opened from VIPR Intelligence.',
   travel: 'GSA FedRooms hotels and nearby restaurants. Web sidebar; Tools on phones.',
   communications: 'Main tab (Messages in the phone app). Company updates and Crew Chat.',
-  shop: 'Shop board for work orders and fleet repairs. Quick Action and Tools.',
   roster: 'Crew list with contact details and qualifications.',
   qualifications: 'The user\'s credentials, licenses, task books, incident experience, annual RT-130/WCT records, master record and qualification card.',
   documents: 'Company files and reference documents.',

@@ -8,7 +8,6 @@ const features=[
   {name:'Dashboard',title:'Readiness at a glance',description:'See fleet blockers and recent company activity as soon as you sign in.',image:require('../../assets/landing/dashboard.webp')},
   {name:'Operations',title:'Active fires on one map',description:'Review NIFC incidents by location, then connect crews and vehicles to assignments.',image:require('../../assets/landing/operations.webp')},
   {name:'Crew management',title:'Know who’s ready to deploy',description:'Keep personnel, roles, qualifications, and resource assignments connected to your operation.',highlights:['Crew profiles and company roles','Qualifications and certificates','Crew-to-resource assignments']},
-  {name:'VIPR DPLs',title:'See where resources rank',description:'Browse USFS VIPR dispatch priority lists with award rates matched by VIN.',highlights:['Filter by geographic area and dispatch center','Review resource rankings and daily rates','Verify records against official USFS sources']},
   {name:'Resources',title:'Know what can roll',description:'Review vehicle inspections, track maintenance issues and repair history, and keep unit status, assignments, photos, and records together.',image:require('../../assets/landing/fleet.webp')},
   {name:'Training',title:'Keep qualifications moving',description:'Publish courses, monitor capacity, and manage crew registration.',image:require('../../assets/landing/training.webp')},
   {name:'Inventory',title:'Count field supplies',description:'Update equipment quantities as stock moves in or out.',image:require('../../assets/landing/inventory.webp')},
@@ -54,7 +53,7 @@ export function SignInLanding({children}:PropsWithChildren){
         <View onLayout={event=>setFeaturesY(event.nativeEvent.layout.y)} style={styles.section}>
           <Text style={[styles.kicker,{color:theme.green}]}>Inside AlarmOps</Text>
           <Text accessibilityRole="header" style={[styles.title,heading]}>One view of your whole operation.</Text>
-          <Text style={[styles.body,copy]}>Crew readiness, fleet inspections, incident assignments, and VIPR dispatch lists stay in one company workspace.</Text>
+          <Text style={[styles.body,copy]}>Crew readiness, fleet inspections, and incident assignments stay in one company workspace.</Text>
           {features.map(feature=><View key={feature.name} style={[styles.card,card]}>
             <Text style={[styles.kicker,{color:theme.green}]}>{feature.name}</Text>
             <Text accessibilityRole="header" style={[styles.cardTitle,heading]}>{feature.title}</Text>
