@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {Flame} from 'lucide-react';
+import {LayoutDashboard} from 'lucide-react';
 import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navigationMeta, receiptsFirst, resolvePage, sidebarSplit} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
@@ -61,17 +61,20 @@ function snapshot():FleetSnapshot {
   };
 }
 
+const alarmNav=['overview','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings'] as const;
+
 describe('responsive navigation',()=>{
   it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','audit-log','settings']);
+    expect(navigationLayout('owner').desktop).toEqual([...alarmNav,'audit-log','settings']);
     expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
-    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','settings']);
+    expect(navigationLayout('fire_fighter').desktop).toEqual([...alarmNav,'settings']);
   });
 
-  it('moves Inventory and Failed Inspections into More, except Inventory for Resource Bosses and shop techs',()=>{
+  it('moves Inventory, Failed Inspections, and Fleet readiness into More, except Inventory for Resource Bosses and shop techs',()=>{
     for(const role of ['owner','admin','fire_fighter','accounting'] as const){
       expect(navigationLayout(role).desktop).not.toContain('inventory');
       expect(navigationLayout(role).mobileOverflow).toContain('inventory');
+      expect(navigationLayout(role).desktop).not.toContain('readiness');
     }
     expect(navigationLayout('owner').desktop).not.toContain('inspections');
     expect(navigationLayout('owner').mobileOverflow).toContain('inspections');
@@ -80,26 +83,28 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('shop_tech').desktop).not.toContain('inspections');
   });
 
-  it('keeps News Feed primary and moves only footer overflow into Tools on mobile',()=>{
+  it('keeps Customers and Jobs on the phone bar and moves the rest into Tools',()=>{
     for(const role of ['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const){
-      expect(navigationLayout(role).mobilePrimary).toEqual(['overview','vehicles','communications','news']);
-      expect(navigationLayout(role).mobileOverflow).not.toContain('news');
+      expect(navigationLayout(role).mobilePrimary).toEqual(['overview','customers','jobs','vehicles']);
+      expect(navigationLayout(role).mobileOverflow).toContain('quotes');
+      expect(navigationLayout(role).mobileOverflow).not.toContain('overview');
     }
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','inventory','inspections','audit-log','settings']);
-    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','inventory','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings']);
+    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','readiness','settings']);
   });
 });
 
-describe('Operations page (Dashboard and Operations combined)',()=>{
+describe('Command page',()=>{
   const roles=['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const;
-  it('labels the overview page Operations with the flame icon and drops the separate Operations item',()=>{
-    expect(navigationMeta.overview.label).toBe('Operations');
-    expect(navigationMeta.overview.description).toBe('Active fires and assigned resources');
-    expect(navigationMeta.overview.Icon).toBe(Flame);
+  it('labels the overview page Command and keeps the old operations id on that page',()=>{
+    expect(navigationMeta.overview.label).toBe('Command');
+    expect(navigationMeta.overview.description).toBe('Customers, jobs, inspections, and billing');
+    expect(navigationMeta.overview.Icon).toBe(LayoutDashboard);
+    expect(navigationMeta.customers.label).toBe('Customers');
+    expect(navigationMeta.compliance.label).toBe('Inspections');
     expect(Object.keys(navigationMeta)).not.toContain('operations');
     for(const role of roles){
       const {desktop,mobilePrimary,mobileOverflow}=navigationLayout(role);
-      // Every role lands on Operations first, and nothing else is called Operations.
       expect(desktop[0]).toBe('overview');
       expect(mobilePrimary[0]).toBe('overview');
       expect([...desktop,...mobilePrimary,...mobileOverflow]).not.toContain('operations');
@@ -134,18 +139,18 @@ describe('desktop sidebar overflow',()=>{
     const split=sidebarSplit('owner',Number.POSITIVE_INFINITY);
     expect(split.shown).toEqual(navigationLayout('owner').desktop.filter(page=>page!=='settings'));
     expect(split.overflow).toEqual([]);
-    expect(split.more).toEqual(['inventory','inspections']);
+    expect(split.more).toEqual(['inventory','inspections','readiness']);
   });
   it('moves rows that do not fit into More, keeping More and Settings at the bottom',()=>{
     const split=sidebarSplit('owner',8);
-    expect(split.shown).toEqual(['overview','hotels','communications','news','vehicles','crew']);
+    expect(split.shown).toEqual(['overview','customers','jobs','quotes','compliance','billing']);
     expect(split.settings).toBe(true);
-    expect(split.more).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','meetings','audit-log','inventory','inspections']);
+    expect(split.more).toEqual(['schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','audit-log','inventory','inspections','readiness']);
     // Nothing is lost: every page is either in the sidebar or in More.
     expect(new Set([...split.shown,...split.more,'settings'])).toEqual(new Set(navigationLayout('owner').mobileOverflow.concat(navigationLayout('owner').mobilePrimary)));
   });
   it('keeps Inventory in the sidebar for shop techs when it fits, and always shows at least one row',()=>{
-    expect(sidebarSplit('shop_tech',Number.POSITIVE_INFINITY).more).toEqual([]);
+    expect(sidebarSplit('shop_tech',Number.POSITIVE_INFINITY).more).toEqual(['readiness']);
     expect(sidebarSplit('shop_tech',Number.POSITIVE_INFINITY).shown).toContain('inventory');
     expect(sidebarSplit('fire_fighter',1).shown).toEqual(['overview']);
   });

@@ -47,10 +47,10 @@ describe('mobile Fleet header',()=>{
 });
 
 describe('mobile More screen',()=>{
-  it('is titled Tools and follows the web sidebar order: Travel, News Feed, Roster',()=>{
+  it('is titled Tools and leads with Quotes, Inspections, and Billing',()=>{
     const tree=render(More) as Node;
     expect(tree.props.title).toBe('Tools');
     const tiles=nodes(tree).filter(node=>node.type==='Pressable'&&typeof node.props.accessibilityLabel==='string');
-    expect(tiles.slice(0,3).map(tile=>tile.props.accessibilityLabel)).toEqual(['Travel','News Feed','Roster']);
+    expect(tiles.slice(0,3).map(tile=>tile.props.accessibilityLabel)).toEqual(['Quotes','Inspections','Billing']);
   });
 });

@@ -56,6 +56,8 @@ import {
 import { createId } from './create-id';
 import ThemeToggle from './ThemeToggle';
 import {pageSlideDirection,pageStageClassName,type PageSlideDirection} from './page-transition';
+import {AlarmWorkspace,type AlarmSection} from './alarm/AlarmWorkspace';
+import {normalizeAlarmBook,seedAlarmBook,type AlarmBook} from '@fireops/domain';
 
 // Pages most people open rarely load on first visit instead of with the workspace.
 const AuditLogPage=lazy(()=>import('./AuditLogPage'));
@@ -69,13 +71,20 @@ const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule' | 'readiness' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
 export const navigationMeta = {
-  // The Dashboard and the Operations map are one page. Its id stays 'overview' so saved preferences and links keep working.
-  overview:{label:'Operations',description:'Active fires and assigned resources',Icon:Flame},
+  // Saved preferences and old links still use 'overview'. It is now the Alarmco command desk.
+  overview:{label:'Command',description:'Customers, jobs, inspections, and billing',Icon:LayoutDashboard},
+  customers:{label:'Customers',description:'Accounts, sites, and monitoring contracts',Icon:Building2},
+  jobs:{label:'Jobs',description:'Installs, service calls, and inspections',Icon:BriefcaseBusiness},
+  quotes:{label:'Quotes',description:'Device and labor estimates',Icon:FileText},
+  compliance:{label:'Inspections',description:'NFPA 72 checklists and deficiencies',Icon:ClipboardCheck},
+  billing:{label:'Billing',description:'Job and monitoring invoices',Icon:CircleDollarSign},
+  schedule:{label:'Schedule',description:'Technician calendar and weekly time',Icon:CalendarDays},
+  readiness:{label:'Fleet readiness',description:'Vehicle status and open fleet issues',Icon:Flame},
   meetings:{label:'Meetings',description:'Coming soon',Icon:Video},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Comms',description:'Company updates and replies',Icon:MessageSquare},
@@ -96,8 +105,8 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // Fixed order through Training; rows after it spill into More first on short windows.
-const navigationOrder:NavigablePage[]=['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','inventory','inspections','audit-log','settings'];
-const mobilePrimaryOrder:NavigablePage[]=['overview','vehicles','communications','news'];
+const navigationOrder:NavigablePage[]=['overview','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings'];
+const mobilePrimaryOrder:NavigablePage[]=['overview','customers','jobs','vehicles'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';
 /** The page to show for a page id; old 'operations' links and assistant ids open Operations ('overview'). */
@@ -107,7 +116,7 @@ export function resolvePage(page:Page|LegacyPage):Page{
 
 // Inventory and Failed Inspections live under More for every role, except that
 // Resource Bosses and shop techs keep Inventory in their main navigation.
-const moreOnlyPages:NavigablePage[]=['inventory','inspections'];
+const moreOnlyPages:NavigablePage[]=['inventory','inspections','readiness'];
 export function navigationLayout(role:UserRole){
   const accessible=navigationOrder.filter(page=>page==='crew'?canViewCrewRoster(role):(page!=='inspections'&&page!=='audit-log')||isCompanyManager(role));
   const desktop=accessible.filter(page=>!moreOnlyPages.includes(page)||(page==='inventory'&&keepsInventoryInMainNav(role)));
@@ -164,12 +173,12 @@ const vehicleDocumentOptions: {key:VehicleDocumentKey;label:string}[] = [
   {key:'insurance',label:'Insurance'},
   {key:'dotInspection',label:'DOT Inspection'}
 ];
-const demoUser: FireOpsUser = {id: 'u1', name: 'Ryan Mitchell', role: 'owner'};
-const demoCompany: CompanyInfo = {name:'North Ridge Wildfire',code:'NRW-2048',industry:'Wildland fire contractor',phone:'(530) 555-0100',location:'Redding, CA',crewInviteLimit:5,crewInvitedCount:2};
+const demoUser: FireOpsUser = {id: 'u1', name: 'Elena Voss', role: 'owner'};
+const demoCompany: CompanyInfo = {name:'Alarmco, Inc.',code:'ALM-2048',industry:'Fire alarm & security · WOSB/EDWOSB',phone:'(208) 555-0140',location:'Boise, ID',crewInviteLimit:5,crewInvitedCount:2};
 const seedCrew: CrewMember[] = [
-  {id:'u1',name:'Ryan Mitchell',email:'ryan@northridgewildfire.com',phone:'(530) 555-0142',role:'owner',status:'Active',joinedAt:'2024-11-08'},
-  {id:'u2',name:'Maya Torres',email:'maya@northridgewildfire.com',phone:'(530) 555-0198',role:'fire_fighter',status:'Active',credentialName:'Red Card',joinedAt:'2025-01-16'},
-  {id:'u3',name:'Cole Bennett',email:'cole@northridgewildfire.com',phone:'(530) 555-0117',role:'shop_tech',status:'Active',joinedAt:'2025-02-02'}
+  {id:'u1',name:'Elena Voss',email:'elena@alarmco.example',phone:'(208) 555-0140',role:'owner',status:'Active',joinedAt:'2024-11-08'},
+  {id:'u2',name:'Lena Ortiz',email:'lena@alarmco.example',phone:'(208) 555-0164',role:'fire_fighter',status:'Active',credentialName:'NICET II',joinedAt:'2025-01-16'},
+  {id:'u3',name:'Chris Hale',email:'chris@alarmco.example',phone:'(208) 555-0177',role:'shop_tech',status:'Active',joinedAt:'2025-02-02'}
 ];
 
 let suppressLocalPersistence=false;
@@ -190,6 +199,15 @@ export function loadDemoMotiveConnection(demoMode=false):MotiveConnection {
   if(demoMode)return {connected:true,configured:true,mock:true};
   try {const stored=localStorage.getItem('fireops-motive-demo');return stored?JSON.parse(stored) as MotiveConnection:{connected:false,mock:true}}
   catch{return {connected:false,mock:true}}
+}
+function localToday(){
+  const now=new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+}
+function loadAlarmBook():AlarmBook{
+  if(suppressLocalPersistence)return seedAlarmBook();
+  try{const stored=localStorage.getItem('alarmops-book');return stored?normalizeAlarmBook(JSON.parse(stored)):seedAlarmBook()}
+  catch{return seedAlarmBook()}
 }
 function loadVehicles() {
   if(suppressLocalPersistence)return normalizeVehicles(seed);
@@ -329,6 +347,9 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   useEffect(()=>{if(trainingData)setTrainings(trainingData)},[trainingData]);
   const unreadTrainingCount=trainings.filter(training=>trainingStage(training)==='scheduled'&&isTrainingUnread(training,currentUser)).length;
   const [inventoryItems,setInventoryItems]=useState<InventoryItem[]>(()=>inventoryData??(demoMode?demoRecords.inventory:loadInventory()));
+  const [alarmBook,setAlarmBook]=useState<AlarmBook>(()=>demoMode?seedAlarmBook():loadAlarmBook());
+  const [alarmFocus,setAlarmFocus]=useState<string|undefined>();
+  useEffect(()=>{if(!demoMode)saveLocal('alarmops-book',alarmBook)},[alarmBook,demoMode]);
   useEffect(()=>{if(inventoryData)setInventoryItems(inventoryData)},[inventoryData]);
   const [vehicleTypes,setVehicleTypes]=useState<VehicleTypeOption[]>(()=>vehicleTypeData??loadVehicleTypes());
   useEffect(()=>{if(vehicleTypeData)setVehicleTypes(vehicleTypeData)},[vehicleTypeData]);
@@ -782,7 +803,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
         <div className={pageStageClassName(pageSlide)} key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {page === 'overview' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
+        {(page==='overview'||page==='customers'||page==='jobs'||page==='quotes'||page==='compliance'||page==='billing'||page==='schedule') && <AlarmWorkspace section={page==='overview'?'command':page} book={alarmBook} onChange={setAlarmBook} focusId={alarmFocus} today={localToday()} onOpen={(section:AlarmSection,id?:string)=>{setAlarmFocus(id);setPage(section==='command'?'overview':section)}}/>}
+        {page === 'readiness' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'news' && <NewsFeedPage companyId={companyId} demoMode={demoMode}/>}
         {page === 'meetings' && <MeetingsPage/>}
@@ -882,7 +904,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 
 // Tile colors match the phone app's More grid and each Quick Action icon.
 const moreTileColors:Partial<Record<NavigablePage|'inspect',string>>={
-  overview:'#C94321',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
+  overview:'#C94321',customers:'#2F6A8F',jobs:'#C94321',quotes:'#7B5014',compliance:'#26765A',billing:'#981d5c',schedule:'#285F9E',readiness:'#3F6478',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',
   meetings:'#4F5FB8',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',
