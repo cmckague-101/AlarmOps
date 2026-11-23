@@ -11,7 +11,6 @@ vi.mock('@/components/hero-title',()=>({HeroTitle:'HeroTitle'}));
 vi.mock('@/components/section-screen',()=>({SectionScreen:'SectionScreen'}));
 vi.mock('@/components/accent-tile',()=>({AccentRail:'AccentRail',pressedTileStyle:()=>null,useReduceMotion:()=>false,withAlpha:(color:string)=>color}));
 vi.mock('@/components/quick-actions',()=>({quickActionItems:()=>[]}));
-vi.mock('@/components/vipr-intelligence-icon',()=>({ViprIntelligenceIcon:'ViprIntelligenceIcon'}));
 vi.mock('@/lib/use-fleet-file-url',()=>({useFleetFileUrl:()=>null}));
 vi.mock('@/lib/use-task-count',()=>({useTaskCount:()=>null}));
 vi.mock('@/lib/documents-store',()=>({useCompanyDocuments:()=>({documents:[]})}));

@@ -35,8 +35,7 @@ describe('dashboard customization',()=>{
     expect(ids('shop_tech',platform)).toContain('inventory');
     expect(ids('resource_boss',platform)).toContain('inventory');
     for(const role of ['owner','admin','fire_fighter','accounting'] as const)expect(ids(role,platform)).not.toContain('inventory');
-    // Shop follows its role rule; managers no longer get a Failed Inspections tile.
-    expect(ids('shop_tech',platform)).toContain('shop');
+    // Managers no longer get a Failed Inspections tile on the dashboard.
     expect(ids('fire_fighter',platform)).not.toContain('shop');
     expect(ids('owner',platform)).not.toContain('inspections');
   });
@@ -89,22 +88,20 @@ describe('dashboard customization',()=>{
     expect(dashboard).toMatch(/<div class="command-greeting"><span class="command-greeting-hello">Good (Morning|Afternoon|Evening),<\/span><span class="command-greeting-name">Alex!<\/span><\/div>/);
     const actions=()=>renderToStaticMarkup(<QuickActions demoMode user={{id:'visibility-test',name:'Alex',role:'shop_tech'}} onOpen={()=>{}} onInspect={()=>{}}/>);
     expect(actions()).toContain('Inspect');
-    expect(actions()).toContain('Shop');
+    expect(actions()).not.toContain('Shop');
     expect(actions()).not.toContain('Availability');
     expect(actions()).not.toContain('Task List');
     expect(actions()).not.toContain('Inventory');
-    expect(actions()).toContain('VIPR Intelligence');
+    expect(actions()).not.toContain('VIPR Intelligence');
     await preferences!.save('inspections',false);
-    await preferences!.save('shop',false);
-    // VIPR Intelligence alone does not keep the section on screen once every other action is hidden.
     expect(actions()).toBe('');
   });
   it('shows the same Quick Actions order for everyone, filtered only by role rules',()=>{
     const labels=(role:UserRole)=>[...renderToStaticMarkup(<QuickActions demoMode user={{id:`order-${role}`,name:'Alex',role}} onOpen={()=>{}} onInspect={()=>{}}/>).matchAll(/<strong>([^<]+)<\/strong>/g)].map(match=>match[1]);
-    expect(labels('owner')).toEqual(['Availability','Task List','Shop','Payroll','VIPR Intelligence','Invoices']);
-    expect(labels('shop_tech')).toEqual(['Availability','Inspect','Task List','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
-    expect(labels('resource_boss')).toEqual(['Availability','Inspect','Shop','Inventory','Payroll','VIPR Intelligence','Invoices']);
-    expect(labels('fire_fighter')).toEqual(['Availability','Payroll','VIPR Intelligence','Invoices']);
+    expect(labels('owner')).toEqual(['Availability','Task List','Payroll','Invoices']);
+    expect(labels('shop_tech')).toEqual(['Availability','Inspect','Task List','Inventory','Payroll','Invoices']);
+    expect(labels('resource_boss')).toEqual(['Availability','Inspect','Inventory','Payroll','Invoices']);
+    expect(labels('fire_fighter')).toEqual(['Availability','Payroll','Invoices']);
   });
   it('shows the Command Center tiles first, then Quick Actions, then the Operations map once, without National Fire Activity',()=>{
     let preferences:ReturnType<typeof useDashboardPreferences>;

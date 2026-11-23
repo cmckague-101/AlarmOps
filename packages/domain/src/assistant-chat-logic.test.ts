@@ -15,8 +15,8 @@ describe('assistant-chat prompt and tools',()=>{
     expect(crew).toContain('- fleet:');
     expect(crew).not.toContain('- audit-log:');
     expect(crew).not.toContain('- tasks:');
-    expect(crew).toContain('- vipr-intelligence:');
-    expect(crew).not.toContain('- send-to-vipr:');
+    expect(crew).not.toContain('- vipr-intelligence:');
+    expect(crew).not.toContain('- shop:');
     expect(crew).toMatch(/legal, medical or payroll tax advice/);
     expect(systemPrompt({role:'owner',userName:'O',companyName:'C',today})).toContain('- audit-log:');
   });

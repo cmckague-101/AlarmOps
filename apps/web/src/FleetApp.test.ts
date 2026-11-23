@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {Flame} from 'lucide-react';
-import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navigationMeta, navPage, receiptsFirst, resolvePage, sidebarSplit, viprHubReturnAfter} from './App';
+import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navigationMeta, receiptsFirst, resolvePage, sidebarSplit} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
   type CommunicationThread,type CompanyDocument,type FireOpsUser,type FleetIssue,type FleetSnapshot,type Training,type VehicleFile,
@@ -63,9 +63,9 @@ function snapshot():FleetSnapshot {
 
 describe('responsive navigation',()=>{
   it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
-    expect(navigationLayout('owner').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','audit-log','settings']);
+    expect(navigationLayout('owner').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','audit-log','settings']);
     expect(navigationLayout('admin').desktop).toEqual(navigationLayout('owner').desktop);
-    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','settings']);
+    expect(navigationLayout('fire_fighter').desktop).toEqual(['overview','hotels','communications','news','vehicles','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','settings']);
   });
 
   it('moves Inventory and Failed Inspections into More, except Inventory for Resource Bosses and shop techs',()=>{
@@ -80,19 +80,13 @@ describe('responsive navigation',()=>{
     expect(navigationLayout('shop_tech').desktop).not.toContain('inspections');
   });
 
-  it('shows Shop to owners, admins and shop techs only',()=>{
-    expect(navigationLayout('shop_tech').desktop).toContain('shop');
-    expect(navigationLayout('accounting').desktop).not.toContain('shop');
-    expect(navigationLayout('fire_fighter').desktop).not.toContain('shop');
-  });
-
   it('keeps News Feed primary and moves only footer overflow into Tools on mobile',()=>{
     for(const role of ['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const){
       expect(navigationLayout(role).mobilePrimary).toEqual(['overview','vehicles','communications','news']);
       expect(navigationLayout(role).mobileOverflow).not.toContain('news');
     }
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','inventory','inspections','audit-log','settings']);
-    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','inventory','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','inventory','inspections','audit-log','settings']);
+    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['hotels','crew','qualifications','documents','receipts','invoices','payroll','availability','training','meetings','inventory','settings']);
   });
 });
 
@@ -134,38 +128,6 @@ describe('small layout changes',()=>{
   });
 });
 
-describe('VIPR Intelligence navigation',()=>{
-  it('replaces the separate VIPR DPLs item for every role',()=>{
-    for(const role of ['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const){
-      const {desktop,mobileOverflow}=navigationLayout(role);
-      expect(desktop).toContain('vipr-intelligence');
-      expect(mobileOverflow).toContain('vipr-intelligence');
-      expect([...desktop,...mobileOverflow]).not.toContain('dispatch');
-    }
-  });
-  it('highlights the hub for VIPR DPLs and hub-opened Send to VIPR, and Fleet for Fleet’s Send to VIPR',()=>{
-    expect(navPage('dispatch')).toBe('vipr-intelligence');
-    expect(navPage('send-vipr',true)).toBe('vipr-intelligence');
-    expect(navPage('send-vipr')).toBe('vehicles');
-    expect(navPage('vipr-intelligence')).toBe('vipr-intelligence');
-    expect(navPage('payroll')).toBe('payroll');
-  });
-  it('returns Back from the hub to where it was opened, not to VIPR DPLs or Send to VIPR',()=>{
-    // More → hub records More.
-    let back=viprHubReturnAfter('overview','vipr-intelligence','more','overview');
-    expect(back).toBe('more');
-    // hub → VIPR DPLs → Back to hub keeps More.
-    back=viprHubReturnAfter(back,'dispatch','vipr-intelligence','more');
-    back=viprHubReturnAfter(back,'vipr-intelligence','dispatch','vipr-intelligence');
-    expect(back).toBe('more');
-    // hub → Send to VIPR → close keeps More too.
-    back=viprHubReturnAfter(back,'vipr-intelligence','send-vipr','vipr-intelligence');
-    expect(back).toBe('more');
-    // Opening the hub right after Fleet’s Send to VIPR returns to Fleet.
-    expect(viprHubReturnAfter('more','vipr-intelligence','send-vipr','vehicles')).toBe('vehicles');
-    expect(viprHubReturnAfter('more','vipr-intelligence','overview','payroll')).toBe('overview');
-  });
-});
 
 describe('desktop sidebar overflow',()=>{
   it('shows everything when the window is tall enough and More lists only the More-only pages',()=>{
@@ -178,7 +140,7 @@ describe('desktop sidebar overflow',()=>{
     const split=sidebarSplit('owner',8);
     expect(split.shown).toEqual(['overview','hotels','communications','news','vehicles','crew']);
     expect(split.settings).toBe(true);
-    expect(split.more).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','vipr-intelligence','meetings','shop','audit-log','inventory','inspections']);
+    expect(split.more).toEqual(['qualifications','documents','receipts','invoices','payroll','availability','training','meetings','audit-log','inventory','inspections']);
     // Nothing is lost: every page is either in the sidebar or in More.
     expect(new Set([...split.shown,...split.more,'settings'])).toEqual(new Set(navigationLayout('owner').mobileOverflow.concat(navigationLayout('owner').mobilePrimary)));
   });

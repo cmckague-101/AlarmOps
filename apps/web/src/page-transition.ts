@@ -8,8 +8,6 @@ export type PageSlideDirection = 'forward' | 'back';
 
 /** Nested screens that slide back when returning to one of these parents. */
 const nestedParents: Record<string, readonly string[]> = {
-  'send-vipr': ['vehicles', 'vipr-intelligence'],
-  dispatch: ['vipr-intelligence'],
   'add-credential': ['qualifications'],
   'credential-detail': ['qualifications'],
   'qualification-experience': ['qualifications'],
@@ -39,9 +37,7 @@ export const pageSlideOrder: readonly string[] = [
   'payroll',
   'availability',
   'training',
-  'vipr-intelligence',
   'meetings',
-  'shop',
   'inventory',
   'inspections',
   'audit-log',
