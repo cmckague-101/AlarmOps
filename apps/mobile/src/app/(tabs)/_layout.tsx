@@ -34,7 +34,7 @@ export default function TabLayout(){
   const fleetTabIcon=({color,size}:{color:ColorValue;size:number})=> <FleetIcon color={String(color)} size={size}/>;
   // Horizontal tab shift (left/right by index). Keep inactive scenes attached so shift does not blank a tab.
   return <><Tabs detachInactiveScreens={false} screenOptions={()=>({animation:reduceMotion?'fade':'shift',headerShown:!operationsLandscape,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:operationsLandscape?{display:'none'}:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}})}>
-    <Tabs.Screen name="index" options={{title:'Operations',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('flame.fill','local_fire_department')}}/>
+    <Tabs.Screen name="index" options={{title:'Operations',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('bell.and.waves.left.and.right.fill','notifications_active')}}/>
     {/* Old /operations links and pushes redirect to the Operations tab (index). */}
     <Tabs.Screen name="operations" options={{href:null}}/>
     <Tabs.Screen name="fleet" options={{title:'Fleet',tabBarIcon:fleetTabIcon}}/>

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {Flame} from 'lucide-react';
+import {BellRing} from 'lucide-react';
 import {loadDemoMotiveConnection, motiveSnapshotFor, navigationLayout, navigationMeta, receiptsFirst, resolvePage, sidebarSplit} from './App';
 import {
   canInspectVehicle,canOpenVehicleIssue,canProcessFinance,dashboardNotifications,isDocumentUnread,isThreadUnread,isTrainingUnread,trainingStage,visibleVehicleIssues,
@@ -92,10 +92,10 @@ describe('responsive navigation',()=>{
 
 describe('Operations page (Dashboard and Operations combined)',()=>{
   const roles=['owner','admin','fire_fighter','shop_tech','accounting','resource_boss'] as const;
-  it('labels the overview page Operations with the flame icon and drops the separate Operations item',()=>{
+  it('labels the overview page Operations with the alarm bell icon and drops the separate Operations item',()=>{
     expect(navigationMeta.overview.label).toBe('Operations');
     expect(navigationMeta.overview.description).toBe('Active fires and assigned resources');
-    expect(navigationMeta.overview.Icon).toBe(Flame);
+    expect(navigationMeta.overview.Icon).toBe(BellRing);
     expect(Object.keys(navigationMeta)).not.toContain('operations');
     for(const role of roles){
       const {desktop,mobilePrimary,mobileOverflow}=navigationLayout(role);

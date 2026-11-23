@@ -49,7 +49,7 @@ export type {
 } from '@fireops/domain';
 export type VehicleTypeOption = {id:string;name:string};
 import {
-  AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
+  AlertTriangle, ArrowLeft, BedDouble, Building2, BellRing, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
   Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus,
   BriefcaseBusiness, CircleDollarSign, LayoutGrid, Search, Settings as SettingsIcon, ShieldCheck, Trash2, Truck, Upload, UserPlus, Users, Video, Wrench, X
 } from 'lucide-react';
@@ -75,7 +75,7 @@ type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'q
 type NavIcon=React.ComponentType<{className?:string}>;
 export const navigationMeta = {
   // The Dashboard and the Operations map are one page. Its id stays 'overview' so saved preferences and links keep working.
-  overview:{label:'Operations',description:'Active fires and assigned resources',Icon:Flame},
+  overview:{label:'Operations',description:'Active fires and assigned resources',Icon:BellRing},
   meetings:{label:'Meetings',description:'Coming soon',Icon:Video},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
   communications:{label:'Comms',description:'Company updates and replies',Icon:MessageSquare},
