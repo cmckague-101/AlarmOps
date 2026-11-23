@@ -1,23 +1,20 @@
 import {useState} from 'react';
-import {Check, Circle, ClipboardCheck, FileText, Search, ShieldCheck, ShoppingBag, Wallet, Wrench, X} from 'lucide-react';
-import {canInspectVehicle,canManagePersonalTasks,canWorkShop,isCompanyManager,keepsInventoryInMainNav,type CrewMember,type FireOpsUser} from '@fireops/domain';
+import {Check, Circle, ClipboardCheck, FileText, Search, ShieldCheck, ShoppingBag, Wallet, X} from 'lucide-react';
+import {canInspectVehicle,canManagePersonalTasks,isCompanyManager,keepsInventoryInMainNav,type CrewMember,type FireOpsUser} from '@fireops/domain';
 import {useAvailability} from './useAvailability';
 import {useTaskCount} from './useTaskCount';
 import {useDashboardPreferences} from './useDashboardPreferences';
-import {ViprIntelligenceIcon} from './ViprIntelligenceIcon';
-export type QuickAction = 'tasks'|'availability'|'shop'|'inventory'|'payroll'|'vipr-intelligence'|'invoices';
+export type QuickAction = 'tasks'|'availability'|'inventory'|'payroll'|'invoices';
 export function QuickActions({demoMode=false,companyId,user,onOpen,onInspect}:{demoMode?:boolean;companyId?:string;user:FireOpsUser;onOpen:(page:QuickAction)=>void;onInspect:()=>void}) {
   const {visible}=useDashboardPreferences(user.id,demoMode);
   const {statuses,loading,error,verified} = useAvailability(companyId,user.id);
   const taskCount = useTaskCount(canManagePersonalTasks(user.role)?companyId:undefined,canManagePersonalTasks(user.role)?user.id:undefined);
   const status = statuses[user.id];
   // Same set and order for everyone: Inventory and Failed Inspections moved to More and Receipts lives on More.
-  // Shop follows its role rule; Resource Bosses and shop techs keep Inventory.
-  // VIPR Intelligence has no Dashboard customization key, so it shows whenever the Quick Actions section does.
-  const actions = [{id:'availability',label:'Availability',Icon:Circle},...(canManagePersonalTasks(user.role)?[{id:'tasks',label:'Task List',Icon:ClipboardCheck} as const]:[]),...(canWorkShop(user.role)?[{id:'shop',label:'Shop',Icon:Wrench} as const]:[]),...(keepsInventoryInMainNav(user.role)?[{id:'inventory',label:'Inventory',Icon:ShoppingBag} as const]:[]),{id:'payroll',label:'Payroll',Icon:Wallet},{id:'vipr-intelligence',label:'VIPR Intelligence',Icon:ViprIntelligenceIcon},{id:'invoices',label:'Invoices',Icon:FileText}] as const;
-  const shown=(id:QuickAction)=>id==='vipr-intelligence'||visible(id);
-  if(!actions.some(action=>action.id!=='vipr-intelligence'&&visible(action.id))&&!(canInspectVehicle(user.role)&&visible('inspections')))return null;
-  return <section className="quick-actions" aria-labelledby="quick-actions-title"><h2 id="quick-actions-title">Quick Actions</h2><div className="quick-actions-grid">{actions.flatMap(({id,label,Icon},index)=>[...(index===1&&visible('inspections')&&canInspectVehicle(user.role)&&!isCompanyManager(user.role)?[<button key="inspect" className="quick-action quick-action-inspect" onClick={onInspect}><span className="quick-action-icon"><ShieldCheck/></span><strong>Inspect</strong></button>]:[]),...(shown(id)?[<button key={id} className={`quick-action quick-action-${id}${id==='tasks'&&taskCount?.overdue?' urgent':''}`} onClick={()=>onOpen(id)}><span className="quick-action-icon"><Icon/>{id==='tasks'&&taskCount!==null&&<span className="quick-action-count" aria-label={`${taskCount.count} open tasks`}>{taskCount.count}</span>}</span><strong>{label}</strong>{id==='tasks'&&!!taskCount?.overdue&&<span className="sr-only">{taskCount.overdue} overdue</span>}{id==='availability' && <span className="quick-action-status">{isCompanyManager(user.role) ? 'Crew readiness' : loading ? 'Loading…' : error||!verified ? 'Status unavailable' : status === undefined ? 'Not set' : status ? 'Available' : 'Unavailable'}</span>}</button>]:[])])}</div></section>;
+  // Resource Bosses and shop techs keep Inventory.
+  const actions = [{id:'availability',label:'Availability',Icon:Circle},...(canManagePersonalTasks(user.role)?[{id:'tasks',label:'Task List',Icon:ClipboardCheck} as const]:[]),...(keepsInventoryInMainNav(user.role)?[{id:'inventory',label:'Inventory',Icon:ShoppingBag} as const]:[]),{id:'payroll',label:'Payroll',Icon:Wallet},{id:'invoices',label:'Invoices',Icon:FileText}] as const;
+  if(!actions.some(action=>visible(action.id))&&!(canInspectVehicle(user.role)&&visible('inspections')))return null;
+  return <section className="quick-actions" aria-labelledby="quick-actions-title"><h2 id="quick-actions-title">Quick Actions</h2><div className="quick-actions-grid">{actions.flatMap(({id,label,Icon},index)=>[...(index===1&&visible('inspections')&&canInspectVehicle(user.role)&&!isCompanyManager(user.role)?[<button key="inspect" className="quick-action quick-action-inspect" onClick={onInspect}><span className="quick-action-icon"><ShieldCheck/></span><strong>Inspect</strong></button>]:[]),...(visible(id)?[<button key={id} className={`quick-action quick-action-${id}${id==='tasks'&&taskCount?.overdue?' urgent':''}`} onClick={()=>onOpen(id)}><span className="quick-action-icon"><Icon/>{id==='tasks'&&taskCount!==null&&<span className="quick-action-count" aria-label={`${taskCount.count} open tasks`}>{taskCount.count}</span>}</span><strong>{label}</strong>{id==='tasks'&&!!taskCount?.overdue&&<span className="sr-only">{taskCount.overdue} overdue</span>}{id==='availability' && <span className="quick-action-status">{isCompanyManager(user.role) ? 'Crew readiness' : loading ? 'Loading…' : error||!verified ? 'Status unavailable' : status === undefined ? 'Not set' : status ? 'Available' : 'Unavailable'}</span>}</button>]:[])])}</div></section>;
 }
 export function AvailabilityPage({companyId,user,crew}:{companyId?:string;user:FireOpsUser;crew:CrewMember[]}) {
   const {statuses,loading,error,busy,save,retry,canSave,pending,note,verified} = useAvailability(companyId,user.id);

@@ -2,7 +2,6 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {AlertTriangle, ArrowLeft, BellRing, ChevronRight, CircleDollarSign, Flame, Truck, Users} from 'lucide-react';
 import {commandAlerts, commandCenter, getTimeOfDayGreeting, isUrgentCommandCard, needsAttentionRows, withNeedsAttentionCard, type CommandPayroll, type CommandRow, type CrewMember, type FleetIssue, type Vehicle} from '@fireops/domain';
 import {supabase} from './supabase';
-import {useAttentionShopJobs} from './useAttentionShopJobs';
 import type {useDashboardPreferences} from './useDashboardPreferences';
 import type {DashboardItem} from '@fireops/domain';
 
@@ -24,8 +23,7 @@ export function OwnerDashboard({canProcessPayroll,preferences,onCustomize,demoMo
   const [selected,setSelected]=useState<string|null>(null);
   const heading=useRef<HTMLHeadingElement>(null);
   const payrolls=usePayrollAlerts(canProcessPayroll?companyId:undefined);
-  const shopJobs=useAttentionShopJobs(demoMode?undefined:companyId);
-  const cards=useMemo(()=>withNeedsAttentionCard(commandCenter(vehicles,crew,issues),needsAttentionRows(vehicles,crew,shopJobs)),[vehicles,crew,issues,shopJobs]);
+  const cards=useMemo(()=>withNeedsAttentionCard(commandCenter(vehicles,crew,issues),needsAttentionRows(vehicles,crew)),[vehicles,crew,issues]);
   const alerts=commandAlerts(vehicles,issues,payrolls,new Date(),crew);
   const detail=cards.find(card=>card.id===selected);
   const icons=[Flame,Users,Truck,AlertTriangle];

@@ -1,4 +1,4 @@
-import {canManagePersonalTasks,canViewCrewRoster,canWorkShop,failedInspectionCount,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
+import {canManagePersonalTasks,canViewCrewRoster,failedInspectionCount,isDocumentUnread,isTrainingUnread} from '@fireops/domain';
 import {useRouter} from 'expo-router';
 import {Alert,Platform,Pressable,StyleSheet,Text,View,useWindowDimensions} from 'react-native';
 import {AppSymbol} from '@/components/app-symbol';
@@ -7,7 +7,6 @@ import {useFleetVehicles} from '@/lib/fleet-store';
 import {useTaskCount} from '@/lib/use-task-count';
 import {quickActionItems} from '@/components/quick-actions';
 import {SectionScreen} from '@/components/section-screen';
-import {ViprIntelligenceIcon} from '@/components/vipr-intelligence-icon';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
 import {usePendingQualificationCardCount} from '@/lib/qualification-card-store';
@@ -16,7 +15,7 @@ import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
-  // Same order as the web sidebar (Operations, Fleet and Messages are tabs); VIPR Intelligence follows Training.
+  // Same order as the web sidebar (Operations, Fleet and Messages are tabs).
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
   {label:'News Feed',path:'/news-feed',ios:'newspaper.fill',android:'newspaper',color:'#B45309'},
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
@@ -24,13 +23,9 @@ const sections=[
   {label:'Documents',path:'/documents',ios:'doc.text.fill',android:'description',color:'#285F9E'},
   {label:'Receipts',path:'/receipts',ios:'receipt',android:'receipt_long',color:'#C94321'},
   {label:'Training',path:'/training',ios:'graduationcap.fill',android:'school',color:'#6552A3'},
-  {label:'VIPR Intelligence',path:'/vipr-intelligence',ios:'shield.fill',android:'shield',color:'#1F5C48',viprIcon:true},
   {label:'Meetings',ios:'video.fill',android:'videocam',color:'#4F5FB8',comingSoon:true},
-  {label:'Shop',path:'/shop',ios:'wrench.and.screwdriver.fill',android:'build',color:'#8A3418',shopOnly:true},
   {label:'Inventory',path:'/inventory',ios:'shippingbox.fill',android:'inventory_2',color:'#7B5014'},
   {label:'Failed Inspections',path:'/inspections',ios:'checklist.checked',android:'fact_check',color:'#3F6478',ownerOnly:true},
-  {label:'Workforce',ios:'briefcase.fill',android:'business_center',color:'#34745C',comingSoon:true},
-  {label:'Marketplace',ios:'storefront.fill',android:'storefront',color:'#A95616',comingSoon:true},
   {label:'Audit log',path:'/audit-log',ios:'clock.fill',android:'history',color:'#3F6478',ownerOnly:true},
   {label:'Saved changes & sync',path:'/sync-status',ios:'arrow.triangle.2.circlepath',android:'sync',color:'#3F6478',nativeOnly:true},
   {label:'Settings',path:'/settings',ios:'gearshape.fill',android:'settings',color:'#5F6963'},
@@ -56,14 +51,15 @@ export default function More(){
   const failedInspections=manager?failedInspectionCount(vehicles):0;
   const tasksHidden=!!member&&canManagePersonalTasks(member.user.role)&&!preferences.visible('tasks');
   const overdueTasks=useTaskCount(tasksHidden?member!.company.id:undefined,tasksHidden?member!.user.id:undefined)?.overdue??0;
-  // Quick actions hidden from the dashboard stay reachable here; Inventory, Shop and Failed Inspections are already listed.
+  // Quick actions hidden from the dashboard stay reachable here; Inventory and Failed Inspections are already listed.
   const listedPaths=new Set<string>(sections.flatMap(section=>'path' in section?[section.path]:[]));
   const hiddenQuickActions=member?quickActionItems(member.user.role,theme).filter(action=>!preferences.visible(action.item)&&!listedPaths.has(action.path)):[];
   const unreadBySection:Partial<Record<string,number>>={Documents:unreadDocuments,Qualifications:pendingQualificationCards,Training:unreadTrainings};
-  const allowed=sections.filter(section=>(!('shopOnly' in section)||(member!=null&&canWorkShop(member.user.role)))&&(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
-  // Hidden quick actions go just before Workforce; Meetings keeps its place after VIPR Intelligence.
-  const comingSoonIndex=allowed.findIndex(section=>section.label==='Workforce');
-  const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean;viprIcon?:boolean}[]=[...allowed.slice(0,comingSoonIndex),...hiddenQuickActions,...allowed.slice(comingSoonIndex)];
+  const allowed=sections.filter(section=>(!('rosterOnly' in section)||(member!=null&&canViewCrewRoster(member.user.role)))&&(!('ownerOnly' in section)||(member?.user.role==='owner'||member?.user.role==='admin'))&&(!('nativeOnly' in section)||(!demoMode&&(Platform.OS==='ios'||Platform.OS==='android'))));
+  // Hidden quick actions go just before Settings / after Meetings.
+  const insertIndex=allowed.findIndex(section=>section.label==='Settings');
+  const at=insertIndex<0?allowed.length:insertIndex;
+  const visible:{label:string;path?:string;ios:string;android:string;color:string;comingSoon?:boolean}[]=[...allowed.slice(0,at),...hiddenQuickActions,...allowed.slice(at)];
   const singleColumn=width<360||fontScale>1.3;
 
   return <SectionScreen title="Tools" showHeader={false}>
@@ -80,7 +76,7 @@ export default function More(){
       >
         <AccentRail color={rail}/>
         <View style={[styles.icon,{backgroundColor:section.color}]}>
-          {section.viprIcon?<ViprIntelligenceIcon size={25} color="#FFFFFF"/>:<AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>}
+          <AppSymbol name={{ios:section.ios,android:section.android} as never} size={23} color="#FFFFFF"/>
         </View>
         <Text style={[styles.label,{color:theme.ink}]}>{section.label}</Text>
         {section.comingSoon&&<Text style={[styles.soon,{color:theme.secondary}]}>Coming soon</Text>}
