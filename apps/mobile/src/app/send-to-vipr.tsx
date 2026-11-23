@@ -58,7 +58,7 @@ export default function SendToViprScreen() {
 
   return <>
     <Stack.Screen options={{ title: 'Send to VIPR' }} />
-    <SectionScreen title="Send to VIPR" description="Build a bid package from Resources units. VIPR has no import API, so you paste the values into VIPR yourself.">
+    <SectionScreen title="Send to VIPR" description="Build a bid package from Fleet units. VIPR has no import API, so you paste the values into VIPR yourself.">
       <View style={styles.steps} accessibilityRole="summary" accessibilityLabel={`Step ${step} of 3`}>
         {(['Select units', 'Review fields', 'Bid package'] as const).map((label, index) => {
           const number = (index + 1) as Step;
@@ -92,9 +92,9 @@ export default function SendToViprScreen() {
               <Text style={[styles.pill, vehicle.status === 'Ready' && styles.pillOk]}>{vehicle.status}</Text>
             </Pressable>;
           })}
-        </View> : <Text style={styles.muted}>No units can be sent. Add vehicles in Resources or bring them back into service.</Text>}
-        {blocked.length ? <Text accessibilityRole="alert" style={styles.blocked}>{blocked.map((vehicle) => vehicle.unit).join(', ')} can’t be selected while Out of service. Fix in Resources.</Text> : null}
-        <Text style={styles.note}>Resources is the single source of truth. Each unit carries one VIPR category in Resources; correct values there, not in the package.</Text>
+        </View> : <Text style={styles.muted}>No units can be sent. Add vehicles in Fleet or bring them back into service.</Text>}
+        {blocked.length ? <Text accessibilityRole="alert" style={styles.blocked}>{blocked.map((vehicle) => vehicle.unit).join(', ')} can’t be selected while Out of service. Fix in Fleet.</Text> : null}
+        <Text style={styles.note}>Fleet is the single source of truth. Each unit carries one VIPR category in Fleet; correct values there, not in the package.</Text>
         <Footer styles={styles} back={{ label: 'Cancel', onPress: () => router.back() }} next={{ label: 'Review fields', disabled: !chosen.length, onPress: () => { setReviewIndex(0); setStep(2); } }} />
       </View> : null}
 
@@ -103,7 +103,7 @@ export default function SendToViprScreen() {
           <Text style={styles.panelTitle}>{reviewVehicle.unit} · {viprCategoryFor(reviewVehicle).category}</Text>
           <Text style={styles.muted}>{reviewIndex + 1} of {chosen.length} units</Text>
           <View style={styles.toolbarActions}>
-            <SmallButton label="Open in Resources" onPress={() => router.push({ pathname: '/vehicle/[id]', params: { id: reviewVehicle.id } })} styles={styles} />
+            <SmallButton label="Open in Fleet" onPress={() => router.push({ pathname: '/vehicle/[id]', params: { id: reviewVehicle.id } })} styles={styles} />
             <SmallButton label="Previous" disabled={reviewIndex === 0} onPress={() => setReviewIndex((index) => index - 1)} styles={styles} />
             <SmallButton label="Next unit" disabled={reviewIndex >= chosen.length - 1} onPress={() => setReviewIndex((index) => index + 1)} styles={styles} />
           </View>
@@ -124,7 +124,7 @@ export default function SendToViprScreen() {
           <SummaryRow label="Fields mapped" value={`${summary.mapped} / ${summary.total}`} styles={styles} />
           <SummaryRow label="Missing (required)" value={String(summary.missing)} styles={styles} />
           <SummaryRow label="To check" value={String(summary.check)} styles={styles} />
-          {summary.missing ? <Text accessibilityRole="alert" style={styles.alert}>Required fields are missing on one or more units. You can still build the bid package; fill them in Resources before submitting in VIPR.</Text> : null}
+          {summary.missing ? <Text accessibilityRole="alert" style={styles.alert}>Required fields are missing on one or more units. You can still build the bid package; fill them in Fleet before submitting in VIPR.</Text> : null}
         </View>
         <Footer styles={styles} back={{ label: 'Back', onPress: () => setStep(1) }} next={{ label: 'Bid package', onPress: () => { setNote(''); setStep(3); } }} />
       </View> : null}

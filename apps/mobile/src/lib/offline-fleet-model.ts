@@ -53,7 +53,7 @@ function blocksLegacy(entry:OutboxEntry,targets:readonly DetailTarget[]){
 export function createFleetEditGate(session:OfflineOutboxSession,canAccess:()=>boolean){
   const held=new Map<string,{owner:string;count:number}>();
   function acquire(targets:readonly DetailTarget[],owner:string){
-    if(!canAccess())throw new Error('Resources account changed. Reopen this screen.');
+    if(!canAccess())throw new Error('Fleet account changed. Reopen this screen.');
     const keys=[...new Set(targets.map(fleetDetailKey))];
     if(keys.some(key=>held.has(key)&&held.get(key)!.owner!==owner))throw new Error('Another save is in progress for this record. Wait before retrying.');
     for(const key of keys){const value=held.get(key);held.set(key,{owner,count:(value?.count??0)+1})}
@@ -65,7 +65,7 @@ export function createFleetEditGate(session:OfflineOutboxSession,canAccess:()=>b
     async legacy(targets:readonly DetailTarget[],owner:string){
       const release=acquire(targets,owner);
       try{
-        const entries=await session.list();if(!canAccess())throw new Error('Resources account changed. Reopen this screen.');
+        const entries=await session.list();if(!canAccess())throw new Error('Fleet account changed. Reopen this screen.');
         if(entries.some(entry=>blocksLegacy(entry,targets)))throw new Error(pendingWriteMessage);
         return release;
       }catch(error){release();throw error}
@@ -90,7 +90,7 @@ export async function guardOfflineFleetWrite(scope:OutboxScope,targets:readonly 
   if(!targets.length)return ()=>{};
   const current=binding;
   if(!current)return ()=>{};
-  if(!current.current()||current.model.scope.userId!==scope.userId||current.model.scope.companyId!==scope.companyId)throw new Error('Resources account changed. Reopen this screen.');
+  if(!current.current()||current.model.scope.userId!==scope.userId||current.model.scope.companyId!==scope.companyId)throw new Error('Fleet account changed. Reopen this screen.');
   if(current.model.entries.some(entry=>blocksLegacy(entry,targets)))throw new Error(pendingWriteMessage);
   return current.legacy(targets,owner);
 }

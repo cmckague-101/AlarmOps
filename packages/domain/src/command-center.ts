@@ -65,7 +65,7 @@ export function commandCenter(vehicles:CommandVehicle[],crew:CrewMember[],issues
   return [
     {id:'incidents',title:'Active Incidents',description:'Resource assignments by incident',summary:`${vehicles.filter(v=>v.assignedFire).length} vehicles on fires`,rows:incidents},
     {id:'personnel',title:'Assigned Personnel',description:'Current employee and crew assignments',summary:`${assigned.length} vehicles crewed`,rows:personnel},
-    {id:'resources',title:'Assigned Resources',description:'Current vehicle and fire assignments',summary:`${vehicles.filter(v=>v.status==='Ready'&&!v.assignedTo&&!v.assignedFire).length} available`,rows:resources},
+    {id:'resources',title:'Assigned Fleet',description:'Current vehicle and fire assignments',summary:`${vehicles.filter(v=>v.status==='Ready'&&!v.assignedTo&&!v.assignedFire).length} available`,rows:resources},
     {id:'attention',title:'Needs Attention',description:'Operational issues requiring review',summary:`${open.filter(i=>i.priority==='Critical').length} critical alerts`,rows:attention},
   ];
 }

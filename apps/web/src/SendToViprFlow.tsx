@@ -18,7 +18,7 @@ function downloadText(text:string,fileName:string){
 const statusLabel={mapped:'Mapped',missing:'Missing',check:'Check'} as const;
 const plural=(count:number,word:string)=>`${count} ${word}${count===1?'':'s'}`;
 
-/** Resources → Send to VIPR: select units, review mapped fields, then copy or download a bid package. */
+/** Fleet → Send to VIPR: select units, review mapped fields, then copy or download a bid package. */
 export default function SendToViprFlow({vehicles,companyName,onClose,onEditVehicle}:{vehicles:Vehicle[];companyName?:string;onClose:()=>void;onEditVehicle?:(vehicle:Vehicle)=>void}){
   const sorted=useMemo(()=>[...vehicles].sort((a,b)=>a.unit.localeCompare(b.unit,undefined,{numeric:true})),[vehicles]);
   const {selectable,blocked}=useMemo(()=>viprSelectableVehicles(sorted),[sorted]);
@@ -48,7 +48,7 @@ export default function SendToViprFlow({vehicles,companyName,onClose,onEditVehic
     <div className="page-heading hero-heading">
       <div>
         <h1>Send to VIPR</h1>
-        <p>Build a bid package from Resources units. VIPR has no import API, so you paste the values into VIPR yourself.</p>
+        <p>Build a bid package from Fleet units. VIPR has no import API, so you paste the values into VIPR yourself.</p>
       </div>
     </div>
 
@@ -85,9 +85,9 @@ export default function SendToViprFlow({vehicles,companyName,onClose,onEditVehic
               </label>
             </li>;
           })}
-        </ul>:<p className="send-vipr-empty">No units can be sent. Add vehicles in Resources or bring them back into service.</p>}
-        {blocked.length>0&&<p className="send-vipr-blocked" role="status">{blocked.map(vehicle=>vehicle.unit).join(', ')} can’t be selected while Out of service. Fix in Resources.</p>}
-        <p className="send-vipr-note">Resources is the single source of truth. Each unit carries one VIPR category in Resources; correct values there, not in the package.</p>
+        </ul>:<p className="send-vipr-empty">No units can be sent. Add vehicles in Fleet or bring them back into service.</p>}
+        {blocked.length>0&&<p className="send-vipr-blocked" role="status">{blocked.map(vehicle=>vehicle.unit).join(', ')} can’t be selected while Out of service. Fix in Fleet.</p>}
+        <p className="send-vipr-note">Fleet is the single source of truth. Each unit carries one VIPR category in Fleet; correct values there, not in the package.</p>
         <footer className="send-vipr-footer">
           <button type="button" className="secondary" onClick={onClose}>Cancel</button>
           <button type="button" className="primary" disabled={!chosen.length} onClick={()=>{setReviewIndex(0);setStep(2)}}>Next: review fields →</button>
@@ -103,7 +103,7 @@ export default function SendToViprFlow({vehicles,companyName,onClose,onEditVehic
             <p>{reviewIndex+1} of {chosen.length} units</p>
           </div>
           <div className="send-vipr-toolbar-actions">
-            {onEditVehicle&&<button type="button" className="secondary compact" onClick={()=>onEditVehicle(reviewVehicle)}>Edit in Resources</button>}
+            {onEditVehicle&&<button type="button" className="secondary compact" onClick={()=>onEditVehicle(reviewVehicle)}>Edit in Fleet</button>}
             <button type="button" className="secondary compact" disabled={reviewIndex===0} onClick={()=>setReviewIndex(index=>index-1)}>Previous</button>
             <button type="button" className="secondary compact" disabled={reviewIndex>=chosen.length-1} onClick={()=>setReviewIndex(index=>index+1)}>Next unit</button>
           </div>
@@ -126,7 +126,7 @@ export default function SendToViprFlow({vehicles,companyName,onClose,onEditVehic
               <div><dt>Missing (required)</dt><dd>{summary.missing}</dd></div>
               <div><dt>To check</dt><dd>{summary.check}</dd></div>
             </dl>
-            {summary.missing>0&&<p className="send-vipr-alert" role="alert">Required fields are missing on one or more units. You can still build the bid package; fill them in Resources before submitting in VIPR.</p>}
+            {summary.missing>0&&<p className="send-vipr-alert" role="alert">Required fields are missing on one or more units. You can still build the bid package; fill them in Fleet before submitting in VIPR.</p>}
           </aside>
         </div>
         <footer className="send-vipr-footer">

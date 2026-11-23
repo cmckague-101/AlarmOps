@@ -35,7 +35,7 @@ export default function SelectInspectionVehicleScreen(){
       </View>
       {loading?<Text style={styles.state}>Loading vehicles…</Text>:null}
       {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
-      {!loading&&!error&&!ordered.length?<View style={styles.empty}><AppSymbol name={{ios:'truck.box.fill',android:'local_shipping'} as never} size={30} color={theme.secondary}/><Text style={styles.emptyTitle}>No vehicles available</Text><Text style={styles.state}>No vehicles in Resources yet.</Text></View>:null}
+      {!loading&&!error&&!ordered.length?<View style={styles.empty}><AppSymbol name={{ios:'truck.box.fill',android:'local_shipping'} as never} size={30} color={theme.secondary}/><Text style={styles.emptyTitle}>No vehicles available</Text><Text style={styles.state}>No vehicles in Fleet yet.</Text></View>:null}
       <View style={styles.list}>{ordered.map(vehicle=><Pressable key={vehicle.id} accessibilityRole="button" accessibilityLabel={`Inspect ${vehicle.name}`} accessibilityHint="Starts a new vehicle inspection" onPress={()=>router.push({pathname:'/inspection/new' as never,params:{vehicleId:vehicle.id}})} style={({pressed})=>[styles.row,pressed&&styles.pressed]}>
         <View style={styles.icon}><AppSymbol name={{ios:'truck.box.fill',android:'local_shipping'} as never} size={22} color={theme.green}/></View>
         <View style={styles.copy}><Text style={styles.name} numberOfLines={1}>{vehicle.name}</Text><Text style={styles.meta} numberOfLines={1}>{[vehicle.type,vehicle.detail].filter(Boolean).join(' · ')||'Vehicle'}</Text></View>
