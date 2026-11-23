@@ -29,7 +29,7 @@ vi.mock('@/lib/documents-store',()=>({useCompanyDocuments:()=>({documents:[]})})
 vi.mock('@/lib/training-store',()=>({useTrainings:()=>({trainings:[]})}));
 vi.mock('@/theme',()=>({useFireOpsTheme:()=>new Proxy({},{get:(_target,key)=>`theme.${String(key)}`})}));
 import TabLayout from '../app/(tabs)/_layout';
-import OperationsScreen from '../app/(tabs)/index';
+import ReadinessScreen from '../app/readiness';
 import OperationsRedirect from '../app/(tabs)/operations';
 import {isOperationsLandscape} from './operations-layout';
 
@@ -46,17 +46,18 @@ const tabsOptions=()=>(nodes(render(TabLayout)).find(node=>typeof node.type==='f
 beforeEach(()=>{state.role='owner';state.pathname='/';state.width=390;state.height=844;state.params={}});
 
 describe('Operations tab (Dashboard and Operations combined)',()=>{
-  it('makes the first tab Operations with the flame icon and the notifications badge',()=>{
+  it('makes the first tab Command with the alarm icon and the notifications badge',()=>{
     const index=screen('index');
-    expect(index.title).toBe('Operations');
+    expect(index.title).toBe('Command');
     expect(index.tabBarBadge).toBe(3);
     const icon=(index.tabBarIcon as (props:{color:string})=>Node)({color:'red'});
-    expect(icon.props.name).toEqual({ios:'flame.fill',android:'local_fire_department'});
+    expect(icon.props.name).toEqual({ios:'bell.badge.fill',android:'notifications_active'});
     expect(screens().map(node=>(node.props.options as {title?:string}).title)).not.toContain('Dashboard');
   });
-  it('hides the old operations tab but keeps its route',()=>{
+  it('hides the old operations route and keeps Customers, Jobs, Fleet, and Tools',()=>{
     expect(screen('operations')).toEqual({href:null});
-    expect(screens().filter(node=>(node.props.options as {href?:unknown}).href!==null).map(node=>node.props.name)).toEqual(['index','fleet','communications','more']);
+    expect(screen('communications').href).toBeNull();
+    expect(screens().filter(node=>(node.props.options as {href?:unknown}).href!==null).map(node=>node.props.name)).toEqual(['index','customers','jobs','fleet','more']);
   });
   it('labels the fleet route Fleet and uses the Fleet van mark',()=>{
     const fleet=screen('fleet');
@@ -73,16 +74,12 @@ describe('Operations tab (Dashboard and Operations combined)',()=>{
     state.params={};
     expect((render(OperationsRedirect) as Node).props.href).toEqual({pathname:'/(tabs)',params:{}});
   });
-  it('shows the full-screen map only on Operations with a phone held sideways',()=>{
+  it('keeps the tab bar on the command desk even when the phone is sideways',()=>{
     expect(isOperationsLandscape(844,390)).toBe(true);
     expect(isOperationsLandscape(390,844)).toBe(false);
-    expect(isOperationsLandscape(1180,820)).toBe(false); // iPad landscape keeps the page
     state.width=844;state.height=390;
-    expect(tabsOptions()).toMatchObject({headerShown:false,tabBarStyle:{display:'none'}});
-    state.pathname='/fleet';
     expect(tabsOptions().headerShown).toBe(true);
-    state.pathname='/';state.width=390;state.height=844;
-    expect(tabsOptions().headerShown).toBe(true);
+    expect(tabsOptions().tabBarStyle).toMatchObject({backgroundColor:'theme.paper'});
   });
   it('uses a horizontal shift animation between tabs',()=>{
     expect(tabsOptions()).toMatchObject({animation:'shift'});
@@ -91,11 +88,11 @@ describe('Operations tab (Dashboard and Operations combined)',()=>{
   });
 });
 
-describe('Operations screen',()=>{
+describe('Fleet readiness screen',()=>{
   it('gives managers the Command Center with one Operations map',()=>{
     for(const role of ['owner','admin']){
       state.role=role;
-      const tree=render(OperationsScreen) as Node;
+      const tree=render(ReadinessScreen) as Node;
       expect(tree.type).toBe('OwnerDashboard');
       const map=tree.props.incidentMap as Node;
       expect(map.type).toBe('OperationsMap');
@@ -105,7 +102,7 @@ describe('Operations screen',()=>{
   });
   it.each(['fire_fighter','shop_tech','accounting','resource_boss'])('puts one Operations map above the %s dashboard',role=>{
     state.role=role;
-    const all=nodes(render(OperationsScreen));
+    const all=nodes(render(ReadinessScreen));
     const maps=all.filter(node=>node.type==='OperationsMap');
     expect(maps).toHaveLength(1);
     expect(maps[0].props.landscape).toBe(false);
@@ -115,7 +112,7 @@ describe('Operations screen',()=>{
     state.width=844;state.height=390;
     for(const role of ['owner','fire_fighter']){
       state.role=role;
-      const all=nodes(render(OperationsScreen));
+      const all=nodes(render(ReadinessScreen));
       expect(all.filter(node=>node.type==='OperationsMap').map(node=>node.props.landscape)).toEqual([true]);
       expect(all.some(node=>node.type==='OwnerDashboard'||node.type==='QuickActions')).toBe(false);
     }

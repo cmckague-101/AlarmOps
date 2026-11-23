@@ -1,0 +1,25 @@
+.integration-keys{border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:18px}
+.integration-keys h2,.integration-key-audit h3,.integration-key-heading h3{margin:0;font:700 17px/1.3 Manrope,system-ui,sans-serif}
+.integration-keys header p,.integration-keys-note,.integration-key-heading p,.integration-key-form small,.integration-key-audit p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.integration-keys-note{margin:12px 0}
+.integration-keys-status{margin:0 0 12px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--green) 42%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--green) 12%,var(--paper));color:var(--green);font-size:13px;font-weight:700}
+.integration-keys-error{margin:0 0 12px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--danger) 42%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--danger) 8%,var(--paper));color:var(--danger);font-size:13px}
+.integration-keys-list{display:grid;gap:12px}
+.integration-key-card{border:1px solid var(--line);border-radius:12px;padding:14px}
+.integration-key-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.integration-key-badge{padding:3px 7px;border-radius:20px;font:800 10px/1.2 "DM Sans",system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.integration-key-badge.connected{background:color-mix(in srgb,var(--green) 16%,var(--paper));color:var(--green)}
+.integration-key-badge.disconnected{background:color-mix(in srgb,var(--muted) 14%,var(--paper));color:var(--muted)}
+.integration-key-badge.error{background:color-mix(in srgb,var(--warning) 16%,var(--paper));color:var(--warning)}
+.integration-key-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin:12px 0}
+.integration-key-card dt{color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.integration-key-card dd{margin:2px 0 0;font-size:14px}
+.integration-key-actions{display:flex;flex-wrap:wrap;gap:8px}
+.integration-key-actions .primary,.integration-key-actions .secondary{min-height:44px}
+.integration-key-form{display:grid;gap:12px;margin-top:12px}
+.integration-key-form label{display:grid;gap:6px;color:var(--muted);font-size:12px;font-weight:700}
+.integration-key-form :is(input,select){width:100%;min-height:44px;border:1px solid var(--line);border-radius:8px;padding:0 12px;background:var(--paper);color:var(--ink)}
+.integration-key-audit{margin-top:16px}
+.integration-key-audit ol{margin:8px 0 0;padding-left:18px}
+.integration-key-audit li{margin:6px 0;font-size:13px}
+@media(max-width:800px){.integration-key-card dl{grid-template-columns:1fr}.integration-key-form :is(input,select){font-size:16px}}

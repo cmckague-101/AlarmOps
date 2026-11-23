@@ -1,12 +1,11 @@
-import {Redirect,Tabs,usePathname} from 'expo-router';
+import {Redirect,Tabs} from 'expo-router';
 import {isDocumentUnread,isThreadUnread,isTrainingUnread} from '@fireops/domain';
-import {useWindowDimensions,type ColorValue} from 'react-native';
+import {type ColorValue} from 'react-native';
 import {useReduceMotion} from '@/components/accent-tile';
 import {AppHeaderBrand} from '@/components/app-header-brand';
 import {AppSymbol} from '@/components/app-symbol';
 import {AssistantHost} from '@/components/assistant-panel';
 import {FleetIcon} from '@/components/fleet-icon';
-import {isOperationsLandscape} from '@/lib/operations-layout';
 import {useCommunications} from '@/lib/communications-store';
 import {useCompanyDocuments} from '@/lib/documents-store';
 import {useTrainings} from '@/lib/training-store';
@@ -16,10 +15,7 @@ import {useFireOpsTheme} from '@/theme';
 
 export default function TabLayout(){
   const theme=useFireOpsTheme();const {session,access}=useSession();
-  const {width,height}=useWindowDimensions();const pathname=usePathname();
   const reduceMotion=useReduceMotion();
-  // Operations is the first tab ('/'); sideways it shows only the full-screen map.
-  const operationsLandscape=pathname==='/'&&isOperationsLandscape(width,height);
   const member=access.value?.kind==='member'?access.value:null;
   const {threads}=useCommunications(member?.company.id??null,member?.user.id??null);
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
@@ -33,12 +29,14 @@ export default function TabLayout(){
   const icon=(ios:string,android:string)=>function TabIcon(props:{color:ColorValue}){return <AppSymbol name={{ios:ios as never,android:android as never}} color={props.color}/>};
   const fleetTabIcon=({color,size}:{color:ColorValue;size:number})=> <FleetIcon color={String(color)} size={size}/>;
   // Horizontal tab shift (left/right by index). Keep inactive scenes attached so shift does not blank a tab.
-  return <><Tabs detachInactiveScreens={false} screenOptions={()=>({animation:reduceMotion?'fade':'shift',headerShown:!operationsLandscape,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:operationsLandscape?{display:'none'}:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}})}>
-    <Tabs.Screen name="index" options={{title:'Operations',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('flame.fill','local_fire_department')}}/>
-    {/* Old /operations links and pushes redirect to the Operations tab (index). */}
+  return <><Tabs detachInactiveScreens={false} screenOptions={()=>({animation:reduceMotion?'fade':'shift',headerShown:true,headerTitleAlign:'center',headerTitle:()=> <AppHeaderBrand/>,headerStyle:{backgroundColor:theme.paper},headerShadowVisible:true,tabBarActiveTintColor:theme.ember,tabBarInactiveTintColor:theme.secondary,tabBarStyle:{backgroundColor:theme.paper,borderTopColor:theme.divider},tabBarLabelStyle:{fontSize:11,fontWeight:'700'}})}>
+    <Tabs.Screen name="index" options={{title:'Command',tabBarBadge:unreadNotifications||undefined,tabBarIcon:icon('bell.badge.fill','notifications_active')}}/>
+    {/* Old /operations links and pushes redirect to the home tab. */}
     <Tabs.Screen name="operations" options={{href:null}}/>
+    <Tabs.Screen name="customers" options={{title:'Customers',tabBarIcon:icon('building.2.fill','apartment')}}/>
+    <Tabs.Screen name="jobs" options={{title:'Jobs',tabBarIcon:icon('wrench.and.screwdriver.fill','construction')}}/>
     <Tabs.Screen name="fleet" options={{title:'Fleet',tabBarIcon:fleetTabIcon}}/>
-    <Tabs.Screen name="communications" options={{title:'Communications',tabBarLabel:'Messages',tabBarBadge:unreadCommunications||undefined,tabBarIcon:icon('bubble.left.and.bubble.right.fill','forum')}}/>
-    <Tabs.Screen name="more" options={{title:'Tools',tabBarBadge:unreadDocuments+unreadTrainings||undefined,tabBarIcon:icon('square.grid.2x2.fill','apps')}}/>
-  </Tabs>{operationsLandscape?null:<AssistantHost/>}</>;
+    <Tabs.Screen name="communications" options={{title:'Communications',href:null,tabBarLabel:'Messages',tabBarBadge:unreadCommunications||undefined,tabBarIcon:icon('bubble.left.and.bubble.right.fill','forum')}}/>
+    <Tabs.Screen name="more" options={{title:'Tools',tabBarBadge:unreadDocuments+unreadCommunications+unreadTrainings||undefined,tabBarIcon:icon('square.grid.2x2.fill','apps')}}/>
+  </Tabs><AssistantHost/></>;
 }

@@ -15,7 +15,15 @@ import {useSession} from '@/providers/session-provider';
 import {useFireOpsTheme} from '@/theme';
 
 const sections=[
-  // Same order as the web sidebar (Operations, Fleet and Messages are tabs).
+  // Same order as the web Tools overflow. Command, Customers, Jobs, and Fleet are tabs.
+  {label:'Central station',path:'/station',ios:'dot.radiowaves.left.and.right',android:'sensors',color:'#98392E'},
+  {label:'API keys',path:'/integrations',ios:'key.fill',android:'key',color:'#5F6963',ownerOnly:true},
+  {label:'Quotes',path:'/quotes',ios:'doc.text.fill',android:'request_quote',color:'#7B5014'},
+  {label:'Inspections',path:'/compliance',ios:'checklist',android:'fact_check',color:'#26765A'},
+  {label:'Billing',path:'/billing',ios:'dollarsign.circle.fill',android:'payments',color:'#981D5C'},
+  {label:'Field Service',path:'/field-service',ios:'calendar',android:'calendar_month',color:'#285F9E'},
+  {label:'Messages',path:'/communications',ios:'bubble.left.and.bubble.right.fill',android:'forum',color:'#285F9E'},
+  {label:'Fleet readiness',path:'/readiness',ios:'flame.fill',android:'local_fire_department',color:'#3F6478'},
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
   {label:'News Feed',path:'/news-feed',ios:'newspaper.fill',android:'newspaper',color:'#B45309'},
   {label:'Roster',path:'/crew',ios:'person.3.fill',android:'groups',color:'#2E6E8C',rosterOnly:true},
@@ -37,7 +45,7 @@ export default function More(){
   const {width,fontScale}=useWindowDimensions();
   const {access,signOut,demoMode}=useSession();
   const member=access.value?.kind==='member'?access.value:null;
-  const confirmSignOut=()=>{if(Platform.OS==='web'){void signOut();return}Alert.alert('Sign out?',demoMode?'You will leave the demo.':'You will need to sign in again to use FireOps.',[{text:'Cancel',style:'cancel'},{text:'Sign out',style:'destructive',onPress:()=>void signOut()}])};
+  const confirmSignOut=()=>{if(Platform.OS==='web'){void signOut();return}Alert.alert('Sign out?',demoMode?'You will leave the demo.':'You will need to sign in again to use AlarmOps.',[{text:'Cancel',style:'cancel'},{text:'Sign out',style:'destructive',onPress:()=>void signOut()}])};
   const {documents}=useCompanyDocuments(member?.company.id??null,member?.user.id??null);
   const {trainings}=useTrainings(member?.company.id??null,member?.user.id??null);
   const pendingQualificationCards=usePendingQualificationCardCount(member&&(member.user.role==='owner'||member.user.role==='admin')?member.company.id:null);

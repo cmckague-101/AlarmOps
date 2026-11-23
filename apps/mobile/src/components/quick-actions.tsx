@@ -13,6 +13,8 @@ import {useFireOpsTheme,type FireOpsTheme} from '@/theme';
 export function quickActionItems(role:UserRole,theme:FireOpsTheme):{item:DashboardItem;path:string;label:string;ios:string;android:string;color:string}[] {
   const manager=role==='owner'||role==='admin';
   return [
+    {item:'fieldService',path:'/field-service',label:'Field Service',ios:'calendar',android:'calendar_month',color:'#285F9E'},
+    {item:'techTime',path:'/tech-time',label:'Tech Time',ios:'clock.fill',android:'schedule',color:theme.ember},
     {item:'availability',path:'/availability',label:'Availability',ios:'circle',android:'radio_button_unchecked',color:theme.green},
     ...(canManagePersonalTasks(role) ? [{item:'tasks' as const,path:'/tasks',label:'Task List',ios:'checklist',android:'checklist',color:'#7041b5'}] : []),
     ...(canInspectVehicle(role) && !manager ? [{item:'inspections' as const,path:'/inspection',label:'Inspect',ios:'checkmark.shield.fill',android:'verified_user',color:'#087e8b'}] : []),

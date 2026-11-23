@@ -2,7 +2,7 @@ import {createDemoDispatchData,createDemoFedRoomsData,createDemoNationalFireActi
 
 // Session-only PostgREST adapter. Never delegates to fetch or writes to device storage.
 export const demoUser={id:'demo-owner',name:'Jordan Mitchell',role:'owner' as const};
-export const demoCompany={id:'demo-company',name:'North Ridge Wildfire (Demo)',code:'DEMO-2048',industry:'Wildland fire contractor',phone:'(530) 555-0100',location:'Redding, CA',logoPath:null,crewInviteLimit:20};
+export const demoCompany={id:'demo-company',name:'Alarmco, Inc. (Demo)',code:'DEMO-2048',industry:'Fire alarm & security · WOSB/EDWOSB',phone:'(208) 555-0140',location:'Boise, ID',logoPath:null,crewInviteLimit:20};
 type Row=Record<string,any>;
 const clone=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
 
