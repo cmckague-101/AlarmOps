@@ -71,6 +71,31 @@ describe('integration credential vault', () => {
     expect(loaded.snapshot.queue).toHaveLength(1);
   });
 
+  it('stores ADI dealer credentials without putting the secret in the public record', async () => {
+    let body = '';
+    let signature = '';
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      body = String(init?.body ?? '');
+      signature = new Headers(init?.headers).get('Authentication-Signature') ?? '';
+      return new Response('{}', {status: 401});
+    }) as typeof fetch;
+    const vault = new IntegrationVault(KEY, fetchImpl);
+    const secret = 'adi-secret-key-7788';
+    const saved = await vault.save('adi', {customerNumber: '100200', customerSuffix: '', apiKey: 'adi-api-key-1111', apiPassword: 'adi-password-2222', apiSecret: secret}, ACTOR);
+    expect(saved.publicConfig).toMatchObject({customerNumber: '100200', customerSuffix: '000'});
+    expect(saved.secrets.map(item => item.field).sort()).toEqual(['apiKey', 'apiPassword', 'apiSecret']);
+    expect(JSON.stringify(vault.list())).not.toContain(secret);
+    expect(JSON.stringify(vault.list())).toContain('100200');
+    const tested = await vault.test('adi', ACTOR);
+    expect(tested.ok).toBe(false);
+    expect(tested.message).toBe('ADI refused the dealer credentials.');
+    expect(tested.message).not.toContain(secret);
+    expect(vault.audit()[0].summary).not.toContain(secret);
+    expect(body).toContain('"CustomerNumber":"100200"');
+    expect(body).toContain('"CustomerSuffix":"000"');
+    expect(signature.length).toBeGreaterThan(20);
+  });
+
   it('limits credential management to owners and admins', () => {
     expect(canManageIntegrations('owner')).toBe(true);
     expect(canManageIntegrations('admin')).toBe(true);

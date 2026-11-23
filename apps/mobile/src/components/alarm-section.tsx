@@ -4,17 +4,17 @@ import {useRouter} from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import {
-  ALARMCO, acceptQuote, alarmRecordId, alarmSummary, assignJob, formatMoney, inspectionsDue, invoiceFromJob, inspectionReportHtml,
-  alarmInvoiceState, invoiceFromMonitoring, invoiceTotal, jobKindLabel, jobStatusLabel, logTime, markInvoicePaid,
+  ALARMCO, acceptQuote, addQuoteLine, adiQuoteLine, alarmRecordId, alarmSummary, assignJob, createMockAdiParts, formatMoney, inspectionsDue, invoiceFromJob, inspectionReportHtml, markedUpUnitPrice,
+  alarmInvoiceState, invoiceFromMonitoring, invoiceTotal, jobKindLabel, jobStatusLabel, markInvoicePaid,
   monitoringLabel, nextAlarmNumber, quoteStatusLabel, quoteTotal, setChecklistResult, startInspection, systemKindLabel,
-  transitionJob, weekHours, workweekStart,
-  type AlarmBook, type ChecklistResult, type JobStatus,
+  transitionJob,
+  type AdiPart, type AlarmBook, type ChecklistResult, type JobStatus,
 } from '@fireops/domain';
 import {SectionScreen} from '@/components/section-screen';
 import {useAlarmBook} from '@/lib/alarm-book';
 import {useFireOpsTheme, type FireOpsTheme} from '@/theme';
 
-export type AlarmScreenSection = 'command' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule';
+export type AlarmScreenSection = 'command' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing';
 
 const titles: Record<AlarmScreenSection, {title: string; description: string}> = {
   command: {title: 'Command', description: 'Customers, sites, quotes, jobs, inspections, and invoices.'},
@@ -23,7 +23,6 @@ const titles: Record<AlarmScreenSection, {title: string; description: string}> =
   quotes: {title: 'Quotes', description: 'Device and labor lines. Accepting a quote opens a job.'},
   compliance: {title: 'Inspections', description: 'NFPA 72-style checklists, due dates, and deficiencies.'},
   billing: {title: 'Billing', description: 'Invoices from a finished job or a monitoring contract.'},
-  schedule: {title: 'Schedule', description: 'Jobs by day. Overtime starts after 40 hours, Monday through Sunday.'},
 };
 
 export function AlarmSection({section}: {section: AlarmScreenSection}) {
@@ -49,7 +48,6 @@ export function AlarmSection({section}: {section: AlarmScreenSection}) {
     {section === 'quotes' && <Quotes book={book} today={today} selected={selected} onSelect={setSelected} run={run} styles={styles} onOpen={open}/>}
     {section === 'compliance' && <Compliance book={book} today={today} selected={selected} onSelect={setSelected} run={run} styles={styles}/>}
     {section === 'billing' && <Billing book={book} today={today} selected={selected} onSelect={setSelected} run={run} styles={styles}/>}
-    {section === 'schedule' && <Schedule book={book} today={today} run={run} styles={styles}/>}
   </SectionScreen>;
 }
 
@@ -70,7 +68,7 @@ function Command({book, today, styles, onOpen}: {book: AlarmBook; today: string;
     <Text style={styles.heading}>Inspections due</Text>
     {due.map(site => <Row key={site.id} styles={styles} title={site.name} meta={customer(book, site.customerId)} onPress={() => onOpen('/compliance')}/>)}
     {!due.length ? <Text style={styles.meta}>Every fire alarm site has a current inspection.</Text> : null}
-    <Row styles={styles} title="Schedule and timesheets" meta={summary.techsOvertime.length ? `${summary.techsOvertime[0].name} has overtime on the books` : 'No overtime this pay picture'} onPress={() => onOpen('/schedule')}/>
+    <Row styles={styles} title="Field service" meta={summary.techsOvertime.length ? `${summary.techsOvertime[0].name} has overtime on the books` : 'No overtime this pay picture'} onPress={() => onOpen('/field-service')}/>
   </View>;
 }
 
@@ -121,6 +119,7 @@ function Quotes({book, today, selected, onSelect, run, styles, onOpen}: {book: A
     <Text style={styles.meta}>{quote.number} · {customer(book, quote.customerId)} · {siteLabel(book, quote.siteId)}</Text>
     {quote.lines.map(line => <Text key={line.id} style={styles.meta}>{line.quantity} × {line.description} · {formatMoney(line.quantity * line.unitPrice)}</Text>)}
     <Text style={styles.heading}>Total {formatMoney(quoteTotal(quote))}</Text>
+    {(quote.status === 'draft' || quote.status === 'sent') ? <AdiParts styles={styles} onAdd={line => run(() => addQuoteLine(book, quote.id, line))}/> : null}
     {quote.jobId ? <Row styles={styles} title="Open job" meta={quote.jobId} onPress={() => onOpen('/jobs')}/> : null}
     {(quote.status === 'draft' || quote.status === 'sent') && book.techs.map(person => <Primary key={person.id} styles={styles} label={`Accept with ${person.name}`} onPress={() => {
       const jobId = alarmRecordId('j');
@@ -182,28 +181,6 @@ function Billing({book, today, selected, onSelect, run, styles}: {book: AlarmBoo
   </View>;
 }
 
-function Schedule({book, today, run, styles}: {book: AlarmBook; today: string; run: (change: () => AlarmBook) => void; styles: ReturnType<typeof stylesFor>}) {
-  const [hours, setHours] = useState('8');
-  const start = workweekStart(today);
-  return <View style={styles.stack}>
-    <Text style={styles.meta}>Week of {start} through Sunday.</Text>
-    {book.techs.map(person => {
-      const week = weekHours(book.timeEntries, person.id, today);
-      const dates = book.timeEntries.filter(entry => entry.techId === person.id).map(entry => entry.date).sort();
-      const latest = dates[dates.length - 1];
-      const recorded = latest ? weekHours(book.timeEntries, person.id, latest) : week;
-      const sameWeek = !latest || recorded.start === week.start;
-      const line = sameWeek ? `${week.hours} hrs this week · ${week.overtimeHours} overtime` : `${recorded.hours} hrs in the week of ${recorded.start} · ${recorded.overtimeHours} overtime that week · ${week.hours} hrs this week`;
-      return <View key={person.id} style={styles.card}><Text style={styles.heading}>{person.name}</Text><Text style={styles.meta}>{line}</Text></View>;
-    })}
-    <Text style={styles.heading}>Scheduled jobs</Text>
-    {[...book.jobs].sort((a, b) => a.scheduledOn.localeCompare(b.scheduledOn)).map(job => <Text key={job.id} style={styles.meta}>{job.scheduledOn} · {job.title} · {tech(book, job.assignedTechId)} · {jobStatusLabel[job.status]}</Text>)}
-    <Text style={styles.heading}>Log Chris Hale today on the Capitol job</Text>
-    <TextInput accessibilityLabel="Hours" keyboardType="decimal-pad" value={hours} onChangeText={setHours} style={styles.input}/>
-    <Primary styles={styles} label="Save time" onPress={() => run(() => logTime(book, {id: alarmRecordId('te'), techId: 't-chris', jobId: 'j-capitol', date: today, hours: Number(hours), notes: 'Logged from the phone'}))}/>
-  </View>;
-}
-
 function Row({title, meta, onPress, styles}: {title: string; meta: string; onPress: () => void; styles: ReturnType<typeof stylesFor>}) {
   return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${meta}`} onPress={onPress} style={styles.row}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.meta}>{meta}</Text></Pressable>;
 }
@@ -220,6 +197,37 @@ function Back({onPress, styles}: {onPress: () => void; styles: ReturnType<typeof
 async function shareReport(html: string) {
   const file = await Print.printToFileAsync({html});
   if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, {mimeType: 'application/pdf', UTI: 'com.adobe.pdf'});
+}
+
+function AdiParts({styles, onAdd}: {styles: ReturnType<typeof stylesFor>; onAdd: (line: ReturnType<typeof adiQuoteLine>) => void}) {
+  const [query, setQuery] = useState('smoke');
+  const [markup, setMarkup] = useState('35');
+  const [parts, setParts] = useState<AdiPart[]>([]);
+  const [error, setError] = useState('');
+  const search = async () => {
+    try { setParts(await createMockAdiParts().search(query)); setError(''); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'ADI parts could not be searched.'); }
+  };
+  return <View style={styles.card}>
+    <Text style={styles.heading}>ADI parts</Text>
+    <Text style={styles.meta}>Demo catalog. Dealer price plus markup. Photos and branch stock are not in ADI’s price response, so this mock supplies them.</Text>
+    <TextInput accessibilityLabel="Part search" value={query} onChangeText={setQuery} style={styles.input}/>
+    <TextInput accessibilityLabel="Markup percent" keyboardType="decimal-pad" value={markup} onChangeText={setMarkup} style={styles.input}/>
+    <Primary styles={styles} label="Search ADI" onPress={() => void search()}/>
+    {error ? <Text style={styles.error}>{error}</Text> : null}
+    {parts.map(item => <View key={item.partNumber}>
+      <Text style={styles.body}>{item.partNumber}</Text>
+      <Text style={styles.meta}>{item.description}</Text>
+      <Text style={styles.meta}>Dealer {formatMoney(item.dealerPrice)} · Quote {formatMoney(safeSell(item.dealerPrice, markup))}</Text>
+      <Text style={styles.meta}>{item.stock.map(row => `${row.branch} ${row.quantity}`).join(' · ')}</Text>
+      <Primary styles={styles} label={`Add ${item.partNumber}`} onPress={() => onAdd(adiQuoteLine(item, 1, Number(markup) || 0, alarmRecordId('ql')))}/>
+    </View>)}
+  </View>;
+}
+
+function safeSell(dealerPrice: number, markup: string) {
+  try { return markedUpUnitPrice(dealerPrice, Number(markup)); }
+  catch { return dealerPrice; }
 }
 
 function customer(book: AlarmBook, id: string) { return book.customers.find(item => item.id === id)?.name ?? 'Customer'; }

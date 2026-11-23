@@ -8,7 +8,7 @@ import {buildSeedSnapshot, mapManitouPayload, type CentralStationSnapshot} from 
  * function. The demo vault keeps the sealed record in the session only.
  */
 
-export const INTEGRATION_PROVIDERS = ['quickbooks', 'manitou', 'sedona', 'motive', 'verizon_connect'] as const;
+export const INTEGRATION_PROVIDERS = ['quickbooks', 'manitou', 'sedona', 'motive', 'verizon_connect', 'adi'] as const;
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 export type IntegrationStatus = 'connected' | 'disconnected' | 'error';
 export type IntegrationFieldKind = 'secret' | 'text' | 'url' | 'choice';
@@ -73,6 +73,17 @@ export const integrationCatalog: Record<IntegrationProvider, IntegrationCatalogE
       {id: 'appId', label: 'App ID', kind: 'text', required: true, help: 'Atmosphere app id from Verizon Connect Integration Manager.'},
       {id: 'username', label: 'REST username', kind: 'text', required: true, help: 'Reveal REST integration user from the Reveal Marketplace, not the Integration Manager login.'},
       {id: 'password', label: 'REST password', kind: 'secret', required: true},
+    ],
+  },
+  adi: {
+    title: 'ADI Global Distribution',
+    summary: 'Resideo dealer API for parts price and inventory. Onboarding provides the API key, password, and secret. The customer number and suffix go with every price request.',
+    fields: [
+      {id: 'customerNumber', label: 'Customer number', kind: 'text', required: true, help: 'ADI dealer account number. It is not a secret.'},
+      {id: 'customerSuffix', label: 'Customer suffix', kind: 'text', required: true, help: 'Location code. 000 is the home account. Leave this blank to use 000.'},
+      {id: 'apiKey', label: 'API key', kind: 'secret', required: true, help: 'Sent as the Api-Key header.'},
+      {id: 'apiPassword', label: 'API password', kind: 'secret', required: true, help: 'Mixed into the request signature. It is not sent as its own header.'},
+      {id: 'apiSecret', label: 'API secret', kind: 'secret', required: true, help: 'HMAC key for the Authentication-Signature header.'},
     ],
   },
 };
@@ -329,6 +340,7 @@ export function validateResolved(provider: IntegrationProvider, values: Record<s
     }
     return;
   }
+  if (provider === 'adi' && !values.customerSuffix) values.customerSuffix = '000';
   for (const field of fields) {
     if (!field.required) continue;
     const value = values[field.id] ?? '';
@@ -362,12 +374,36 @@ export async function probeIntegration(provider: IntegrationProvider, values: Re
       const response = await fetchImpl('https://api.gomotive.com/v1/vehicles?per_page=1', {headers: {Accept: 'application/json', 'X-Api-Key': values.apiKey}, signal: AbortSignal.timeout(8000)});
       return response.ok ? {ok: true, message: 'Motive accepted the API key.'} : {ok: false, message: 'Motive refused the API key.'};
     }
+    if (provider === 'adi') {
+      const requestId = crypto.randomUUID();
+      const timestamp = String(Date.now());
+      const response = await fetchImpl('https://dev.api.adiglobal.com/adi/api/v1/PriceAndInventory/PriceAndInventoryDetails', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Api-Key': values.apiKey,
+          'Client-Request-Id': requestId,
+          Timestamp: timestamp,
+          'Authentication-Signature': await adiSignature(values, requestId, timestamp),
+        },
+        body: JSON.stringify({CustomerNumber: values.customerNumber, CustomerSuffix: values.customerSuffix || '000', ItemList: [{ItemNumber: '0', Quantity: 1}]}),
+        signal: AbortSignal.timeout(8000),
+      });
+      return response.ok ? {ok: true, message: 'ADI accepted the dealer credentials.'} : {ok: false, message: 'ADI refused the dealer credentials.'};
+    }
     const host = values.region === 'eu' ? 'https://fim.api.eu.fleetmatics.com/token' : 'https://fim.api.us.fleetmatics.com/token';
     const response = await fetchImpl(host, {headers: {Accept: 'application/json', Authorization: `Basic ${btoa(`${values.username}:${values.password}`)}`}, signal: AbortSignal.timeout(8000)});
     return response.ok ? {ok: true, message: 'Verizon Connect issued a token.'} : {ok: false, message: 'Verizon Connect refused the REST credentials.'};
   } catch {
     return {ok: false, message: 'The provider could not be reached.'};
   }
+}
+
+async function adiSignature(values: Record<string, string>, requestId: string, timestamp: string) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(values.apiSecret), {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
+  const signed = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${values.apiKey}${values.apiPassword}${requestId}${timestamp}`));
+  return bytesToBase64(new Uint8Array(signed));
 }
 
 function manitouHeaders(values: Record<string, string>) {

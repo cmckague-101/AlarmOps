@@ -1,3 +1,7 @@
+.ao-part{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.ao-part img{width:64px;height:64px;border-radius:8px;background:var(--surface-subtle)}
+.ao-part b{display:block}
+.ao-part small{display:block;color:var(--muted)}
 .ao-page{max-width:1100px}
 .ao-kicker{margin:0 0 6px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .ao-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 18px}

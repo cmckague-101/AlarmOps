@@ -1,5 +1,5 @@
-import {AlarmSection} from '@/components/alarm-section';
+import {FieldServiceScreen} from '@/components/field-service-screen';
 
 export default function ScheduleScreen() {
-  return <AlarmSection section="schedule"/>;
+  return <FieldServiceScreen mode="board"/>;
 }

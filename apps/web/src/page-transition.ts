@@ -30,7 +30,7 @@ export const pageSlideOrder: readonly string[] = [
   'quotes',
   'compliance',
   'billing',
-  'schedule',
+  'field-service',
   'vehicles',
   'communications',
   'news',

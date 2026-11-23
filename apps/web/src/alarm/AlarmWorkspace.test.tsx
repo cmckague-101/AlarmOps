@@ -14,6 +14,14 @@ describe('Alarmco workspace', () => {
     expect(html).toContain('$3,120.00');
   });
 
+  it('opens a sent quote with an ADI parts search', () => {
+    const html = renderToStaticMarkup(<AlarmWorkspace section="quotes" book={seedAlarmBook()} onChange={() => undefined} onOpen={() => undefined} today="2026-11-23"/>);
+    expect(html).toContain('Q-2026-022');
+    expect(html).toContain('ADI parts');
+    expect(html).toContain('Search ADI');
+    expect(html).toContain('Markup percent');
+  });
+
   it('shows the library site, monitoring contract, and panel on the customer record', () => {
     const html = renderToStaticMarkup(<AlarmWorkspace section="customers" book={seedAlarmBook()} onChange={() => undefined} onOpen={() => undefined} focusId="c-library" today="2026-11-23"/>);
     expect(html).toContain('715 S Capitol Blvd');

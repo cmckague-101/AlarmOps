@@ -57,11 +57,12 @@ import { createId } from './create-id';
 import {supabase} from './supabase';
 import ThemeToggle from './ThemeToggle';
 import {pageSlideDirection,pageStageClassName,type PageSlideDirection} from './page-transition';
-import {AlarmWorkspace,type AlarmSection} from './alarm/AlarmWorkspace';
+import {AlarmWorkspace,type AlarmDestination} from './alarm/AlarmWorkspace';
+import {FieldServicePage} from './alarm/FieldServicePage';
 import {CentralStationPage} from './alarm/CentralStationPage';
 import {IntegrationsPanel} from './alarm/IntegrationsPanel';
 import {RemoteIntegrationDesk} from './alarm/remote-integration-desk';
-import {canManageIntegrations,IntegrationVault,normalizeAlarmBook,seedAlarmBook,type AlarmBook} from '@fireops/domain';
+import {canManageIntegrations,createMockQboTimeClient,demoTechTime,IntegrationVault,normalizeAlarmBook,normalizeTechTime,seedAlarmBook,type AlarmBook,type TechTimeLog} from '@fireops/domain';
 
 // Pages most people open rarely load on first visit instead of with the workspace.
 const AuditLogPage=lazy(()=>import('./AuditLogPage'));
@@ -75,7 +76,7 @@ const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'station' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule' | 'readiness' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'station' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'field-service' | 'readiness' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
@@ -88,7 +89,7 @@ export const navigationMeta = {
   quotes:{label:'Quotes',description:'Device and labor estimates',Icon:FileText},
   compliance:{label:'Inspections',description:'NFPA 72 checklists and deficiencies',Icon:ClipboardCheck},
   billing:{label:'Billing',description:'Job and monitoring invoices',Icon:CircleDollarSign},
-  schedule:{label:'Schedule',description:'Technician calendar and weekly time',Icon:CalendarDays},
+  'field-service':{label:'Field Service',description:'Dispatch, roster, and tech time',Icon:CalendarDays},
   readiness:{label:'Fleet readiness',description:'Vehicle status and open fleet issues',Icon:Flame},
   meetings:{label:'Meetings',description:'Coming soon',Icon:Video},
   hotels:{label:'Travel',description:'GSA FedRooms hotels',Icon:BedDouble},
@@ -110,13 +111,15 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // Fixed order through Training; rows after it spill into More first on short windows.
-const navigationOrder:NavigablePage[]=['overview','station','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','station','customers','jobs','quotes','compliance','billing','field-service','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','customers','jobs','vehicles'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
-export type LegacyPage='operations';
-/** The page to show for a page id; old 'operations' links and assistant ids open Operations ('overview'). */
+export type LegacyPage='operations' | 'schedule';
+/** The page to show for a page id. Old operations links open Command. Old schedule links open Field Service. */
 export function resolvePage(page:Page|LegacyPage):Page{
-  return page==='operations'?'overview':page;
+  if(page==='operations')return 'overview';
+  if(page==='schedule')return 'field-service';
+  return page;
 }
 
 // Inventory and Failed Inspections live under More for every role, except that
@@ -213,6 +216,11 @@ function loadAlarmBook():AlarmBook{
   if(suppressLocalPersistence)return seedAlarmBook();
   try{const stored=localStorage.getItem('alarmops-book');return stored?normalizeAlarmBook(JSON.parse(stored)):seedAlarmBook()}
   catch{return seedAlarmBook()}
+}
+function loadTechTime():TechTimeLog{
+  if(suppressLocalPersistence)return demoTechTime();
+  try{const stored=localStorage.getItem('alarmops-tech-time');return stored?normalizeTechTime(JSON.parse(stored)):demoTechTime()}
+  catch{return demoTechTime()}
 }
 function loadVehicles() {
   if(suppressLocalPersistence)return normalizeVehicles(seed);
@@ -353,10 +361,13 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
   const unreadTrainingCount=trainings.filter(training=>trainingStage(training)==='scheduled'&&isTrainingUnread(training,currentUser)).length;
   const [inventoryItems,setInventoryItems]=useState<InventoryItem[]>(()=>inventoryData??(demoMode?demoRecords.inventory:loadInventory()));
   const [alarmBook,setAlarmBook]=useState<AlarmBook>(()=>demoMode?seedAlarmBook():loadAlarmBook());
+  const [techTime,setTechTime]=useState<TechTimeLog>(()=>demoMode?demoTechTime():loadTechTime());
+  const qboTimeClient=useMemo(()=>createMockQboTimeClient().client,[]);
   const integrationVault=useMemo(()=>new IntegrationVault(`alarmops-session-${companyId??'demo'}`),[companyId]);
   const remoteIntegrations=useMemo(()=>!demoMode&&companyId&&supabase?new RemoteIntegrationDesk(companyId):null,[demoMode,companyId]);
   const [alarmFocus,setAlarmFocus]=useState<string|undefined>();
   useEffect(()=>{if(!demoMode)saveLocal('alarmops-book',alarmBook)},[alarmBook,demoMode]);
+  useEffect(()=>{if(!demoMode)saveLocal('alarmops-tech-time',techTime)},[techTime,demoMode]);
   useEffect(()=>{if(inventoryData)setInventoryItems(inventoryData)},[inventoryData]);
   const [vehicleTypes,setVehicleTypes]=useState<VehicleTypeOption[]>(()=>vehicleTypeData??loadVehicleTypes());
   useEffect(()=>{if(vehicleTypeData)setVehicleTypes(vehicleTypeData)},[vehicleTypeData]);
@@ -810,7 +821,8 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         <Suspense fallback={<div className="route-loading" role="status">Loading...</div>}>
         <div className={pageStageClassName(pageSlide)} key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
-        {(page==='overview'||page==='customers'||page==='jobs'||page==='quotes'||page==='compliance'||page==='billing'||page==='schedule') && <AlarmWorkspace section={page==='overview'?'command':page} book={alarmBook} onChange={setAlarmBook} focusId={alarmFocus} today={localToday()} onOpen={(section:AlarmSection,id?:string)=>{setAlarmFocus(id);setPage(section==='command'?'overview':section)}}/>}
+        {(page==='overview'||page==='customers'||page==='jobs'||page==='quotes'||page==='compliance'||page==='billing') && <AlarmWorkspace section={page==='overview'?'command':page} book={alarmBook} onChange={setAlarmBook} focusId={alarmFocus} today={localToday()} onOpen={(section:AlarmDestination,id?:string)=>{setAlarmFocus(id);setPage(section==='command'?'overview':section)}}/>}
+        {page==='field-service' && <FieldServicePage book={alarmBook} onChange={setAlarmBook} techTime={techTime} onTechTime={setTechTime} today={localToday()} role={currentUser.role} userName={currentUser.name} vehicles={vehicles.map(vehicle=>({id:vehicle.id,unit:vehicle.unit}))} quickBooksConnected={demoMode||(remoteIntegrations??integrationVault).list().some(item=>item.provider==='quickbooks'&&(item.status==='connected'||item.secrets.length>0))} demoMode={demoMode} client={qboTimeClient} onOpen={(section,id)=>{setAlarmFocus(id);setPage(section)}}/>}
         {page==='station' && <CentralStationPage book={alarmBook} onChange={setAlarmBook} onOpenCustomer={id=>{setAlarmFocus(id);setPage('customers')}} loadStation={now=>remoteIntegrations?remoteIntegrations.loadStation():integrationVault.loadStation(now)}/>}
         {page === 'readiness' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
@@ -912,7 +924,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 
 // Tile colors match the phone app's More grid and each Quick Action icon.
 const moreTileColors:Partial<Record<NavigablePage|'inspect',string>>={
-  overview:'#C94321',station:'#98392e',customers:'#2F6A8F',jobs:'#C94321',quotes:'#7B5014',compliance:'#26765A',billing:'#981d5c',schedule:'#285F9E',readiness:'#3F6478',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
+  overview:'#C94321',station:'#98392e',customers:'#2F6A8F',jobs:'#C94321',quotes:'#7B5014',compliance:'#26765A',billing:'#981d5c','field-service':'#285F9E',readiness:'#3F6478',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',
   meetings:'#4F5FB8',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',

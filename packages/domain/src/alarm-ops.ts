@@ -144,7 +144,9 @@ export type AlarmInvoice = {
   paidOn?: string;
 };
 
-export type AlarmTech = {id: string; name: string; title: string};
+export type TechCertification = {id: string; name: string; issuer: string; expiresOn: string};
+export type TechTimeOff = {id: string; techId: string; start: string; end: string; reason: string};
+export type AlarmTech = {id: string; name: string; title: string; phone: string; email: string; skills: string[]; certifications: TechCertification[]; vehicleId: string};
 
 export type TimeEntry = {
   id: string;
@@ -165,6 +167,7 @@ export type AlarmBook = {
   invoices: AlarmInvoice[];
   techs: AlarmTech[];
   timeEntries: TimeEntry[];
+  timeOff: TechTimeOff[];
 };
 
 export class AlarmOpsError extends Error {
@@ -361,6 +364,15 @@ export function addQuote(book: AlarmBook, quote: AlarmQuote): AlarmBook {
   return {...book, quotes: [{...quote, title: quote.title.trim(), lines, status: quote.status === 'accepted' || quote.status === 'declined' ? 'draft' : quote.status}, ...book.quotes]};
 }
 
+export function addQuoteLine(book: AlarmBook, quoteId: string, line: QuoteLine): AlarmBook {
+  const quote = must(book.quotes, quoteId, 'Quote');
+  if (quote.status !== 'draft' && quote.status !== 'sent') throw new AlarmOpsError('Only a draft or sent quote can take another line.');
+  const description = line.description.trim();
+  if (!description || !(line.quantity > 0) || line.unitPrice < 0) throw new AlarmOpsError('Each line needs a description, quantity, and price.');
+  const next: QuoteLine = {id: line.id, description, kind: line.kind, quantity: line.quantity, unitPrice: roundMoney(line.unitPrice)};
+  return {...book, quotes: book.quotes.map(item => item.id === quote.id ? {...quote, lines: [...quote.lines, next]} : item)};
+}
+
 export function acceptQuote(book: AlarmBook, quoteId: string, ids: {jobId: string; jobNumber: string; assignedTechId: string; scheduledOn: string}): AlarmBook {
   const quote = must(book.quotes, quoteId, 'Quote');
   if (quote.status === 'declined') throw new AlarmOpsError('A declined quote cannot be accepted.');
@@ -408,7 +420,7 @@ export function transitionJob(book: AlarmBook, jobId: string, status: JobStatus)
 
 export function assignJob(book: AlarmBook, jobId: string, techId: string): AlarmBook {
   const job = must(book.jobs, jobId, 'Job');
-  must(book.techs, techId, 'Technician');
+  if (techId) must(book.techs, techId, 'Technician');
   return {...book, jobs: replace(book.jobs, job.id, {...job, assignedTechId: techId})};
 }
 
@@ -642,9 +654,9 @@ function buildSeed(): AlarmBook {
   const capitolCheck = passedChecklist('cap');
   return {
     techs: [
-      {id: 't-lena', name: 'Lena Ortiz', title: 'Lead technician'},
-      {id: 't-chris', name: 'Chris Hale', title: 'Service technician'},
-      {id: 't-priya', name: 'Priya Shah', title: 'Inspector'},
+      {id: 't-lena', name: 'Lena Ortiz', title: 'Lead technician', phone: '(208) 555-0164', email: 'lena@alarmco.example', skills: ['Fire alarm', 'Addressable panels'], certifications: [{id: 'cert-lena', name: 'NICET II Fire Alarm Systems', issuer: 'NICET', expiresOn: '2027-04-30'}], vehicleId: 'v1'},
+      {id: 't-chris', name: 'Chris Hale', title: 'Service technician', phone: '(208) 555-0177', email: 'chris@alarmco.example', skills: ['Service', 'Access control'], certifications: [{id: 'cert-chris', name: 'Idaho Fire Alarm License', issuer: 'State of Idaho', expiresOn: '2026-12-15'}], vehicleId: 'v2'},
+      {id: 't-priya', name: 'Priya Shah', title: 'Inspector', phone: '(208) 555-0181', email: 'priya@alarmco.example', skills: ['Inspection', 'NFPA 72'], certifications: [{id: 'cert-priya', name: 'NICET III Inspection and Testing', issuer: 'NICET', expiresOn: '2026-11-20'}], vehicleId: 'v3'},
     ],
     customers: [
       {id: 'c-library', name: 'Boise Public Library', accountNumber: 'ALM-1042', contactName: 'Jordan Hale', email: 'facilities@boisepubliclibrary.example', phone: '(208) 555-0188', notes: 'Annual fire alarm inspection plus device refresh on the main branch.'},
@@ -707,6 +719,7 @@ function buildSeed(): AlarmBook {
       {id: 'j-ready', number: 'J-2026-040', customerId: 'c-capitol', siteId: 's-capitol', kind: 'service', status: 'complete', title: 'Replace west stairwell horn/strobe', assignedTechId: 't-lena', scheduledOn: '2026-11-12', notes: 'Device replaced and tested. Ready to invoice.', billableAmount: 410},
       {id: 'j-capitol', number: 'J-2026-044', customerId: 'c-capitol', siteId: 's-capitol', kind: 'service', status: 'in_progress', title: 'West entrance card reader offline', assignedTechId: 't-chris', scheduledOn: '2026-11-23', notes: 'Reader powers up but does not grant. Billable if no warranty part.', billableAmount: 640},
       {id: 'j-coop', number: 'J-2026-046', customerId: 'c-coop', siteId: 's-coop', kind: 'inspection', status: 'scheduled', title: 'Hyde Park annual inspection', assignedTechId: 't-priya', scheduledOn: '2026-11-25', notes: 'First inspection on the new panel. No quote accepted yet.', billableAmount: 500},
+      {id: 'j-open', number: 'J-2026-048', customerId: 'c-library', siteId: 's-library', kind: 'service', status: 'scheduled', title: 'Panel trouble follow-up', assignedTechId: '', scheduledOn: '2026-11-24', notes: 'Opened from the central station queue.', billableAmount: 180},
     ],
     inspections: [
       {id: 'i-library', number: 'INS-2026-008', siteId: 's-library', jobId: 'j-library', inspectorId: 't-priya', inspectedOn: '2026-10-08', frequencyMonths: 12, nextDue: '2027-10-08', ...libraryCheck},
@@ -742,6 +755,9 @@ function buildSeed(): AlarmBook {
       {id: 'te-10', techId: 't-lena', date: '2026-11-20', hours: 8, notes: 'Inventory'},
       {id: 'te-11', techId: 't-priya', jobId: 'j-library', date: '2026-10-08', hours: 6, notes: 'Main Branch inspection'},
     ],
+    timeOff: [
+      {id: 'off-priya', techId: 't-priya', start: '2026-11-26', end: '2026-11-26', reason: 'Manufacturer training'},
+    ],
   };
 }
 
@@ -764,5 +780,6 @@ export function normalizeAlarmBook(value: unknown): AlarmBook {
     invoices: Array.isArray(record.invoices) ? record.invoices : [],
     techs: Array.isArray(record.techs) && record.techs.length ? record.techs : seed.techs,
     timeEntries: Array.isArray(record.timeEntries) ? record.timeEntries : [],
+    timeOff: Array.isArray(record.timeOff) ? record.timeOff : [],
   };
 }

@@ -1,17 +1,18 @@
 import {useEffect, useState, type ReactNode} from 'react';
 import {ChevronRight, Plus} from 'lucide-react';
 import {
-  ALARMCO, acceptQuote, addCustomer, addQuote, addSite, addSystem, alarmRecordId, alarmSummary, assignJob,
+  ALARMCO, acceptQuote, addCustomer, addQuote, addQuoteLine, addSite, addSystem, adiQuoteLine, alarmRecordId, alarmSummary, assignJob, createMockAdiParts, markedUpUnitPrice,
   correctDeficiency, declineQuote, formatMoney, inspectionReportHtml, inspectionsDue, invoiceFromJob,
   alarmInvoiceState, invoiceFromMonitoring, invoiceTotal, jobKindLabel, jobStatusLabel, lineExtension,
-  logTime, markInvoicePaid, monitoringLabel, nextAlarmNumber, quoteStatusLabel, quoteTotal, setChecklistResult,
-  startInspection, systemKindLabel, transitionJob, weekHours, workweekStart,
-  type AlarmBook, type AlarmInvoice, type ChecklistResult, type JobKind,
+  markInvoicePaid, monitoringLabel, nextAlarmNumber, quoteStatusLabel, quoteTotal, setChecklistResult,
+  startInspection, systemKindLabel, transitionJob,
+  type AdiPart, type AlarmBook, type AlarmInvoice, type ChecklistResult, type JobKind,
   type JobStatus, type MonitoringStatus, type QuoteLine, type SystemKind,
 } from '@fireops/domain';
 import './alarm-ops.css';
 
-export type AlarmSection = 'command' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule';
+export type AlarmSection = 'command' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing';
+export type AlarmDestination = AlarmSection | 'field-service';
 
 type Tone = 'ok' | 'warn' | 'bad' | 'idle';
 
@@ -22,14 +23,13 @@ const copy: Record<AlarmSection, {title: string; lede: string}> = {
   quotes: {title: 'Quotes', lede: 'Device and labor lines. Accepting a quote opens a job.'},
   compliance: {title: 'Inspections', lede: 'NFPA 72-style checklists, recurring due dates, deficiencies, and a printable report.'},
   billing: {title: 'Billing', lede: 'Invoices from a finished job or a monitoring contract. Paid and unpaid stay on the account.'},
-  schedule: {title: 'Schedule', lede: 'Jobs by technician and weekly time. Overtime starts after 40 hours, Monday through Sunday.'},
 };
 
 export function AlarmWorkspace({section, book, onChange, onOpen, focusId, today}: {
   section: AlarmSection;
   book: AlarmBook;
   onChange: (book: AlarmBook) => void;
-  onOpen: (section: AlarmSection, id?: string) => void;
+  onOpen: (section: AlarmDestination, id?: string) => void;
   focusId?: string;
   today: string;
 }) {
@@ -60,11 +60,10 @@ export function AlarmWorkspace({section, book, onChange, onOpen, focusId, today}
     {section === 'quotes' && <Quotes book={book} today={today} selected={selected} onSelect={select} run={run} onOpen={onOpen}/>}
     {section === 'compliance' && <Compliance book={book} today={today} selected={selected} onSelect={select} run={run}/>}
     {section === 'billing' && <Billing book={book} today={today} selected={selected} onSelect={select} run={run}/>}
-    {section === 'schedule' && <Schedule book={book} today={today} run={run}/>}
   </div>;
 }
 
-function Command({book, today, onOpen}: {book: AlarmBook; today: string; onOpen: (section: AlarmSection, id?: string) => void}) {
+function Command({book, today, onOpen}: {book: AlarmBook; today: string; onOpen: (section: AlarmDestination, id?: string) => void}) {
   const summary = alarmSummary(book, today);
   const due = inspectionsDue(book, today);
   const waiting = book.quotes.filter(quote => quote.status === 'sent' || quote.status === 'draft');
@@ -91,7 +90,7 @@ function Command({book, today, onOpen}: {book: AlarmBook; today: string; onOpen:
         {!due.length && <p className="ao-note">Every fire alarm site has a current inspection.</p>}
       </Panel>
       <Panel title="This pay picture" meta={`${summary.openDeficiencies} open ${summary.openDeficiencies === 1 ? 'deficiency' : 'deficiencies'}`}>
-        {summary.techsOvertime.map(row => <Row key={row.techId} title={row.name} meta={`${row.overtimeHours} overtime hours on the books`} chip="Overtime" tone="warn" onClick={() => onOpen('schedule')}/>)}
+        {summary.techsOvertime.map(row => <Row key={row.techId} title={row.name} meta={`${row.overtimeHours} overtime hours on the books`} chip="Overtime" tone="warn" onClick={() => onOpen('field-service')}/>)}
         {!summary.techsOvertime.length && <p className="ao-note">No technician is over 40 hours in a Monday–Sunday week.</p>}
         <Row title="Open billing" meta={`${summary.unpaidInvoices} unpaid · ${formatMoney(summary.unpaidTotal)}`} chip="Unpaid" tone="warn" onClick={() => onOpen('billing')}/>
       </Panel>
@@ -195,7 +194,7 @@ function JobDetail({book, jobId, today, run, onOpen}: {book: AlarmBook; jobId: s
 
 function Quotes({book, today, selected, onSelect, run, onOpen}: {book: AlarmBook; today: string; selected: string; onSelect: (id: string) => void; run: (change: () => AlarmBook) => boolean; onOpen: (section: AlarmSection, id?: string) => void}) {
   const [creating, setCreating] = useState(false);
-  const quote = book.quotes.find(item => item.id === selected) ?? book.quotes[0];
+  const quote = book.quotes.find(item => item.id === selected) ?? book.quotes.find(item => item.status === 'sent' || item.status === 'draft') ?? book.quotes[0];
   return <div className="ao-split">
     <Panel title="Quotes" meta={`${book.quotes.length} quotes`} action={<button className="secondary" type="button" onClick={() => setCreating(value => !value)}><Plus size={16}/> Quote</button>}>
       {creating && <QuoteForm book={book} today={today} onCancel={() => setCreating(false)} onSave={draft => { const id = alarmRecordId('q'); run(() => addQuote(book, {...draft, id})); onSelect(id); setCreating(false); }}/>}
@@ -218,6 +217,7 @@ function QuoteDetail({book, quoteId, today, run, onOpen}: {book: AlarmBook; quot
       </tbody></table>
       <p><b>Total {formatMoney(quoteTotal(quote))}</b> · Valid through {quote.validUntil} · {jobKindLabel[quote.kind]}</p>
       {quote.jobId && <button className="secondary" type="button" onClick={() => onOpen('jobs', quote.jobId)}>Open job</button>}
+      {(quote.status === 'draft' || quote.status === 'sent') && <AdiParts onAdd={line => run(() => addQuoteLine(book, quote.id, line))}/>}
       {(quote.status === 'draft' || quote.status === 'sent') && <div className="ao-form">
         <label><span>Technician</span><select value={techId} onChange={event => setTechId(event.target.value)}>{book.techs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>
         <label><span>Schedule date</span><input type="date" value={scheduledOn} onChange={event => setScheduledOn(event.target.value)}/></label>
@@ -320,45 +320,6 @@ function InvoiceDetail({book, invoice, today, run}: {book: AlarmBook; invoice: A
   </section>;
 }
 
-function Schedule({book, today, run}: {book: AlarmBook; today: string; run: (change: () => AlarmBook) => boolean}) {
-  const start = workweekStart(today);
-  const jobs = [...book.jobs].sort((a, b) => a.scheduledOn.localeCompare(b.scheduledOn));
-  const [techId, setTechId] = useState(book.techs[0]?.id ?? '');
-  const [jobId, setJobId] = useState('');
-  const [date, setDate] = useState(today);
-  const [hours, setHours] = useState('8');
-  const [notes, setNotes] = useState('');
-  return <div className="ao-stack">
-    <Panel title={`Week of ${start}`} meta="Monday–Sunday. Hours over 40 are overtime.">
-      <div className="ao-week">
-        {book.techs.map(tech => {
-          const week = weekHours(book.timeEntries, tech.id, today);
-          const dates = book.timeEntries.filter(entry => entry.techId === tech.id).map(entry => entry.date).sort();
-          const latest = dates[dates.length - 1];
-          const recorded = latest ? weekHours(book.timeEntries, tech.id, latest) : week;
-          const sameWeek = !latest || recorded.start === week.start;
-          return <article key={tech.id}><div><b>{tech.name}</b><p className="ao-note">{tech.title} · {sameWeek ? `${week.hours} hrs this week · ${week.overtimeHours} overtime` : `${recorded.hours} hrs in the week of ${recorded.start} · ${recorded.overtimeHours} overtime that week · ${week.hours} hrs this week`}</p></div>{recorded.overtimeHours > 0 || week.overtimeHours > 0 ? <Chip tone="warn">{Math.max(recorded.overtimeHours, week.overtimeHours)} OT</Chip> : <Chip tone="ok">Within 40</Chip>}</article>;
-        })}
-      </div>
-    </Panel>
-    <div className="ao-split">
-      <Panel title="Scheduled jobs" meta="Next assignments">
-        {jobs.map(job => <Row key={job.id} title={job.scheduledOn} meta={`${job.title} · ${techName(book, job.assignedTechId)}`} chip={jobStatusLabel[job.status]} tone={jobTone(job.status)}/>)}
-      </Panel>
-      <section className="ao-detail"><header><div><h2>Log time</h2><p>Saved with the job when you pick one.</p></div></header>
-        <form className="ao-body ao-form" onSubmit={event => { event.preventDefault(); run(() => logTime(book, {id: alarmRecordId('te'), techId, jobId: jobId || undefined, date, hours: Number(hours), notes})); setNotes(''); }}>
-          <label><span>Technician</span><select value={techId} onChange={event => setTechId(event.target.value)}>{book.techs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>
-          <label><span>Job</span><select value={jobId} onChange={event => setJobId(event.target.value)}><option value="">Not on a job</option>{book.jobs.map(job => <option key={job.id} value={job.id}>{job.number} · {job.title}</option>)}</select></label>
-          <label><span>Date</span><input type="date" value={date} onChange={event => setDate(event.target.value)}/></label>
-          <label><span>Hours</span><input type="number" min={0.25} max={24} step={0.25} value={hours} onChange={event => setHours(event.target.value)}/></label>
-          <label><span>Notes</span><input value={notes} onChange={event => setNotes(event.target.value)} maxLength={200}/></label>
-          <button className="primary" type="submit">Save time</button>
-        </form>
-      </section>
-    </div>
-  </div>;
-}
-
 function CustomerForm({onCancel, onSave}: {onCancel: () => void; onSave: (customer: {name: string; accountNumber: string; contactName: string; email: string; phone: string; notes: string}) => void}) {
   const [name, setName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -406,6 +367,41 @@ function SystemForm({onCancel, onSave}: {onCancel: () => void; onSave: (system: 
     <label><span>Devices</span><input type="number" min={0} value={deviceCount} onChange={event => setCount(event.target.value)}/></label>
     <label><span>Location</span><input value={location} onChange={event => setLocation(event.target.value)}/></label>
     <div className="ao-actions"><button className="primary" type="submit">Save system</button><button className="secondary" type="button" onClick={onCancel}>Cancel</button></div>
+  </form>;
+}
+
+function sellPrice(dealerPrice: number, markup: string) {
+  try { return markedUpUnitPrice(dealerPrice, Number(markup)); }
+  catch { return dealerPrice; }
+}
+
+function AdiParts({onAdd}: {onAdd: (line: QuoteLine) => void}) {
+  const [query, setQuery] = useState('smoke');
+  const [markup, setMarkup] = useState('35');
+  const [quantity, setQuantity] = useState('1');
+  const [parts, setParts] = useState<AdiPart[]>([]);
+  const [error, setError] = useState('');
+  const search = async () => {
+    try {
+      setParts(await createMockAdiParts().search(query));
+      setError('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'ADI parts could not be searched.');
+    }
+  };
+  return <form className="ao-form" onSubmit={event => { event.preventDefault(); void search(); }}>
+    <h2>ADI parts</h2>
+    <p className="ao-note">Demo catalog for adiglobaldistribution.us. A signed-in company still needs the dealer API key, password, and secret from Settings, API keys. ADI’s price call does not return photos or branch quantities, so this mock supplies those.</p>
+    <label><span>Part number or description</span><input value={query} onChange={event => setQuery(event.target.value)}/></label>
+    <label><span>Markup percent</span><input type="number" min={0} max={300} step={1} value={markup} onChange={event => setMarkup(event.target.value)}/></label>
+    <label><span>Quantity</span><input type="number" min={1} value={quantity} onChange={event => setQuantity(event.target.value)}/></label>
+    <button className="secondary" type="submit">Search ADI</button>
+    {error && <p className="form-submit-error" role="alert">{error}</p>}
+    {parts.map(item => <article key={item.partNumber} className="ao-part">
+      <img src={item.imageUrl} alt=""/>
+      <div><b>{item.partNumber}</b><small>{item.description}</small><small>Dealer {formatMoney(item.dealerPrice)} · Quote {formatMoney(sellPrice(item.dealerPrice, markup))}</small><small>{item.stock.map(row => `${row.branch} ${row.quantity}`).join(' · ')}</small></div>
+      <button className="primary" type="button" onClick={() => onAdd(adiQuoteLine(item, Number(quantity) || 1, Number(markup) || 0, alarmRecordId('ql')))}>Add to quote</button>
+    </article>)}
   </form>;
 }
 

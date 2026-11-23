@@ -21,7 +21,7 @@ const sections=[
   {label:'Quotes',path:'/quotes',ios:'doc.text.fill',android:'request_quote',color:'#7B5014'},
   {label:'Inspections',path:'/compliance',ios:'checklist',android:'fact_check',color:'#26765A'},
   {label:'Billing',path:'/billing',ios:'dollarsign.circle.fill',android:'payments',color:'#981D5C'},
-  {label:'Schedule',path:'/schedule',ios:'calendar',android:'calendar_month',color:'#285F9E'},
+  {label:'Field Service',path:'/field-service',ios:'calendar',android:'calendar_month',color:'#285F9E'},
   {label:'Messages',path:'/communications',ios:'bubble.left.and.bubble.right.fill',android:'forum',color:'#285F9E'},
   {label:'Fleet readiness',path:'/readiness',ios:'flame.fill',android:'local_fire_department',color:'#3F6478'},
   {label:'Travel',path:'/hotels',ios:'bed.double.fill',android:'hotel',color:'#2F6A8F'},
