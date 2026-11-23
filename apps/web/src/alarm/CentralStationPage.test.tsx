@@ -13,6 +13,6 @@ describe('central station page', () => {
     expect(html).toContain('Failed communicator timer test');
     expect(html).toContain('Low battery');
     expect(html).toContain('AC loss');
-    expect(html).toContain('Nothing here calls Manitou');
+    expect(html).toContain('never receives the password or API key');
   });
 });

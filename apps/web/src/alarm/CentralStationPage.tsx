@@ -1,9 +1,8 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {
   ALARMCO, alarmRecordId, nextAlarmNumber,
   buildSeedSnapshot, filterSignals, priorityLabel, waitingLabel, workOrderFromProblem,
-  type HistoryFilter, type PinStatus, type ProblemAccount, type StationSignal,
-  type AlarmBook,
+  type AlarmBook, type HistoryFilter, type PinStatus, type ProblemAccount, type StationLoad, type StationSignal,
 } from '@fireops/domain';
 import './central-station.css';
 
@@ -13,14 +12,22 @@ const PIN_LABEL: Record<PinStatus, string> = {
   normal: 'Normal', fire: 'Fire', burglary: 'Burglary', panic: 'Panic', trouble: 'Trouble', supervisory: 'Supervisory', test: 'Test', runaway: 'Runaway',
 };
 
-export function CentralStationPage({book, onChange, onOpenCustomer, now}: {
+export function CentralStationPage({book, onChange, onOpenCustomer, now, loadStation}: {
   book: AlarmBook;
   onChange: (book: AlarmBook) => void;
   onOpenCustomer: (customerId: string) => void;
   now?: Date;
+  loadStation?: (now: Date) => Promise<StationLoad>;
 }) {
   const clock = useStationClock(now);
-  const snapshot = useMemo(() => buildSeedSnapshot(clock), [clock]);
+  const [bundle, setBundle] = useState<StationLoad>(() => ({snapshot: buildSeedSnapshot(clock), using: 'seed'}));
+  useEffect(() => {
+    if (!loadStation) return;
+    let active = true;
+    void loadStation(clock).then(next => { if (active) setBundle(next); });
+    return () => { active = false; };
+  }, [clock, loadStation]);
+  const snapshot = bundle.snapshot;
   const [selectedId, setSelectedId] = useState('sig-fire');
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState<HistoryFilter>({});
@@ -49,7 +56,7 @@ export function CentralStationPage({book, onChange, onOpenCustomer, now}: {
         <p>Live queue, site map, and signal history for Alarmco’s own monitoring center.</p>
       </div>
     </div>
-    <p className="cs-note">Demo feed. Bold Manitou REST (Swagger 2.1.48+) plugs in behind the central-station source. Nothing here calls Manitou.</p>
+    <p className="cs-note">{bundle.using === 'manitou' ? 'Live Manitou feed from the credentials saved in Settings.' : 'Demo feed. Save Manitou credentials in Settings to use the REST API. Bold Manitou (Swagger 2.1.48+) is read on the server; this page never receives the password or API key.'}</p>
     <div className="cs-kpis">
       <Kpi value={String(snapshot.kpis.activeAlarms)} label="Active alarms"/>
       <Kpi value={snapshot.kpis.averageResponseSeconds === null ? '—' : formatSeconds(snapshot.kpis.averageResponseSeconds)} label="Avg response today"/>

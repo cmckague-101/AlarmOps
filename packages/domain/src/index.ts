@@ -40,3 +40,4 @@ export * from './news-feed';
 export * from './news-images';
 export * from './alarm-ops';
 export * from './central-station';
+export * from './integrations';

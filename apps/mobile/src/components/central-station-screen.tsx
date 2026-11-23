@@ -1,12 +1,13 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {useRouter} from 'expo-router';
 import {
-  alarmRecordId, nextAlarmNumber, buildSeedSnapshot, priorityLabel, waitingLabel, workOrderFromProblem,
+  alarmRecordId, nextAlarmNumber, buildSeedSnapshot, priorityLabel, waitingLabel, workOrderFromProblem, type StationLoad,
   type ProblemAccount, type StationSignal,
 } from '@fireops/domain';
 import {SectionScreen} from '@/components/section-screen';
 import {useAlarmBook} from '@/lib/alarm-book';
+import {useIntegrationVault} from '@/lib/integration-vault';
 import {useFireOpsTheme, type FireOpsTheme} from '@/theme';
 
 const PIN: Record<string, string> = {fire: '#98392E', panic: '#98392E', burglary: '#C94321', trouble: '#7B5014', supervisory: '#7B5014', test: '#315F48', runaway: '#19201D', normal: '#26765A'};
@@ -16,8 +17,11 @@ export function CentralStationScreen() {
   const styles = stylesFor(theme);
   const router = useRouter();
   const {book, setBook} = useAlarmBook();
+  const vault = useIntegrationVault();
   const now = useMemo(() => new Date(), []);
-  const snapshot = useMemo(() => buildSeedSnapshot(now), [now]);
+  const [bundle, setBundle] = useState<StationLoad>(() => ({snapshot: buildSeedSnapshot(now), using: 'seed'}));
+  useEffect(() => { let active = true; void vault.loadStation(now).then(next => { if (active) setBundle(next); }); return () => { active = false; }; }, [vault, now]);
+  const snapshot = bundle.snapshot;
   const [selectedId, setSelectedId] = useState<string | null>(snapshot.queue[0]?.id ?? null);
   const [notice, setNotice] = useState('');
   const selected = [...snapshot.queue, ...snapshot.history].find(signal => signal.id === selectedId);

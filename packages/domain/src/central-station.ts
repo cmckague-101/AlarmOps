@@ -158,6 +158,14 @@ const ACCOUNTS: StationAccount[] = [
 
 const STEP_ORDER: SignalStepKind[] = ['received', 'operator', 'call', 'dispatch', 'close'];
 
+/** Accept a Manitou payload only when it already matches our snapshot. Unknown shapes stay unmapped. */
+export function mapManitouPayload(value: unknown): CentralStationSnapshot | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Partial<CentralStationSnapshot>;
+  if (!Array.isArray(record.queue) || !Array.isArray(record.accounts) || !Array.isArray(record.operators)) return null;
+  return value as CentralStationSnapshot;
+}
+
 export function seededCentralStation(): CentralStationSource {
   return {kind: 'seed', load: async now => buildSeedSnapshot(now)};
 }

@@ -13,6 +13,11 @@ export function isCompanyManager(role:UserRole):boolean {
   return role==='owner'||role==='admin';
 }
 
+/** API keys and integration credentials are limited to company owners and admins. */
+export function canManageIntegrations(role:UserRole):boolean {
+  return isCompanyManager(role);
+}
+
 /** Payroll and invoice processing (review, approval, payment, customers) is owner/accounting only. */
 export function canProcessFinance(role:UserRole):boolean {
   return role==='owner'||role==='accounting';
