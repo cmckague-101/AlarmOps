@@ -136,7 +136,7 @@ export default function FleetScreen() {
       >
         <View style={styles.headingRow}>
           <View style={styles.headingGroup}>
-            <HeroTitle style={styles.pageTitle}>Resources</HeroTitle>
+            <HeroTitle style={styles.pageTitle}>Fleet</HeroTitle>
             <Text style={styles.subtitle}>{loading ? 'Loading vehicles…' : `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`}</Text>
           </View>
           <View style={styles.headingActions}>
@@ -151,7 +151,7 @@ export default function FleetScreen() {
 
         {error ? (
           <View style={styles.errorBlock}>
-            <Text style={styles.errorTitle}>Resources data unavailable</Text>
+            <Text style={styles.errorTitle}>Fleet data unavailable</Text>
             <Text style={styles.errorText}>{error}</Text>
             <Pressable accessibilityRole="button" onPress={() => void refreshFleet()} style={styles.retryButton}>
               <Text style={styles.retryLabel}>Try again</Text>
@@ -188,7 +188,7 @@ export default function FleetScreen() {
                 value={query}
               />
               <FilterSelect
-                accessibilityLabel="Organize resources"
+                accessibilityLabel="Organize fleet"
                 onChange={setOrganizeMode}
                 options={fleetOrganizeOptions}
                 value={organizeMode}

@@ -106,9 +106,9 @@ export default function NewIssueScreen() {
           ) : (
             <View style={styles.missingVehicle}>
               <Text style={styles.missingVehicleTitle}>Select vehicle first</Text>
-              <Text style={styles.missingVehicleText}>{initialVehicleId ? 'This vehicle is no longer available. Choose one from Resources.' : 'No vehicles yet. Add one in Resources first.'}</Text>
+              <Text style={styles.missingVehicleText}>{initialVehicleId ? 'This vehicle is no longer available. Choose one from Fleet.' : 'No vehicles yet. Add one in Fleet first.'}</Text>
               <Pressable accessibilityRole="button" onPress={() => router.replace('/(tabs)/fleet' as never)} style={styles.fleetButton}>
-                <Text style={styles.fleetButtonLabel}>Go to Resources</Text>
+                <Text style={styles.fleetButtonLabel}>Go to Fleet</Text>
               </Pressable>
             </View>
           )}

@@ -37,7 +37,7 @@ const MOBILE_HREFS:Record<AssistantRouteId,string>={
 };
 
 export const ASSISTANT_ROUTE_LABELS:Record<AssistantRouteId,string>={
-  dashboard:'Operations',operations:'Operations',fleet:'Resources','vipr-intelligence':'VIPR Intelligence','send-to-vipr':'Send to VIPR','vipr-dpls':'VIPR DPLs',
+  dashboard:'Operations',operations:'Operations',fleet:'Fleet','vipr-intelligence':'VIPR Intelligence','send-to-vipr':'Send to VIPR','vipr-dpls':'VIPR DPLs',
   travel:'Travel',communications:'Communications',shop:'Shop',roster:'Roster',qualifications:'Qualifications',
   documents:'Documents',receipts:'Receipts',invoices:'Invoices',payroll:'Payroll',tasks:'Task List',
   availability:'Availability',training:'Training',inventory:'Inventory',inspections:'Failed Inspections',

@@ -81,7 +81,7 @@ describe('dashboard customization',()=>{
     const dashboard=renderToStaticMarkup(<OwnerDashboard canProcessPayroll preferences={preferences!} onCustomize={()=>{}} name="Alex" vehicles={[]} crew={[]} issues={[]} onSelect={()=>{}}/>);
     expect(dashboard).not.toContain('Active Incidents');
     expect(dashboard).not.toContain('Assigned Personnel');
-    expect(dashboard).not.toContain('Assigned Resources');
+    expect(dashboard).not.toContain('Assigned Fleet');
     expect(dashboard).not.toContain('Needs Attention');
     expect(dashboard).toContain('Customize Operations');
     expect(dashboard).not.toContain('Customize Dashboard');
@@ -131,7 +131,7 @@ describe('dashboard customization',()=>{
     const html=renderToStaticMarkup(<DashboardCustomization userId="render-test" role="shop_tech" demoMode/>);
     expect(html).toContain('Command Center');
     expect(html).toContain('Quick Actions');
-    expect(html).toContain('Recent Resources Activity');
+    expect(html).toContain('Recent Fleet Activity');
     expect(html).toContain('role="switch"');
     expect(html).toContain('Current issues');
     expect(html).not.toContain('Active Incidents');

@@ -105,7 +105,7 @@ export default function OperationsScreen() {
 
         {error ? (
           <View style={styles.errorBlock}>
-            <Text style={styles.errorTitle}>Resources data unavailable</Text>
+            <Text style={styles.errorTitle}>Fleet data unavailable</Text>
             <Text style={styles.errorText}>{error}</Text>
             <Pressable accessibilityRole="button" onPress={() => void refreshFleet()} style={styles.retryButton}>
               <Text style={styles.retryLabel}>Try again</Text>
@@ -199,7 +199,7 @@ export default function OperationsScreen() {
             ) : null}
 
             {preferences.visible('recentActivity') && recentActivities.length > 0 ? (
-              <DashboardSection title="Recent resources activity" count={activities.length} styles={styles}>
+              <DashboardSection title="Recent fleet activity" count={activities.length} styles={styles}>
                 {recentActivities.map((activity) => {
                   const canOpen = activity.targetType === 'issue' || activity.targetType === 'vehicle';
                   return (
