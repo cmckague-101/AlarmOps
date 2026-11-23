@@ -49,6 +49,7 @@ describe('Alarmco quote, job, inspection, and invoice flow', () => {
     expect(() => invoiceFromJob(book, 'j-capitol', {id: 'x', number: 'INV-2026-060', issuedOn: TODAY, dueOn: '2026-12-23'})).toThrow(/Complete the job/);
     const billed = invoiceFromMonitoring(book, 's-capitol', {id: 'inv-fed', number: 'INV-2026-060', issuedOn: TODAY, dueOn: '2026-12-23', months: 3});
     expect(invoiceTotal(billed.invoices[0])).toBe(1260);
+    expect(() => invoiceFromMonitoring(billed, 's-capitol', {id: 'inv-fed-2', number: 'INV-2026-062', issuedOn: TODAY, dueOn: '2026-12-23', months: 1})).toThrow(/that month/);
     expect(() => invoiceFromMonitoring(book, 's-clinic', {id: 'nope', number: 'INV-2026-061', issuedOn: TODAY, dueOn: '2026-12-23', months: 1})).toThrow(/monitored/);
   });
 

@@ -1,15 +1,30 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {
   integrationCatalog, maskSecret,
-  type IntegrationProvider, type IntegrationVault, type PublicIntegration,
+  type IntegrationAuditEntry, type IntegrationProvider, type PublicIntegration,
 } from '@fireops/domain';
+
+type IntegrationDesk = {
+  list: () => PublicIntegration[];
+  audit: () => IntegrationAuditEntry[];
+  save: (provider: IntegrationProvider, values: Record<string, string>, actor: string) => Promise<PublicIntegration>;
+  remove: (provider: IntegrationProvider, actor: string) => Promise<void>;
+  test: (provider: IntegrationProvider, actor: string) => Promise<{ok: boolean; message: string; integration: PublicIntegration}>;
+  refresh?: () => Promise<void>;
+};
 import './integrations.css';
 
 const statusLabel = {connected: 'Connected', disconnected: 'Disconnected', error: 'Needs attention'} as const;
 
-export function IntegrationsPanel({vault, actor}: {vault: IntegrationVault; actor: string}) {
+export function IntegrationsPanel({vault, actor, serverBacked = false}: {vault: IntegrationDesk; actor: string; serverBacked?: boolean}) {
   const [records, setRecords] = useState(() => vault.list());
   const [audit, setAudit] = useState(() => vault.audit());
+  useEffect(() => {
+    if (!vault.refresh) return;
+    let active = true;
+    void vault.refresh().then(() => { if (active) { setRecords(vault.list()); setAudit(vault.audit()); } });
+    return () => { active = false; };
+  }, [vault]);
   const [editing, setEditing] = useState<IntegrationProvider | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -21,7 +36,7 @@ export function IntegrationsPanel({vault, actor}: {vault: IntegrationVault; acto
         <p>Owners and admins save provider credentials here. Secrets are sealed before they are stored and only the last four characters come back.</p>
       </div>
     </header>
-    <p className="integration-keys-note">In this demo the sealed values stay in the session and are not written to disk. A signed-in company stores them encrypted on the server.</p>
+    <p className="integration-keys-note">{serverBacked ? 'Credentials are encrypted on the server. This page receives only the last four characters of each secret.' : 'In this demo the sealed values stay in the session and are not written to disk. A signed-in company stores them encrypted on the server.'}</p>
     {message && <p className="integration-keys-status" role="status">{message}</p>}
     {error && <p className="integration-keys-error" role="alert">{error}</p>}
     <div className="integration-keys-list">

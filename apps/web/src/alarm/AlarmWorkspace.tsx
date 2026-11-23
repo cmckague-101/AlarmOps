@@ -415,23 +415,25 @@ function QuoteForm({book, today, onCancel, onSave}: {book: AlarmBook; today: str
   const [siteId, setSiteId] = useState(sites[0]?.id ?? '');
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState<JobKind>('install');
-  const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [unitPrice, setPrice] = useState('');
-  const [lineKind, setLineKind] = useState<'device' | 'labor'>('device');
+  const [lines, setLines] = useState<{id: string; description: string; kind: 'device' | 'labor'; quantity: string; unitPrice: string}[]>([{id: alarmRecordId('ql'), description: '', kind: 'device', quantity: '1', unitPrice: ''}]);
+  const updateLine = (id: string, patch: Partial<(typeof lines)[number]>) => setLines(current => current.map(line => line.id === id ? {...line, ...patch} : line));
   return <form className="ao-form" style={{padding: 10}} onSubmit={event => {
     event.preventDefault();
-    onSave({number: nextAlarmNumber(book.quotes.map(quote => quote.number), 'Q', Number(today.slice(0, 4))), customerId, siteId, kind, status: 'sent', title, createdOn: today, validUntil: dueIn(today, 30), lines: [{id: alarmRecordId('ql'), description, kind: lineKind, quantity: Number(quantity), unitPrice: Number(unitPrice)}]});
+    onSave({number: nextAlarmNumber(book.quotes.map(quote => quote.number), 'Q', Number(today.slice(0, 4))), customerId, siteId, kind, status: 'sent', title, createdOn: today, validUntil: dueIn(today, 30), lines: lines.map(line => ({id: line.id, description: line.description, kind: line.kind, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice)}))});
   }}>
     <label><span>Customer</span><select value={customerId} onChange={event => { setCustomerId(event.target.value); const next = book.sites.find(site => site.customerId === event.target.value); setSiteId(next?.id ?? ''); }}>{book.customers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label><span>Site</span><select value={siteId} onChange={event => setSiteId(event.target.value)}>{sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
     <label><span>Title</span><input required value={title} onChange={event => setTitle(event.target.value)}/></label>
     <label><span>Becomes</span><select value={kind} onChange={event => setKind(event.target.value as JobKind)}><option value="install">Install</option><option value="service">Service call</option><option value="inspection">Inspection</option></select></label>
-    <label><span>Line</span><input required value={description} onChange={event => setDescription(event.target.value)} placeholder="Device or labor"/></label>
-    <label><span>Kind</span><select value={lineKind} onChange={event => setLineKind(event.target.value as 'device' | 'labor')}><option value="device">Device</option><option value="labor">Labor</option></select></label>
-    <label><span>Quantity</span><input type="number" min={1} value={quantity} onChange={event => setQuantity(event.target.value)}/></label>
-    <label><span>Unit price</span><input type="number" min={0} step={0.01} required value={unitPrice} onChange={event => setPrice(event.target.value)}/></label>
-    <div className="ao-actions"><button className="primary" type="submit">Save quote</button><button className="secondary" type="button" onClick={onCancel}>Cancel</button></div>
+    {lines.map((line, index) => <fieldset key={line.id} className="ao-form">
+      <legend>Line {index + 1}</legend>
+      <label><span>Description</span><input required value={line.description} onChange={event => updateLine(line.id, {description: event.target.value})} placeholder="Device or labor"/></label>
+      <label><span>Kind</span><select value={line.kind} onChange={event => updateLine(line.id, {kind: event.target.value as 'device' | 'labor'})}><option value="device">Device</option><option value="labor">Labor</option></select></label>
+      <label><span>Quantity</span><input type="number" min={1} value={line.quantity} onChange={event => updateLine(line.id, {quantity: event.target.value})}/></label>
+      <label><span>Unit price</span><input type="number" min={0} step={0.01} required value={line.unitPrice} onChange={event => updateLine(line.id, {unitPrice: event.target.value})}/></label>
+      {lines.length > 1 && <button className="secondary" type="button" onClick={() => setLines(current => current.filter(item => item.id !== line.id))}>Remove line</button>}
+    </fieldset>)}
+    <div className="ao-actions"><button className="secondary" type="button" onClick={() => setLines(current => [...current, {id: alarmRecordId('ql'), description: '', kind: 'device', quantity: '1', unitPrice: ''}])}>Add line</button><button className="primary" type="submit">Save quote</button><button className="secondary" type="button" onClick={onCancel}>Cancel</button></div>
   </form>;
 }
 

@@ -492,6 +492,10 @@ export function invoiceFromMonitoring(book: AlarmBook, siteId: string, ids: {id:
   if (site.monthlyMonitoring <= 0) throw new AlarmOpsError('Set a monthly monitoring amount on the site first.');
   parseDate(ids.issuedOn, 'Invoice date');
   parseDate(ids.dueOn, 'Due date');
+  const period = ids.issuedOn.slice(0, 7);
+  if (book.invoices.some(invoice => invoice.source === 'monitoring' && invoice.siteId === site.id && invoice.issuedOn.slice(0, 7) === period)) {
+    throw new AlarmOpsError('This site already has a monitoring invoice for that month.');
+  }
   const amount = roundMoney(site.monthlyMonitoring * ids.months);
   const invoice: AlarmInvoice = {
     id: ids.id,
