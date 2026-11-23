@@ -51,6 +51,6 @@ describe('mobile More screen',()=>{
     const tree=render(More) as Node;
     expect(tree.props.title).toBe('Tools');
     const tiles=nodes(tree).filter(node=>node.type==='Pressable'&&typeof node.props.accessibilityLabel==='string');
-    expect(tiles.slice(0,3).map(tile=>tile.props.accessibilityLabel)).toEqual(['Quotes','Inspections','Billing']);
+    expect(tiles.slice(0,3).map(tile=>tile.props.accessibilityLabel)).toEqual(['Central station','Quotes','Inspections']);
   });
 });

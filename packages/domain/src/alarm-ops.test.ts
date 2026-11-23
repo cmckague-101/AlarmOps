@@ -93,7 +93,7 @@ describe('Alarmco quote, job, inspection, and invoice flow', () => {
     expect(techTimesheet(book.timeEntries, 't-lena')).toMatchObject({totalHours: 40, overtimeHours: 0});
     expect(weekHours(book.timeEntries, 't-chris', '2026-11-20')).toMatchObject({start: '2026-11-16', end: '2026-11-22', hours: 48, overtimeHours: 8});
     const summary = alarmSummary(book, TODAY);
-    expect(summary).toMatchObject({customerCount: 4, openJobs: 2, quotesWaiting: 2, inspectionsDue: 2, openDeficiencies: 1, unpaidInvoices: 1, unpaidTotal: 3120});
+    expect(summary).toMatchObject({customerCount: 8, openJobs: 2, quotesWaiting: 2, inspectionsDue: 2, openDeficiencies: 1, unpaidInvoices: 1, unpaidTotal: 3120});
     expect(summary.techsOvertime).toEqual([expect.objectContaining({techId: 't-chris', overtimeHours: 8})]);
   });
 

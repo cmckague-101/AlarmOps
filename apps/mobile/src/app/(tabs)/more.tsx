@@ -16,6 +16,7 @@ import {useFireOpsTheme} from '@/theme';
 
 const sections=[
   // Same order as the web Tools overflow. Command, Customers, Jobs, and Fleet are tabs.
+  {label:'Central station',path:'/station',ios:'dot.radiowaves.left.and.right',android:'sensors',color:'#98392E'},
   {label:'Quotes',path:'/quotes',ios:'doc.text.fill',android:'request_quote',color:'#7B5014'},
   {label:'Inspections',path:'/compliance',ios:'checklist',android:'fact_check',color:'#26765A'},
   {label:'Billing',path:'/billing',ios:'dollarsign.circle.fill',android:'payments',color:'#981D5C'},

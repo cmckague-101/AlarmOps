@@ -647,12 +647,20 @@ function buildSeed(): AlarmBook {
       {id: 'c-clinic', name: "St. Luke's Plaza Clinic", accountNumber: 'ALM-1108', contactName: 'Avery Nguyen', email: 'facilities@plazaclinic.example', phone: '(208) 555-0160', notes: 'New fire alarm install. Monitoring starts after acceptance.'},
       {id: 'c-capitol', name: 'Idaho State Capitol', accountNumber: 'ALM-2201', contactName: 'Morgan Ellis', email: 'security@capitol.idaho.example', phone: '(208) 555-0120', notes: 'Federal-style facilities contract. Access control and alarm monitoring.'},
       {id: 'c-coop', name: 'Boise Co-op', accountNumber: 'ALM-1184', contactName: 'Sam Patel', email: 'ops@boisecoop.example', phone: '(208) 555-0194', notes: 'Small fire alarm and camera package.'},
+      {id: 'c-centre', name: 'Boise Centre', accountNumber: 'ALM-1410', contactName: 'Elena Brooks', email: 'facilities@boisecentre.example', phone: '(208) 555-0133', notes: 'Convention center. On test during event load-in.'},
+      {id: 'c-alpha', name: 'St. Alphonsus Regional', accountNumber: 'ALM-2288', contactName: 'Chris Lang', email: 'security@stals.example', phone: '(208) 555-0171', notes: 'Hospital fire alarm. Communicator timer test is failing.'},
+      {id: 'c-yard', name: 'Idaho Power', accountNumber: 'ALM-3310', contactName: 'Drew Alvarez', email: 'ops@idahopower.example', phone: '(208) 555-0155', notes: 'Operations yard. AC loss on the fire panel.'},
+      {id: 'c-vista', name: 'Vista Village', accountNumber: 'ALM-1766', contactName: 'Nina Cole', email: 'manager@vistavillage.example', phone: '(208) 555-0190', notes: 'Apartment intrusion account in runaway.'},
     ],
     sites: [
       {id: 's-library', customerId: 'c-library', name: 'Main Branch', address: '715 S Capitol Blvd', city: 'Boise', state: 'ID', postalCode: '83702', monitoringStatus: 'monitored', contractNumber: 'ALM-MON-1042', monthlyMonitoring: 186, contractStart: '2025-01-01', contractEnd: '2027-12-31'},
       {id: 's-clinic', customerId: 'c-clinic', name: 'Plaza Clinic', address: '800 E Park Blvd', city: 'Boise', state: 'ID', postalCode: '83712', monitoringStatus: 'unmonitored', contractNumber: '', monthlyMonitoring: 0, contractStart: '', contractEnd: ''},
       {id: 's-capitol', customerId: 'c-capitol', name: 'Capitol Complex', address: '700 W Jefferson St', city: 'Boise', state: 'ID', postalCode: '83702', monitoringStatus: 'monitored', contractNumber: 'ALM-FED-2201', monthlyMonitoring: 420, contractStart: '2024-10-01', contractEnd: '2027-09-30'},
       {id: 's-coop', customerId: 'c-coop', name: 'Hyde Park Store', address: '888 W Fort St', city: 'Boise', state: 'ID', postalCode: '83702', monitoringStatus: 'unmonitored', contractNumber: '', monthlyMonitoring: 0, contractStart: '', contractEnd: ''},
+      {id: 's-centre', customerId: 'c-centre', name: 'Boise Centre', address: '850 W Front St', city: 'Boise', state: 'ID', postalCode: '83702', monitoringStatus: 'monitored', contractNumber: 'ALM-MON-1410', monthlyMonitoring: 240, contractStart: '2025-03-01', contractEnd: '2027-02-28'},
+      {id: 's-alpha', customerId: 'c-alpha', name: 'Curtis Campus', address: '1055 N Curtis Rd', city: 'Boise', state: 'ID', postalCode: '83706', monitoringStatus: 'monitored', contractNumber: 'ALM-MON-2288', monthlyMonitoring: 510, contractStart: '2024-06-01', contractEnd: '2027-05-31'},
+      {id: 's-yard', customerId: 'c-yard', name: 'Operations Yard', address: '1221 W Idaho St', city: 'Boise', state: 'ID', postalCode: '83702', monitoringStatus: 'monitored', contractNumber: 'ALM-MON-3310', monthlyMonitoring: 165, contractStart: '2025-01-15', contractEnd: '2027-01-14'},
+      {id: 's-vista', customerId: 'c-vista', name: 'Vista Village', address: '200 W Mallard Dr', city: 'Boise', state: 'ID', postalCode: '83706', monitoringStatus: 'monitored', contractNumber: 'ALM-MON-1766', monthlyMonitoring: 95, contractStart: '2025-08-01', contractEnd: '2026-12-31'},
     ],
     systems: [
       {id: 'sys-library-facp', siteId: 's-library', kind: 'fire_alarm', name: 'Silent Knight 6820', deviceCount: 42, location: 'Electrical room'},
@@ -661,6 +669,10 @@ function buildSeed(): AlarmBook {
       {id: 'sys-capitol-facp', siteId: 's-capitol', kind: 'fire_alarm', name: 'Notifier NFS2-3030', deviceCount: 120, location: 'Basement FACP room'},
       {id: 'sys-capitol-sec', siteId: 's-capitol', kind: 'security', name: 'Intrusion panel', deviceCount: 28, location: 'Security office'},
       {id: 'sys-coop-facp', siteId: 's-coop', kind: 'fire_alarm', name: 'Fire-Lite ES-50X', deviceCount: 18, location: 'Office closet'},
+      {id: 'sys-centre-facp', siteId: 's-centre', kind: 'fire_alarm', name: 'Fire-Lite ES-200X', deviceCount: 86, location: 'Fire control room'},
+      {id: 'sys-alpha-facp', siteId: 's-alpha', kind: 'fire_alarm', name: 'Notifier NFS-320', deviceCount: 210, location: 'Engineering shop'},
+      {id: 'sys-yard-facp', siteId: 's-yard', kind: 'fire_alarm', name: 'Silent Knight 6000', deviceCount: 24, location: 'Guard shack'},
+      {id: 'sys-vista-sec', siteId: 's-vista', kind: 'security', name: 'DSC PowerSeries', deviceCount: 32, location: 'Leasing office'},
     ],
     quotes: [
       {
@@ -695,6 +707,9 @@ function buildSeed(): AlarmBook {
     inspections: [
       {id: 'i-library', number: 'INS-2026-008', siteId: 's-library', jobId: 'j-library', inspectorId: 't-priya', inspectedOn: '2026-10-08', frequencyMonths: 12, nextDue: '2027-10-08', ...libraryCheck},
       {id: 'i-capitol', number: 'INS-2025-014', siteId: 's-capitol', inspectorId: 't-priya', inspectedOn: '2025-11-02', frequencyMonths: 12, nextDue: '2026-11-02', ...capitolCheck},
+      {id: 'i-centre', number: 'INS-2026-011', siteId: 's-centre', inspectorId: 't-priya', inspectedOn: '2026-09-01', frequencyMonths: 12, nextDue: '2027-09-01', ...passedChecklist('centre')},
+      {id: 'i-alpha', number: 'INS-2026-012', siteId: 's-alpha', inspectorId: 't-priya', inspectedOn: '2026-08-12', frequencyMonths: 12, nextDue: '2027-08-12', ...passedChecklist('alpha')},
+      {id: 'i-yard', number: 'INS-2026-013', siteId: 's-yard', inspectorId: 't-priya', inspectedOn: '2026-07-20', frequencyMonths: 12, nextDue: '2027-07-20', ...passedChecklist('yard')},
     ],
     invoices: [
       {

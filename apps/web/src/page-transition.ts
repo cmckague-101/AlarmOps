@@ -24,6 +24,7 @@ const nestedParents: Record<string, readonly string[]> = {
  */
 export const pageSlideOrder: readonly string[] = [
   'overview',
+  'station',
   'customers',
   'jobs',
   'quotes',

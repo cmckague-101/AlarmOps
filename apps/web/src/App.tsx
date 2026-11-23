@@ -50,13 +50,14 @@ export type {
 export type VehicleTypeOption = {id:string;name:string};
 import {
   AlertTriangle, ArrowLeft, BedDouble, Building2, CalendarDays, Camera, CarFront, Check, ChevronRight, ClipboardCheck, Flame, GraduationCap,
-  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus,
+  Bell, CircleAlert, CircleUserRound, Clock3, ExternalLink, Eye, EyeOff, FileImage, FileText, Gauge, Hash, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Map as MapIcon, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone, Plus, Radio,
   BriefcaseBusiness, CircleDollarSign, LayoutGrid, Search, Settings as SettingsIcon, ShieldCheck, Trash2, Truck, Upload, UserPlus, Users, Video, Wrench, X
 } from 'lucide-react';
 import { createId } from './create-id';
 import ThemeToggle from './ThemeToggle';
 import {pageSlideDirection,pageStageClassName,type PageSlideDirection} from './page-transition';
 import {AlarmWorkspace,type AlarmSection} from './alarm/AlarmWorkspace';
+import {CentralStationPage} from './alarm/CentralStationPage';
 import {normalizeAlarmBook,seedAlarmBook,type AlarmBook} from '@fireops/domain';
 
 // Pages most people open rarely load on first visit instead of with the workspace.
@@ -71,13 +72,14 @@ const TrainingPage=lazy(()=>import('./TrainingPage'));
 const ReceiptsPage=lazy(()=>import('./ReceiptsPage'));
 const AssistantPanel=lazy(()=>import('./AssistantPanel'));
 
-type Page = 'tasks' | 'overview' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule' | 'readiness' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
+type Page = 'tasks' | 'overview' | 'station' | 'customers' | 'jobs' | 'quotes' | 'compliance' | 'billing' | 'schedule' | 'readiness' | 'meetings' | 'vehicles' | 'crew' | 'communications' | 'news' | 'hotels' | 'documents' | 'receipts' | 'invoices' | 'payroll' | 'availability' | 'training' | 'inventory' | 'inspections' | 'qualifications' | 'add-credential' | 'credential-detail' | 'qualification-experience' | 'experience-detail' | 'qualification-master-record' | 'qualification-card' | 'qualification-annual-records' | 'more' | 'audit-log' | 'settings';
 type NavigablePage = Exclude<Page,'more'|'add-credential'|'credential-detail'|'qualification-experience'|'experience-detail'|'qualification-master-record'|'qualification-card'|'qualification-annual-records'>;
 
 type NavIcon=React.ComponentType<{className?:string}>;
 export const navigationMeta = {
   // Saved preferences and old links still use 'overview'. It is now the Alarmco command desk.
   overview:{label:'Command',description:'Customers, jobs, inspections, and billing',Icon:LayoutDashboard},
+  station:{label:'Station',description:'Central station queue, map, and signal history',Icon:Radio},
   customers:{label:'Customers',description:'Accounts, sites, and monitoring contracts',Icon:Building2},
   jobs:{label:'Jobs',description:'Installs, service calls, and inspections',Icon:BriefcaseBusiness},
   quotes:{label:'Quotes',description:'Device and labor estimates',Icon:FileText},
@@ -105,7 +107,7 @@ export const navigationMeta = {
   settings:{label:'Settings',description:'Company details and integrations',Icon:SettingsIcon},
 } satisfies Record<NavigablePage,{label:string;description:string;Icon:NavIcon}>;
 // Fixed order through Training; rows after it spill into More first on short windows.
-const navigationOrder:NavigablePage[]=['overview','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings'];
+const navigationOrder:NavigablePage[]=['overview','station','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings'];
 const mobilePrimaryOrder:NavigablePage[]=['overview','customers','jobs','vehicles'];
 /** Page ids that were merged into another page. Operations now lives on the 'overview' page. */
 export type LegacyPage='operations';
@@ -804,6 +806,7 @@ function AppContent({user=demoUser,company=demoCompany,companyId,initialData,rem
         <div className={pageStageClassName(pageSlide)} key={page}>
         {page === 'vehicles' && <VehiclesPage vehicles={vehicles} issues={visibleIssues} crew={crew} filtered={filtered} query={query} setQuery={setQuery} canManage={canManageFleet} motiveConnection={activeMotiveConnection} onAdd={() => setFormOpen(true)} onSelect={setSelected} onSelectIssue={setSelectedIssue}/>}
         {(page==='overview'||page==='customers'||page==='jobs'||page==='quotes'||page==='compliance'||page==='billing'||page==='schedule') && <AlarmWorkspace section={page==='overview'?'command':page} book={alarmBook} onChange={setAlarmBook} focusId={alarmFocus} today={localToday()} onOpen={(section:AlarmSection,id?:string)=>{setAlarmFocus(id);setPage(section==='command'?'overview':section)}}/>}
+        {page==='station' && <CentralStationPage book={alarmBook} onChange={setAlarmBook} onOpenCustomer={id=>{setAlarmFocus(id);setPage('customers')}}/>}
         {page === 'readiness' && <Dashboard onCustomize={()=>{setPage('settings');requestAnimationFrame(()=>{const section=document.getElementById('dashboard-customization');section?.focus();section?.scrollIntoView({block:'start'})})}} demoMode={demoMode} quickActions={<QuickActions demoMode={demoMode} companyId={companyId} user={currentUser} onOpen={setPage} onInspect={()=>setInspectionPickerOpen(true)}/>} companyId={companyId} vehicles={vehicles} issues={visibleIssues} inventoryItems={inventoryItems} onOpenInventory={()=>setPage('inventory')} crew={crew} activities={activities} threads={threads} documents={documents} trainings={trainings} inboxNotifications={dashboardInbox.notifications} dismissedNotificationIds={dismissedNotifications.dismissed} onDismissNotification={dismissNotification} onClearNotifications={clearNotifications} user={currentUser} onSelectVehicle={setSelected} onSelectIssue={setSelectedIssue} onSelectCrew={setSelectedCrew} onSelectPayroll={id=>{setRequestedPayrollId(id);setPage('payroll')}} onOpenNotifications={(target,id,vehicleId)=>{if(id)void dashboardInbox.markRead(id);if(target==='fleet'){const vehicle=vehicleId?vehicles.find(item=>item.id===vehicleId):undefined;setPage('vehicles');if(vehicle)setSelected(vehicle);return}setPage(target)}} incidentMap={<OperationsIncidentMap requestedIncidentId={requestedIncidentId} onIncidentOpened={clearRequestedIncident} requestedVehicleId={requestedVehicleId} onVehicleOpened={clearRequestedVehicle} {...dashboardMapProps}/>} onSelectIncident={id=>{setRequestedIncidentId(id);setPage('overview')}}/>}
         {page === 'crew' && canViewCrewRoster(currentUser.role) && <CrewPage onBack={goBack} crew={crew} canManage={canManageFleet} inviteLimit={companyDetails.crewInviteLimit} invitesAvailable={invitesAvailable} onInvite={() => setInviteOpen(true)} onSelect={setSelectedCrew}/>}
         {page === 'news' && <NewsFeedPage companyId={companyId} demoMode={demoMode}/>}
@@ -904,7 +907,7 @@ function InspectionsPage({vehicles,template,onDelete,onBack}:{vehicles:Vehicle[]
 
 // Tile colors match the phone app's More grid and each Quick Action icon.
 const moreTileColors:Partial<Record<NavigablePage|'inspect',string>>={
-  overview:'#C94321',customers:'#2F6A8F',jobs:'#C94321',quotes:'#7B5014',compliance:'#26765A',billing:'#981d5c',schedule:'#285F9E',readiness:'#3F6478',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
+  overview:'#C94321',station:'#98392e',customers:'#2F6A8F',jobs:'#C94321',quotes:'#7B5014',compliance:'#26765A',billing:'#981d5c',schedule:'#285F9E',readiness:'#3F6478',communications:'#285F9E',news:'#B45309',vehicles:'#2F6A8F',
   receipts:'#C94321',documents:'#285F9E',qualifications:'#26765A',training:'#6552A3',crew:'#2E6E8C',inventory:'#7B5014',
   meetings:'#4F5FB8',hotels:'#2F6A8F',inspections:'#3F6478','audit-log':'#3F6478',settings:'#5F6963',
   invoices:'#981d5c',payroll:'#285f9e',availability:'#26765A',tasks:'#7041b5',inspect:'#087e8b',

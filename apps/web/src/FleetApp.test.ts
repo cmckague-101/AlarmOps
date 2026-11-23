@@ -61,7 +61,7 @@ function snapshot():FleetSnapshot {
   };
 }
 
-const alarmNav=['overview','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings'] as const;
+const alarmNav=['overview','station','customers','jobs','quotes','compliance','billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings'] as const;
 
 describe('responsive navigation',()=>{
   it('shows roster to all roles and reserves inspections and audit logs for managers',()=>{
@@ -89,8 +89,8 @@ describe('responsive navigation',()=>{
       expect(navigationLayout(role).mobileOverflow).toContain('quotes');
       expect(navigationLayout(role).mobileOverflow).not.toContain('overview');
     }
-    expect(navigationLayout('owner').mobileOverflow).toEqual(['quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings']);
-    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','readiness','settings']);
+    expect(navigationLayout('owner').mobileOverflow).toEqual(['station','quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','inspections','readiness','audit-log','settings']);
+    expect(navigationLayout('fire_fighter').mobileOverflow).toEqual(['station','quotes','compliance','billing','schedule','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','inventory','readiness','settings']);
   });
 });
 
@@ -143,9 +143,9 @@ describe('desktop sidebar overflow',()=>{
   });
   it('moves rows that do not fit into More, keeping More and Settings at the bottom',()=>{
     const split=sidebarSplit('owner',8);
-    expect(split.shown).toEqual(['overview','customers','jobs','quotes','compliance','billing']);
+    expect(split.shown).toEqual(['overview','station','customers','jobs','quotes','compliance']);
     expect(split.settings).toBe(true);
-    expect(split.more).toEqual(['schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','audit-log','inventory','inspections','readiness']);
+    expect(split.more).toEqual(['billing','schedule','vehicles','communications','documents','receipts','invoices','payroll','hotels','news','crew','qualifications','availability','training','meetings','audit-log','inventory','inspections','readiness']);
     // Nothing is lost: every page is either in the sidebar or in More.
     expect(new Set([...split.shown,...split.more,'settings'])).toEqual(new Set(navigationLayout('owner').mobileOverflow.concat(navigationLayout('owner').mobilePrimary)));
   });
