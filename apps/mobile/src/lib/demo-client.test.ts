@@ -36,7 +36,7 @@ describe('native demo client',()=>{
     expect(network).not.toHaveBeenCalled();
   });
 
-  it('serves static national fire activity and both VIPR lists without network',async()=>{
+  it('serves static national fire activity and seeded USFS tables without network',async()=>{
     const network=vi.fn(()=>{throw new Error('Demo must not access the network')});
     vi.stubGlobal('fetch',network);
     const {client}=demo();

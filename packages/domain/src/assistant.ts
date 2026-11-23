@@ -1,7 +1,5 @@
 import {canViewCrewRoster,isCompanyManager,type UserRole} from './models';
-import {canWorkShop} from './shop';
 import {canManagePersonalTasks} from './tasks';
-import {canSendToVipr} from './vipr';
 
 /**
  * Screens the FireOps Assistant can suggest. The assistant-chat edge function
@@ -12,7 +10,7 @@ import {canSendToVipr} from './vipr';
  * both ids stay so older replies and saved chats keep working.
  */
 export const ASSISTANT_ROUTE_IDS=[
-  'dashboard','operations','fleet','vipr-intelligence','send-to-vipr','vipr-dpls','travel','communications','shop','roster',
+  'dashboard','operations','fleet','travel','communications','roster',
   'qualifications','documents','receipts','invoices','payroll','tasks','availability','training',
   'inventory','inspections','audit-log','settings','more',
 ] as const;
@@ -20,8 +18,8 @@ export type AssistantRouteId=typeof ASSISTANT_ROUTE_IDS[number];
 
 /** Web App page for each route id (App.tsx `Page`). */
 const WEB_PAGES:Record<AssistantRouteId,string>={
-  dashboard:'overview',operations:'overview',fleet:'vehicles','vipr-intelligence':'vipr-intelligence','send-to-vipr':'send-vipr','vipr-dpls':'dispatch',
-  travel:'hotels',communications:'communications',shop:'shop',roster:'crew',qualifications:'qualifications',
+  dashboard:'overview',operations:'overview',fleet:'vehicles',
+  travel:'hotels',communications:'communications',roster:'crew',qualifications:'qualifications',
   documents:'documents',receipts:'receipts',invoices:'invoices',payroll:'payroll',tasks:'tasks',
   availability:'availability',training:'training',inventory:'inventory',inspections:'inspections',
   'audit-log':'audit-log',settings:'settings',more:'more',
@@ -29,16 +27,16 @@ const WEB_PAGES:Record<AssistantRouteId,string>={
 
 /** Expo Router path for each route id. */
 const MOBILE_HREFS:Record<AssistantRouteId,string>={
-  dashboard:'/',operations:'/',fleet:'/fleet','vipr-intelligence':'/vipr-intelligence','send-to-vipr':'/send-to-vipr','vipr-dpls':'/dispatch-lists',
-  travel:'/hotels',communications:'/communications',shop:'/shop',roster:'/crew',qualifications:'/qualifications',
+  dashboard:'/',operations:'/',fleet:'/fleet',
+  travel:'/hotels',communications:'/communications',roster:'/crew',qualifications:'/qualifications',
   documents:'/documents',receipts:'/receipts',invoices:'/invoices',payroll:'/payroll',tasks:'/tasks',
   availability:'/availability',training:'/training',inventory:'/inventory',inspections:'/inspections',
   'audit-log':'/audit-log',settings:'/settings',more:'/more',
 };
 
 export const ASSISTANT_ROUTE_LABELS:Record<AssistantRouteId,string>={
-  dashboard:'Operations',operations:'Operations',fleet:'Fleet','vipr-intelligence':'VIPR Intelligence','send-to-vipr':'Send to VIPR','vipr-dpls':'VIPR DPLs',
-  travel:'Travel',communications:'Communications',shop:'Shop',roster:'Roster',qualifications:'Qualifications',
+  dashboard:'Operations',operations:'Operations',fleet:'Fleet',
+  travel:'Travel',communications:'Communications',roster:'Roster',qualifications:'Qualifications',
   documents:'Documents',receipts:'Receipts',invoices:'Invoices',payroll:'Payroll',tasks:'Task List',
   availability:'Availability',training:'Training',inventory:'Inventory',inspections:'Failed Inspections',
   'audit-log':'Audit log',settings:'Settings',more:'Tools',
@@ -51,10 +49,7 @@ export function isAssistantRouteId(value:unknown):value is AssistantRouteId{
 /** Whether a role can open the screen; the app hides links to screens the user cannot use. */
 export function canOpenAssistantRoute(role:UserRole,id:AssistantRouteId):boolean{
   switch(id){
-    case 'shop':return canWorkShop(role);
     case 'roster':return canViewCrewRoster(role);
-    // VIPR Intelligence is open to everyone (VIPR DPLs); its Send to VIPR entry is owners and admins only.
-    case 'send-to-vipr':return canSendToVipr(role);
     case 'tasks':return canManagePersonalTasks(role);
     case 'inspections':case 'audit-log':return isCompanyManager(role);
     default:return true;
