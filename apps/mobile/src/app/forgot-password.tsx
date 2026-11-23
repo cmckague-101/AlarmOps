@@ -11,7 +11,7 @@ export default function ForgotPassword(){
   return <KeyboardAvoidingView style={[styles.flex,{backgroundColor:theme.canvas}]} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.screen} keyboardDismissMode={Platform.OS==='ios'?'interactive':'on-drag'} keyboardShouldPersistTaps="handled"><View style={[styles.panel,{backgroundColor:theme.paper,borderColor:theme.divider}]}>
     <Text accessibilityRole="header" style={[styles.title,{color:theme.ink}]}>Reset password</Text>
     {sent?<Text accessibilityRole="alert" style={[styles.copy,{color:theme.secondary}]}>If an account exists for {email.trim()}, a reset link is on its way. Check inbox and spam.</Text>:<>
-      <Text style={[styles.copy,{color:theme.secondary}]}>Enter email used for your invited FireOps account.</Text>
+      <Text style={[styles.copy,{color:theme.secondary}]}>Enter email used for your invited AlarmOps account.</Text>
       <View style={styles.field}><FormField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" onSubmitEditing={()=>void submit()}/></View>
       {error&&<Text accessibilityRole="alert" style={[styles.error,{color:theme.danger,backgroundColor:theme.dangerSurface}]}>{error}</Text>}
       <Pressable accessibilityRole="button" disabled={busy} onPress={()=>void submit()} style={({pressed})=>[styles.button,{backgroundColor:pressed?theme.emberPressed:theme.ember},busy&&styles.disabled]}><Text style={styles.buttonLabel}>{busy?'Sending…':'Send reset link'}</Text></Pressable>

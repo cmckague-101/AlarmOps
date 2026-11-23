@@ -27,7 +27,7 @@ export default function AccountSetup() {
         exchangeStarted=true;
         const {error:exchangeError}=await client.auth.exchangeCodeForSession(code);
         window.history.replaceState({},'',window.location.pathname);
-        if(exchangeError){if(active){setError('Invitation is invalid or expired. Ask the FireOps operator for a new invitation.');setLoading(false)}return}
+        if(exchangeError){if(active){setError('Invitation is invalid or expired. Ask the AlarmOps operator for a new invitation.');setLoading(false)}return}
       }
       const {data:sessionData}=await client.auth.getSession();
       if(!active)return;
@@ -54,13 +54,13 @@ export default function AccountSetup() {
     const {error:updateError}=await supabase.auth.updateUser({password,data:{full_name:fullName.trim()}});
     if(updateError){setError(updateError.message);setBusy(false);return}
     const {data:activated,error:completeError}=await supabase.rpc('complete_company_invite');
-    if(completeError||activated!==1){setError('Account was secured, but company access could not be activated. Ask the FireOps operator for help.');setBusy(false);return}
+    if(completeError||activated!==1){setError('Account was secured, but company access could not be activated. Ask the AlarmOps operator for help.');setBusy(false);return}
     window.location.assign('/');
   };
   if(!supabaseConfigured)return <SetupMessage text="Account setup is not configured."/>;
   if(loading)return <SetupMessage text="Verifying invitation..."/>;
-  if(!session||!invitationValid)return <SetupMessage text={error||'Invitation is invalid or expired. Ask the FireOps operator for a new invitation.'} action/>;
+  if(!session||!invitationValid)return <SetupMessage text={error||'Invitation is invalid or expired. Ask the AlarmOps operator for a new invitation.'} action/>;
   return <div className="admin-auth"><form onSubmit={submit}><span className="admin-shield"><ShieldCheck/></span><h1>Set up your account</h1><p>{session.user.email}</p><label>Full name<input required maxLength={120} value={fullName} onChange={event=>setFullName(event.target.value)}/></label><label>Password<input type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<div className="admin-error" role="alert">{error}</div>}<button disabled={busy}>{busy?'Saving...':'Complete setup'}</button></form></div>;
 }
 
-function SetupMessage({text,action=false}:{text:string;action?:boolean}){return <div className="admin-auth"><div className="admin-message" role={action?'alert':'status'}><ShieldCheck/><h1>Account setup</h1><p>{text}</p>{action&&<button className="message-action" onClick={()=>window.location.assign('/')}>Return to FireOps</button>}</div></div>}
+function SetupMessage({text,action=false}:{text:string;action?:boolean}){return <div className="admin-auth"><div className="admin-message" role={action?'alert':'status'}><ShieldCheck/><h1>Account setup</h1><p>{text}</p>{action&&<button className="message-action" onClick={()=>window.location.assign('/')}>Return to AlarmOps</button>}</div></div>}
